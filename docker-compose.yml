@@ -1,0 +1,29 @@
+# Local development only. Production hosting is Vercel (frontend) +
+# Railway/Fly (backend) + Neon (Postgres) — see the project guide PDF.
+# No Redis service: refresh tokens live in Postgres (see backend/README.md).
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: alistore
+      POSTGRES_PASSWORD: alistore
+      POSTGRES_DB: alistore
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://alistore:alistore@postgres:5432/alistore?schema=public
+    ports:
+      - "4000:4000"
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:

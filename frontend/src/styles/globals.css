@@ -1,0 +1,482 @@
+/* =====================================================================
+   ALI'S STORE — GLOBAL DESIGN SYSTEM
+   =====================================================================
+   This is the one stylesheet every page in the app imports (via the
+   root layout). It defines:
+     1. Base design tokens (color, type, spacing, radius, shadow) as CSS
+        custom properties, in both light and dark mode.
+     2. A reset + typography baseline.
+     3. Shared layout primitives (container, header/footer chrome,
+        buttons, cards, badges, inputs) used by every page shell.
+     4. RTL support via logical properties + [dir="rtl"] overrides, so
+        the English and Arabic versions of every page stay visually
+        consistent without a second stylesheet.
+     5. "Compound" per-department accents (data-department="women|men|
+        kids") — each door keeps the same structural system (spacing,
+        components, both color modes) but shifts accent color, corner
+        radius, and heading font to feel distinct, per the brief:
+        one consistent system, three self-representing sections.
+
+   Page-level content is intentionally NOT designed here — only the
+   shared shell (tokens, header, footer, base components) is
+   implemented. Empty pages in app/[locale]/** pull all of this in
+   automatically through the root layout.
+   ===================================================================== */
+
+/* ---------- 1. Design tokens ---------- */
+
+:root {
+  color-scheme: light;
+
+  /* Base neutrals */
+  --color-bg: #ffffff;
+  --color-surface: #f7f5f2;
+  --color-surface-raised: #ffffff;
+  --color-border: #e4dfd8;
+  --color-text: #1c1a17;
+  --color-text-muted: #6b6459;
+  --color-text-inverse: #ffffff;
+
+  /* Brand + semantic */
+  --color-primary: #1c1a17;       /* Ali's Store wordmark / primary actions — replace with brand hex once logo is in */
+  --color-primary-contrast: #ffffff;
+  --color-accent: #b08d57;        /* neutral gold accent used store-wide (sale badges, dividers) */
+  --color-success: #2f6f4e;
+  --color-danger: #a4322a;
+  --color-danger-contrast: #ffffff;
+
+  /* Department accents (compound styling — overridden per data-department) */
+  --dept-accent: var(--color-accent);
+  --dept-radius: var(--radius-md);
+  --dept-heading-font: var(--font-serif);
+  --dept-tracking: 0;
+
+  /* Typography */
+  --font-sans: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-arabic: 'Noto Naskh Arabic', 'Tahoma', sans-serif;
+
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-base: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.5rem;
+  --fs-2xl: 2rem;
+  --fs-3xl: 2.75rem;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* Radius + shadow */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+
+  /* Layout */
+  --container-max: 1280px;
+  --header-height: 72px;
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+}
+
+/* Dark mode — either explicit (data-theme="dark") or system preference
+   when the user hasn't chosen (data-theme="system" or unset). */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-bg: #14120f;
+  --color-surface: #1c1a17;
+  --color-surface-raised: #221f1b;
+  --color-border: #34302a;
+  --color-text: #f2ede6;
+  --color-text-muted: #a89f92;
+  --color-text-inverse: #14120f;
+
+  --color-primary: #f2ede6;
+  --color-primary-contrast: #14120f;
+  --color-accent: #d3ab72;
+  --color-success: #4f9d76;
+  --color-danger: #e0685c;
+  --color-danger-contrast: #14120f;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme='system'] {
+    color-scheme: dark;
+    --color-bg: #14120f;
+    --color-surface: #1c1a17;
+    --color-surface-raised: #221f1b;
+    --color-border: #34302a;
+    --color-text: #f2ede6;
+    --color-text-muted: #a89f92;
+    --color-text-inverse: #14120f;
+    --color-primary: #f2ede6;
+    --color-primary-contrast: #14120f;
+    --color-accent: #d3ab72;
+    --color-success: #4f9d76;
+    --color-danger: #e0685c;
+    --color-danger-contrast: #14120f;
+  }
+}
+
+/* ---------- 2. Reset + typography baseline ---------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background var(--transition-base), color var(--transition-base);
+}
+
+[lang='ar'] body {
+  font-family: var(--font-arabic);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--dept-heading-font);
+  font-weight: 600;
+  line-height: 1.15;
+  margin: 0 0 var(--space-3);
+  letter-spacing: var(--dept-tracking);
+}
+
+h1 {
+  font-size: var(--fs-3xl);
+}
+h2 {
+  font-size: var(--fs-2xl);
+}
+h3 {
+  font-size: var(--fs-xl);
+}
+
+p {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* ---------- 3. Layout primitives ---------- */
+
+.container {
+  width: 100%;
+  max-width: var(--container-max);
+  margin-inline: auto;
+  padding-inline: var(--space-5);
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding-inline: var(--space-4);
+  }
+}
+
+/* Announcement bar */
+.announcement-bar {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  text-align: center;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding-block: var(--space-2);
+}
+
+/* Site header */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.site-header__inner {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.site-header__logo {
+  font-family: var(--font-serif);
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.site-header__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  font-size: var(--fs-sm);
+}
+
+.site-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Department switcher — small persistent control in the header so a
+   department page never feels like a dead end (see project guide). */
+.department-switcher {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--color-surface);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+}
+
+.department-switcher__link {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.department-switcher__link[data-active='true'] {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--dept-radius);
+  border: 1px solid transparent;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--transition-fast), background var(--transition-fast), opacity var(--transition-fast);
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn--primary {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+}
+
+.btn--primary:hover {
+  opacity: 0.9;
+}
+
+.btn--outline {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.btn--outline:hover {
+  background: var(--color-surface);
+}
+
+.btn--accent {
+  background: var(--dept-accent);
+  color: var(--color-text-inverse);
+}
+
+/* Cards (product cards, content cards) */
+.card {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--dept-radius);
+  overflow: hidden;
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.card__body {
+  padding: var(--space-4);
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.badge--sale {
+  background: var(--color-danger);
+  color: var(--color-danger-contrast);
+}
+
+/* Inputs */
+.input {
+  width: 100%;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-size: var(--fs-base);
+}
+
+.input:focus {
+  outline: 2px solid var(--dept-accent);
+  outline-offset: 1px;
+}
+
+/* Theme + locale toggles */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--color-surface);
+}
+
+/* Footer */
+.site-footer {
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding-block: var(--space-7);
+  margin-top: var(--space-8);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+.site-footer__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-5);
+}
+
+@media (max-width: 768px) {
+  .site-footer__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .site-header__nav {
+    display: none; /* replaced by a mobile menu at page-implementation time */
+  }
+}
+
+/* Placeholder shell used by empty pages until real content is built */
+.page-placeholder {
+  min-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  text-align: center;
+  color: var(--color-text-muted);
+  padding-block: var(--space-8);
+}
+
+/* ---------- 4. RTL ---------- */
+/* Logical properties (margin-inline, padding-inline, etc.) above already
+   flip automatically. This section only covers the handful of things
+   logical properties don't: icon mirroring and text alignment. */
+
+[dir='rtl'] .icon-flip {
+  transform: scaleX(-1);
+}
+
+[dir='rtl'] .site-header__inner,
+[dir='rtl'] .department-switcher {
+  direction: rtl;
+}
+
+/* ---------- 5. Compound per-department styling ---------- */
+/* Same structural system (spacing, radius scale, components above) —
+   only the accent color, corner radius, and heading personality change,
+   so each door reads as intentionally distinct while still clearly part
+   of one store. Applied via data-department on a page's root wrapper. */
+
+[data-department='women'] {
+  --dept-accent: #b0688a;         /* soft rose gold — lingerie/nightwear */
+  --dept-radius: var(--radius-lg); /* softer corners */
+  --dept-heading-font: var(--font-serif);
+  --dept-tracking: 0.01em;
+}
+
+[data-department='men'] {
+  --dept-accent: #38455c;          /* deep navy — structured, editorial like Saxon's menswear */
+  --dept-radius: var(--radius-sm); /* sharper corners */
+  --dept-heading-font: var(--font-sans);
+  --dept-tracking: 0.02em;
+}
+
+[data-department='kids'] {
+  --dept-accent: #e08a3c;          /* warm playful orange */
+  --dept-radius: var(--radius-lg);
+  --dept-heading-font: var(--font-sans);
+  --dept-tracking: 0;
+}
+
+[data-department='kids'] h1,
+[data-department='kids'] h2 {
+  font-weight: 700;
+}
