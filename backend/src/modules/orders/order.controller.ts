@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as orderService from './order.service';
+import { paramString } from '../../lib/params';
 
 export async function checkoutHandler(req: Request, res: Response) {
   const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.cartSession };
@@ -13,12 +14,12 @@ export async function listMyOrdersHandler(req: Request, res: Response) {
 }
 
 export async function getOrderHandler(req: Request, res: Response) {
-  const order = await orderService.getOrderById(req.params.id, req.user?.role === 'CUSTOMER' ? req.user.id : undefined);
+  const order = await orderService.getOrderById(paramString(req.params.id), req.user?.role === 'CUSTOMER' ? req.user.id : undefined);
   res.json({ order });
 }
 
 export async function cancelOrderHandler(req: Request, res: Response) {
-  const order = await orderService.cancelOrder(req.params.id, req.user!.id);
+  const order = await orderService.cancelOrder(paramString(req.params.id), req.user!.id);
   res.json({ order });
 }
 
@@ -30,12 +31,12 @@ export async function listAllOrdersHandler(req: Request, res: Response) {
 }
 
 export async function updateOrderStatusHandler(req: Request, res: Response) {
-  const order = await orderService.updateOrderStatus(req.params.id, req.body.status);
+  const order = await orderService.updateOrderStatus(paramString(req.params.id), req.body.status);
   res.json({ order });
 }
 
 export async function markCodCollectedHandler(req: Request, res: Response) {
-  const order = await orderService.markCodCollected(req.params.id, req.body.collected);
+  const order = await orderService.markCodCollected(paramString(req.params.id), req.body.collected);
   res.json({ order });
 }
 

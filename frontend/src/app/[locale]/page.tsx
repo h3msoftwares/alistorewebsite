@@ -13,8 +13,9 @@ const DOORS = [
  * already carries data-department so the compound accent system in
  * globals.css previews correctly.
  */
-export default function HomePage({ params }: { params: { locale: string } }) {
-  const isAr = params.locale === 'ar';
+export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  const isAr = locale === 'ar';
   return (
     <div className="container" style={{ paddingBlock: 'var(--space-7)' }}>
       <h1>{isAr ? "متجر علي" : "Ali's Store"}</h1>
@@ -23,7 +24,7 @@ export default function HomePage({ params }: { params: { locale: string } }) {
         {DOORS.map((d) => (
           <Link
             key={d.slug}
-            href={`/${params.locale}/${d.slug}`}
+            href={`/${locale}/${d.slug}`}
             className="card"
             data-department={d.department}
             style={{ padding: 'var(--space-6)', textAlign: 'center' }}

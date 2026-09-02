@@ -5,12 +5,10 @@ import { prisma } from './config/prisma';
 const app = buildApp();
 
 const server = app.listen(env.PORT, () => {
-  // eslint-disable-next-line no-console
   console.log(`[server] Ali's Store API listening on :${env.PORT} (${env.NODE_ENV})`);
 });
 
 async function shutdown(signal: string) {
-  // eslint-disable-next-line no-console
   console.log(`[server] received ${signal}, shutting down`);
   server.close();
   await prisma.$disconnect();

@@ -22,7 +22,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>('system');
 
   useEffect(() => {
+    // Reading localStorage during render (e.g. a useState initializer)
+    // would return a different value on the server vs. client and cause a
+    // hydration mismatch — this genuinely has to run in an effect, which is
+    // exactly the "subscribe to an external system" case the lint rule's
+    // own guidance carves out.
     const stored = window.localStorage.getItem(STORAGE_KEY) as Theme | null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (stored) setThemeState(stored);
   }, []);
 

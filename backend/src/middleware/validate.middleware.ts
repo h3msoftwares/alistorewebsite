@@ -1,18 +1,35 @@
 import { NextFunction, Request, Response } from 'express';
-import { AnyZodObject, ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 import { AppError } from '../lib/AppError';
 
+// zod v4 dropped the AnyZodObject alias — z.ZodType is the generic base
+// type every schema (object/array/etc.) shares, and all we need here is
+// .parse().
 interface Schemas {
-  body?: AnyZodObject;
-  query?: AnyZodObject;
-  params?: AnyZodObject;
+  body?: z.ZodType;
+  query?: z.ZodType;
+  params?: z.ZodType;
+}
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      /** Zod-parsed/coerced query params (defaults applied, strings
+       *  coerced to number, etc.) — read this instead of req.query in any
+       *  handler behind validate({ query: ... }). Express 5 made req.query
+       *  a getter-only property computed fresh from req.url on every read,
+       *  so it can no longer be reassigned with the validated result. */
+      validatedQuery?: Record<string, unknown>;
+    }
+  }
 }
 
 export function validate(schemas: Schemas) {
   return (req: Request, _res: Response, next: NextFunction) => {
     try {
       if (schemas.body) req.body = schemas.body.parse(req.body);
-      if (schemas.query) req.query = schemas.query.parse(req.query) as typeof req.query;
+      if (schemas.query) req.validatedQuery = schemas.query.parse(req.query) as Record<string, unknown>;
       if (schemas.params) req.params = schemas.params.parse(req.params) as typeof req.params;
       next();
     } catch (err) {

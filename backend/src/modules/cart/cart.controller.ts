@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import * as cartService from './cart.service';
+import { paramString } from '../../lib/params';
 
 const GUEST_CART_COOKIE = 'cartSession';
 
@@ -34,12 +35,12 @@ export async function addCartItemHandler(req: Request, res: Response) {
 
 export async function updateCartItemHandler(req: Request, res: Response) {
   const owner = resolveOwner(req, res);
-  const item = await cartService.updateItemQuantity(owner, req.params.itemId, req.body.quantity);
+  const item = await cartService.updateItemQuantity(owner, paramString(req.params.itemId), req.body.quantity);
   res.json({ item });
 }
 
 export async function removeCartItemHandler(req: Request, res: Response) {
   const owner = resolveOwner(req, res);
-  await cartService.removeItem(owner, req.params.itemId);
+  await cartService.removeItem(owner, paramString(req.params.itemId));
   res.status(204).send();
 }

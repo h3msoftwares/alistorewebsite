@@ -3,7 +3,6 @@ import { PrismaClient } from '@prisma/client';
 // Single shared client. In dev, stash on globalThis to survive hot-reload
 // without exhausting the Postgres connection pool.
 declare global {
-  // eslint-disable-next-line no-var
   var __prisma: PrismaClient | undefined;
 }
 

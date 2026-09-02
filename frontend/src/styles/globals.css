@@ -52,9 +52,12 @@
   --dept-tracking: 0;
 
   /* Typography */
-  --font-sans: 'Inter', 'Helvetica Neue', Arial, sans-serif;
-  --font-serif: 'Playfair Display', Georgia, serif;
-  --font-arabic: 'Noto Naskh Arabic', 'Tahoma', sans-serif;
+  /* var(--font-inter)/--font-playfair/--font-noto-naskh are set on <html>
+     by next/font in app/[locale]/layout.tsx; the quoted family names stay
+     as a fallback so this still degrades gracefully outside the root layout. */
+  --font-sans: var(--font-inter), 'Inter', 'Helvetica Neue', Arial, sans-serif;
+  --font-serif: var(--font-playfair), 'Playfair Display', Georgia, serif;
+  --font-arabic: var(--font-noto-naskh), 'Noto Naskh Arabic', 'Tahoma', sans-serif;
 
   --fs-xs: 0.75rem;
   --fs-sm: 0.875rem;
@@ -347,6 +350,47 @@ button {
 
 .card__body {
   padding: var(--space-4);
+}
+
+/* Product card (components/ui/product-card.tsx) — sits on top of .card,
+   only adds what .card doesn't already cover: an image aspect-ratio box
+   and a name line. */
+.product-card__media {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.product-card__media img {
+  object-fit: cover;
+}
+
+/* inset-inline-end (not "right") so this auto-mirrors under [dir='rtl'],
+   consistent with the RTL approach the rest of this file already uses. */
+.product-card__badge {
+  position: absolute;
+  top: var(--space-2);
+  inset-inline-end: var(--space-2);
+}
+
+.product-card__name {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  margin: 0 0 var(--space-1);
+}
+
+/* Price tag (components/ui/price-tag.tsx) */
+.price-tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.price-tag__compare {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
 }
 
 /* Badges */

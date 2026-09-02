@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
 import { requireAuth, optionalAuth } from '../../middleware/auth.middleware';
-import { requireRole } from '../../middleware/rbac.middleware';
 import { checkoutSchema, orderIdParamSchema } from './order.schema';
 import {
   checkoutHandler,
