@@ -1,9 +1,11 @@
 export interface PriceTagProps {
   /** Prisma Decimal fields (Product.price/compareAtPrice) may arrive as a
-   *  string once serialized over JSON — accept both until real API wiring
-   *  in Week 2 settles the exact shape. */
+   *  string once serialized over JSON — accept both. */
   price: number | string;
   compareAtPrice?: number | string | null;
+  /** Post-sale price from the API (`Product.effectivePrice`). When lower than
+   *  `price` it becomes the current price and `price` is struck through. */
+  salePrice?: number | string | null;
   locale: 'en' | 'ar';
   /** Matches Order.currency's default in prisma/schema.prisma. */
   currency?: string;
@@ -13,13 +15,24 @@ export interface PriceTagProps {
   showBadge?: boolean;
 }
 
-/** Renders the current price, and — when compareAtPrice is higher — a
- *  struck-through original price plus the .badge--sale pill already
- *  defined in globals.css. */
-export function PriceTag({ price, compareAtPrice, locale, currency = 'USD', showBadge = true }: PriceTagProps) {
-  const numericPrice = Number(price);
-  const numericCompare = compareAtPrice != null ? Number(compareAtPrice) : null;
-  const onSale = numericCompare != null && numericCompare > numericPrice;
+/** Renders the current price, and — when a sale (`salePrice`) or a higher
+ *  `compareAtPrice` applies — a struck-through original price plus the
+ *  `.badge--sale` pill defined in globals.css. */
+export function PriceTag({
+  price,
+  compareAtPrice,
+  salePrice,
+  locale,
+  currency = 'USD',
+  showBadge = true,
+}: PriceTagProps) {
+  const base = Number(price);
+  const sale = salePrice != null ? Number(salePrice) : null;
+  const compare = compareAtPrice != null ? Number(compareAtPrice) : null;
+
+  const current = sale != null && sale < base ? sale : base;
+  const struck =
+    sale != null && sale < base ? base : compare != null && compare > current ? compare : null;
 
   const format = new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US', {
     style: 'currency',
@@ -28,11 +41,13 @@ export function PriceTag({ price, compareAtPrice, locale, currency = 'USD', show
 
   return (
     <span className="price-tag">
-      <span className="price-tag__current">{format.format(numericPrice)}</span>
-      {onSale && (
+      <span className="price-tag__current">{format.format(current)}</span>
+      {struck != null && (
         <>
-          <span className="price-tag__compare">{format.format(numericCompare!)}</span>
-          {showBadge && <span className="badge badge--sale">{locale === 'ar' ? 'تخفيض' : 'Sale'}</span>}
+          <span className="price-tag__compare">{format.format(struck)}</span>
+          {showBadge && (
+            <span className="badge badge--sale">{locale === 'ar' ? 'تخفيض' : 'Sale'}</span>
+          )}
         </>
       )}
     </span>

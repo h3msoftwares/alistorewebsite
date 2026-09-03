@@ -30,6 +30,8 @@ export type StockMovementType =
   | 'ADJUSTMENT'
   | 'RETURN'
   | 'RESTOCK';
+/** A product sale is a percentage off (0–100) or a flat amount off the price. */
+export type DiscountType = 'PERCENT' | 'AMOUNT';
 
 // ---- Catalog ----
 
@@ -99,6 +101,15 @@ export interface Product {
   collectionID: UUID;
   price: Decimalish;
   compareAtPrice?: Decimalish | null;
+  /** Product-level quantity — free-standing signed int (may be 0 or negative). */
+  quantity: number;
+  /** Active sale. Both null ⇒ no sale. */
+  saleType?: DiscountType | null;
+  saleValue?: Decimalish | null;
+  /** Computed by the API: what the shopper pays after the sale (>= 0), and
+   *  whether a sale is currently reducing the price. */
+  effectivePrice: number;
+  onSale: boolean;
   isActive: boolean;
   dateCreated: IsoDateTime;
   images: ProductImage[];
@@ -290,6 +301,11 @@ export interface ProductBody {
   collectionId: UUID;
   price: number;
   compareAtPrice?: number;
+  /** May be 0 or negative; independent of `isActive`. Defaults to 0. */
+  quantity?: number;
+  /** Set both together, or neither. `PERCENT` value is 0–100. */
+  saleType?: DiscountType | null;
+  saleValue?: number | null;
   variants: VariantBody[];
 }
 

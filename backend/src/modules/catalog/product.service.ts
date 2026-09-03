@@ -1,6 +1,8 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type DiscountType } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
+import { toNumber } from '../../lib/money';
+import { effectivePrice, isOnSale } from '../../lib/pricing';
 import { z } from 'zod';
 import {
   listProductsQuerySchema,
@@ -23,6 +25,20 @@ const productInclude = {
   category: true,
   collection: { select: { id: true, nameEn: true, nameAr: true, slug: true } },
 };
+
+// Attach the post-sale price so every product read carries what a shopper pays.
+type Priced = {
+  price: Prisma.Decimal;
+  saleType: DiscountType | null;
+  saleValue: Prisma.Decimal | null;
+};
+function withPricing<T extends Priced>(p: T) {
+  return {
+    ...p,
+    effectivePrice: effectivePrice(p.price, p.saleType, p.saleValue),
+    onSale: isOnSale(p.price, p.saleType, p.saleValue),
+  };
+}
 
 export async function listProducts(query: ListProductsQuery) {
   const where: Prisma.ProductWhereInput = {
@@ -75,7 +91,7 @@ export async function listProducts(query: ListProductsQuery) {
     prisma.product.count({ where }),
   ]);
 
-  return { items, total, page: query.page, pageSize: query.pageSize };
+  return { items: items.map(withPricing), total, page: query.page, pageSize: query.pageSize };
 }
 
 export async function getProductById(id: string, includeInactive = false) {
@@ -84,7 +100,7 @@ export async function getProductById(id: string, includeInactive = false) {
     include: productInclude,
   });
   if (!product) throw new AppError('NOT_FOUND', 'Product not found');
-  return product;
+  return withPricing(product);
 }
 
 // ---- Admin-side writes ----
@@ -92,8 +108,9 @@ export async function getProductById(id: string, includeInactive = false) {
 export async function createProduct(input: CreateProductInput) {
   await ensureCategoryAndCollection(input.categoryId, input.collectionId);
   assertNoDuplicateVariants(input.variants);
+  assertValidSale(input.saleType, input.saleValue);
   try {
-    return await prisma.product.create({
+    const created = await prisma.product.create({
       data: {
         sku: input.sku,
         nameEn: input.nameEn,
@@ -104,6 +121,9 @@ export async function createProduct(input: CreateProductInput) {
         collectionID: input.collectionId,
         price: input.price,
         compareAtPrice: input.compareAtPrice,
+        quantity: input.quantity,
+        saleType: input.saleType ?? null,
+        saleValue: input.saleValue ?? null,
         variants: {
           create: input.variants.map((v) => ({
             sku: v.sku,
@@ -115,18 +135,31 @@ export async function createProduct(input: CreateProductInput) {
       },
       include: productInclude,
     });
+    return withPricing(created);
   } catch (e) {
     throw mapPrismaError(e);
   }
 }
 
 export async function updateProduct(id: string, input: UpdateProductInput) {
-  await ensureProductExists(id);
+  const existing = await prisma.product.findUnique({
+    where: { id },
+    select: { saleType: true, saleValue: true },
+  });
+  if (!existing) throw new AppError('NOT_FOUND', 'Product not found');
   if (input.categoryId || input.collectionId) {
     await ensureCategoryAndCollection(input.categoryId, input.collectionId);
   }
+
+  // Validate the sale as it will be after this patch (input value or the
+  // one already stored).
+  const nextSaleType = input.saleType !== undefined ? (input.saleType ?? null) : existing.saleType;
+  const nextSaleValue =
+    input.saleValue !== undefined ? (input.saleValue ?? null) : existing.saleValue;
+  assertValidSale(nextSaleType, nextSaleValue);
+
   try {
-    return await prisma.product.update({
+    const updated = await prisma.product.update({
       where: { id },
       data: {
         ...(input.sku !== undefined ? { sku: input.sku } : {}),
@@ -138,9 +171,13 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
         ...(input.collectionId !== undefined ? { collectionID: input.collectionId } : {}),
         ...(input.price !== undefined ? { price: input.price } : {}),
         ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice } : {}),
+        ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
+        ...(input.saleType !== undefined ? { saleType: input.saleType ?? null } : {}),
+        ...(input.saleValue !== undefined ? { saleValue: input.saleValue ?? null } : {}),
       },
       include: productInclude,
     });
+    return withPricing(updated);
   } catch (e) {
     throw mapPrismaError(e);
   }
@@ -322,6 +359,24 @@ async function ensureCategoryAndCollection(categoryId?: string, collectionId?: s
       select: { id: true },
     });
     if (!c) throw new AppError('NOT_FOUND', 'Collection not found');
+  }
+}
+
+// saleType + saleValue go together, and a PERCENT sale is bounded 0–100.
+function assertValidSale(
+  saleType: DiscountType | null | undefined,
+  saleValue: number | Prisma.Decimal | null | undefined
+) {
+  const hasType = saleType != null;
+  const hasValue = saleValue != null;
+  if (hasType !== hasValue) {
+    throw new AppError('VALIDATION_ERROR', 'saleType and saleValue must be set together');
+  }
+  if (saleType === 'PERCENT') {
+    const v = toNumber(saleValue as Prisma.Decimal | number);
+    if (v < 0 || v > 100) {
+      throw new AppError('VALIDATION_ERROR', 'A percentage sale must be between 0 and 100');
+    }
   }
 }
 

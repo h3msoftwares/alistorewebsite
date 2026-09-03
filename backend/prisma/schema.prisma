@@ -54,6 +54,13 @@ enum StockMovementType {
   RESTOCK
 }
 
+// How a product's sale is expressed: a percentage off (0–100) or a flat
+// amount off the price.
+enum DiscountType {
+  PERCENT
+  AMOUNT
+}
+
 // ============ USERS / AUTH ============
 
 model User {
@@ -257,19 +264,25 @@ model CategoryImage {
 }
 
 model Product {
-  id             String    @id @default(uuid()) @db.Uuid
-  sku            String    @unique
+  id             String        @id @default(uuid()) @db.Uuid
+  sku            String        @unique
   nameEn         String
   nameAr         String
   descriptionEn  String?
   descriptionAr  String?
-  categoryID     String    @db.Uuid
-  collectionID   String    @db.Uuid // denormalized from Category so a whole collection filters without a join; kept in sync in app code
-  price          Decimal   @db.Decimal(12, 2)
-  compareAtPrice Decimal?  @db.Decimal(12, 2)
-  isActive       Boolean   @default(true)
-  dateCreated    DateTime  @default(now())
-  lastEdit       DateTime  @default(now()) @updatedAt
+  categoryID     String        @db.Uuid
+  collectionID   String        @db.Uuid // denormalized from Category so a whole collection filters without a join; kept in sync in app code
+  price          Decimal       @db.Decimal(12, 2)
+  compareAtPrice Decimal?      @db.Decimal(12, 2)
+  // Active sale: PERCENT (0–100) or AMOUNT off `price`. Both null ⇒ no sale.
+  saleType       DiscountType?
+  saleValue      Decimal?      @db.Decimal(12, 2)
+  // Product-level quantity. Free-standing signed integer — may be 0 or
+  // negative (e.g. oversold), and has no bearing on `isActive`.
+  quantity       Int           @default(0)
+  isActive       Boolean       @default(true)
+  dateCreated    DateTime      @default(now())
+  lastEdit       DateTime      @default(now()) @updatedAt
   deletedAt      DateTime?
 
   category   Category         @relation(fields: [categoryID], references: [id])

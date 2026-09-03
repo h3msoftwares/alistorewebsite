@@ -49,6 +49,8 @@ const variantInputSchema = z.object({
   stockQuantity: z.number().int().nonnegative().default(0),
 });
 
+export const discountTypeSchema = z.enum(['PERCENT', 'AMOUNT']);
+
 export const createProductSchema = z.object({
   sku: z.string().min(1),
   nameEn: z.string().min(1),
@@ -59,6 +61,12 @@ export const createProductSchema = z.object({
   collectionId: z.string().uuid(),
   price: z.number().positive(),
   compareAtPrice: z.number().positive().optional(),
+  // Free-standing signed quantity — may be 0 or negative, unrelated to isActive.
+  quantity: z.number().int().default(0),
+  // Optional sale: both together, or neither. PERCENT is 0–100 (checked in the
+  // service so `.partial()` still works for updates).
+  saleType: discountTypeSchema.nullish(),
+  saleValue: z.number().nonnegative().nullish(),
   variants: z.array(variantInputSchema).min(1),
 });
 

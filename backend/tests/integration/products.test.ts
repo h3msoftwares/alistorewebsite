@@ -278,4 +278,82 @@ describe('Products API', () => {
       expect(del.status).toBe(204);
     });
   });
+
+  describe('quantity + sale', () => {
+    it('accepts a zero or negative quantity without touching isActive', async () => {
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody({ quantity: -3 }));
+      expect(res.status).toBe(201);
+      expect(res.body.product.quantity).toBe(-3);
+      expect(res.body.product.isActive).toBe(true);
+    });
+
+    it('defaults quantity to 0 when omitted', async () => {
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody());
+      expect(res.body.product.quantity).toBe(0);
+    });
+
+    it('applies a PERCENT sale and returns effectivePrice + onSale', async () => {
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody({ price: 20, saleType: 'PERCENT', saleValue: 25 }));
+      expect(res.status).toBe(201);
+      expect(res.body.product.effectivePrice).toBe(15);
+      expect(res.body.product.onSale).toBe(true);
+    });
+
+    it('applies an AMOUNT sale, clamped at 0', async () => {
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody({ sku: 'SKU-A', price: 20, saleType: 'AMOUNT', saleValue: 30 }));
+      expect(res.body.product.effectivePrice).toBe(0);
+    });
+
+    it('a product with no sale reports effectivePrice === price and onSale false', async () => {
+      const p = await makeProduct(collectionId, categoryId, { over: { price: 12 } });
+      const res = await request(app).get(`/api/products/${p.id}`);
+      expect(Number(res.body.product.effectivePrice)).toBe(12);
+      expect(res.body.product.onSale).toBe(false);
+    });
+
+    it('400s a sale missing its value, or a percent over 100', async () => {
+      const missing = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody({ saleType: 'PERCENT' }));
+      expect(missing.status).toBe(400);
+
+      const tooBig = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody({ sku: 'SKU-B', saleType: 'PERCENT', saleValue: 150 }));
+      expect(tooBig.status).toBe(400);
+    });
+
+    it('PATCH updates quantity and clears the sale with saleType:null', async () => {
+      const created = (
+        await request(app)
+          .post('/api/products')
+          .set(bearer(adminToken))
+          .send(productBody({ price: 40, saleType: 'PERCENT', saleValue: 10 }))
+      ).body.product;
+      expect(created.onSale).toBe(true);
+
+      const res = await request(app)
+        .patch(`/api/products/${created.id}`)
+        .set(bearer(adminToken))
+        .send({ quantity: 7, saleType: null, saleValue: null });
+      expect(res.status).toBe(200);
+      expect(res.body.product.quantity).toBe(7);
+      expect(res.body.product.onSale).toBe(false);
+      expect(Number(res.body.product.effectivePrice)).toBe(40);
+    });
+  });
 });
