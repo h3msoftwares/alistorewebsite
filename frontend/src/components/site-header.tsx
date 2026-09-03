@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { ThemeToggle } from './theme-toggle';
 
 const DEPARTMENTS = [
   { slug: 'women', labelEn: 'Women', labelAr: 'حريمي' },
@@ -39,7 +38,6 @@ export function SiteHeader({ locale, activeDepartment }: { locale: string; activ
         </nav>
 
         <div className="site-header__actions">
-          <ThemeToggle />
           <Link href={locale === 'ar' ? '/en' : '/ar'} className="icon-btn" aria-label="Switch language" title="EN / AR">
             {locale === 'ar' ? 'EN' : 'AR'}
           </Link>

@@ -7,7 +7,7 @@ const DEFAULT_LOCALE = 'en';
  *  A real deployment would also read Accept-Language / a saved cookie to
  *  pick between en/ar on first visit — left as a TODO here since it's
  *  behavior, not the shared design system. */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasLocale = LOCALES.some((l) => pathname === `/${l}` || pathname.startsWith(`/${l}/`));
   if (hasLocale) return NextResponse.next();

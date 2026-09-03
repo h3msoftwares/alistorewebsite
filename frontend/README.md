@@ -6,18 +6,18 @@ design system, so every page you build will already be visually consistent.
 
 ## What's implemented
 
-- `src/styles/globals.css` — the full design system: light/dark tokens,
-  RTL-ready logical properties, responsive breakpoints, and the "compound"
-  per-department accent system (`data-department="women|men|kids"`).
-- `src/components/theme-provider.tsx` + `theme-toggle.tsx` — working
-  light/dark/system mode switch, persisted in localStorage.
+- `src/styles/globals.css` — the full design system: light-mode-only
+  tokens (no dark mode — deliberately not wanted), RTL-ready logical
+  properties, responsive breakpoints, and the "compound" per-department
+  accent system (`data-department="women|men|kids"`).
 - `src/components/site-header.tsx` + `site-footer.tsx` — shared chrome
-  (logo, department switcher, theme + language toggle, cart icon) rendered
-  by the root layout, so it's identical on every page.
-- `middleware.ts` — redirects `/` to `/en` (swap for Accept-Language
-  detection later if you want).
+  (logo, department switcher, language toggle, cart icon) rendered by the
+  root layout, so it's identical on every page.
+- `src/proxy.ts` — redirects `/` to `/en` (swap for Accept-Language
+  detection later if you want). Next's `middleware.ts` convention is
+  deprecated in favor of `proxy.ts` as of this Next version.
 - `src/app/[locale]/layout.tsx` — sets `<html lang dir>` per locale (en/ar)
-  and wires in the theme provider + header/footer.
+  and wires in the header/footer + Redux store provider.
 
 ## What's empty (TODO)
 
@@ -41,4 +41,4 @@ Wrap a page's root element with `data-department="women" | "men" | "kids"`
 to apply that door's accent color/radius/heading font — see
 `page.tsx` (landing doors) and `women/page.tsx` for examples. Everything
 else (spacing, buttons `.btn`, cards `.card`, inputs `.input`) is shared
-and theme-aware automatically.
+automatically. Light mode only — there is no dark mode/theme toggle.

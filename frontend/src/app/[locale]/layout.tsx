@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter, Playfair_Display, Noto_Naskh_Arabic } from 'next/font/google';
 import { StoreProvider } from '@/store/provider';
-import { ThemeProvider } from '@/components/theme-provider';
 import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
 import '@/styles/globals.css';
@@ -47,20 +46,12 @@ export default async function LocaleLayout({
   const dir = locale === 'ar' ? 'rtl' : 'ltr';
 
   return (
-    <html
-      lang={locale}
-      dir={dir}
-      data-theme="system"
-      suppressHydrationWarning
-      className={`${inter.variable} ${playfair.variable} ${notoNaskhArabic.variable}`}
-    >
+    <html lang={locale} dir={dir} className={`${inter.variable} ${playfair.variable} ${notoNaskhArabic.variable}`}>
       <body>
         <StoreProvider>
-          <ThemeProvider>
-            <SiteHeader locale={locale} />
-            {children}
-            <SiteFooter locale={locale} />
-          </ThemeProvider>
+          <SiteHeader locale={locale} />
+          {children}
+          <SiteFooter locale={locale} />
         </StoreProvider>
       </body>
     </html>
