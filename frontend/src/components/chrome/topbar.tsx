@@ -2,21 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Heart, Menu, Search, ShoppingBag, User } from 'lucide-react';
 import { Icon } from '@/components/ui/icon';
 import { Drawer } from '@/components/ui/drawer';
+import { Skeleton } from '@/components/ui';
 import { useAppSelector } from '@/store/hooks';
 import { selectCartCount } from '@/store/slices/cartSlice';
 import { selectFavouritesCount } from '@/store/slices/favouritesSlice';
 import { useAuth } from '@/hooks/use-auth';
-import { STOREFRONT_COLLECTIONS } from '@/lib/collections';
+import { useNavCollections } from '@/hooks/use-catalog';
 import { SearchOverlay } from './search-overlay';
 
 /**
  * The sticky topbar: hamburger (mobile) · logo · collection switcher · actions.
- * Actions, per the brief: search, favourites, cart, and account-or-login.
+ * The switcher is the owner-curated set of collections (`showInNav`, ordered by
+ * `sortOrder`). Actions: search, favourites, cart, and account-or-login.
  */
-export function Topbar({ locale, activeCollection }: { locale: string; activeCollection?: string }) {
+export function Topbar({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
@@ -27,6 +30,10 @@ export function Topbar({ locale, activeCollection }: { locale: string; activeCol
   const cartCount = useAppSelector(selectCartCount);
   const favCount = useAppSelector(selectFavouritesCount);
   const { isAuthenticated } = useAuth();
+
+  const { data: navCollections, isPending: navPending } = useNavCollections();
+  const pathname = usePathname();
+  const activeSlug = pathname?.split('/')[2];
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4);
@@ -55,17 +62,21 @@ export function Topbar({ locale, activeCollection }: { locale: string; activeCol
         </Link>
 
         <nav className="collection-switcher topbar__nav" aria-label={t('Collections', 'الأقسام')}>
-          {STOREFRONT_COLLECTIONS.map((c) => (
-            <Link
-              key={c.slug}
-              href={`/${locale}/${c.slug}`}
-              className="collection-switcher__link"
-              data-active={activeCollection === c.slug}
-              aria-current={activeCollection === c.slug ? 'page' : undefined}
-            >
-              {isAr ? c.nameAr : c.nameEn}
-            </Link>
-          ))}
+          {navPending
+            ? Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="collection-switcher__link" style={{ width: '4.5rem' }} />
+              ))
+            : (navCollections ?? []).map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/${locale}/${c.slug}`}
+                  className="collection-switcher__link"
+                  data-active={activeSlug === c.slug}
+                  aria-current={activeSlug === c.slug ? 'page' : undefined}
+                >
+                  {isAr ? c.nameAr : c.nameEn}
+                </Link>
+              ))}
         </nav>
 
         {/* On small screens only search + cart stay here; favourites, account
@@ -129,12 +140,12 @@ export function Topbar({ locale, activeCollection }: { locale: string; activeCol
         closeLabel={t('Close menu', 'إغلاق القائمة')}
       >
         <nav className="drawer__nav" aria-label={t('Collections', 'الأقسام')}>
-          {STOREFRONT_COLLECTIONS.map((c) => (
+          {(navCollections ?? []).map((c) => (
             <Link
-              key={c.slug}
+              key={c.id}
               href={`/${locale}/${c.slug}`}
               className="drawer__nav-link"
-              aria-current={activeCollection === c.slug ? 'page' : undefined}
+              aria-current={activeSlug === c.slug ? 'page' : undefined}
               onClick={() => setMenuOpen(false)}
             >
               {isAr ? c.nameAr : c.nameEn}

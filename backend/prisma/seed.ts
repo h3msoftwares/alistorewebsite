@@ -21,16 +21,22 @@ async function main() {
 
   // ---- Collections (replace the old Department enum; owner-editable) ----
   const collectionDefs = [
-    { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1 },
-    { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2 },
-    { slug: 'kids', nameEn: 'Kids', nameAr: 'أطفال', sortOrder: 3 },
+    { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, showInNav: true, accentColor: '#a65a7e' },
+    { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, showInNav: true, accentColor: '#38455c' },
+    { slug: 'kids', nameEn: 'Kids', nameAr: 'أطفال', sortOrder: 3, showInNav: true, accentColor: '#b4611e' },
   ];
 
   const collections = new Map<string, { id: string }>();
   for (const c of collectionDefs) {
     const col = await prisma.collection.upsert({
       where: { slug: c.slug },
-      update: { nameEn: c.nameEn, nameAr: c.nameAr, sortOrder: c.sortOrder },
+      update: {
+        nameEn: c.nameEn,
+        nameAr: c.nameAr,
+        sortOrder: c.sortOrder,
+        showInNav: c.showInNav,
+        accentColor: c.accentColor,
+      },
       create: c,
     });
     collections.set(c.slug, { id: col.id });

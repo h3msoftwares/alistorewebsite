@@ -23,6 +23,19 @@ export function useCollections(opts?: { includeInactive?: boolean }) {
   });
 }
 
+/** The collections the owner has promoted into the storefront chrome, in
+ *  `sortOrder`. Derived from `useCollections()` — no separate request. */
+export function useNavCollections() {
+  const q = useCollections();
+  return {
+    ...q,
+    data: q.data
+      ?.filter((c) => c.showInNav)
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder),
+  };
+}
+
 export function useCollection(id: UUID | undefined) {
   return useQuery({
     queryKey: queryKeys.collections.detail(id ?? ''),

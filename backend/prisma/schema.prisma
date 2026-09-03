@@ -197,7 +197,12 @@ model Collection {
   descriptionEn String?
   descriptionAr String?
   isActive      Boolean  @default(true)
+  // Owner opts a collection into the top nav / footer; nav order reuses sortOrder.
+  showInNav     Boolean  @default(false)
   sortOrder     Int      @default(0)
+  // #rrggbb — the storefront derives the --collection-accent* CSS custom
+  // properties from this. null ⇒ the collection uses the default accent.
+  accentColor   String?
   dateCreated   DateTime @default(now())
   lastEdit      DateTime @default(now()) @updatedAt
 

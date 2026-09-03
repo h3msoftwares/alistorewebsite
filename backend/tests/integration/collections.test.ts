@@ -41,6 +41,12 @@ describe('Collections API', () => {
       expect(res.status).toBe(200);
       expect(res.body.collections).toHaveLength(2);
     });
+
+    it('carries showInNav (false by default) + accentColor', async () => {
+      await makeCollection({ slug: 'nav-col' });
+      const res = await request(app).get('/api/collections');
+      expect(res.body.collections[0]).toMatchObject({ showInNav: false, accentColor: null });
+    });
   });
 
   describe('GET /api/collections/:id and /slug/:slug', () => {
@@ -123,6 +129,35 @@ describe('Collections API', () => {
         .send({ nameEn: 'X', nameAr: 'X', slug: 'Not A Slug' });
       expect(res.status).toBe(400);
     });
+
+    it('400s a reserved slug (would be shadowed by a static route)', async () => {
+      await tokens();
+      const res = await request(app)
+        .post('/api/collections')
+        .set(bearer(adminToken))
+        .send({ nameEn: 'X', nameAr: 'X', slug: 'cart' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('accepts showInNav + a hex accentColor and echoes them', async () => {
+      await tokens();
+      const res = await request(app)
+        .post('/api/collections')
+        .set(bearer(adminToken))
+        .send({ nameEn: 'Sale', nameAr: 'تخفيضات', slug: 'summer-sale', showInNav: true, accentColor: '#123abc' });
+      expect(res.status).toBe(201);
+      expect(res.body.collection).toMatchObject({ showInNav: true, accentColor: '#123abc' });
+    });
+
+    it('400s a non-hex accentColor', async () => {
+      await tokens();
+      const res = await request(app)
+        .post('/api/collections')
+        .set(bearer(adminToken))
+        .send({ nameEn: 'X', nameAr: 'X', slug: 'bad-hex', accentColor: 'red' });
+      expect(res.status).toBe(400);
+    });
   });
 
   describe('PATCH /api/collections/:id (admin)', () => {
@@ -135,6 +170,24 @@ describe('Collections API', () => {
         .send({ nameEn: 'Renamed', isActive: false });
       expect(res.status).toBe(200);
       expect(res.body.collection).toMatchObject({ nameEn: 'Renamed', isActive: false });
+    });
+
+    it('toggles showInNav, sets and clears accentColor', async () => {
+      await tokens();
+      const col = await makeCollection({ slug: 'q' });
+
+      const on = await request(app)
+        .patch(`/api/collections/${col.id}`)
+        .set(bearer(adminToken))
+        .send({ showInNav: true, sortOrder: 5, accentColor: '#abcdef' });
+      expect(on.body.collection).toMatchObject({ showInNav: true, sortOrder: 5, accentColor: '#abcdef' });
+
+      const clear = await request(app)
+        .patch(`/api/collections/${col.id}`)
+        .set(bearer(adminToken))
+        .send({ accentColor: null });
+      expect(clear.status).toBe(200);
+      expect(clear.body.collection.accentColor).toBeNull();
     });
 
     it('404s unknown id', async () => {

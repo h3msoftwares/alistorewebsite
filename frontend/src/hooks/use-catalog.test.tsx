@@ -4,6 +4,7 @@ import { createWrapper } from '@/test/utils';
 import { queryKeys } from '@/lib/query-keys';
 import {
   useCollections,
+  useNavCollections,
   useCollection,
   useProducts,
   useProduct,
@@ -48,6 +49,20 @@ describe('use-catalog queries', () => {
     const { Wrapper } = createWrapper();
     renderHook(() => useCollections({ includeInactive: true }), { wrapper: Wrapper });
     await waitFor(() => expect(mockCatalog.listCollections).toHaveBeenCalledWith({ includeInactive: true }));
+  });
+
+  it('useNavCollections keeps only showInNav and orders by sortOrder', async () => {
+    mockCatalog.listCollections.mockResolvedValue([
+      { id: 'c', slug: 'c', showInNav: true, sortOrder: 3 },
+      { id: 'a', slug: 'a', showInNav: true, sortOrder: 1 },
+      { id: 'hidden', slug: 'hidden', showInNav: false, sortOrder: 0 },
+      { id: 'b', slug: 'b', showInNav: true, sortOrder: 2 },
+    ] as never);
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useNavCollections(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data?.map((c) => c.slug)).toEqual(['a', 'b', 'c']);
   });
 
   it('useCollection is disabled without an id and enabled with one', async () => {

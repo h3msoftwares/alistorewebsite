@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { STOREFRONT_COLLECTIONS } from '@/lib/collections';
+import { Skeleton } from '@/components/ui';
+import { useNavCollections } from '@/hooks/use-catalog';
 
 /** Shared footer rendered by the root [locale] layout. Multi-column layout
  *  (Saxon footer anatomy). The newsletter field is presentational only —
@@ -11,6 +12,7 @@ import { STOREFRONT_COLLECTIONS } from '@/lib/collections';
 export function SiteFooter({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const { data: navCollections, isPending: navPending } = useNavCollections();
 
   return (
     <footer className="site-footer">
@@ -45,11 +47,15 @@ export function SiteFooter({ locale }: { locale: string }) {
 
           <div>
             <p className="site-footer__col-title">{t('Shop', 'تسوق')}</p>
-            {STOREFRONT_COLLECTIONS.map((c) => (
-              <Link key={c.slug} className="site-footer__link" href={`/${locale}/${c.slug}`}>
-                {isAr ? c.nameAr : c.nameEn}
-              </Link>
-            ))}
+            {navPending
+              ? Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="site-footer__link" style={{ width: '6rem' }} />
+                ))
+              : (navCollections ?? []).map((c) => (
+                  <Link key={c.id} className="site-footer__link" href={`/${locale}/${c.slug}`}>
+                    {isAr ? c.nameAr : c.nameEn}
+                  </Link>
+                ))}
           </div>
 
           <div>

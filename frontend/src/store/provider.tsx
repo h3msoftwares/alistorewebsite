@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { Provider } from 'react-redux';
-import { QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClientProvider,
+  HydrationBoundary,
+  type DehydratedState,
+} from '@tanstack/react-query';
 import { makeStore } from './store';
 import { loggedOut } from './slices/authSlice';
 import { makeQueryClient } from '@/lib/query-client';
@@ -20,7 +24,15 @@ function AuthBootstrap() {
 // two client-side singletons — the Redux store and the TanStack Query client —
 // created exactly once per mount via useState's lazy initializer (per the RTK
 // / React Query SSR guidance), never at module scope.
-export function StoreProvider({ children }: { children: React.ReactNode }) {
+export function StoreProvider({
+  children,
+  dehydratedState,
+}: {
+  children: React.ReactNode;
+  /** From the root layout's server-side `dehydrate(queryClient)` — primes the
+   *  collections list so chrome renders without a skeleton flash. */
+  dehydratedState?: DehydratedState;
+}) {
   const [store] = useState(makeStore);
   const [queryClient] = useState(makeQueryClient);
 
@@ -39,8 +51,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   return (
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
-        <AuthBootstrap />
-        {children}
+        <HydrationBoundary state={dehydratedState}>
+          <AuthBootstrap />
+          {children}
+        </HydrationBoundary>
       </QueryClientProvider>
     </Provider>
   );

@@ -60,8 +60,16 @@ export interface Collection {
   descriptionEn?: string | null;
   descriptionAr?: string | null;
   isActive: boolean;
+  /** Owner-picked: appears in the top nav / footer. Order reuses `sortOrder`. */
+  showInNav: boolean;
   sortOrder: number;
+  /** `#rrggbb` — drives the `--collection-accent*` CSS vars (see `accentStyle`). */
+  accentColor?: string | null;
   images: CollectionImage[];
+  /** Present on `GET /api/collections/:id` and `/slug/:slug` — active categories,
+   *  one level of nesting, ordered by `sortOrder`. */
+  categories?: Category[];
+  _count?: { categories: number; products: number };
 }
 
 export interface Category {
@@ -270,7 +278,10 @@ export interface CollectionBody {
   descriptionEn?: string;
   descriptionAr?: string;
   isActive?: boolean;
+  // TODO(admin-collections): expose showInNav / sortOrder / accentColor in the admin form.
+  showInNav?: boolean;
   sortOrder?: number;
+  accentColor?: string | null;
   categoryIds?: UUID[];
 }
 

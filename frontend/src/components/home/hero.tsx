@@ -30,6 +30,9 @@ export function Hero({ locale }: { locale: string }) {
             'نساء ورجال وأطفال — ملابس ترتديها فعلاً، وتدفع عند الاستلام.'
           )}
         </p>
+        {/* TODO: point at the first nav collection (or an admin-set "featured"
+            collection) once home settings are editable. `women` is seeded + in
+            the nav, and resolves through the dynamic /[collection] route. */}
         <Link href={`/${locale}/women`} className="btn btn--primary btn--lg hero__cta">
           {t('Discover', 'اكتشف الآن')}
         </Link>

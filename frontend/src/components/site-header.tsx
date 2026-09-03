@@ -7,19 +7,14 @@ import { Topbar } from '@/components/chrome/topbar';
  *   2. sticky topbar (logo · collection switcher · search / favourites / cart /
  *      account-or-login)
  *
- * Composition only — each piece is its own client component.
+ * Composition only — each piece is its own client component. The topbar reads
+ * the active collection from the URL itself.
  */
-export function SiteHeader({
-  locale,
-  activeCollection,
-}: {
-  locale: string;
-  activeCollection?: string;
-}) {
+export function SiteHeader({ locale }: { locale: string }) {
   return (
     <>
       <OffersStrip locale={locale} />
-      <Topbar locale={locale} activeCollection={activeCollection} />
+      <Topbar locale={locale} />
     </>
   );
 }

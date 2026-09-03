@@ -1,8 +1,12 @@
 import type { Metadata } from 'next';
 import { Inter, Playfair_Display, Noto_Naskh_Arabic } from 'next/font/google';
+import { dehydrate } from '@tanstack/react-query';
 import { StoreProvider } from '@/store/provider';
 import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
+import { makeQueryClient } from '@/lib/query-client';
+import { queryKeys } from '@/lib/query-keys';
+import { catalogApi } from '@/lib/api';
 import '@/styles/globals.css';
 
 // app/[locale]/layout.tsx doubles as the ROOT layout (it renders <html>) —
@@ -47,10 +51,20 @@ export default async function LocaleLayout({
 
   const skipLabel = locale === 'ar' ? 'تخطَّ إلى المحتوى' : 'Skip to content';
 
+  // Prime the collections list so the nav / footer / home showcase render with
+  // data on first paint instead of flashing skeletons. `prefetchQuery` never
+  // throws, and only successful queries dehydrate — a build with no backend
+  // just falls back to client fetching.
+  const queryClient = makeQueryClient();
+  await queryClient.prefetchQuery({
+    queryKey: queryKeys.collections.list(false),
+    queryFn: () => catalogApi.listCollections({ includeInactive: false }),
+  });
+
   return (
     <html lang={locale} dir={dir} className={`${inter.variable} ${playfair.variable} ${notoNaskhArabic.variable}`}>
       <body>
-        <StoreProvider>
+        <StoreProvider dehydratedState={dehydrate(queryClient)}>
           <a href="#main" className="skip-link">
             {skipLabel}
           </a>

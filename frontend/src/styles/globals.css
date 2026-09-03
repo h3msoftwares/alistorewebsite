@@ -17,8 +17,8 @@
      6. RTL: logical properties flip automatically; this section only
         covers what they don't (icon mirroring, drawer slide direction,
         Arabic heading font).
-     7. "Compound" per-collection accents (data-collection="women|men|
-        kids") — one structural system, three accent/radius/heading moods.
+     7. Per-collection accent — driven by `Collection.accentColor` as inline
+        `--collection-accent*` custom properties (see lib/collections.ts).
      8. prefers-reduced-motion.
 
    Reference language (not a copy): saxonwear.com editorial-luxury —
@@ -1515,41 +1515,15 @@ ul, ol {
 [dir='rtl'] .collection-switcher { direction: rtl; }
 
 /* ============================================================
-   7. COMPOUND PER-COLLECTION STYLING
-   Same structural system — only accent colour, corner radius and heading
-   personality change, so each "door" reads as intentionally distinct while
-   staying clearly one store. Applied via data-collection on a page's root.
-   All three accents pass AA (≥4.5:1) with white text.
+   7. PER-COLLECTION ACCENT
+   A collection's accent comes from `Collection.accentColor` (backend), applied
+   by the storefront as inline `--collection-accent*` custom properties on the
+   page/section root (see `accentStyle()` in src/lib/collections.ts). The
+   --collection-accent-soft tint is a CSS color-mix(); --collection-on-accent is
+   picked on the client from the accent's luminance. Elements read these vars
+   with the `:root` fallbacks below, so a collection with no accentColor just
+   uses the default accent.
    ============================================================ */
-
-[data-collection='women'] {
-  --collection-accent: #a65a7e;          /* rose */
-  --collection-accent-soft: #f6e9f0;
-  --collection-on-accent: #ffffff;
-  --collection-radius: var(--radius-lg); /* softer corners */
-  --collection-heading-font: var(--font-serif);
-  --collection-tracking: 0.005em;
-}
-
-[data-collection='men'] {
-  --collection-accent: #38455c;          /* deep navy — structured, editorial */
-  --collection-accent-soft: #e7ebf1;
-  --collection-on-accent: #ffffff;
-  --collection-radius: var(--radius-sm); /* sharper corners */
-  --collection-heading-font: var(--font-sans);
-  --collection-tracking: 0.01em;
-}
-
-[data-collection='kids'] {
-  --collection-accent: #b4611e;          /* warm orange — playful */
-  --collection-accent-soft: #fbeadd;
-  --collection-on-accent: #ffffff;
-  --collection-radius: var(--radius-lg);
-  --collection-heading-font: var(--font-sans);
-  --collection-tracking: 0;
-}
-[data-collection='kids'] h1,
-[data-collection='kids'] h2 { font-weight: var(--fw-bold); }
 
 /* Arabic headings: force the Arabic face regardless of collection (Playfair
    has no Arabic coverage). Element-level selector beats the h1..h4 rule. */
