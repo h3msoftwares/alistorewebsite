@@ -156,6 +156,7 @@
   --container-narrow: 768px;   /* forms, auth, legal */
   --gutter: clamp(16px, 5vw, 32px);
   --header-height: 72px;
+  --offers-strip-h: 40px;
   --control-h: 44px;           /* min interactive height / touch target */
 
   /* ---- Motion ---- */
@@ -548,7 +549,7 @@ ul, ol {
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  min-height: 34px;
+  min-height: var(--offers-strip-h);
   padding-block: var(--space-1);
   /* keep the centred message clear of the absolutely-positioned close, both sides */
   padding-inline: calc(var(--gutter) + 28px);
@@ -666,9 +667,11 @@ ul, ol {
 
 .hero {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* text is short — give the illustration the larger share so big screens
+     don't leave dead space around it */
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
   align-items: center;
-  gap: clamp(var(--space-6), 6vw, var(--space-9));
+  gap: clamp(var(--space-5), 4vw, var(--space-8));
   max-width: var(--container-max);
   margin-inline: auto;
   padding: clamp(var(--space-7), 7vw, var(--section-gap)) var(--gutter);
@@ -689,25 +692,42 @@ ul, ol {
   max-width: 42ch;
 }
 .hero__cta { text-decoration: none; }
+/* Transparent-PNG brand illustration — rendered at its own width, no crop,
+   no letterbox. Fills its grid column on large screens; shown whole on small. */
 .hero__media {
-  position: relative;
-  aspect-ratio: 4 / 5;
-  max-height: min(72vh, 640px);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--color-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
 }
-.hero__media-placeholder {
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(135deg, var(--color-surface) 0%, var(--collection-accent-soft, var(--color-accent-soft)) 100%);
+.hero__img {
+  width: 100%;
+  height: auto;
+  /* only caps height on tall/short viewports; width stays column-filling */
+  max-height: min(90vh, 820px);
+}
+
+/* Big screens: the hero fills the first screenful and Ali is bottom-anchored,
+   so the illustration's feet sit exactly on the fold. */
+@media (min-width: 861px) {
+  .hero {
+    min-height: calc(100svh - var(--header-height) - var(--offers-strip-h));
+    align-items: end;
+    padding: clamp(var(--space-6), 5vh, var(--space-8)) var(--gutter) 0;
+  }
+  .hero__content {
+    align-self: center;
+    padding-bottom: clamp(var(--space-6), 6vh, var(--space-9));
+  }
+  .hero__media { align-self: end; }
+  .hero__img { max-height: calc(100svh - var(--header-height) - var(--offers-strip-h)); }
 }
 
 @media (max-width: 860px) {
-  .hero { grid-template-columns: 1fr; gap: var(--space-6); }
+  .hero { grid-template-columns: 1fr; gap: var(--space-5); }
   .hero__content { max-width: none; }
-  .hero__media { order: -1; aspect-ratio: 16 / 10; max-height: 46vh; }
+  .hero__media { order: -1; }
+  .hero__img { max-height: 72vh; }
 }
 @media (max-width: 480px) {
   .hero__cta { display: flex; width: 100%; }

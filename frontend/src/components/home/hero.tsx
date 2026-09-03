@@ -1,9 +1,11 @@
 import Link from 'next/link';
+import Image from 'next/image';
+import heroAli from '../../../public/hero-ali.png';
 
 /**
  * Home hero: an editorial text block (eyebrow · headline · lede · Discover CTA)
- * beside a full-bleed image. Structure only — TODO: real hero image + copy from
- * an admin-editable "home settings" source.
+ * beside the brand illustration.
+ * TODO: move the copy + image to an admin-editable "home settings" source.
  */
 export function Hero({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
@@ -12,15 +14,13 @@ export function Hero({ locale }: { locale: string }) {
   return (
     <section className="hero" aria-labelledby="hero-title">
       <div className="hero__content">
-        <p className="eyebrow">{t('New season', 'الموسم الجديد')}</p>
+        <p className="eyebrow">{t('Limited stock', 'كمية محدودة')}</p>
         <h1 id="hero-title" className="hero__title">
           {isAr ? (
-            <>
-              أساسيات يومية، <em>تصلك أينما كنت</em>
-            </>
+            'خدها قبل ما حدا غيرك ياخدها.'
           ) : (
             <>
-              Everyday essentials, <em>delivered to your door</em>
+              Buy it before <em>someone</em> else does.
             </>
           )}
         </h1>
@@ -35,9 +35,14 @@ export function Hero({ locale }: { locale: string }) {
         </Link>
       </div>
 
-      <div className="hero__media" role="img" aria-label={t('Seasonal campaign image', 'صورة حملة الموسم')}>
-        {/* TODO: <Image fill> with the campaign photo */}
-        <span className="hero__media-placeholder" aria-hidden />
+      <div className="hero__media">
+        <Image
+          src={heroAli}
+          alt={t("Ali — Ali's Store", 'علي — متجر علي')}
+          className="hero__img"
+          priority
+          sizes="(max-width: 860px) 92vw, (max-width: 1280px) 52vw, 640px"
+        />
       </div>
     </section>
   );
