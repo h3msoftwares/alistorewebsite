@@ -1,16 +1,47 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Provider } from 'react-redux';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { makeStore } from './store';
+import { loggedOut } from './slices/authSlice';
+import { makeQueryClient } from '@/lib/query-client';
+import { subscribeAccessToken } from '@/lib/api/token';
+import { useAuthBootstrap } from '@/hooks/use-auth';
 
-// Client-boundary wrapper around the root layout's server component.
-// Instantiates exactly one store per mount via useState's lazy initializer
-// (guaranteed to run exactly once, unlike reading/writing a ref during
-// render) — not module scope, per the RTK SSR guidance linked from
-// store.ts's comment. The setter is intentionally unused: the store is
-// never replaced after creation.
+// Runs the one-time session restore. Separate component so it sits *inside*
+// both providers (it dispatches to the store and may read query cache later).
+function AuthBootstrap() {
+  useAuthBootstrap();
+  return null;
+}
+
+// Client-boundary wrapper around the root layout's server component. Owns the
+// two client-side singletons — the Redux store and the TanStack Query client —
+// created exactly once per mount via useState's lazy initializer (per the RTK
+// / React Query SSR guidance), never at module scope.
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [store] = useState(makeStore);
-  return <Provider store={store}>{children}</Provider>;
+  const [queryClient] = useState(makeQueryClient);
+
+  // If the access token drops to null outside a deliberate logout (e.g. the
+  // refresh cookie expired mid-session and the client's silent retry failed),
+  // reflect that in Redux and drop cached per-user data.
+  useEffect(() => {
+    return subscribeAccessToken((token) => {
+      if (token === null && store.getState().auth.status === 'authenticated') {
+        store.dispatch(loggedOut());
+        queryClient.clear();
+      }
+    });
+  }, [store, queryClient]);
+
+  return (
+    <Provider store={store}>
+      <QueryClientProvider client={queryClient}>
+        <AuthBootstrap />
+        {children}
+      </QueryClientProvider>
+    </Provider>
+  );
 }

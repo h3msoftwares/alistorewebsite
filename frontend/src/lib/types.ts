@@ -225,3 +225,91 @@ export interface ProductListResult {
   page: number;
   pageSize: number;
 }
+
+// ---- Request payloads (write endpoints) ----
+
+export interface RegisterBody {
+  name: string;
+  email?: string;
+  phone?: string;
+  password: string;
+}
+
+export interface LoginBody {
+  identifier: string; // email or phone
+  password: string;
+}
+
+export interface AuthResult {
+  accessToken: string;
+  user?: AuthUser;
+}
+
+export interface ImageBody {
+  url: string;
+  altEn?: string;
+  altAr?: string;
+  sortOrder?: number;
+}
+
+export interface CollectionBody {
+  nameEn: string;
+  nameAr: string;
+  slug: string;
+  descriptionEn?: string;
+  descriptionAr?: string;
+  isActive?: boolean;
+  sortOrder?: number;
+  categoryIds?: UUID[];
+}
+
+export interface CategoryBody {
+  collectionId: UUID;
+  nameEn: string;
+  nameAr: string;
+  slug: string;
+  parentCategoryId?: UUID;
+  isActive?: boolean;
+  sortOrder?: number;
+}
+
+export interface VariantBody {
+  sku: string;
+  size?: string | null;
+  color?: string | null;
+  stockQuantity?: number;
+}
+
+export interface ProductBody {
+  sku: string;
+  nameEn: string;
+  nameAr: string;
+  descriptionEn?: string;
+  descriptionAr?: string;
+  categoryId: UUID;
+  collectionId: UUID;
+  price: number;
+  compareAtPrice?: number;
+  variants: VariantBody[];
+}
+
+export interface AddressBody {
+  fullName: string;
+  phone: string;
+  addressLine: string;
+  city: string;
+  area?: string;
+  notes?: string;
+  isDefault?: boolean;
+}
+
+export interface ProfileBody {
+  name?: string;
+  phone?: string | null;
+}
+
+export interface AdminDashboard {
+  totalOrders: number;
+  pendingOrders: number;
+  totalRevenue: number;
+}

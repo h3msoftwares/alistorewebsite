@@ -1,48 +1,67 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import type { ProductListQuery, ProductSort } from '@/lib/types';
+import type { RootState } from '../store';
 
-// UI-only filter state for collection listing pages — no actual
-// filtering/query-wiring against the product list yet (that's Week 2,
-// T13, which maps these onto GET /api/products query params:
-// size, color, minPrice, maxPrice, sort). This just gives the filter
-// controls somewhere to store selections.
-export type SortOption = 'newest' | 'price-asc' | 'price-desc' | 'relevance';
+// Drives the product-listing query string. Field names / values match the
+// backend `GET /api/products` params 1:1 (see product.schema.ts) so the
+// selector below maps straight through.
+export type SortOption = ProductSort; // 'newest' | 'price_asc' | 'price_desc'
 
 export interface UiFiltersState {
-  sizes: string[];
-  colors: string[];
-  priceMin: number | null;
-  priceMax: number | null;
+  categoryId: string | null;
+  size: string | null;
+  color: string | null;
+  minPrice: number | null;
+  maxPrice: number | null;
   sort: SortOption;
+  search: string;
+  page: number;
 }
 
 const initialState: UiFiltersState = {
-  sizes: [],
-  colors: [],
-  priceMin: null,
-  priceMax: null,
+  categoryId: null,
+  size: null,
+  color: null,
+  minPrice: null,
+  maxPrice: null,
   sort: 'newest',
+  search: '',
+  page: 1,
 };
 
 const uiFiltersSlice = createSlice({
   name: 'uiFilters',
   initialState,
   reducers: {
+    setCategory(state, action: PayloadAction<string | null>) {
+      state.categoryId = action.payload;
+      state.page = 1;
+    },
+    // Single-select (backend takes one size / one colour); clicking the active
+    // value clears it.
     toggleSize(state, action: PayloadAction<string>) {
-      const i = state.sizes.indexOf(action.payload);
-      if (i === -1) state.sizes.push(action.payload);
-      else state.sizes.splice(i, 1);
+      state.size = state.size === action.payload ? null : action.payload;
+      state.page = 1;
     },
     toggleColor(state, action: PayloadAction<string>) {
-      const i = state.colors.indexOf(action.payload);
-      if (i === -1) state.colors.push(action.payload);
-      else state.colors.splice(i, 1);
+      state.color = state.color === action.payload ? null : action.payload;
+      state.page = 1;
     },
     setPriceRange(state, action: PayloadAction<{ min: number | null; max: number | null }>) {
-      state.priceMin = action.payload.min;
-      state.priceMax = action.payload.max;
+      state.minPrice = action.payload.min;
+      state.maxPrice = action.payload.max;
+      state.page = 1;
     },
     setSort(state, action: PayloadAction<SortOption>) {
       state.sort = action.payload;
+      state.page = 1;
+    },
+    setSearch(state, action: PayloadAction<string>) {
+      state.search = action.payload;
+      state.page = 1;
+    },
+    setPage(state, action: PayloadAction<number>) {
+      state.page = Math.max(1, Math.trunc(action.payload));
     },
     resetFilters() {
       return initialState;
@@ -50,5 +69,37 @@ const uiFiltersSlice = createSlice({
   },
 });
 
-export const { toggleSize, toggleColor, setPriceRange, setSort, resetFilters } = uiFiltersSlice.actions;
+export const {
+  setCategory,
+  toggleSize,
+  toggleColor,
+  setPriceRange,
+  setSort,
+  setSearch,
+  setPage,
+  resetFilters,
+} = uiFiltersSlice.actions;
+
 export default uiFiltersSlice.reducer;
+
+// ---- selectors ----
+export const selectUiFilters = (s: RootState) => s.uiFilters;
+
+/** Turn the current filter state into a `GET /api/products` query object,
+ *  dropping empty values. Pass the page's collection id to scope it. */
+export const selectProductListQuery =
+  (collectionId?: string) =>
+  (s: RootState): ProductListQuery => {
+    const f = s.uiFilters;
+    return {
+      ...(collectionId ? { collectionId } : {}),
+      ...(f.categoryId ? { categoryId: f.categoryId } : {}),
+      ...(f.search ? { search: f.search } : {}),
+      ...(f.size ? { size: f.size } : {}),
+      ...(f.color ? { color: f.color } : {}),
+      ...(f.minPrice != null ? { minPrice: f.minPrice } : {}),
+      ...(f.maxPrice != null ? { maxPrice: f.maxPrice } : {}),
+      sort: f.sort,
+      page: f.page,
+    };
+  };

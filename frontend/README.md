@@ -6,12 +6,31 @@ design system, so every page you build will already be visually consistent.
 
 ## What's implemented
 
-- `src/lib/types.ts` — hand-written domain + API types mirroring the
-  finalized backend Prisma schema (Collection → Category → Product, Cart,
-  Order with delivery snapshot, etc.). `src/lib/api.ts` — thin typed fetch
-  helpers (`getCollections`, `getProducts`, `getCart`, …).
-  `src/lib/collections.ts` — the three fixed storefront doors
-  (Women/Men/Kids) as slug-keyed `Collection` references.
+- **Data layer** (fully wired, tested):
+  - `src/lib/types.ts` — hand-written domain + API types mirroring the
+    finalized backend Prisma schema, plus write-payload types.
+  - `src/lib/api/` — typed fetch client + per-resource modules
+    (`authApi`, `catalogApi`, `cartApi`, `ordersApi`, `accountApi`).
+    The client injects the bearer token, sends cookies, and on a `401`
+    silently hits `POST /api/auth/refresh` once and replays the request;
+    non-2xx responses throw a typed `ApiError` (`status` / `code` / `issues`).
+  - `src/hooks/` — TanStack Query hooks over the api modules: `useCollections`,
+    `useProducts`, `useProduct`, `useCart` (+ `useAddToCart` etc.),
+    `useMyOrders` / `useCheckout` / `useCancelOrder`, `useAddresses`,
+    `useProfile`, `useLogin` / `useRegister` / `useLogout` /
+    `useAuthBootstrap`, plus the admin CRUD mutations. `src/lib/query-keys.ts`
+    is the shared key factory used for invalidation.
+  - `src/store/` — Redux Toolkit: `authSlice` (who's signed in — the access
+    token itself lives in `src/lib/api/token.ts`), `cartSlice` (header badge
+    count, kept in sync by `useCart`), `uiFiltersSlice` (product-list query
+    state + `selectProductListQuery` selector). `store/provider.tsx` owns the
+    store + `QueryClient` singletons and runs `useAuthBootstrap` once.
+  - `src/lib/collections.ts` — the three fixed storefront doors
+    (Women/Men/Kids) as slug-keyed `Collection` references.
+- **Tests** — `npm test` (Vitest + Testing Library + jsdom). 56 tests: slice
+  reducers/selectors, the api client (query building, auth header, `ApiError`,
+  the 401→refresh→retry path), and every hook (mocked api modules, Redux +
+  Query wrapper in `src/test/utils.tsx`).
 - `src/styles/globals.css` — the full design system: light-mode-only
   tokens (no dark mode — deliberately not wanted), RTL-ready logical
   properties, responsive breakpoints, and the "compound" per-collection
@@ -24,10 +43,19 @@ design system, so every page you build will already be visually consistent.
   `SizeChip`, `Swatch`, `QuantityStepper`, `Badge`, `StatusPill`, `PriceTag`,
   `ProductCard`, `DataTable`, `Skeleton`, `EmptyState`, `Alert`, `Drawer`.
   Live showcase (dev only): `/en/dev/ui`.
-- `src/components/site-header.tsx` + `site-footer.tsx` — shared chrome
-  (logo, collection switcher, language toggle, Lucide search/account/cart
-  icons, cart-count badge, off-canvas mobile menu) rendered by the root
-  layout, so it's identical on every page.
+- **Site structure** (layout scaffolding — no data wired yet):
+  - `src/components/site-header.tsx` composes `chrome/offers-strip.tsx`
+    (rotating, dismissible promo strip) + `chrome/topbar.tsx` (logo ·
+    collection switcher · **search / favourites / cart / account-or-login** ·
+    language). Search opens `chrome/search-overlay.tsx`.
+  - `src/app/[locale]/page.tsx` = `home/hero.tsx` (eyebrow · headline ·
+    Discover CTA · image) + `home/collections-showcase.tsx`, which renders one
+    `home/collection-section.tsx` per collection (name + `View all` + a grid of
+    `home/category-card.tsx`), each block on its own background
+    (`data-surface="bg|surface|tint"`) so the collections read as separate.
+  - `store/slices/favouritesSlice.ts` backs the topbar favourites badge and
+    the `/favourites` route (placeholder).
+- `site-footer.tsx` — multi-column footer + newsletter stub.
 - `src/app/[locale]/{loading,error,not-found}.tsx` + `admin/{loading,error}.tsx`
   — route-level skeleton / retry / 404 states.
 - `src/proxy.ts` — redirects `/` to `/en` (swap for Accept-Language
@@ -38,18 +66,21 @@ design system, so every page you build will already be visually consistent.
 
 ## What's empty (TODO)
 
-Every page under `src/app/[locale]/**` renders `<PagePlaceholder>` only —
-landing "doors", collection listings, product detail, cart, checkout,
-orders, account, login/register, and the whole `/admin` subtree. Each file
-has a one-line comment describing what it needs to call once you fill it
-in — they all point at the backend's REST endpoints in `../backend`.
+The home page has real structure (hero + collection blocks) but static
+placeholder content. Every other page under `src/app/[locale]/**` renders
+`<PagePlaceholder>` only — collection listings, product detail, cart,
+checkout, orders, account, favourites, login/register, and the whole
+`/admin` subtree. Each file has a one-line comment describing what it needs
+to call once you fill it in (the hooks in `src/hooks/`).
 
 ## Local setup
 
 ```bash
 cp .env.example .env.local
 npm install
-npm run dev   # http://localhost:3000 -> redirects to /en
+npm run dev        # http://localhost:3000 -> redirects to /en
+npm test           # Vitest (unit + hook tests)
+npm run typecheck  # tsc --noEmit
 ```
 
 ## Design system usage

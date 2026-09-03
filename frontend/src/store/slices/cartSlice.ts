@@ -1,8 +1,9 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import type { RootState } from '../store';
 
-// Badge-count-only for now — real cart line items/totals land in Week 3
-// (see Alistore_Sprint_Plan.md T22-T24). This slice exists purely so the
-// header cart icon has somewhere to read a count from once it's wired up.
+// Header-badge count only. The authoritative cart (line items, totals) lives
+// in the TanStack Query cache — `useCart()` keeps this number in sync so the
+// bag icon can read it via a cheap selector without subscribing to the query.
 export interface CartState {
   itemCount: number;
 }
@@ -16,7 +17,7 @@ const cartSlice = createSlice({
   initialState,
   reducers: {
     setItemCount(state, action: PayloadAction<number>) {
-      state.itemCount = action.payload;
+      state.itemCount = Math.max(0, Math.trunc(action.payload));
     },
     resetItemCount(state) {
       state.itemCount = 0;
@@ -26,3 +27,5 @@ const cartSlice = createSlice({
 
 export const { setItemCount, resetItemCount } = cartSlice.actions;
 export default cartSlice.reducer;
+
+export const selectCartCount = (s: RootState) => s.cart.itemCount;

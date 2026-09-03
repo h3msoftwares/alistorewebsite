@@ -1,0 +1,161 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Heart, Menu, Search, ShoppingBag, User } from 'lucide-react';
+import { Icon } from '@/components/ui/icon';
+import { Drawer } from '@/components/ui/drawer';
+import { useAppSelector } from '@/store/hooks';
+import { selectCartCount } from '@/store/slices/cartSlice';
+import { selectFavouritesCount } from '@/store/slices/favouritesSlice';
+import { useAuth } from '@/hooks/use-auth';
+import { STOREFRONT_COLLECTIONS } from '@/lib/collections';
+import { SearchOverlay } from './search-overlay';
+
+/**
+ * The sticky topbar: hamburger (mobile) · logo · collection switcher · actions.
+ * Actions, per the brief: search, favourites, cart, and account-or-login.
+ */
+export function Topbar({ locale, activeCollection }: { locale: string; activeCollection?: string }) {
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  const cartCount = useAppSelector(selectCartCount);
+  const favCount = useAppSelector(selectFavouritesCount);
+  const { isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 4);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const accountHref = isAuthenticated ? `/${locale}/account` : `/${locale}/login`;
+
+  return (
+    <header className="site-header topbar" data-scrolled={scrolled}>
+      <div className="container topbar__inner">
+        <button
+          type="button"
+          className="icon-btn topbar__menu-btn"
+          aria-label={t('Open menu', 'افتح القائمة')}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(true)}
+        >
+          <Icon as={Menu} />
+        </button>
+
+        <Link href={`/${locale}`} className="site-header__logo topbar__logo">
+          Ali&apos;s Store
+        </Link>
+
+        <nav className="collection-switcher topbar__nav" aria-label={t('Collections', 'الأقسام')}>
+          {STOREFRONT_COLLECTIONS.map((c) => (
+            <Link
+              key={c.slug}
+              href={`/${locale}/${c.slug}`}
+              className="collection-switcher__link"
+              data-active={activeCollection === c.slug}
+              aria-current={activeCollection === c.slug ? 'page' : undefined}
+            >
+              {isAr ? c.nameAr : c.nameEn}
+            </Link>
+          ))}
+        </nav>
+
+        {/* On small screens only search + cart stay here; favourites, account
+            and the language switch are reachable from the menu drawer. */}
+        <div className="topbar__actions">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={t('Search', 'بحث')}
+            onClick={() => setSearchOpen(true)}
+          >
+            <Icon as={Search} />
+          </button>
+
+          <span className="icon-btn-wrap">
+            <Link href={`/${locale}/cart`} className="icon-btn" aria-label={t('Cart', 'سلة التسوق')}>
+              <Icon as={ShoppingBag} />
+            </Link>
+            {cartCount > 0 && (
+              <span className="icon-btn__badge" aria-hidden="true">
+                {cartCount}
+              </span>
+            )}
+          </span>
+
+          <span className="icon-btn-wrap topbar__fav">
+            <Link
+              href={`/${locale}/favourites`}
+              className="icon-btn"
+              aria-label={t('Favourites', 'المفضّلة')}
+            >
+              <Icon as={Heart} />
+            </Link>
+            {favCount > 0 && (
+              <span className="icon-btn__badge" aria-hidden="true">
+                {favCount}
+              </span>
+            )}
+          </span>
+
+          <Link
+            href={accountHref}
+            className="icon-btn topbar__account"
+            aria-label={isAuthenticated ? t('Account', 'الحساب') : t('Log in', 'تسجيل الدخول')}
+          >
+            <Icon as={User} />
+            <span className="topbar__account-label">
+              {isAuthenticated ? t('Account', 'الحساب') : t('Log in', 'دخول')}
+            </span>
+          </Link>
+        </div>
+      </div>
+
+      <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} locale={locale} />
+
+      <Drawer
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        side="start"
+        title={t('Menu', 'القائمة')}
+        closeLabel={t('Close menu', 'إغلاق القائمة')}
+      >
+        <nav className="drawer__nav" aria-label={t('Collections', 'الأقسام')}>
+          {STOREFRONT_COLLECTIONS.map((c) => (
+            <Link
+              key={c.slug}
+              href={`/${locale}/${c.slug}`}
+              className="drawer__nav-link"
+              aria-current={activeCollection === c.slug ? 'page' : undefined}
+              onClick={() => setMenuOpen(false)}
+            >
+              {isAr ? c.nameAr : c.nameEn}
+            </Link>
+          ))}
+          <hr className="drawer__divider" />
+          <Link href={`/${locale}/favourites`} className="drawer__nav-link" onClick={() => setMenuOpen(false)}>
+            {t('Favourites', 'المفضّلة')}
+          </Link>
+          <Link href={accountHref} className="drawer__nav-link" onClick={() => setMenuOpen(false)}>
+            {isAuthenticated ? t('Account', 'الحساب') : t('Log in', 'تسجيل الدخول')}
+          </Link>
+          <Link
+            href={isAr ? '/en' : '/ar'}
+            className="drawer__nav-link"
+            aria-label={t('Switch to Arabic', 'التغيير إلى الإنجليزية')}
+          >
+            {isAr ? 'English' : 'العربية'}
+          </Link>
+        </nav>
+      </Drawer>
+    </header>
+  );
+}
