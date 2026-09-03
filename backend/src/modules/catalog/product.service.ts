@@ -106,7 +106,9 @@ export async function getProductById(id: string, includeInactive = false) {
 // ---- Admin-side writes ----
 
 export async function createProduct(input: CreateProductInput) {
-  await ensureCategoryAndCollection(input.categoryId, input.collectionId);
+  // The product's collection is the denormalized mirror of its category's
+  // collection (null when the category stands alone) — never client input.
+  const collectionID = await categoryCollectionId(input.categoryId);
   assertNoDuplicateVariants(input.variants);
   assertValidSale(input.saleType, input.saleValue);
   try {
@@ -118,7 +120,7 @@ export async function createProduct(input: CreateProductInput) {
         descriptionEn: input.descriptionEn,
         descriptionAr: input.descriptionAr,
         categoryID: input.categoryId,
-        collectionID: input.collectionId,
+        collectionID,
         price: input.price,
         compareAtPrice: input.compareAtPrice,
         quantity: input.quantity,
@@ -147,9 +149,11 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
     select: { saleType: true, saleValue: true },
   });
   if (!existing) throw new AppError('NOT_FOUND', 'Product not found');
-  if (input.categoryId || input.collectionId) {
-    await ensureCategoryAndCollection(input.categoryId, input.collectionId);
-  }
+
+  // Moving the product to another category re-derives its denormalized
+  // collection mirror from that category.
+  const nextCollectionID =
+    input.categoryId !== undefined ? await categoryCollectionId(input.categoryId) : undefined;
 
   // Validate the sale as it will be after this patch (input value or the
   // one already stored).
@@ -167,8 +171,9 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
         ...(input.nameAr !== undefined ? { nameAr: input.nameAr } : {}),
         ...(input.descriptionEn !== undefined ? { descriptionEn: input.descriptionEn } : {}),
         ...(input.descriptionAr !== undefined ? { descriptionAr: input.descriptionAr } : {}),
-        ...(input.categoryId !== undefined ? { categoryID: input.categoryId } : {}),
-        ...(input.collectionId !== undefined ? { collectionID: input.collectionId } : {}),
+        ...(input.categoryId !== undefined
+          ? { categoryID: input.categoryId, collectionID: nextCollectionID ?? null }
+          : {}),
         ...(input.price !== undefined ? { price: input.price } : {}),
         ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice } : {}),
         ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
@@ -348,18 +353,15 @@ async function ensureImageExists(productId: string, imageId: string) {
   }
 }
 
-async function ensureCategoryAndCollection(categoryId?: string, collectionId?: string) {
-  if (categoryId) {
-    const c = await prisma.category.findUnique({ where: { id: categoryId }, select: { id: true } });
-    if (!c) throw new AppError('NOT_FOUND', 'Category not found');
-  }
-  if (collectionId) {
-    const c = await prisma.collection.findUnique({
-      where: { id: collectionId },
-      select: { id: true },
-    });
-    if (!c) throw new AppError('NOT_FOUND', 'Collection not found');
-  }
+// Resolve a category's collection id (the denormalized value a product mirrors).
+// Returns null for a standalone category; throws if the category is unknown.
+async function categoryCollectionId(categoryId: string): Promise<string | null> {
+  const c = await prisma.category.findUnique({
+    where: { id: categoryId },
+    select: { collectionID: true },
+  });
+  if (!c) throw new AppError('NOT_FOUND', 'Category not found');
+  return c.collectionID;
 }
 
 // saleType + saleValue go together, and a PERCENT sale is bounded 0–100.

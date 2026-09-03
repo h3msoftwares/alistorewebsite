@@ -13,6 +13,7 @@ const RESERVED_SLUGS = new Set([
   'admin',
   'dev',
   'product',
+  'category',
 ]);
 
 const slug = z

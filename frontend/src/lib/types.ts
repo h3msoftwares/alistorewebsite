@@ -74,7 +74,8 @@ export interface Collection {
 
 export interface Category {
   id: UUID;
-  collectionID: UUID;
+  /** Nullable — a category can stand alone, unattached to any collection. */
+  collectionID?: UUID | null;
   nameEn: string;
   nameAr: string;
   slug: string;
@@ -84,7 +85,8 @@ export interface Category {
   images: CategoryImage[];
   /** Present on `GET /categories` (one level of nesting). */
   children?: Category[];
-  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'>;
+  /** `null` for a standalone category. */
+  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug' | 'accentColor'> | null;
 }
 
 export interface ProductVariant {
@@ -105,8 +107,9 @@ export interface Product {
   descriptionEn?: string | null;
   descriptionAr?: string | null;
   categoryID: UUID;
-  /** Denormalized from Category so a whole collection filters without a join. */
-  collectionID: UUID;
+  /** Denormalized mirror of the category's collection (derived server-side).
+   *  `null` when the product's category stands alone. */
+  collectionID?: UUID | null;
   price: Decimalish;
   compareAtPrice?: Decimalish | null;
   /** Product-level quantity — free-standing signed int (may be 0 or negative). */
@@ -123,7 +126,8 @@ export interface Product {
   images: ProductImage[];
   variants: ProductVariant[];
   category?: Category;
-  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'>;
+  /** `null` when the product's category stands alone. */
+  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'> | null;
 }
 
 // ---- Cart ----
@@ -286,7 +290,9 @@ export interface CollectionBody {
 }
 
 export interface CategoryBody {
-  collectionId: UUID;
+  /** Omit or `null` for a standalone category; `null` on update detaches an
+   *  existing category from its collection. */
+  collectionId?: UUID | null;
   nameEn: string;
   nameAr: string;
   slug: string;
@@ -309,7 +315,8 @@ export interface ProductBody {
   descriptionEn?: string;
   descriptionAr?: string;
   categoryId: UUID;
-  collectionId: UUID;
+  // No collectionId: the product's collection is derived server-side from its
+  // category (a denormalized mirror), never sent by the client.
   price: number;
   compareAtPrice?: number;
   /** May be 0 or negative; independent of `isActive`. Defaults to 0. */

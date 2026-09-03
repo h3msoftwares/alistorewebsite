@@ -81,8 +81,38 @@ export function listCategories(collectionId?: UUID) {
     .then((r) => r.categories);
 }
 
+/** Categories attached to no collection (`GET /api/categories?standalone=true`). */
+export function listStandaloneCategories() {
+  return api
+    .get<{ categories: Category[] }>('/api/categories', { query: { standalone: true } })
+    .then((r) => r.categories);
+}
+
 export function getCategory(id: UUID) {
   return api.get<{ category: Category }>(`/api/categories/${id}`).then((r) => r.category);
+}
+
+export function getCategoryBySlug(slug: string) {
+  return api
+    .get<{ category: Category }>(`/api/categories/slug/${slug}`)
+    .then((r) => r.category);
+}
+
+/** Products preview for a category — same envelope as `listProducts`, scoped
+ *  to the category (`GET /api/categories/:id/products`). */
+export function listCategoryProducts(id: UUID, query: ProductListQuery = {}) {
+  return api.get<ProductListResult>(`/api/categories/${id}/products`, {
+    query: {
+      search: query.search,
+      size: query.size,
+      color: query.color,
+      minPrice: query.minPrice,
+      maxPrice: query.maxPrice,
+      sort: query.sort,
+      page: query.page,
+      pageSize: query.pageSize,
+    },
+  });
 }
 
 // ---- Categories (admin) ----

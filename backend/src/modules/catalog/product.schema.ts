@@ -58,7 +58,8 @@ export const createProductSchema = z.object({
   descriptionEn: z.string().optional(),
   descriptionAr: z.string().optional(),
   categoryId: z.string().uuid(),
-  collectionId: z.string().uuid(),
+  // No collectionId: a product's collection is the denormalized mirror of its
+  // category's collection, derived server-side. It is never set directly.
   price: z.number().positive(),
   compareAtPrice: z.number().positive().optional(),
   // Free-standing signed quantity — may be 0 or negative, unrelated to isActive.

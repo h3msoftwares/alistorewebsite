@@ -59,11 +59,37 @@ export function useCategories(collectionId?: UUID) {
   });
 }
 
+/** Categories attached to no collection. */
+export function useStandaloneCategories() {
+  return useQuery({
+    queryKey: queryKeys.categories.standalone(),
+    queryFn: () => catalogApi.listStandaloneCategories(),
+  });
+}
+
 export function useCategory(id: UUID | undefined) {
   return useQuery({
     queryKey: queryKeys.categories.detail(id ?? ''),
     queryFn: () => catalogApi.getCategory(id as UUID),
     enabled: Boolean(id),
+  });
+}
+
+export function useCategoryBySlug(slug: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.categories.bySlug(slug ?? ''),
+    queryFn: () => catalogApi.getCategoryBySlug(slug as string),
+    enabled: Boolean(slug),
+  });
+}
+
+/** Products preview for a category (`GET /api/categories/:id/products`). */
+export function useCategoryProducts(id: UUID | undefined, query: ProductListQuery = {}) {
+  return useQuery({
+    queryKey: queryKeys.categories.products(id ?? '', query),
+    queryFn: () => catalogApi.listCategoryProducts(id as UUID, query),
+    enabled: Boolean(id),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -157,6 +183,8 @@ export function useUpdateCategory() {
     onSuccess: () => {
       inv.categories();
       inv.collections();
+      // Re-linking a category re-derives its products' denormalized collection.
+      inv.products();
     },
   });
 }

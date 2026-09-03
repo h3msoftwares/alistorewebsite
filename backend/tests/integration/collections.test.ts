@@ -201,15 +201,18 @@ describe('Collections API', () => {
   });
 
   describe('DELETE /api/collections/:id (admin)', () => {
-    it('deletes an empty collection and cascades its categories', async () => {
+    it('deletes an empty collection and detaches its categories (they survive as standalone)', async () => {
       await tokens();
       const col = await makeCollection({ slug: 'del' });
-      await makeCategory(col.id);
+      const cat = await makeCategory(col.id);
 
       const res = await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken));
       expect(res.status).toBe(204);
       expect(await prisma.collection.count()).toBe(0);
-      expect(await prisma.category.count()).toBe(0);
+
+      const row = await prisma.category.findUnique({ where: { id: cat.id } });
+      expect(row).not.toBeNull();
+      expect(row?.collectionID).toBeNull();
     });
 
     it('409s when the collection still has products', async () => {

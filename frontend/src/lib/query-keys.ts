@@ -14,7 +14,11 @@ export const queryKeys = {
   categories: {
     all: () => ['categories'] as const,
     list: (collectionId?: UUID) => ['categories', 'list', collectionId ?? null] as const,
+    standalone: () => ['categories', 'list', 'standalone'] as const,
     detail: (id: UUID) => ['categories', 'detail', id] as const,
+    bySlug: (slug: string) => ['categories', 'slug', slug] as const,
+    products: (id: UUID, query: ProductListQuery) =>
+      ['categories', 'detail', id, 'products', query] as const,
   },
   products: {
     all: () => ['products'] as const,

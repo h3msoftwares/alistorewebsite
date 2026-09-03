@@ -94,7 +94,8 @@ export async function deleteCollection(id: string) {
       `Cannot delete a collection that still has ${productCount} product(s). Move or remove them first.`
     );
   }
-  // Categories cascade-delete via the schema relation.
+  // Categories are detached (collectionID SET NULL) via the schema relation —
+  // they survive as standalone categories.
   await prisma.collection.delete({ where: { id } });
 }
 
@@ -110,6 +111,12 @@ export async function linkCategories(id: string, categoryIds: string[]) {
   }
   await prisma.category.updateMany({
     where: { id: { in: categoryIds } },
+    data: { collectionID: id },
+  });
+  // Keep the denormalized Product.collectionID mirror in sync for every product
+  // in the moved categories.
+  await prisma.product.updateMany({
+    where: { categoryID: { in: categoryIds } },
     data: { collectionID: id },
   });
   return getCollectionById(id);

@@ -233,7 +233,9 @@ model CollectionImage {
 
 model Category {
   id               String  @id @default(uuid()) @db.Uuid
-  collectionID     String  @db.Uuid
+  // Nullable: a category may stand alone, unattached to any collection. Deleting
+  // a collection detaches its categories (SET NULL) rather than removing them.
+  collectionID     String? @db.Uuid
   nameEn           String
   nameAr           String
   slug             String  @unique
@@ -241,7 +243,7 @@ model Category {
   isActive         Boolean @default(true)
   sortOrder        Int     @default(0)
 
-  collection Collection      @relation(fields: [collectionID], references: [id], onDelete: Cascade)
+  collection Collection?     @relation(fields: [collectionID], references: [id], onDelete: SetNull)
   parent     Category?       @relation("CategoryToSubcategory", fields: [parentCategoryID], references: [id], onDelete: SetNull)
   children   Category[]      @relation("CategoryToSubcategory")
   images     CategoryImage[]
@@ -276,7 +278,7 @@ model Product {
   descriptionEn  String?
   descriptionAr  String?
   categoryID     String        @db.Uuid
-  collectionID   String        @db.Uuid // denormalized from Category so a whole collection filters without a join; kept in sync in app code
+  collectionID   String?       @db.Uuid // denormalized mirror of Category.collectionID (null when the category stands alone); derived from the category in app code, never set directly
   price          Decimal       @db.Decimal(12, 2)
   compareAtPrice Decimal?      @db.Decimal(12, 2)
   // Active sale: PERCENT (0–100) or AMOUNT off `price`. Both null ⇒ no sale.
@@ -291,7 +293,7 @@ model Product {
   deletedAt      DateTime?
 
   category   Category         @relation(fields: [categoryID], references: [id])
-  collection Collection       @relation(fields: [collectionID], references: [id])
+  collection Collection?      @relation(fields: [collectionID], references: [id], onDelete: SetNull)
   images     ProductImage[]
   variants   ProductVariant[]
 

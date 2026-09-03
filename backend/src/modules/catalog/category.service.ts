@@ -3,17 +3,23 @@ import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { z } from 'zod';
 import { createCategorySchema, updateCategorySchema } from './category.schema';
+import type { listProductsQuerySchema } from './product.schema';
+import { listProducts } from './product.service';
 import type { CreateImageInput, UpdateImageInput } from './image.schema';
 
 type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
+type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
 
 // Same ordering ProductImage uses — the lowest-sortOrder row is the "base" image.
 const imageOrder = { orderBy: { sortOrder: 'asc' as const } };
 
 const categoryInclude = {
   images: imageOrder,
-  collection: { select: { id: true, nameEn: true, nameAr: true, slug: true } },
+  // `collection` is null for a standalone category.
+  collection: {
+    select: { id: true, nameEn: true, nameAr: true, slug: true, accentColor: true },
+  },
   children: {
     where: { isActive: true },
     orderBy: { sortOrder: 'asc' as const },
@@ -21,9 +27,20 @@ const categoryInclude = {
   },
 };
 
-export async function listCategories(collectionId?: string) {
+interface ListCategoriesOpts {
+  collectionId?: string;
+  /** Only categories not attached to any collection. */
+  standalone?: boolean;
+}
+
+export async function listCategories(opts: ListCategoriesOpts = {}) {
+  const { collectionId, standalone } = opts;
   return prisma.category.findMany({
-    where: { isActive: true, ...(collectionId ? { collectionID: collectionId } : {}) },
+    where: {
+      isActive: true,
+      ...(collectionId ? { collectionID: collectionId } : {}),
+      ...(standalone ? { collectionID: null } : {}),
+    },
     orderBy: { sortOrder: 'asc' },
     include: categoryInclude,
   });
@@ -35,16 +52,30 @@ export async function getCategoryById(id: string) {
   return category;
 }
 
+export async function getCategoryBySlug(slug: string) {
+  const category = await prisma.category.findUnique({ where: { slug }, include: categoryInclude });
+  if (!category) throw new AppError('NOT_FOUND', 'Category not found');
+  return category;
+}
+
+// Products preview for a category — the same shaped, paginated list
+// `GET /api/products` returns (with effectivePrice / onSale), scoped to this
+// category. Mirrors how a collection's products are listed.
+export async function listCategoryProducts(id: string, query: ListProductsQuery) {
+  await ensureCategoryExists(id);
+  return listProducts({ ...query, categoryId: id });
+}
+
 // ---- Admin-side writes ----
 
 export async function createCategory(input: CreateCategoryInput) {
-  await ensureCollectionExists(input.collectionId);
   const { collectionId, parentCategoryId, ...rest } = input;
+  if (collectionId) await ensureCollectionExists(collectionId);
   try {
     return await prisma.category.create({
       data: {
         ...rest,
-        collection: { connect: { id: collectionId } },
+        ...(collectionId ? { collection: { connect: { id: collectionId } } } : {}),
         ...(parentCategoryId ? { parent: { connect: { id: parentCategoryId } } } : {}),
       },
     });
@@ -55,15 +86,20 @@ export async function createCategory(input: CreateCategoryInput) {
 
 export async function updateCategory(id: string, input: UpdateCategoryInput) {
   await ensureCategoryExists(id);
-  if (input.collectionId) await ensureCollectionExists(input.collectionId);
-
   const { collectionId, parentCategoryId, ...rest } = input;
+  if (collectionId) await ensureCollectionExists(collectionId);
+
   try {
-    return await prisma.category.update({
+    const updated = await prisma.category.update({
       where: { id },
       data: {
         ...rest,
-        ...(collectionId ? { collection: { connect: { id: collectionId } } } : {}),
+        // undefined ⇒ leave as-is; null ⇒ detach; id ⇒ (re)link.
+        ...(collectionId === undefined
+          ? {}
+          : collectionId === null
+            ? { collection: { disconnect: true } }
+            : { collection: { connect: { id: collectionId } } }),
         ...(parentCategoryId !== undefined
           ? parentCategoryId
             ? { parent: { connect: { id: parentCategoryId } } }
@@ -71,6 +107,17 @@ export async function updateCategory(id: string, input: UpdateCategoryInput) {
           : {}),
       },
     });
+
+    // Keep the denormalized Product.collectionID mirror in sync when this
+    // category's collection changed.
+    if (collectionId !== undefined) {
+      await prisma.product.updateMany({
+        where: { categoryID: id },
+        data: { collectionID: collectionId ?? null },
+      });
+    }
+
+    return updated;
   } catch (e) {
     throw mapPrismaError(e);
   }

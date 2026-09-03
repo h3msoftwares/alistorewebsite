@@ -4,9 +4,11 @@ import { validate } from '../../middleware/validate.middleware';
 import { requireAuth } from '../../middleware/auth.middleware';
 import { requireRole } from '../../middleware/rbac.middleware';
 import { createImageSchema, updateImageSchema } from './image.schema';
+import { listProductsQuerySchema } from './product.schema';
 import {
   listCategoriesQuerySchema,
   categoryIdParamSchema,
+  categorySlugParamSchema,
   categoryImageParamSchema,
   createCategorySchema,
   updateCategorySchema,
@@ -14,6 +16,8 @@ import {
 import {
   listCategoriesHandler,
   getCategoryHandler,
+  getCategoryBySlugHandler,
+  listCategoryProductsHandler,
   createCategoryHandler,
   updateCategoryHandler,
   deleteCategoryHandler,
@@ -27,10 +31,22 @@ const router = Router();
 const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
 
 // ---- Storefront (public) ----
-// Optional ?collectionId= filters to one collection; the storefront nav
-// renders the returned parent/children tree client-side.
+// Optional ?collectionId= filters to one collection; ?standalone=true returns
+// only categories attached to no collection. The storefront nav renders the
+// returned parent/children tree client-side.
 router.get('/', validate({ query: listCategoriesQuerySchema }), asyncHandler(listCategoriesHandler));
+router.get(
+  '/slug/:slug',
+  validate({ params: categorySlugParamSchema }),
+  asyncHandler(getCategoryBySlugHandler)
+);
 router.get('/:id', validate({ params: categoryIdParamSchema }), asyncHandler(getCategoryHandler));
+// Products preview — same shape as GET /api/products, scoped to this category.
+router.get(
+  '/:id/products',
+  validate({ params: categoryIdParamSchema, query: listProductsQuerySchema }),
+  asyncHandler(listCategoryProductsHandler)
+);
 
 // ---- Admin (STAFF/ADMIN only) ----
 router.post('/', ...admin, validate({ body: createCategorySchema }), asyncHandler(createCategoryHandler));

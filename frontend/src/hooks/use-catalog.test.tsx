@@ -10,6 +10,9 @@ import {
   useProduct,
   useCreateProduct,
   useDeleteCollection,
+  useCategoryBySlug,
+  useStandaloneCategories,
+  useCategoryProducts,
 } from './use-catalog';
 
 vi.mock('@/lib/api', () => ({
@@ -18,7 +21,10 @@ vi.mock('@/lib/api', () => ({
     getCollection: vi.fn(),
     getCollectionBySlug: vi.fn(),
     listCategories: vi.fn(),
+    listStandaloneCategories: vi.fn(),
     getCategory: vi.fn(),
+    getCategoryBySlug: vi.fn(),
+    listCategoryProducts: vi.fn(),
     listProducts: vi.fn(),
     getProduct: vi.fn(),
     createProduct: vi.fn(),
@@ -88,6 +94,48 @@ describe('use-catalog queries', () => {
     expect(mockCatalog.listProducts).toHaveBeenCalledWith(query);
   });
 
+  it('useStandaloneCategories fetches the standalone list', async () => {
+    mockCatalog.listStandaloneCategories.mockResolvedValue([{ id: 'sc1' }] as never);
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useStandaloneCategories(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([{ id: 'sc1' }]);
+    expect(mockCatalog.listStandaloneCategories).toHaveBeenCalled();
+  });
+
+  it('useCategoryBySlug is disabled without a slug and enabled with one', async () => {
+    mockCatalog.getCategoryBySlug.mockResolvedValue({ id: 'k1', slug: 'clearance' } as never);
+    const { Wrapper } = createWrapper();
+
+    const off = renderHook(() => useCategoryBySlug(undefined), { wrapper: Wrapper });
+    expect(off.result.current.fetchStatus).toBe('idle');
+    expect(mockCatalog.getCategoryBySlug).not.toHaveBeenCalled();
+
+    const on = renderHook(() => useCategoryBySlug('clearance'), { wrapper: Wrapper });
+    await waitFor(() => expect(on.result.current.isSuccess).toBe(true));
+    expect(mockCatalog.getCategoryBySlug).toHaveBeenCalledWith('clearance');
+  });
+
+  it('useCategoryProducts only fires with an id and forwards the query', async () => {
+    mockCatalog.listCategoryProducts.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 12,
+    } as never);
+    const { Wrapper } = createWrapper();
+
+    const off = renderHook(() => useCategoryProducts(undefined), { wrapper: Wrapper });
+    expect(off.result.current.fetchStatus).toBe('idle');
+
+    const { result } = renderHook(() => useCategoryProducts('cat-1', { pageSize: 12 }), {
+      wrapper: Wrapper,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockCatalog.listCategoryProducts).toHaveBeenCalledWith('cat-1', { pageSize: 12 });
+  });
+
   it('useProduct only fires when given an id', async () => {
     mockCatalog.getProduct.mockResolvedValue({ id: 'p1' } as never);
     const { Wrapper } = createWrapper();
@@ -113,7 +161,6 @@ describe('use-catalog mutations', () => {
       nameEn: 'x',
       nameAr: 'x',
       categoryId: 'c',
-      collectionId: 'col',
       price: 10,
       variants: [{ sku: 'v1' }],
     });

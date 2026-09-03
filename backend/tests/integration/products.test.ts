@@ -20,12 +20,13 @@ beforeEach(async () => {
   adminToken = (await createAdmin()).token;
 });
 
+// No collectionId — the product's collection is derived server-side from its
+// category (the denormalized mirror).
 const productBody = (over: Record<string, unknown> = {}) => ({
   sku: 'SKU-1',
   nameEn: 'Tee',
   nameAr: 'تيشيرت',
   categoryId,
-  collectionId,
   price: 20,
   variants: [{ sku: 'SKU-1-M', size: 'M', color: 'Black', stockQuantity: 5 }],
   ...over,
@@ -105,13 +106,41 @@ describe('Products API', () => {
       ).toBe(403);
     });
 
-    it('creates a product with variants', async () => {
+    it('creates a product with variants and derives its collection from the category', async () => {
       const res = await request(app)
         .post('/api/products')
         .set(bearer(adminToken))
         .send(productBody());
       expect(res.status).toBe(201);
       expect(res.body.product.variants).toHaveLength(1);
+      expect(res.body.product.collectionID).toBe(collectionId);
+      expect(res.body.product.collection.slug).toBe('root');
+    });
+
+    it('creates a product under a standalone category with a null collection', async () => {
+      const free = await makeCategory(null, { slug: 'free-cat' });
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody({ sku: 'SKU-FREE', categoryId: free.id }));
+      expect(res.status).toBe(201);
+      expect(res.body.product.collectionID).toBeNull();
+      expect(res.body.product.collection).toBeNull();
+    });
+
+    it('moving a product to another category re-derives its collection', async () => {
+      const other = await makeCollection({ slug: 'other-col' });
+      const otherCat = await makeCategory(other.id);
+      const created = (
+        await request(app).post('/api/products').set(bearer(adminToken)).send(productBody())
+      ).body.product;
+
+      const res = await request(app)
+        .patch(`/api/products/${created.id}`)
+        .set(bearer(adminToken))
+        .send({ categoryId: otherCat.id });
+      expect(res.status).toBe(200);
+      expect(res.body.product.collectionID).toBe(other.id);
     });
 
     it('404s when category/collection do not exist', async () => {

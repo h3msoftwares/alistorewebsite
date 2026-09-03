@@ -3,14 +3,30 @@ import * as categoryService from './category.service';
 import { paramString } from '../../lib/params';
 
 export async function listCategoriesHandler(req: Request, res: Response) {
-  const { collectionId } = (req.validatedQuery ?? {}) as { collectionId?: string };
-  const categories = await categoryService.listCategories(collectionId);
+  const { collectionId, standalone } = (req.validatedQuery ?? {}) as {
+    collectionId?: string;
+    standalone?: boolean;
+  };
+  const categories = await categoryService.listCategories({ collectionId, standalone });
   res.json({ categories });
 }
 
 export async function getCategoryHandler(req: Request, res: Response) {
   const category = await categoryService.getCategoryById(paramString(req.params.id));
   res.json({ category });
+}
+
+export async function getCategoryBySlugHandler(req: Request, res: Response) {
+  const category = await categoryService.getCategoryBySlug(paramString(req.params.slug));
+  res.json({ category });
+}
+
+export async function listCategoryProductsHandler(req: Request, res: Response) {
+  const result = await categoryService.listCategoryProducts(
+    paramString(req.params.id),
+    req.validatedQuery as never
+  );
+  res.json(result);
 }
 
 // ---- Admin ----

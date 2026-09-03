@@ -14,7 +14,11 @@ export async function makeCollection(over: Record<string, unknown> = {}) {
   });
 }
 
-export async function makeCategory(collectionID: string, over: Record<string, unknown> = {}) {
+// Pass `null` (or omit) for a standalone category unattached to any collection.
+export async function makeCategory(
+  collectionID: string | null = null,
+  over: Record<string, unknown> = {}
+) {
   return prisma.category.create({
     data: {
       collectionID,
@@ -32,7 +36,7 @@ interface MakeProductOpts {
 }
 
 export async function makeProduct(
-  collectionID: string,
+  collectionID: string | null,
   categoryID: string,
   opts: MakeProductOpts = {}
 ) {
