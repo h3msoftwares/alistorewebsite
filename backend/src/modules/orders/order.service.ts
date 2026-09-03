@@ -128,12 +128,31 @@ export async function getOrderById(id: string, userID?: string) {
 }
 
 export async function cancelOrder(id: string, userID: string) {
-  const order = await prisma.order.findFirst({ where: { id, userID } });
+  const order = await prisma.order.findFirst({ where: { id, userID }, include: { items: true } });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
   if (order.status !== 'PENDING') {
     throw new AppError('CONFLICT', 'Only pending orders can be cancelled');
   }
-  return prisma.order.update({ where: { id }, data: { status: 'CANCELLED' } });
+
+  // Put the reserved stock back and record it on the ledger.
+  return prisma.$transaction(async (tx) => {
+    for (const item of order.items) {
+      await tx.productVariant.update({
+        where: { id: item.variantID },
+        data: { stockQuantity: { increment: item.quantity } },
+      });
+      await tx.stockMovement.create({
+        data: {
+          variantID: item.variantID,
+          quantity: item.quantity,
+          type: 'RETURN',
+          orderID: order.id,
+          reason: `Order ${order.orderNumber} cancelled`,
+        },
+      });
+    }
+    return tx.order.update({ where: { id }, data: { status: 'CANCELLED' }, include: { items: true } });
+  });
 }
 
 // ---- Admin ----
@@ -142,7 +161,7 @@ export async function listAllOrders(status?: OrderStatus) {
   return prisma.order.findMany({
     where: status ? { status } : {},
     orderBy: { dateCreated: 'desc' },
-    include: { items: true, user: true },
+    include: { items: true, user: { select: { id: true, name: true, email: true, phone: true } } },
   });
 }
 

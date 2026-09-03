@@ -9,11 +9,41 @@ cache or session store at this scale. See the project guide PDF for why.
 
 ## Modules
 
-- `auth` — register, login, refresh, logout (JWT access + DB-backed refresh tokens)
-- `catalog` — collections, categories (each linked to a collection) and products (list/filter/detail + admin CRUD)
-- `cart` — guest (cookie session) and logged-in cart, merges on login
-- `orders` — checkout (COD only), order history, cancel, admin status updates
-- `admin` — staff/admin-only routes: order management, stock updates, dashboard
+- `auth` — register, login (with account lockout), refresh (with rotation + reuse detection), logout; merges the guest cart on sign-in
+- `catalog` — `collection`, `category`, `product` — full CRUD, each with an image sub-resource; products also have a variant sub-resource
+- `cart` — guest (cookie session) and logged-in cart; add / update / remove / clear; merges on login
+- `orders` — checkout (COD only), order history, detail, cancel (restocks); admin status / mark-collected / dashboard
+- `account` — `address` CRUD (per user, default handling) and `user` profile (`GET`/`PATCH /api/users/me`)
+- `admin` — staff/admin-only: order management, per-variant stock updates, dashboard
+
+### API surface
+
+| Method | Path | Access |
+|---|---|---|
+| GET | `/api/collections` · `/api/collections/:id` · `/api/collections/slug/:slug` | public |
+| POST/PATCH/DELETE | `/api/collections` · `/api/collections/:id` | STAFF/ADMIN |
+| POST | `/api/collections/:id/categories` (link) | STAFF/ADMIN |
+| POST/PATCH/DELETE | `/api/collections/:id/images[/:imageId]` | STAFF/ADMIN |
+| GET | `/api/categories` (`?collectionId=`) · `/api/categories/:id` | public |
+| POST/PATCH/DELETE | `/api/categories/:id` + `/images[/:imageId]` | STAFF/ADMIN |
+| GET | `/api/products` (filters + pagination) · `/api/products/:id` | public |
+| POST/PATCH/DELETE | `/api/products/:id` + `/variants[/:variantId]` + `/images[/:imageId]` | STAFF/ADMIN |
+| GET/POST/PATCH/DELETE | `/api/cart` · `/api/cart/items[/:itemId]` | guest or user |
+| POST | `/api/orders/checkout` | guest or user |
+| GET | `/api/orders/mine` · `/api/orders/:id` · POST `/api/orders/:id/cancel` | user |
+| GET/POST/PATCH/DELETE | `/api/addresses[/:id]` | user |
+| GET/PATCH | `/api/users/me` | user |
+| GET | `/api/admin/dashboard` · `/api/admin/orders` (`?status=`) | STAFF/ADMIN |
+| PATCH | `/api/admin/orders/:id/status` · `/collected` · `/api/admin/variants/:variantId/stock` | STAFF/ADMIN |
+
+## Testing
+
+Integration tests (Vitest + Supertest) run against a dedicated **`alistore_test`**
+database on the same Postgres server. `tests/helpers/global-setup.ts` creates it
+if missing and runs `prisma migrate deploy`; every test starts from a truncated
+DB. `vitest.config.mts` injects `NODE_ENV=test` + the test `DATABASE_URL`, so a
+local `.env` can't point tests at the dev database. `npm test` needs the Postgres
+container up (`docker compose up -d postgres`).
 
 ## Local setup
 

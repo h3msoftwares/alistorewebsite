@@ -15,8 +15,19 @@ export const checkoutSchema = z.object({
   notes: z.string().optional(),
 });
 
-export const updateOrderStatusSchema = z.object({
-  status: z.enum(['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED']),
+const orderStatus = z.enum([
+  'PENDING',
+  'CONFIRMED',
+  'SHIPPED',
+  'DELIVERED',
+  'CANCELLED',
+  'RETURNED',
+]);
+
+export const updateOrderStatusSchema = z.object({ status: orderStatus });
+
+export const adminListOrdersQuerySchema = z.object({
+  status: orderStatus.optional(),
 });
 
 export const markCollectedSchema = z.object({

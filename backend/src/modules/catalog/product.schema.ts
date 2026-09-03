@@ -11,10 +11,42 @@ export const listProductsQuerySchema = z.object({
   sort: z.enum(['newest', 'price_asc', 'price_desc']).default('newest'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(60).default(24),
+  // Admin-only: also return inactive / soft-deleted products.
+  includeInactive: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => v === 'true'),
 });
 
 export const productIdParamSchema = z.object({
   id: z.string().uuid(),
+});
+
+export const productImageParamSchema = z.object({
+  id: z.string().uuid(),
+  imageId: z.string().uuid(),
+});
+
+export const productVariantParamSchema = z.object({
+  id: z.string().uuid(),
+  variantId: z.string().uuid(),
+});
+
+// Admin stock route (/api/admin/variants/:variantId/stock).
+export const adminVariantParamSchema = z.object({
+  variantId: z.string().uuid(),
+});
+
+export const updateStockSchema = z.object({
+  stockQuantity: z.number().int().nonnegative(),
+});
+
+// size / color are nullable in the schema (one-size / no-colour products).
+const variantInputSchema = z.object({
+  sku: z.string().min(1),
+  size: z.string().min(1).nullish(),
+  color: z.string().min(1).nullish(),
+  stockQuantity: z.number().int().nonnegative().default(0),
 });
 
 export const createProductSchema = z.object({
@@ -27,16 +59,10 @@ export const createProductSchema = z.object({
   collectionId: z.string().uuid(),
   price: z.number().positive(),
   compareAtPrice: z.number().positive().optional(),
-  variants: z
-    .array(
-      z.object({
-        sku: z.string().min(1),
-        size: z.string().min(1),
-        color: z.string().min(1),
-        stockQuantity: z.number().int().nonnegative().default(0),
-      })
-    )
-    .min(1),
+  variants: z.array(variantInputSchema).min(1),
 });
 
 export const updateProductSchema = createProductSchema.partial().omit({ variants: true });
+
+export const createVariantSchema = variantInputSchema;
+export const updateVariantSchema = variantInputSchema.partial();

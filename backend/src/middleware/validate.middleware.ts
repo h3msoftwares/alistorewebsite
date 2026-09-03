@@ -28,7 +28,9 @@ declare global {
 export function validate(schemas: Schemas) {
   return (req: Request, _res: Response, next: NextFunction) => {
     try {
-      if (schemas.body) req.body = schemas.body.parse(req.body);
+      // Express 5 leaves req.body undefined when no JSON body was sent; treat
+      // that as an empty object so object schemas validate field-by-field.
+      if (schemas.body) req.body = schemas.body.parse(req.body ?? {});
       if (schemas.query) req.validatedQuery = schemas.query.parse(req.query) as Record<string, unknown>;
       if (schemas.params) req.params = schemas.params.parse(req.params) as typeof req.params;
       next();

@@ -26,7 +26,8 @@ export async function cancelOrderHandler(req: Request, res: Response) {
 // ---- Admin ----
 
 export async function listAllOrdersHandler(req: Request, res: Response) {
-  const orders = await orderService.listAllOrders(req.query.status as never);
+  const { status } = (req.validatedQuery ?? {}) as { status?: never };
+  const orders = await orderService.listAllOrders(status);
   res.json({ orders });
 }
 

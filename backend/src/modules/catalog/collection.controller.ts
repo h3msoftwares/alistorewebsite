@@ -13,6 +13,11 @@ export async function getCollectionHandler(req: Request, res: Response) {
   res.json({ collection });
 }
 
+export async function getCollectionBySlugHandler(req: Request, res: Response) {
+  const collection = await collectionService.getCollectionBySlug(paramString(req.params.slug));
+  res.json({ collection });
+}
+
 // ---- Admin ----
 
 export async function createCollectionHandler(req: Request, res: Response) {
@@ -36,4 +41,25 @@ export async function linkCategoriesHandler(req: Request, res: Response) {
     req.body.categoryIds
   );
   res.json({ collection });
+}
+
+// ---- Images ----
+
+export async function addCollectionImageHandler(req: Request, res: Response) {
+  const image = await collectionService.addImage(paramString(req.params.id), req.body);
+  res.status(201).json({ image });
+}
+
+export async function updateCollectionImageHandler(req: Request, res: Response) {
+  const image = await collectionService.updateImage(
+    paramString(req.params.id),
+    paramString(req.params.imageId),
+    req.body
+  );
+  res.json({ image });
+}
+
+export async function deleteCollectionImageHandler(req: Request, res: Response) {
+  await collectionService.deleteImage(paramString(req.params.id), paramString(req.params.imageId));
+  res.status(204).send();
 }

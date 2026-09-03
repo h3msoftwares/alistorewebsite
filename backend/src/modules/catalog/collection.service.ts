@@ -3,6 +3,7 @@ import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { z } from 'zod';
 import { createCollectionSchema, updateCollectionSchema } from './collection.schema';
+import type { CreateImageInput, UpdateImageInput } from './image.schema';
 
 type CreateCollectionInput = z.infer<typeof createCollectionSchema>;
 type UpdateCollectionInput = z.infer<typeof updateCollectionSchema>;
@@ -114,7 +115,38 @@ export async function linkCategories(id: string, categoryIds: string[]) {
   return getCollectionById(id);
 }
 
+// ---- Images (sub-resource) ----
+
+export async function addImage(collectionId: string, input: CreateImageInput) {
+  await ensureExists(collectionId);
+  return prisma.collectionImage.create({ data: { collectionID: collectionId, ...input } });
+}
+
+export async function updateImage(
+  collectionId: string,
+  imageId: string,
+  input: UpdateImageInput
+) {
+  await ensureImageExists(collectionId, imageId);
+  return prisma.collectionImage.update({ where: { id: imageId }, data: input });
+}
+
+export async function deleteImage(collectionId: string, imageId: string) {
+  await ensureImageExists(collectionId, imageId);
+  await prisma.collectionImage.delete({ where: { id: imageId } });
+}
+
 async function ensureExists(id: string) {
   const exists = await prisma.collection.findUnique({ where: { id }, select: { id: true } });
   if (!exists) throw new AppError('NOT_FOUND', 'Collection not found');
+}
+
+async function ensureImageExists(collectionId: string, imageId: string) {
+  const img = await prisma.collectionImage.findUnique({
+    where: { id: imageId },
+    select: { collectionID: true },
+  });
+  if (!img || img.collectionID !== collectionId) {
+    throw new AppError('NOT_FOUND', 'Collection image not found');
+  }
 }

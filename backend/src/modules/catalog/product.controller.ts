@@ -11,7 +11,8 @@ export async function listProductsHandler(req: Request, res: Response) {
 }
 
 export async function getProductHandler(req: Request, res: Response) {
-  const product = await productService.getProductById(paramString(req.params.id));
+  const includeInactive = req.user?.role === 'STAFF' || req.user?.role === 'ADMIN';
+  const product = await productService.getProductById(paramString(req.params.id), includeInactive);
   res.json({ product });
 }
 
@@ -32,6 +33,28 @@ export async function deleteProductHandler(req: Request, res: Response) {
   res.status(204).send();
 }
 
+// ---- Variants ----
+
+export async function addVariantHandler(req: Request, res: Response) {
+  const variant = await productService.addVariant(paramString(req.params.id), req.body);
+  res.status(201).json({ variant });
+}
+
+export async function updateVariantHandler(req: Request, res: Response) {
+  const variant = await productService.updateVariant(
+    paramString(req.params.id),
+    paramString(req.params.variantId),
+    req.body,
+    req.user?.id
+  );
+  res.json({ variant });
+}
+
+export async function deleteVariantHandler(req: Request, res: Response) {
+  await productService.deleteVariant(paramString(req.params.id), paramString(req.params.variantId));
+  res.status(204).send();
+}
+
 export async function updateStockHandler(req: Request, res: Response) {
   const variant = await productService.updateStock(
     paramString(req.params.variantId),
@@ -39,4 +62,25 @@ export async function updateStockHandler(req: Request, res: Response) {
     req.user?.id
   );
   res.json({ variant });
+}
+
+// ---- Images ----
+
+export async function addProductImageHandler(req: Request, res: Response) {
+  const image = await productService.addImage(paramString(req.params.id), req.body);
+  res.status(201).json({ image });
+}
+
+export async function updateProductImageHandler(req: Request, res: Response) {
+  const image = await productService.updateImage(
+    paramString(req.params.id),
+    paramString(req.params.imageId),
+    req.body
+  );
+  res.json({ image });
+}
+
+export async function deleteProductImageHandler(req: Request, res: Response) {
+  await productService.deleteImage(paramString(req.params.id), paramString(req.params.imageId));
+  res.status(204).send();
 }

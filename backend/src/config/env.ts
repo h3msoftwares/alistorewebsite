@@ -7,8 +7,12 @@ import { z } from 'zod';
 // Node's native loader (stable since ~20.12) needs no new dependency; it's
 // wrapped in try/catch since CI environments that inject real env vars
 // directly won't have a .env file on disk, and that's fine.
+// In tests, vitest injects DATABASE_URL / JWT secrets via `test.env` (see
+// vitest.config.mts) — don't let a local .env override them onto the dev DB.
 try {
-  process.loadEnvFile();
+  if (process.env.NODE_ENV !== 'test') {
+    process.loadEnvFile();
+  }
 } catch {
   // no .env file present — assume the environment already has these vars
 }

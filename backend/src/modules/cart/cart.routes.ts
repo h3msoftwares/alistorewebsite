@@ -8,6 +8,7 @@ import {
   addCartItemHandler,
   updateCartItemHandler,
   removeCartItemHandler,
+  clearCartHandler,
 } from './cart.controller';
 
 const router = Router();
@@ -25,5 +26,6 @@ router.patch(
   asyncHandler(updateCartItemHandler)
 );
 router.delete('/items/:itemId', validate({ params: cartItemParamSchema }), asyncHandler(removeCartItemHandler));
+router.delete('/', asyncHandler(clearCartHandler));
 
 export default router;

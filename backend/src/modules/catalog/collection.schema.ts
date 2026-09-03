@@ -18,6 +18,19 @@ export const collectionIdParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+export const collectionSlugParamSchema = z.object({
+  slug: z
+    .string()
+    .min(1)
+    .max(80)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be kebab-case'),
+});
+
+export const collectionImageParamSchema = z.object({
+  id: z.string().uuid(),
+  imageId: z.string().uuid(),
+});
+
 export const createCollectionSchema = z.object({
   nameEn: z.string().min(1),
   nameAr: z.string().min(1),

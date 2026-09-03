@@ -8,6 +8,11 @@ export const categoryIdParamSchema = z.object({
   id: z.string().uuid(),
 });
 
+export const categoryImageParamSchema = z.object({
+  id: z.string().uuid(),
+  imageId: z.string().uuid(),
+});
+
 export const createCategorySchema = z.object({
   collectionId: z.string().uuid(),
   nameEn: z.string().min(1),

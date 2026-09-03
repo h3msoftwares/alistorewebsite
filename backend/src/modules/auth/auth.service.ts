@@ -11,6 +11,10 @@ interface TokenPair {
   refreshToken: string;
 }
 
+// Account lockout (see Alistore_Schema_Changes_Discussion.md §1.2 / Sprint T18).
+const LOCK_THRESHOLD = 5;
+const LOCK_MINUTES = 15;
+
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
@@ -70,19 +74,45 @@ export async function register(input: { name: string; email?: string; phone?: st
   return { accessToken, refreshToken, user };
 }
 
-export async function login(identifier: string, password: string): Promise<TokenPair> {
+export async function login(
+  identifier: string,
+  password: string
+): Promise<TokenPair & { userId: string }> {
   const user = await prisma.user.findFirst({
     where: { OR: [{ email: identifier }, { phone: identifier }], deletedAt: null },
   });
   if (!user || !user.isActive || !user.passwordHash) {
     throw new AppError('UNAUTHORIZED', 'Invalid credentials');
   }
+
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    throw new AppError('FORBIDDEN', 'Account temporarily locked due to failed login attempts');
+  }
+
   const valid = await argon2.verify(user.passwordHash, password);
-  if (!valid) throw new AppError('UNAUTHORIZED', 'Invalid credentials');
+  if (!valid) {
+    const attempts = user.failedLoginAttempts + 1;
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: attempts,
+        lockedUntil:
+          attempts >= LOCK_THRESHOLD ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null,
+      },
+    });
+    throw new AppError('UNAUTHORIZED', 'Invalid credentials');
+  }
+
+  if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLoginAttempts: 0, lockedUntil: null },
+    });
+  }
 
   const accessToken = signAccessToken({ id: user.id, role: user.role });
   const { token: refreshToken } = await issueRefreshToken(user.id);
-  return { accessToken, refreshToken };
+  return { accessToken, refreshToken, userId: user.id };
 }
 
 export async function refresh(refreshToken: string): Promise<TokenPair> {

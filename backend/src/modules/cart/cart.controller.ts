@@ -44,3 +44,9 @@ export async function removeCartItemHandler(req: Request, res: Response) {
   await cartService.removeItem(owner, paramString(req.params.itemId));
   res.status(204).send();
 }
+
+export async function clearCartHandler(req: Request, res: Response) {
+  const owner = resolveOwner(req, res);
+  await cartService.clearCart(owner);
+  res.status(204).send();
+}

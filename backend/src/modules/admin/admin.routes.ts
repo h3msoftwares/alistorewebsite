@@ -3,7 +3,13 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
 import { requireAuth } from '../../middleware/auth.middleware';
 import { requireRole } from '../../middleware/rbac.middleware';
-import { orderIdParamSchema, updateOrderStatusSchema, markCollectedSchema } from '../orders/order.schema';
+import {
+  orderIdParamSchema,
+  updateOrderStatusSchema,
+  markCollectedSchema,
+  adminListOrdersQuerySchema,
+} from '../orders/order.schema';
+import { updateStockSchema, adminVariantParamSchema } from '../catalog/product.schema';
 import {
   listAllOrdersHandler,
   updateOrderStatusHandler,
@@ -21,7 +27,11 @@ router.use(requireAuth, requireRole('STAFF', 'ADMIN'));
 
 router.get('/dashboard', asyncHandler(salesDashboardHandler));
 
-router.get('/orders', asyncHandler(listAllOrdersHandler));
+router.get(
+  '/orders',
+  validate({ query: adminListOrdersQuerySchema }),
+  asyncHandler(listAllOrdersHandler)
+);
 router.patch(
   '/orders/:id/status',
   validate({ params: orderIdParamSchema, body: updateOrderStatusSchema }),
@@ -33,6 +43,10 @@ router.patch(
   asyncHandler(markCodCollectedHandler)
 );
 
-router.patch('/variants/:variantId/stock', asyncHandler(updateStockHandler));
+router.patch(
+  '/variants/:variantId/stock',
+  validate({ params: adminVariantParamSchema, body: updateStockSchema }),
+  asyncHandler(updateStockHandler)
+);
 
 export default router;

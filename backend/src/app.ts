@@ -12,6 +12,8 @@ import productRoutes from './modules/catalog/product.routes';
 import cartRoutes from './modules/cart/cart.routes';
 import orderRoutes from './modules/orders/order.routes';
 import adminRoutes from './modules/admin/admin.routes';
+import addressRoutes from './modules/account/address.routes';
+import userRoutes from './modules/account/user.routes';
 
 export function buildApp() {
   const app = express();
@@ -21,7 +23,10 @@ export function buildApp() {
   app.use(cookieParser());
 
   // App-wide baseline limiter; auth routes layer a stricter bucket on top.
-  app.use(rateLimit({ windowMs: 60 * 1000, max: 300 }));
+  // Disabled under test so suites can fire many requests without tripping it.
+  if (env.NODE_ENV !== 'test') {
+    app.use(rateLimit({ windowMs: 60 * 1000, max: 300 }));
+  }
 
   app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
@@ -33,6 +38,8 @@ export function buildApp() {
   app.use('/api/products', productRoutes);
   app.use('/api/cart', cartRoutes);
   app.use('/api/orders', orderRoutes);
+  app.use('/api/addresses', addressRoutes);
+  app.use('/api/users', userRoutes);
   app.use('/api/admin', adminRoutes);
 
   // 404 fallback

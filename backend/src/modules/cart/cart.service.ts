@@ -58,6 +58,11 @@ export async function removeItem(owner: CartOwner, itemId: string) {
   await prisma.cartItem.delete({ where: { id: itemId } });
 }
 
+export async function clearCart(owner: CartOwner) {
+  const cart = await getOrCreateCart(owner);
+  await prisma.cartItem.deleteMany({ where: { cartID: cart.id } });
+}
+
 /** Called right after login/register so a guest's cart isn't lost. With the
  *  Cart model this is a single-row re-point in the common case (user has no
  *  cart yet), or an item-by-item merge into the existing user cart. */
