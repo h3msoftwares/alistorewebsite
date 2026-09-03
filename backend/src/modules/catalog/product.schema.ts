@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const listProductsQuerySchema = z.object({
-  department: z.enum(['WOMEN', 'MEN', 'KIDS']).optional(),
+  collectionId: z.string().uuid().optional(),
   categoryId: z.string().uuid().optional(),
   search: z.string().optional(),
   size: z.string().optional(),
@@ -24,7 +24,7 @@ export const createProductSchema = z.object({
   descriptionEn: z.string().optional(),
   descriptionAr: z.string().optional(),
   categoryId: z.string().uuid(),
-  department: z.enum(['WOMEN', 'MEN', 'KIDS']),
+  collectionId: z.string().uuid(),
   price: z.number().positive(),
   compareAtPrice: z.number().positive().optional(),
   variants: z

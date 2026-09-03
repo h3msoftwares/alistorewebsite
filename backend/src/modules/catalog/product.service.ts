@@ -12,7 +12,7 @@ export async function listProducts(query: ListProductsQuery) {
   const where: Prisma.ProductWhereInput = {
     isActive: true,
     deletedAt: null,
-    ...(query.department ? { department: query.department } : {}),
+    ...(query.collectionId ? { collectionID: query.collectionId } : {}),
     ...(query.categoryId ? { categoryID: query.categoryId } : {}),
     ...(query.search
       ? {
@@ -51,7 +51,12 @@ export async function listProducts(query: ListProductsQuery) {
       orderBy,
       skip: (query.page - 1) * query.pageSize,
       take: query.pageSize,
-      include: { images: { orderBy: { sortOrder: 'asc' } }, variants: true, category: true },
+      include: {
+        images: { orderBy: { sortOrder: 'asc' } },
+        variants: true,
+        category: true,
+        collection: { select: { id: true, nameEn: true, nameAr: true, slug: true } },
+      },
     }),
     prisma.product.count({ where }),
   ]);
@@ -62,7 +67,12 @@ export async function listProducts(query: ListProductsQuery) {
 export async function getProductById(id: string) {
   const product = await prisma.product.findFirst({
     where: { id, isActive: true, deletedAt: null },
-    include: { images: { orderBy: { sortOrder: 'asc' } }, variants: true, category: true },
+    include: {
+      images: { orderBy: { sortOrder: 'asc' } },
+      variants: true,
+      category: true,
+      collection: { select: { id: true, nameEn: true, nameAr: true, slug: true } },
+    },
   });
   if (!product) throw new AppError('NOT_FOUND', 'Product not found');
   return product;
@@ -79,7 +89,7 @@ export async function createProduct(input: CreateProductInput) {
       descriptionEn: input.descriptionEn,
       descriptionAr: input.descriptionAr,
       categoryID: input.categoryId,
-      department: input.department,
+      collectionID: input.collectionId,
       price: input.price,
       compareAtPrice: input.compareAtPrice,
       variants: { create: input.variants },
@@ -100,7 +110,7 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
       ...(input.descriptionEn !== undefined ? { descriptionEn: input.descriptionEn } : {}),
       ...(input.descriptionAr !== undefined ? { descriptionAr: input.descriptionAr } : {}),
       ...(input.categoryId !== undefined ? { categoryID: input.categoryId } : {}),
-      ...(input.department !== undefined ? { department: input.department } : {}),
+      ...(input.collectionId !== undefined ? { collectionID: input.collectionId } : {}),
       ...(input.price !== undefined ? { price: input.price } : {}),
       ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice } : {}),
     },
@@ -114,8 +124,24 @@ export async function deleteProduct(id: string) {
   await prisma.product.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
 }
 
-export async function updateStock(variantId: string, stockQuantity: number) {
+export async function updateStock(variantId: string, stockQuantity: number, actorId?: string) {
   const variant = await prisma.productVariant.findUnique({ where: { id: variantId } });
   if (!variant) throw new AppError('NOT_FOUND', 'Variant not found');
-  return prisma.productVariant.update({ where: { id: variantId }, data: { stockQuantity } });
+
+  const delta = stockQuantity - variant.stockQuantity;
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.productVariant.update({ where: { id: variantId }, data: { stockQuantity } });
+    if (delta !== 0) {
+      await tx.stockMovement.create({
+        data: {
+          variantID: variantId,
+          quantity: delta,
+          type: 'ADJUSTMENT',
+          actorID: actorId,
+          reason: 'Manual stock update',
+        },
+      });
+    }
+    return updated;
+  });
 }

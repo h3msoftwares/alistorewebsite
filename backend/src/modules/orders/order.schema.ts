@@ -1,12 +1,17 @@
 import { z } from 'zod';
 
 export const checkoutSchema = z.object({
-  // Guest checkout requires these; logged-in users may pass addressId instead.
+  // Optional reference to a saved Address; the delivery-* fields below are the
+  // snapshot actually stored on the order (captured now so a later edit of the
+  // saved address never rewrites order history).
   addressId: z.string().uuid().optional(),
-  guestName: z.string().min(1).optional(),
-  guestPhone: z.string().min(6).optional(),
-  guestEmail: z.string().email().optional(),
-  deliveryText: z.string().min(5), // free-text delivery address/notes — owner delivers, no zone system
+  guestEmail: z.string().email().optional(), // contact email for a guest order
+  deliveryName: z.string().min(1),
+  deliveryPhone: z.string().min(6),
+  deliveryAddress: z.string().min(5),
+  deliveryCity: z.string().min(1),
+  deliveryArea: z.string().optional(),
+  deliveryNotes: z.string().optional(),
   notes: z.string().optional(),
 });
 

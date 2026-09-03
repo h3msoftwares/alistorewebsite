@@ -1,8 +1,10 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
-// UI-only filter state for department listing pages — no actual
+// UI-only filter state for collection listing pages — no actual
 // filtering/query-wiring against the product list yet (that's Week 2,
-// T13). This just gives the filter controls somewhere to store selections.
+// T13, which maps these onto GET /api/products query params:
+// size, color, minPrice, maxPrice, sort). This just gives the filter
+// controls somewhere to store selections.
 export type SortOption = 'newest' | 'price-asc' | 'price-desc' | 'relevance';
 
 export interface UiFiltersState {

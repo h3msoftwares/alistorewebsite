@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { PriceTag } from './price-tag';
+import { Badge } from './badge';
 
 export interface ProductCardImage {
   url: string;
@@ -16,38 +17,52 @@ export interface ProductCardData {
   price: number | string;
   compareAtPrice?: number | string | null;
   images: ProductCardImage[];
+  /** Optional inline size availability, e.g. "S · M · L" (Saxon shows this on the card). */
+  sizes?: string[];
 }
 
 export interface ProductCardProps {
   product: ProductCardData;
   locale: 'en' | 'ar';
-  /** Lowercase, matching the frontend's data-department convention (see
-   *  globals.css) — NOT the backend's uppercase Department enum
-   *  (WOMEN/MEN/KIDS). Whoever wires real API data in Week 2 needs to
-   *  .toLowerCase() it first. */
-  department?: 'women' | 'men' | 'kids';
+  /** Storefront collection slug (e.g. "women"). Only used to key the compound
+   *  visual accent via `data-collection` in globals.css. */
+  collection?: string;
 }
 
-/** Product tile used by department listing pages (Week 2) — built now so
- *  those pages can just import and consume it once they exist. Renders on
- *  top of the existing .card class from globals.css. */
-export function ProductCard({ product, locale, department }: ProductCardProps) {
-  const name = locale === 'ar' ? product.nameAr : product.nameEn;
-  const image = product.images[0];
-  const alt = (locale === 'ar' ? image?.altAr : image?.altEn) ?? name;
-  const onSale = product.compareAtPrice != null && Number(product.compareAtPrice) > Number(product.price);
+/** Product tile for collection listing pages. Renders on the shared .card /
+ *  .product-card classes, with a two-image hover swap when a second image
+ *  exists and a "Save $X" badge on sale items. */
+export function ProductCard({ product, locale, collection }: ProductCardProps) {
+  const isAr = locale === 'ar';
+  const name = isAr ? product.nameAr : product.nameEn;
+  const [image, hoverImage] = product.images;
+  const alt = (isAr ? image?.altAr : image?.altEn) ?? name;
+
+  const price = Number(product.price);
+  const compare = product.compareAtPrice != null ? Number(product.compareAtPrice) : null;
+  const onSale = compare != null && compare > price;
+
+  const saveFmt = new Intl.NumberFormat(isAr ? 'ar-EG' : 'en-US', { style: 'currency', currency: 'USD' });
 
   return (
-    <Link href={`/${locale}/product/${product.id}`} className="card product-card" data-department={department}>
+    <Link href={`/${locale}/product/${product.id}`} className="card product-card" data-collection={collection}>
       <div className="product-card__media">
         {image && <Image src={image.url} alt={alt} fill sizes="(max-width: 640px) 50vw, 25vw" />}
+        {hoverImage && <Image src={hoverImage.url} alt="" fill sizes="(max-width: 640px) 50vw, 25vw" />}
         {onSale && (
-          <span className="badge badge--sale product-card__badge">{locale === 'ar' ? 'تخفيض' : 'Sale'}</span>
+          <Badge variant="save" className="product-card__badge">
+            {isAr ? `توفير ${saveFmt.format(compare! - price)}` : `Save ${saveFmt.format(compare! - price)}`}
+          </Badge>
         )}
       </div>
       <div className="card__body">
         <p className="product-card__name">{name}</p>
         <PriceTag price={product.price} compareAtPrice={product.compareAtPrice} locale={locale} showBadge={false} />
+        {product.sizes && product.sizes.length > 0 && (
+          <p className="product-card__sizes">
+            {(isAr ? 'المقاسات: ' : 'Sizes: ') + product.sizes.join(' · ')}
+          </p>
+        )}
       </div>
     </Link>
   );

@@ -1,4 +1,4 @@
-import { PrismaClient, Department } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import argon2 from 'argon2';
 
 const prisma = new PrismaClient();
@@ -19,24 +19,42 @@ async function main() {
     },
   });
 
-  // ---- Categories (bilingual, one department each) ----
-  const categoryDefs = [
-    { department: Department.WOMEN, nameEn: 'Lingerie', nameAr: 'ملابس داخلية نسائية', slug: 'women-lingerie' },
-    { department: Department.WOMEN, nameEn: 'Nightwear', nameAr: 'ملابس النوم النسائية', slug: 'women-nightwear' },
-    { department: Department.MEN, nameEn: "Men's Shirts", nameAr: 'قمصان رجالي', slug: 'men-shirts' },
-    { department: Department.MEN, nameEn: "Men's Underwear", nameAr: 'ملابس داخلية رجالية', slug: 'men-underwear' },
-    { department: Department.KIDS, nameEn: "Kids' Pajamas", nameAr: 'بيجامات أطفال', slug: 'kids-pajamas' },
-    { department: Department.KIDS, nameEn: "Kids' Everyday", nameAr: 'ملابس أطفال يومية', slug: 'kids-everyday' },
+  // ---- Collections (replace the old Department enum; owner-editable) ----
+  const collectionDefs = [
+    { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1 },
+    { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2 },
+    { slug: 'kids', nameEn: 'Kids', nameAr: 'أطفال', sortOrder: 3 },
   ];
 
-  const categories = new Map<string, { id: string; department: Department }>();
-  for (const c of categoryDefs) {
-    const cat = await prisma.category.upsert({
+  const collections = new Map<string, { id: string }>();
+  for (const c of collectionDefs) {
+    const col = await prisma.collection.upsert({
       where: { slug: c.slug },
-      update: {},
+      update: { nameEn: c.nameEn, nameAr: c.nameAr, sortOrder: c.sortOrder },
       create: c,
     });
-    categories.set(c.slug, { id: cat.id, department: cat.department });
+    collections.set(c.slug, { id: col.id });
+  }
+
+  // ---- Categories (bilingual, each linked to one collection) ----
+  const categoryDefs = [
+    { collectionSlug: 'women', nameEn: 'Lingerie', nameAr: 'ملابس داخلية نسائية', slug: 'women-lingerie' },
+    { collectionSlug: 'women', nameEn: 'Nightwear', nameAr: 'ملابس النوم النسائية', slug: 'women-nightwear' },
+    { collectionSlug: 'men', nameEn: "Men's Shirts", nameAr: 'قمصان رجالي', slug: 'men-shirts' },
+    { collectionSlug: 'men', nameEn: "Men's Underwear", nameAr: 'ملابس داخلية رجالية', slug: 'men-underwear' },
+    { collectionSlug: 'kids', nameEn: "Kids' Pajamas", nameAr: 'بيجامات أطفال', slug: 'kids-pajamas' },
+    { collectionSlug: 'kids', nameEn: "Kids' Everyday", nameAr: 'ملابس أطفال يومية', slug: 'kids-everyday' },
+  ];
+
+  const categories = new Map<string, { id: string; collectionID: string }>();
+  for (const c of categoryDefs) {
+    const collectionID = collections.get(c.collectionSlug)!.id;
+    const cat = await prisma.category.upsert({
+      where: { slug: c.slug },
+      update: { collectionID },
+      create: { nameEn: c.nameEn, nameAr: c.nameAr, slug: c.slug, collectionID },
+    });
+    categories.set(c.slug, { id: cat.id, collectionID });
   }
 
   // ---- Products + variants (size/color only) ----
@@ -44,7 +62,6 @@ async function main() {
     {
       sku: 'WOM-LNG-001',
       categorySlug: 'women-lingerie',
-      department: Department.WOMEN,
       nameEn: 'Lace Trim Bralette Set',
       nameAr: 'طقم بروليت بحواف دانتيل',
       descriptionEn: 'Soft lace-trim bralette and matching bottom, everyday comfort fit.',
@@ -62,7 +79,6 @@ async function main() {
     {
       sku: 'WOM-NGT-001',
       categorySlug: 'women-nightwear',
-      department: Department.WOMEN,
       nameEn: 'Satin Nightgown',
       nameAr: 'قميص نوم ساتان',
       descriptionEn: 'Lightweight satin nightgown with adjustable straps.',
@@ -78,7 +94,6 @@ async function main() {
     {
       sku: 'MEN-SHT-001',
       categorySlug: 'men-shirts',
-      department: Department.MEN,
       nameEn: 'Classic Cotton Shirt',
       nameAr: 'قميص قطني كلاسيكي',
       descriptionEn: 'Breathable 100% cotton shirt, regular fit.',
@@ -96,7 +111,6 @@ async function main() {
     {
       sku: 'MEN-UND-001',
       categorySlug: 'men-underwear',
-      department: Department.MEN,
       nameEn: 'Cotton Boxer 3-Pack',
       nameAr: 'بوكسر قطني - عبوة ٣ قطع',
       descriptionEn: 'Everyday cotton boxers, pack of 3.',
@@ -112,7 +126,6 @@ async function main() {
     {
       sku: 'KID-PJM-001',
       categorySlug: 'kids-pajamas',
-      department: Department.KIDS,
       nameEn: 'Dino Print Pajama Set',
       nameAr: 'طقم بيجاما بطبعة ديناصور',
       descriptionEn: 'Soft cotton pajama set with dinosaur print, top + bottom.',
@@ -129,7 +142,6 @@ async function main() {
     {
       sku: 'KID-EVR-001',
       categorySlug: 'kids-everyday',
-      department: Department.KIDS,
       nameEn: 'Everyday Cotton T-Shirt',
       nameAr: 'تيشيرت قطني يومي',
       descriptionEn: 'Comfortable everyday cotton t-shirt for kids.',
@@ -148,7 +160,7 @@ async function main() {
     const category = categories.get(p.categorySlug)!;
     const product = await prisma.product.upsert({
       where: { sku: p.sku },
-      update: {},
+      update: { categoryID: category.id, collectionID: category.collectionID },
       create: {
         sku: p.sku,
         nameEn: p.nameEn,
@@ -156,7 +168,7 @@ async function main() {
         descriptionEn: p.descriptionEn,
         descriptionAr: p.descriptionAr,
         categoryID: category.id,
-        department: p.department,
+        collectionID: category.collectionID,
         price: p.price,
         compareAtPrice: p.compareAtPrice ?? undefined,
       },

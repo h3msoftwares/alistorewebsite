@@ -45,12 +45,17 @@ export default async function LocaleLayout({
   const { locale } = await params;
   const dir = locale === 'ar' ? 'rtl' : 'ltr';
 
+  const skipLabel = locale === 'ar' ? 'تخطَّ إلى المحتوى' : 'Skip to content';
+
   return (
     <html lang={locale} dir={dir} className={`${inter.variable} ${playfair.variable} ${notoNaskhArabic.variable}`}>
       <body>
         <StoreProvider>
+          <a href="#main" className="skip-link">
+            {skipLabel}
+          </a>
           <SiteHeader locale={locale} />
-          {children}
+          <main id="main">{children}</main>
           <SiteFooter locale={locale} />
         </StoreProvider>
       </body>

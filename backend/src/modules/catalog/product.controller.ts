@@ -33,6 +33,10 @@ export async function deleteProductHandler(req: Request, res: Response) {
 }
 
 export async function updateStockHandler(req: Request, res: Response) {
-  const variant = await productService.updateStock(paramString(req.params.variantId), req.body.stockQuantity);
+  const variant = await productService.updateStock(
+    paramString(req.params.variantId),
+    req.body.stockQuantity,
+    req.user?.id
+  );
   res.json({ variant });
 }

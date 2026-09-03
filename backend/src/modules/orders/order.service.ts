@@ -10,32 +10,44 @@ interface CheckoutOwner {
 
 interface CheckoutInput {
   addressId?: string;
-  guestName?: string;
-  guestPhone?: string;
   guestEmail?: string;
-  deliveryText: string;
+  deliveryName: string;
+  deliveryPhone: string;
+  deliveryAddress: string;
+  deliveryCity: string;
+  deliveryArea?: string;
+  deliveryNotes?: string;
   notes?: string;
 }
 
 /** Creates a COD order from whatever is currently in the cart, snapshotting
- *  product name/price onto each OrderItem, decrementing stock, and clearing
- *  the cart — all in one transaction so a half-finished checkout can't
- *  leave stock or the cart in a bad state. */
+ *  product/variant detail onto each OrderItem, decrementing stock (with a
+ *  StockMovement ledger row per line), and clearing the cart — all in one
+ *  transaction so a half-finished checkout can't leave stock or the cart in a
+ *  bad state. */
 export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
-  if (!owner.userID && (!input.guestName || !input.guestPhone)) {
-    throw new AppError('VALIDATION_ERROR', 'Guest checkout requires a name and phone number');
+  if (!owner.userID && !owner.sessionID) {
+    throw new AppError('VALIDATION_ERROR', 'No cart owner (user or guest session) provided');
   }
 
   return prisma.$transaction(async (tx) => {
-    const cartItems = await tx.cartItem.findMany({
-      where: owner.userID ? { userID: owner.userID } : { sessionID: owner.sessionID },
-      include: { variant: { include: { product: true } } },
+    const cart = await tx.cart.findUnique({
+      where: owner.userID ? { userID: owner.userID } : { sessionID: owner.sessionID! },
     });
+    const cartItems = cart
+      ? await tx.cartItem.findMany({
+          where: { cartID: cart.id },
+          include: {
+            variant: { include: { product: { include: { images: { orderBy: { sortOrder: 'asc' }, take: 1 } } } } },
+          },
+        })
+      : [];
     if (cartItems.length === 0) throw new AppError('VALIDATION_ERROR', 'Cart is empty');
 
     for (const item of cartItems) {
       if (item.variant.stockQuantity < item.quantity) {
-        throw new AppError('OUT_OF_STOCK', `Not enough stock for ${item.variant.product.nameEn} (${item.variant.size}/${item.variant.color})`);
+        const label = [item.variant.size, item.variant.color].filter(Boolean).join('/') || 'one size';
+        throw new AppError('OUT_OF_STOCK', `Not enough stock for ${item.variant.product.nameEn} (${label})`);
       }
     }
 
@@ -47,10 +59,13 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
         orderNumber: generateOrderNumber(),
         userID: owner.userID,
         addressID: input.addressId,
-        guestName: input.guestName,
-        guestPhone: input.guestPhone,
         guestEmail: input.guestEmail,
-        deliveryText: input.deliveryText,
+        deliveryName: input.deliveryName,
+        deliveryPhone: input.deliveryPhone,
+        deliveryAddress: input.deliveryAddress,
+        deliveryCity: input.deliveryCity,
+        deliveryArea: input.deliveryArea,
+        deliveryNotes: input.deliveryNotes,
         notes: input.notes,
         subtotal,
         total,
@@ -59,10 +74,14 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
           create: cartItems.map((i) => ({
             variantID: i.variantID,
             productName: i.variant.product.nameEn,
+            productSKU: i.variant.product.sku,
+            variantSKU: i.variant.sku,
+            productImageUrl: i.variant.product.images[0]?.url ?? null,
             size: i.variant.size,
             color: i.variant.color,
             quantity: i.quantity,
             unitPrice: i.variant.product.price,
+            lineTotal: Math.round(Number(i.variant.product.price) * i.quantity * 100) / 100,
           })),
         },
       },
@@ -74,11 +93,18 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
         where: { id: item.variantID },
         data: { stockQuantity: { decrement: item.quantity } },
       });
+      await tx.stockMovement.create({
+        data: {
+          variantID: item.variantID,
+          quantity: -item.quantity,
+          type: 'SALE',
+          orderID: order.id,
+          reason: `Order ${order.orderNumber}`,
+        },
+      });
     }
 
-    await tx.cartItem.deleteMany({
-      where: owner.userID ? { userID: owner.userID } : { sessionID: owner.sessionID },
-    });
+    if (cart) await tx.cartItem.deleteMany({ where: { cartID: cart.id } });
 
     return order;
   });

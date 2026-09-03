@@ -6,6 +6,7 @@ import { errorHandler } from './middleware/errorHandler.middleware';
 import { env } from './config/env';
 
 import authRoutes from './modules/auth/auth.routes';
+import collectionRoutes from './modules/catalog/collection.routes';
 import categoryRoutes from './modules/catalog/category.routes';
 import productRoutes from './modules/catalog/product.routes';
 import cartRoutes from './modules/cart/cart.routes';
@@ -27,6 +28,7 @@ export function buildApp() {
   // Vertical-slice module mounting, same convention as pos-backend:
   // one line per module.
   app.use('/api/auth', authRoutes);
+  app.use('/api/collections', collectionRoutes);
   app.use('/api/categories', categoryRoutes);
   app.use('/api/products', productRoutes);
   app.use('/api/cart', cartRoutes);

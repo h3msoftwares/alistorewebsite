@@ -1,4 +1,18 @@
+export { Icon, type IconProps } from './icon';
 export { Button, type ButtonProps } from './button';
 export { Input, type InputProps } from './input';
+export { Select, type SelectProps, Textarea, type TextareaProps } from './select';
+export { Choice, type ChoiceProps } from './choice';
+export { Field, type FieldProps, type FieldControlProps } from './field';
+export { SizeChip, type SizeChipProps } from './size-chip';
+export { Swatch, type SwatchProps } from './swatch';
+export { QuantityStepper, type QuantityStepperProps } from './quantity-stepper';
+export { Badge, type BadgeProps } from './badge';
+export { StatusPill, type StatusPillProps, type OrderStatus } from './status';
 export { PriceTag, type PriceTagProps } from './price-tag';
 export { ProductCard, type ProductCardProps, type ProductCardData, type ProductCardImage } from './product-card';
+export { DataTable, type DataTableProps } from './table';
+export { Skeleton, ProductGridSkeleton, type SkeletonProps } from './skeleton';
+export { EmptyState, type EmptyStateProps } from './empty-state';
+export { Alert, type AlertProps, type AlertTone } from './alert';
+export { Drawer, type DrawerProps } from './drawer';

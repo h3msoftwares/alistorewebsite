@@ -21,10 +21,8 @@ enum UserRole {
   ADMIN
 }
 
-enum Department {
-  WOMEN
-  MEN
-  KIDS
+enum OAuthProvider {
+  GOOGLE
 }
 
 enum OrderStatus {
@@ -38,7 +36,7 @@ enum OrderStatus {
 
 enum PaymentMethod {
   COD
-  CARD // reserved for future online payment; not usable yet
+  CARD // reserved for future online payment; application rejects it until a gateway is integrated
 }
 
 enum PaymentStatus {
@@ -47,53 +45,130 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum StockMovementType {
+  INITIAL
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  RETURN
+  RESTOCK
+}
+
 // ============ USERS / AUTH ============
 
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
-  email        String?   @unique
-  phone        String?   @unique
-  passwordHash String?
-  name         String
-  role         UserRole  @default(CUSTOMER)
-  isActive     Boolean   @default(true)
-  dateCreated  DateTime  @default(now())
-  deletedAt    DateTime?
+  id                  String    @id @default(uuid()) @db.Uuid
+  email               String?   @unique
+  emailVerified       DateTime? // set automatically on first Google OAuth login (Google pre-verifies)
+  phone               String?   @unique
+  passwordHash        String? // null for OAuth-only accounts
+  name                String
+  role                UserRole  @default(CUSTOMER)
+  isActive            Boolean   @default(true)
+  failedLoginAttempts Int       @default(0) // reset to 0 on any successful login
+  lockedUntil         DateTime? // set when failedLoginAttempts crosses the threshold; login refused until this passes
+  dateCreated         DateTime  @default(now())
+  deletedAt           DateTime?
 
-  addresses     Address[]
-  cartItems     CartItem[]
-  orders        Order[]
-  refreshTokens RefreshToken[]
+  addresses           Address[]
+  cart                Cart?
+  orders              Order[]
+  refreshTokens       RefreshToken[]
+  oauthAccounts       OAuthAccount[]
+  passwordResetTokens PasswordResetToken[]
+  auditLogs           AuditLog[] // rows where this user was the actor
+  stockMovements      StockMovement[] // manual stock adjustments made by this user
 
   @@index([role])
   @@map("user")
 }
 
 model RefreshToken {
+  id                String    @id @default(uuid()) @db.Uuid
+  userID            String    @db.Uuid
+  familyID          String    @db.Uuid // shared across a rotation chain; revoke the whole family on replay
+  tokenHash         String    @unique
+  replacedByTokenID String?   @unique @db.Uuid // the token issued when this one was rotated
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+
+  user       User          @relation(fields: [userID], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken? @relation("TokenRotation", fields: [replacedByTokenID], references: [id], onDelete: SetNull)
+  replaces   RefreshToken? @relation("TokenRotation")
+
+  @@index([userID])
+  @@index([familyID])
+  @@map("refreshtoken")
+}
+
+// Single-use, short-expiry token for the forgotten-password flow. Same shape
+// as RefreshToken: only the hash is stored.
+model PasswordResetToken {
   id        String    @id @default(uuid()) @db.Uuid
   userID    String    @db.Uuid
   tokenHash String    @unique
   expiresAt DateTime
-  revokedAt DateTime?
+  usedAt    DateTime?
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userID], references: [id], onDelete: Cascade)
 
   @@index([userID])
-  @@map("refreshtoken")
+  @@map("passwordresettoken")
+}
+
+// External identity (Google today; enum leaves room for more). One row per
+// provider account linked to a User.
+model OAuthAccount {
+  id                String        @id @default(uuid()) @db.Uuid
+  userID            String        @db.Uuid
+  provider          OAuthProvider
+  providerAccountID String // the "sub" claim from the provider
+  accessToken       String?
+  refreshToken      String?
+  expiresAt         DateTime?
+  createdAt         DateTime      @default(now())
+  lastEdit          DateTime      @default(now()) @updatedAt
+
+  user User @relation(fields: [userID], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountID])
+  @@index([userID])
+  @@map("oauthaccount")
+}
+
+// Generic append-only audit trail. One table for every logged event (admin
+// login attempts, order status changes, stock edits, ...) instead of a table
+// per event type. `metadata` is a loose JSON blob for event-specific detail.
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  entityType String // e.g. "order", "user", "productVariant"
+  entityID   String? // id of the affected row, when there is one
+  action     String // e.g. "login.failed", "order.status_changed", "stock.adjusted"
+  actorID    String?  @db.Uuid // the acting user, when known (null for anonymous/system)
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorID], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityID])
+  @@index([actorID])
+  @@index([createdAt])
+  @@map("auditlog")
 }
 
 model Address {
-  id           String   @id @default(uuid()) @db.Uuid
-  userID       String   @db.Uuid
-  fullName     String
-  phone        String
-  addressLine  String
-  city         String
-  area         String?
-  notes        String?
-  isDefault    Boolean  @default(false)
-  dateCreated  DateTime @default(now())
+  id          String   @id @default(uuid()) @db.Uuid
+  userID      String   @db.Uuid
+  fullName    String
+  phone       String
+  addressLine String
+  city        String
+  area        String?
+  notes       String?
+  isDefault   Boolean  @default(false)
+  dateCreated DateTime @default(now())
 
   user   User    @relation(fields: [userID], references: [id], onDelete: Cascade)
   orders Order[]
@@ -104,57 +179,116 @@ model Address {
 
 // ============ CATALOG ============
 
+// Collections replace the old fixed Department enum. The owner can create any
+// number of collections (e.g. Women, Men, Kids, Summer Sale) from the admin UI
+// and attach categories to them. Hierarchy: Collection -> Category -> Product.
+model Collection {
+  id            String   @id @default(uuid()) @db.Uuid
+  nameEn        String
+  nameAr        String
+  slug          String   @unique
+  descriptionEn String?
+  descriptionAr String?
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  dateCreated   DateTime @default(now())
+  lastEdit      DateTime @default(now()) @updatedAt
+
+  images     CollectionImage[]
+  categories Category[]
+  products   Product[]
+
+  @@index([isActive])
+  @@map("collection")
+}
+
+// Same shape/behaviour as ProductImage — a gallery table (url + bilingual alt
+// + sortOrder), cascade-deleted with its parent. The "base" image is the row
+// with the lowest sortOrder.
+model CollectionImage {
+  id           String  @id @default(uuid()) @db.Uuid
+  collectionID String  @db.Uuid
+  url          String
+  altEn        String?
+  altAr        String?
+  sortOrder    Int     @default(0)
+
+  collection Collection @relation(fields: [collectionID], references: [id], onDelete: Cascade)
+
+  @@index([collectionID])
+  @@map("collectionimage")
+}
+
 model Category {
-  id               String     @id @default(uuid()) @db.Uuid
-  department       Department
+  id               String  @id @default(uuid()) @db.Uuid
+  collectionID     String  @db.Uuid
   nameEn           String
   nameAr           String
-  slug             String     @unique
-  parentCategoryID String?    @db.Uuid
-  isActive         Boolean    @default(true)
-  sortOrder        Int        @default(0)
+  slug             String  @unique
+  parentCategoryID String? @db.Uuid
+  isActive         Boolean @default(true)
+  sortOrder        Int     @default(0)
 
-  parent   Category?  @relation("CategoryToSubcategory", fields: [parentCategoryID], references: [id], onDelete: SetNull)
-  children Category[] @relation("CategoryToSubcategory")
-  products Product[]
+  collection Collection      @relation(fields: [collectionID], references: [id], onDelete: Cascade)
+  parent     Category?       @relation("CategoryToSubcategory", fields: [parentCategoryID], references: [id], onDelete: SetNull)
+  children   Category[]      @relation("CategoryToSubcategory")
+  images     CategoryImage[]
+  products   Product[]
 
-  @@index([department])
+  @@index([collectionID])
   @@index([parentCategoryID])
   @@map("category")
 }
 
-model Product {
-  id               String    @id @default(uuid()) @db.Uuid
-  sku              String    @unique
-  nameEn           String
-  nameAr           String
-  descriptionEn    String?
-  descriptionAr    String?
-  categoryID       String    @db.Uuid
-  department       Department
-  price            Decimal   @db.Decimal(12, 2)
-  compareAtPrice   Decimal?  @db.Decimal(12, 2)
-  isActive         Boolean   @default(true)
-  dateCreated      DateTime  @default(now())
-  lastEdit         DateTime  @default(now()) @updatedAt
-  deletedAt        DateTime?
+// Same shape/behaviour as ProductImage. The "base" image is the row with the
+// lowest sortOrder.
+model CategoryImage {
+  id         String  @id @default(uuid()) @db.Uuid
+  categoryID String  @db.Uuid
+  url        String
+  altEn      String?
+  altAr      String?
+  sortOrder  Int     @default(0)
 
-  category Category         @relation(fields: [categoryID], references: [id])
-  images   ProductImage[]
-  variants ProductVariant[]
+  category Category @relation(fields: [categoryID], references: [id], onDelete: Cascade)
 
   @@index([categoryID])
-  @@index([department])
+  @@map("categoryimage")
+}
+
+model Product {
+  id             String    @id @default(uuid()) @db.Uuid
+  sku            String    @unique
+  nameEn         String
+  nameAr         String
+  descriptionEn  String?
+  descriptionAr  String?
+  categoryID     String    @db.Uuid
+  collectionID   String    @db.Uuid // denormalized from Category so a whole collection filters without a join; kept in sync in app code
+  price          Decimal   @db.Decimal(12, 2)
+  compareAtPrice Decimal?  @db.Decimal(12, 2)
+  isActive       Boolean   @default(true)
+  dateCreated    DateTime  @default(now())
+  lastEdit       DateTime  @default(now()) @updatedAt
+  deletedAt      DateTime?
+
+  category   Category         @relation(fields: [categoryID], references: [id])
+  collection Collection       @relation(fields: [collectionID], references: [id])
+  images     ProductImage[]
+  variants   ProductVariant[]
+
+  @@index([categoryID])
+  @@index([collectionID])
   @@map("product")
 }
 
 model ProductImage {
-  id        String @id @default(uuid()) @db.Uuid
-  productID String @db.Uuid
+  id        String  @id @default(uuid()) @db.Uuid
+  productID String  @db.Uuid
   url       String
   altEn     String?
   altAr     String?
-  sortOrder Int    @default(0)
+  sortOrder Int     @default(0)
 
   product Product @relation(fields: [productID], references: [id], onDelete: Cascade)
 
@@ -166,50 +300,97 @@ model ProductVariant {
   id            String  @id @default(uuid()) @db.Uuid
   productID     String  @db.Uuid
   sku           String  @unique
-  size          String
-  color         String
+  size          String? // nullable: not every product has a size (one-size accessories, etc.)
+  color         String? // nullable: not every product has a colour variation
   stockQuantity Int     @default(0)
 
-  product    Product     @relation(fields: [productID], references: [id], onDelete: Cascade)
-  cartItems  CartItem[]
-  orderItems OrderItem[]
+  product        Product         @relation(fields: [productID], references: [id], onDelete: Cascade)
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+  stockMovements StockMovement[]
 
-  @@unique([productID, size, color])
+  // NOTE: no more @@unique([productID, size, color]) — Postgres treats each NULL
+  // as distinct, so it would no longer catch duplicate (null,null) variants.
+  // Duplicate-variant prevention is now enforced in application code.
+  @@index([productID])
   @@map("productvariant")
+}
+
+// Append-only stock ledger: every change to ProductVariant.stockQuantity gets
+// a row here recording the signed delta and why. `stockQuantity` stays as the
+// materialized current value.
+model StockMovement {
+  id        String            @id @default(uuid()) @db.Uuid
+  variantID String            @db.Uuid
+  quantity  Int // signed delta: negative for a sale, positive for a restock
+  type      StockMovementType
+  reason    String?
+  orderID   String?           @db.Uuid // set when the movement was caused by an order
+  actorID   String?           @db.Uuid // the staff/admin user for a manual adjustment
+  createdAt DateTime          @default(now())
+
+  variant ProductVariant @relation(fields: [variantID], references: [id], onDelete: Cascade)
+  order   Order?         @relation(fields: [orderID], references: [id], onDelete: SetNull)
+  actor   User?          @relation(fields: [actorID], references: [id], onDelete: SetNull)
+
+  @@index([variantID])
+  @@index([orderID])
+  @@map("stockmovement")
 }
 
 // ============ CART ============
 
+// One Cart per user (userID unique) or per guest session (sessionID unique).
+// Guest->user merge on login re-points / merges a single Cart row instead of
+// rewriting every CartItem.
+model Cart {
+  id          String   @id @default(uuid()) @db.Uuid
+  userID      String?  @unique @db.Uuid
+  sessionID   String?  @unique
+  currency    String   @default("USD")
+  dateCreated DateTime @default(now())
+  lastEdit    DateTime @default(now()) @updatedAt
+
+  user  User?      @relation(fields: [userID], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@map("cart")
+}
+
 model CartItem {
   id          String   @id @default(uuid()) @db.Uuid
-  userID      String?  @db.Uuid
-  sessionID   String?
+  cartID      String   @db.Uuid
   variantID   String   @db.Uuid
   quantity    Int      @default(1)
   dateCreated DateTime @default(now())
 
-  user    User?          @relation(fields: [userID], references: [id], onDelete: Cascade)
+  cart    Cart           @relation(fields: [cartID], references: [id], onDelete: Cascade)
   variant ProductVariant @relation(fields: [variantID], references: [id], onDelete: Cascade)
 
-  @@unique([userID, variantID])
-  @@unique([sessionID, variantID])
-  @@index([userID])
-  @@index([sessionID])
+  @@unique([cartID, variantID])
+  @@index([cartID])
   @@map("cartitem")
 }
 
 // ============ ORDERS ============
 
 model Order {
-  id            String        @id @default(uuid()) @db.Uuid
-  orderNumber   String        @unique
-  userID        String?       @db.Uuid
-  addressID     String?       @db.Uuid
-  guestName     String?
-  guestPhone    String?
-  guestEmail    String?
-  deliveryText  String        // free-text address snapshot at order time (owner delivers, no zone system)
-  notes         String?
+  id          String  @id @default(uuid()) @db.Uuid
+  orderNumber String  @unique
+  userID      String? @db.Uuid
+  addressID   String? @db.Uuid // reference to a saved Address, when the customer used one
+  guestEmail  String? // contact email for a guest order (no saved account)
+
+  // Delivery snapshot — captured at order time so a later edit/delete of the
+  // saved Address never changes what this order shows was delivered where.
+  deliveryName    String
+  deliveryPhone   String
+  deliveryAddress String
+  deliveryCity    String
+  deliveryArea    String?
+  deliveryNotes   String?
+
+  notes         String? // general order notes from the customer
   subtotal      Decimal       @db.Decimal(12, 2)
   total         Decimal       @db.Decimal(12, 2)
   currency      String        @default("USD")
@@ -219,9 +400,10 @@ model Order {
   dateCreated   DateTime      @default(now())
   lastEdit      DateTime      @default(now()) @updatedAt
 
-  user    User?       @relation(fields: [userID], references: [id], onDelete: SetNull)
-  address Address?    @relation(fields: [addressID], references: [id], onDelete: SetNull)
-  items   OrderItem[]
+  user           User?           @relation(fields: [userID], references: [id], onDelete: SetNull)
+  address        Address?        @relation(fields: [addressID], references: [id], onDelete: SetNull)
+  items          OrderItem[]
+  stockMovements StockMovement[]
 
   @@index([userID])
   @@index([status])
@@ -230,14 +412,20 @@ model Order {
 }
 
 model OrderItem {
-  id          String  @id @default(uuid()) @db.Uuid
-  orderID     String  @db.Uuid
-  variantID   String  @db.Uuid
-  productName String  // snapshot, in case the product is edited/removed later
-  size        String
-  color       String
-  quantity    Int
-  unitPrice   Decimal @db.Decimal(12, 2)
+  id              String  @id @default(uuid()) @db.Uuid
+  orderID         String  @db.Uuid
+  variantID       String  @db.Uuid
+  // Full snapshot so a historical order stays displayable even if the
+  // product/variant is later edited or deleted.
+  productName     String
+  productSKU      String
+  variantSKU      String
+  productImageUrl String?
+  size            String?
+  color           String?
+  quantity        Int
+  unitPrice       Decimal @db.Decimal(12, 2)
+  lineTotal       Decimal @db.Decimal(12, 2) // unitPrice * quantity at order time
 
   order   Order          @relation(fields: [orderID], references: [id], onDelete: Cascade)
   variant ProductVariant @relation(fields: [variantID], references: [id])
