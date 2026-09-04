@@ -102,3 +102,218 @@ describe('Cart API', () => {
     expect(carts[0].userID).not.toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Gap-fill coverage (Module 3 test checklist). The cart-owned stock/soft-delete
+// guards below were added to cart.service.ts as part of this task. The one
+// remaining `NOTE:` test documents an oversell in orders/checkout
+// (order.service.ts) — that's the Orders module's fix, not the Cart task's.
+// ---------------------------------------------------------------------------
+
+describe('Cart API — stock-guard edge cases', () => {
+  it('rejects a single add above stock (baseline)', async () => {
+    const agent = request.agent(app);
+    const res = await agent.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 2 });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('OUT_OF_STOCK');
+  });
+
+  it('rejects two sequential adds that together exceed stock', async () => {
+    const agent = request.agent(app);
+    // stock for lowStockVariantId is 1
+    const first = await agent.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 1 });
+    expect(first.status).toBe(201);
+
+    // the guard weighs existing + incoming, so the second add is refused…
+    const second = await agent.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 1 });
+    expect(second.status).toBe(409);
+    expect(second.body.error.code).toBe('OUT_OF_STOCK');
+
+    // …and the line stays at the quantity that fit.
+    const get = await agent.get('/api/cart');
+    expect(get.body.items[0].quantity).toBe(1);
+  });
+
+  it('PATCH rejects a quantity above available stock', async () => {
+    const agent = request.agent(app);
+    const add = await agent.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 1 });
+    const itemId = add.body.item.id;
+
+    const upd = await agent.patch(`/api/cart/items/${itemId}`).send({ quantity: 99 });
+    expect(upd.status).toBe(409);
+    expect(upd.body.error.code).toBe('OUT_OF_STOCK');
+
+    // a within-stock PATCH still goes through
+    const ok = await agent.patch(`/api/cart/items/${itemId}`).send({ quantity: 1 });
+    expect(ok.status).toBe(200);
+    expect(ok.body.item.quantity).toBe(1);
+  });
+});
+
+describe('Cart API — guest session persistence', () => {
+  it('a multi-item guest cart persists across separate requests on the same session', async () => {
+    const agent = request.agent(app);
+    await agent.post('/api/cart/items').send({ variantId, quantity: 2 });
+    await agent.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 1 });
+
+    const get = await agent.get('/api/cart');
+    expect(get.status).toBe(200);
+    expect(get.body.items).toHaveLength(2);
+    // 2 * 15 + 1 * 15
+    expect(get.body.subtotal).toBe(45);
+
+    // one Cart row, owned by a session (no user)
+    const carts = await prisma.cart.findMany();
+    expect(carts).toHaveLength(1);
+    expect(carts[0].userID).toBeNull();
+    expect(carts[0].sessionID).not.toBeNull();
+  });
+
+  it("a second guest session cannot read the first session's cart", async () => {
+    const a = request.agent(app);
+    await a.post('/api/cart/items').send({ variantId, quantity: 2 });
+
+    const b = request.agent(app);
+    const get = await b.get('/api/cart');
+    expect(get.body.items).toHaveLength(0);
+  });
+});
+
+describe('Cart API — guest→user cart merge on login/register', () => {
+  const creds = { name: 'Merge User', email: 'merge@test.dev', password: 'Password123!' };
+
+  it('hands a whole guest cart to a brand-new user and clears the guest cookie', async () => {
+    const agent = request.agent(app);
+    await agent.post('/api/cart/items').send({ variantId, quantity: 2 });
+    await agent.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 1 });
+
+    const reg = await agent.post('/api/auth/register').send(creds);
+    expect(reg.status).toBe(201);
+    // guest cookie is cleared on merge
+    expect(reg.headers['set-cookie'].join(';')).toMatch(/cartSession=;|cartSession=;? *Expires/i);
+
+    const get = await request(app).get('/api/cart').set(bearer(reg.body.accessToken));
+    expect(get.body.items).toHaveLength(2);
+
+    const carts = await prisma.cart.findMany();
+    expect(carts).toHaveLength(1);
+    expect(carts[0].userID).not.toBeNull();
+    expect(carts[0].sessionID).toBeNull();
+  });
+
+  it('merges into an existing user cart, summing quantity for a variant in both carts', async () => {
+    const reg = await request(app).post('/api/auth/register').send(creds);
+    const token = reg.body.accessToken;
+    await request(app).post('/api/cart/items').set(bearer(token)).send({ variantId, quantity: 2 });
+
+    const guest = request.agent(app);
+    await guest.post('/api/cart/items').send({ variantId, quantity: 3 });
+    const login = await guest.post('/api/auth/login').send({ identifier: creds.email, password: creds.password });
+    expect(login.status).toBe(200);
+
+    const get = await request(app).get('/api/cart').set(bearer(token));
+    expect(get.body.items).toHaveLength(1);
+    expect(get.body.items[0].quantity).toBe(5);
+
+    expect(await prisma.cart.count()).toBe(1);
+  });
+
+  it('an empty guest cart is a no-op and is cleaned up', async () => {
+    const guest = request.agent(app);
+    // force an empty guest Cart row + cookie
+    await guest.get('/api/cart');
+    expect(await prisma.cart.count()).toBe(1);
+
+    const reg = await guest.post('/api/auth/register').send(creds);
+    expect(reg.status).toBe(201);
+    // empty guest cart removed, no user cart created yet
+    expect(await prisma.cart.count()).toBe(0);
+  });
+
+  it('a guest with no cart at all registers without error', async () => {
+    const guest = request.agent(app);
+    const reg = await guest.post('/api/auth/register').send(creds);
+    expect(reg.status).toBe(201);
+    expect(await prisma.cart.count()).toBe(0);
+  });
+});
+
+describe('Cart API — checkout stock integrity under concurrency', () => {
+  // NOTE: this documents an oversell bug that lives in orders/checkout
+  // (order.service.ts `checkout()` — no row lock / SERIALIZABLE isolation, so
+  // two transactions both read pre-decrement stock, both pass the guard, both
+  // decrement). It is NOT in the cart layer and is out of scope for the Cart
+  // task — flagged for the Orders module. The assertion pins CURRENT behaviour;
+  // flip it to `[201, 409]` / `orders 1` / `stock 0` once checkout is fixed.
+  it('two near-simultaneous checkouts on a 1-stock variant currently both succeed (oversell)', async () => {
+    const a = request.agent(app);
+    const b = request.agent(app);
+    await a.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 1 });
+    await b.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 1 });
+
+    const delivery = {
+      deliveryName: 'Jane Doe',
+      deliveryPhone: '0791234567',
+      deliveryAddress: '12 Rainbow Street',
+      deliveryCity: 'Amman',
+      guestEmail: 'j@test.dev',
+    };
+
+    const [ra, rb] = await Promise.all([
+      a.post('/api/orders/checkout').send(delivery),
+      b.post('/api/orders/checkout').send(delivery),
+    ]);
+
+    const statuses = [ra.status, rb.status].sort();
+    const orders = await prisma.order.count();
+    const variant = await prisma.productVariant.findUnique({ where: { id: lowStockVariantId } });
+
+    expect(statuses).toEqual([201, 201]);
+    expect(orders).toBe(2);
+    expect(variant!.stockQuantity).toBe(-1);
+  });
+});
+
+describe('Cart API — invalid / soft-deleted product', () => {
+  it('400s a non-uuid variant id', async () => {
+    const res = await request(app).post('/api/cart/items').send({ variantId: 'not-a-uuid', quantity: 1 });
+    expect(res.status).toBe(400);
+  });
+
+  it('404s a well-formed but unknown variant id', async () => {
+    const res = await request(app)
+      .post('/api/cart/items')
+      .send({ variantId: '00000000-0000-4000-8000-000000000000', quantity: 1 });
+    expect(res.status).toBe(404);
+  });
+
+  it('404s adding a variant whose product is soft-deleted', async () => {
+    const agent = request.agent(app);
+    const { productID } = (await prisma.productVariant.findUnique({ where: { id: variantId } }))!;
+    await prisma.product.update({
+      where: { id: productID },
+      data: { isActive: false, deletedAt: new Date() },
+    });
+
+    const res = await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+    expect(res.status).toBe(404);
+  });
+
+  it('a product soft-deleted AFTER being added still appears in the cart', async () => {
+    // getCart deliberately keeps showing an already-added line even if its
+    // product is later retired — the shopper sees what they picked; checkout is
+    // where an unavailable line is rejected.
+    const agent = request.agent(app);
+    const add = await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+    expect(add.status).toBe(201);
+
+    const { productID } = (await prisma.productVariant.findUnique({ where: { id: variantId } }))!;
+    await prisma.product.update({
+      where: { id: productID },
+      data: { isActive: false, deletedAt: new Date() },
+    });
+
+    const get = await agent.get('/api/cart');
+    expect(get.body.items).toHaveLength(1);
+  });
+});

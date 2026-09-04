@@ -1,8 +1,10 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { FavouritesView } from './favourites-view';
 
-// TODO: grid of hearted products. Read ids from the `favourites` slice, fetch
-// each product via useProduct(), reuse <ProductCard>. Empty state when none.
+// Grid of hearted products. Logged-in → GET /api/favourites (source of truth);
+// guests → the `favourites` Redux slice + localStorage, hydrated per-id via the
+// catalog endpoint. Branching lives in useFavourites(). Server shell mirrors
+// app/[locale]/cart.
 export default async function FavouritesPage({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = await params;
-  return <PagePlaceholder title={locale === 'ar' ? 'المفضّلة' : 'Favourites'} />;
+  const { locale } = (await params) as { locale: 'en' | 'ar' };
+  return <FavouritesView locale={locale} />;
 }
