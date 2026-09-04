@@ -30,14 +30,28 @@ export async function getCart(owner: CartOwner) {
 }
 
 export async function addItem(owner: CartOwner, variantId: string, quantity: number) {
-  const variant = await prisma.productVariant.findUnique({ where: { id: variantId } });
-  if (!variant) throw new AppError('NOT_FOUND', 'Product variant not found');
-  if (variant.stockQuantity < quantity) throw new AppError('OUT_OF_STOCK', 'Not enough stock for this variant');
+  const variant = await prisma.productVariant.findUnique({
+    where: { id: variantId },
+    include: { product: { select: { deletedAt: true } } },
+  });
+  // A soft-deleted product is off the catalog — treat its variants as gone,
+  // consistent with getProductById / the favourites endpoints.
+  if (!variant || variant.product.deletedAt) {
+    throw new AppError('NOT_FOUND', 'Product variant not found');
+  }
 
   const cart = await getOrCreateCart(owner);
   const existing = await prisma.cartItem.findFirst({ where: { cartID: cart.id, variantID: variantId } });
+
+  // Guard the resulting line quantity, not just the incoming delta — otherwise
+  // repeated adds can walk a line past available stock.
+  const nextQuantity = (existing?.quantity ?? 0) + quantity;
+  if (variant.stockQuantity < nextQuantity) {
+    throw new AppError('OUT_OF_STOCK', 'Not enough stock for this variant');
+  }
+
   if (existing) {
-    return prisma.cartItem.update({ where: { id: existing.id }, data: { quantity: existing.quantity + quantity } });
+    return prisma.cartItem.update({ where: { id: existing.id }, data: { quantity: nextQuantity } });
   }
   return prisma.cartItem.create({
     data: { cartID: cart.id, variantID: variantId, quantity },
@@ -48,6 +62,13 @@ export async function updateItemQuantity(owner: CartOwner, itemId: string, quant
   const cart = await getOrCreateCart(owner);
   const item = await prisma.cartItem.findFirst({ where: { id: itemId, cartID: cart.id } });
   if (!item) throw new AppError('NOT_FOUND', 'Cart item not found');
+
+  const variant = await prisma.productVariant.findUnique({ where: { id: item.variantID } });
+  if (!variant) throw new AppError('NOT_FOUND', 'Product variant not found');
+  if (variant.stockQuantity < quantity) {
+    throw new AppError('OUT_OF_STOCK', 'Not enough stock for this variant');
+  }
+
   return prisma.cartItem.update({ where: { id: itemId }, data: { quantity } });
 }
 

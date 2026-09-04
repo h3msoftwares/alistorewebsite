@@ -1,8 +1,10 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { CartView } from './cart-view';
 
-// TODO: cart contents (GET /api/cart), quantity edit, remove, subtotal,
-// proceed-to-checkout CTA. Works for both guests and logged-in users.
+// Cart contents (GET /api/cart via useCart) — quantity edit, remove, subtotal,
+// proceed-to-checkout. Works for both guests (cookie-scoped cart) and
+// logged-in users; the data layer in hooks/use-cart.ts handles that split, so
+// this page stays owner-agnostic. Server shell mirrors app/[locale]/dev/ui.
 export default async function CartPage({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = await params;
-  return <PagePlaceholder title={locale === 'ar' ? 'سلة التسوق' : 'Cart'} />;
+  const { locale } = (await params) as { locale: 'en' | 'ar' };
+  return <CartView locale={locale} />;
 }
