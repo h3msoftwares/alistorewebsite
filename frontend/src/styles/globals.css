@@ -34,32 +34,49 @@
 :root {
   color-scheme: light;
 
+  /* ---- Brand palette (raw) — semantic tokens below map onto these; never
+     reference these directly from a component, go through the semantic
+     layer instead so a future re-tune only touches this block. ---- */
+  --navy: #190066;
+  --navy-2: #1d0775;
+  --dark-ultramarine: #251b91;
+  --yellow: #fffa00;
+  --bright-gold: #ffd800; /* main brand colour — primary CTA / wordmark */
+
   /* ---- Neutrals / backgrounds / surfaces ---- */
-  --color-bg: #ffd800;                 /* page — brand yellow */
-  --color-bg-subtle: #faf9f7;          /* alternating sections, auth/legal pages */
-  --color-surface: #f6f4f1;            /* filter rails, footer, inset panels */
+  --color-bg: #fafbfe;                 /* page — cool near-white so navy/gold pop instead of the CTA drowning in its own colour */
+  --color-bg-subtle: #f4f5fb;          /* alternating sections, auth/legal pages */
+  --color-surface: #eef0f8;            /* filter rails, inset panels */
   --color-surface-raised: #ffffff;     /* cards, dropdowns, modals, drawers */
-  --color-surface-sunken: #efebe6;     /* skeletons, track backgrounds */
+  --color-surface-sunken: #e6e8f2;     /* skeletons, track backgrounds */
 
   /* ---- Text ---- */
-  --color-text: #1c1917;              /* primary — ~16:1 on white, ~12.6:1 on --color-bg */
-  --color-text-secondary: #57514a;    /* ~7.8:1 on white, ~5.6:1 on --color-bg */
-  --color-text-muted: #615a4f;        /* ~6.3:1 on white, ~4.9:1 on --color-bg — captions/meta; light bg only, never on an accent */
-  --color-text-disabled: #a8a29e;     /* decorative only — never sole carrier of meaning */
+  --color-text: var(--navy);          /* ~17:1 on --color-bg — navy-tinted ink instead of generic warm black */
+  --color-text-secondary: #3f3970;    /* ~10.3:1 on --color-bg */
+  --color-text-muted: #5b5680;        /* ~6.8:1 on --color-bg — captions/meta; light bg only, never on an accent */
+  --color-text-disabled: #a19dbd;     /* decorative only — never sole carrier of meaning */
   --color-text-inverse: #ffffff;
 
+  /* Text for the rare dark-band surfaces (footer) — NOT part of the light-mode
+     surface stack above; scope these to specific dark-bg components only,
+     never redefine --color-text/--color-text-muted locally (nested inputs
+     and buttons resolve those against a light background). */
+  --color-text-on-dark: #ffffff;
+  --color-text-muted-on-dark: #b7b0e0; /* ~8.3:1 on --navy */
+
   /* ---- Primary / secondary / accent ---- */
-  --color-primary: #ffd800;           /* brand yellow — wordmark, primary CTA, page background */
-  --color-primary-hover: #e6c200;
-  --color-on-primary: #1c1917;        /* ink on primary — white fails contrast on this yellow (~1.4:1) */
+  --color-primary: var(--bright-gold); /* wordmark, primary CTA, announcement/offers strip */
+  --color-primary-hover: #e0b400;      /* darker gold, not a colour swap */
+  --color-on-primary: var(--navy);     /* white fails contrast on this gold (~1.4:1); navy gives ~12:1 and reads as the brand pairing */
 
-  --color-secondary: #2b2620;         /* deep espresso — pairs with the yellow primary; quiet emphasis, secondary buttons */
-  --color-secondary-hover: #3d362d;
+  --color-secondary: var(--navy-2);    /* quiet emphasis, secondary buttons/badges */
+  --color-secondary-hover: var(--dark-ultramarine);
+  --color-on-secondary: #ffffff;       /* ~15.7:1 on --color-secondary */
 
-  --color-accent: #a16207;            /* antique gold — used sparingly (sale, active state, emphasis) */
-  --color-accent-hover: #855209;
-  --color-on-accent: #ffffff;         /* white on --color-accent ≈ 5:1 (AA) */
-  --color-accent-soft: #f5ebdd;       /* decorative fills / dividers — NON-TEXT only */
+  --color-accent: var(--yellow);       /* hot accent — used sparingly (sale, active state, emphasis); distinct from primary gold */
+  --color-accent-hover: #e0d400;
+  --color-on-accent: var(--navy);      /* ~15.4:1 */
+  --color-accent-soft: #fff6cf;        /* decorative fills / dividers — NON-TEXT only */
 
   /* ---- Semantic (each: solid / tint bg / on-tint text) — always paired with an icon ---- */
   --color-success: #2f6f4e;
@@ -80,9 +97,9 @@
   --color-info-text: #1f476e;
 
   /* ---- Borders / focus ring ---- */
-  --color-border: #e4dfd8;            /* hairlines, dividers */
-  --color-border-strong: #cfc8be;     /* inputs, table cell dividers */
-  --color-ring: #1c1917;             /* global focus ring — same everywhere, incl. per-collection pages */
+  --color-border: #e1e0ee;            /* hairlines, dividers — cool-tinted */
+  --color-border-strong: #c7c4dd;     /* inputs, table cell dividers */
+  --color-ring: var(--navy);          /* global focus ring — same everywhere, incl. per-collection pages */
 
   /* ---- Collection accents (compound styling — overridden per data-collection) ---- */
   --collection-accent: var(--color-accent);
@@ -144,11 +161,12 @@
   --radius-pill: 999px;
 
   /* ---- Shadow (warm-ink tint; elevation only) ---- */
-  --shadow-xs: 0 1px 2px rgba(28, 25, 23, 0.06);
-  --shadow-sm: 0 2px 8px rgba(28, 25, 23, 0.06);
-  --shadow-md: 0 8px 24px rgba(28, 25, 23, 0.10);
-  --shadow-lg: 0 16px 48px rgba(28, 25, 23, 0.14);
-  --shadow-focus: 0 0 0 3px rgba(28, 25, 23, 0.15);
+  /* rgba(25, 0, 102, X) = --navy — tinted shadows instead of generic warm-black */
+  --shadow-xs: 0 1px 2px rgba(25, 0, 102, 0.07);
+  --shadow-sm: 0 2px 8px rgba(25, 0, 102, 0.08);
+  --shadow-md: 0 8px 24px rgba(25, 0, 102, 0.12);
+  --shadow-lg: 0 16px 48px rgba(25, 0, 102, 0.16);
+  --shadow-focus: 0 0 0 3px rgba(25, 0, 102, 0.16);
   --scrim: rgba(28, 25, 23, 0.45);
 
   /* ---- Layout ---- */
@@ -465,14 +483,15 @@ ul, ol {
   box-shadow: var(--shadow-xs);
 }
 
-/* Footer */
+/* Footer — the one deliberate dark band in an otherwise light-mode system
+   (a dark footer under a light body is a standard, fully-light-mode pattern,
+   not a dark-mode toggle). Carries the navy+gold brand pairing on every page. */
 .site-footer {
-  border-top: 1px solid var(--color-border);
-  background: var(--color-surface);
+  background: var(--navy);
   padding-block: var(--space-9) var(--space-7);
   margin-top: var(--section-gap);
   font-size: var(--fs-sm);
-  color: var(--color-text-muted);
+  color: var(--color-text-muted-on-dark);
 }
 
 .site-footer__grid {
@@ -487,7 +506,7 @@ ul, ol {
   font-weight: var(--fw-semibold);
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
-  color: var(--color-text);
+  color: var(--bright-gold);
   margin-bottom: var(--space-3);
 }
 [lang='ar'] .site-footer__col-title { letter-spacing: 0; }
@@ -495,14 +514,18 @@ ul, ol {
 .site-footer__link {
   display: block;
   padding-block: var(--space-1);
-  color: var(--color-text-muted);
+  color: var(--color-text-muted-on-dark);
 }
-.site-footer__link:hover { color: var(--color-text); text-decoration: underline; text-underline-offset: 0.15em; }
+.site-footer__link:hover {
+  color: var(--color-text-on-dark);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
 
 .site-footer__brand-name {
   font-family: var(--font-serif);
   font-size: var(--fs-lg);
-  color: var(--color-text);
+  color: var(--color-text-on-dark);
   margin-bottom: var(--space-2);
 }
 [lang='ar'] .site-footer__brand-name { font-family: var(--font-arabic); }
@@ -514,7 +537,7 @@ ul, ol {
 }
 
 .site-footer__bottom {
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
   margin-top: var(--space-7);
   padding-top: var(--space-5);
   display: flex;
@@ -882,7 +905,7 @@ ul, ol {
 
 .btn--primary {
   background: var(--color-primary);
-  border-color: var(--color-on-primary); /* --color-bg is now the same yellow — keep the CTA legible as a shape */
+  border-color: var(--color-on-primary); /* navy edge on the gold fill — the brand pairing, not just a fill */
   color: var(--color-on-primary);
 }
 .btn--primary:hover { background: var(--color-primary-hover); }
