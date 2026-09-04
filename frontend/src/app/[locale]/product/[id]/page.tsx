@@ -1,8 +1,10 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { ProductDetail } from '@/components/product/product-detail';
 
-// TODO: product detail — image gallery, size/color picker, add-to-cart,
-// stock status. Fetch by id from GET /api/products/:id.
+// Server shell only — narrows `locale` to the union as a value comparison
+// (see app/[locale]/layout.tsx's comment on why not a type-level narrow),
+// then hands off to the client component that owns data fetching/selection
+// state via useProduct()/useAddToCart().
 export default async function ProductDetailPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
-  const { id } = await params;
-  return <PagePlaceholder title="Product" note={`id: ${id}`} />;
+  const { locale, id } = await params;
+  return <ProductDetail id={id} locale={locale === 'ar' ? 'ar' : 'en'} />;
 }

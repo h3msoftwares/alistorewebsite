@@ -853,6 +853,67 @@ ul, ol {
   .site-footer__grid { grid-template-columns: 1fr; }
 }
 
+/* ---- Product detail page (PDP) ----
+   Gallery | info, same media-first two-column pattern as .hero, same
+   breakpoint. Radius/border/overflow come from the shared .card class
+   (applied in JSX alongside these) rather than being redeclared here, so
+   the active collection's --collection-radius still cascades through on
+   this page like it does on every card elsewhere. */
+.pdp {
+  display: grid;
+  grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+  gap: clamp(var(--space-6), 4vw, var(--space-8));
+}
+@media (max-width: 860px) {
+  .pdp { grid-template-columns: 1fr; gap: var(--space-5); }
+}
+
+.pdp__gallery { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+
+.pdp__main-media {
+  position: relative;
+  aspect-ratio: 4 / 5;
+}
+
+.pdp__thumbs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.pdp__thumb {
+  position: relative;
+  width: calc(var(--control-h) * 1.4);
+  height: calc(var(--control-h) * 1.4);
+  padding: 0;
+  cursor: pointer;
+}
+.pdp__thumb[aria-current='true'] { border-color: var(--collection-accent); border-width: 2px; }
+
+.pdp__content { min-width: 0; }
+
+.pdp__title { margin-block-end: var(--space-2); }
+
+.pdp__description { margin-block: var(--space-5); }
+
+.pdp__options { margin-block: var(--space-5); }
+.pdp__option-group + .pdp__option-group { margin-block-start: var(--space-5); }
+.pdp__option-label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  margin-block-end: var(--space-2);
+}
+
+.pdp__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-block-start: var(--space-6);
+}
+
+.pdp__stock-note {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  margin-block-start: var(--space-2);
+}
+
 /* ============================================================
    5. BASE COMPONENTS
    ============================================================ */
