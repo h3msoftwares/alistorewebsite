@@ -13,6 +13,7 @@ import { selectFavouritesCount } from '@/store/slices/favouritesSlice';
 import { useAuth } from '@/hooks/use-auth';
 import { useNavCollections } from '@/hooks/use-catalog';
 import { SearchOverlay } from './search-overlay';
+import { CartDrawer } from './cart-drawer';
 
 /**
  * The sticky topbar: hamburger (mobile) · logo · collection switcher · actions.
@@ -25,6 +26,7 @@ export function Topbar({ locale }: { locale: string }) {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
   const cartCount = useAppSelector(selectCartCount);
@@ -92,9 +94,15 @@ export function Topbar({ locale }: { locale: string }) {
           </button>
 
           <span className="icon-btn-wrap">
-            <Link href={`/${locale}/cart`} className="icon-btn" aria-label={t('Cart', 'سلة التسوق')}>
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={t('Cart', 'سلة التسوق')}
+              aria-expanded={cartOpen}
+              onClick={() => setCartOpen(true)}
+            >
               <Icon as={ShoppingBag} />
-            </Link>
+            </button>
             {cartCount > 0 && (
               <span className="icon-btn__badge" aria-hidden="true">
                 {cartCount}
@@ -131,6 +139,7 @@ export function Topbar({ locale }: { locale: string }) {
       </div>
 
       <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} locale={locale} />
+      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} locale={locale} />
 
       <Drawer
         open={menuOpen}

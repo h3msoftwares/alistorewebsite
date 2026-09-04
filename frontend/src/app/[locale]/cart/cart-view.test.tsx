@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createWrapper } from '@/test/utils';
+import { createWrapper, makeGuestStore } from '@/test/utils';
 import { CartView } from './cart-view';
 
 // next/image + next/link need the Next runtime/router; stub them to plain tags
@@ -28,17 +28,23 @@ vi.mock('next/link', () => ({
   ),
 }));
 
-vi.mock('@/lib/api', () => ({
-  cartApi: {
-    getCart: vi.fn(),
-    addCartItem: vi.fn(),
-    updateCartItem: vi.fn(),
-    removeCartItem: vi.fn(),
-    clearCart: vi.fn(),
-  },
-}));
+// Keep ApiError / isApiError real (the variant-picker's error branch checks
+// `error.code === 'OUT_OF_STOCK'`); only the network-touching cartApi is stubbed.
+vi.mock('@/lib/api', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/api')>();
+  return {
+    ...actual,
+    cartApi: {
+      getCart: vi.fn(),
+      addCartItem: vi.fn(),
+      updateCartItem: vi.fn(),
+      removeCartItem: vi.fn(),
+      clearCart: vi.fn(),
+    },
+  };
+});
 
-import { cartApi } from '@/lib/api';
+import { cartApi, ApiError } from '@/lib/api';
 const mock = vi.mocked(cartApi, true);
 
 type Over = Record<string, unknown>;
@@ -74,7 +80,9 @@ const makeItem = (over: Over = {}, productOver: Over = {}, variantOver: Over = {
 const cart = (items: unknown[], subtotal: number) => ({ items, subtotal });
 
 const renderCart = (locale: 'en' | 'ar' = 'en') => {
-  const { Wrapper } = createWrapper();
+  // useCart() now holds off until auth status resolves — a fresh 'loading'
+  // store would never fetch. Guest matches this page's default test identity.
+  const { Wrapper } = createWrapper(makeGuestStore());
   return render(<CartView locale={locale} />, { wrapper: Wrapper });
 };
 
@@ -108,7 +116,7 @@ describe('<CartView>', () => {
       screen.getByRole('button', { name: 'Increase Quantity for Everyday Cotton T-Shirt' })
     );
 
-    expect(mock.updateCartItem).toHaveBeenCalledWith('item-1', 3);
+    expect(mock.updateCartItem).toHaveBeenCalledWith('item-1', { quantity: 3, variantId: undefined });
   });
 
   it('decreasing quantity calls the update mutation with the decremented qty', async () => {
@@ -122,7 +130,7 @@ describe('<CartView>', () => {
       screen.getByRole('button', { name: 'Decrease Quantity for Everyday Cotton T-Shirt' })
     );
 
-    expect(mock.updateCartItem).toHaveBeenCalledWith('item-1', 1);
+    expect(mock.updateCartItem).toHaveBeenCalledWith('item-1', { quantity: 1, variantId: undefined });
   });
 
   it('the quantity stepper respects the variant stock as its max', async () => {
@@ -212,5 +220,79 @@ describe('<CartView>', () => {
     const subtotalRow = screen.getByText('Subtotal').closest('div') as HTMLElement;
     expect(within(subtotalRow).getByText('$500.00')).toBeInTheDocument();
     expect(screen.queryByText('$524.00')).not.toBeInTheDocument();
+  });
+
+  describe('size/color picker', () => {
+    // v1 = current (2-3Y, Yellow); v2 = (4-5Y, Yellow); v3 = (2-3Y, White).
+    // (4-5Y, White) deliberately doesn't exist as a real SKU.
+    const siblingVariants = [
+      { id: 'v1', productID: 'p1', sku: 'SKU-1', size: '2-3Y', color: 'Yellow', stockQuantity: 10 },
+      { id: 'v2', productID: 'p1', sku: 'SKU-2', size: '4-5Y', color: 'Yellow', stockQuantity: 5 },
+      { id: 'v3', productID: 'p1', sku: 'SKU-3', size: '2-3Y', color: 'White', stockQuantity: 0 },
+    ];
+    const itemWithChoices = () => makeItem({}, { variants: siblingVariants });
+
+    it('shows no "Change" control when the product has only one size/color combination', async () => {
+      mock.getCart.mockResolvedValue(cart([makeItem()], 24) as never); // default productOver: variants: []
+      renderCart();
+      const row = (await screen.findByText('Everyday Cotton T-Shirt')).closest('tr') as HTMLElement;
+      expect(within(row).queryByRole('button', { name: 'Change' })).not.toBeInTheDocument();
+    });
+
+    it('reveals size and color selects, pre-set to the current variant, on "Change"', async () => {
+      const user = userEvent.setup();
+      mock.getCart.mockResolvedValue(cart([itemWithChoices()], 24) as never);
+      renderCart();
+      const row = (await screen.findByText('Everyday Cotton T-Shirt')).closest('tr') as HTMLElement;
+
+      await user.click(within(row).getByRole('button', { name: 'Change' }));
+
+      expect(within(row).getByLabelText('Size')).toHaveValue('2-3Y');
+      expect(within(row).getByLabelText('Color')).toHaveValue('Yellow');
+    });
+
+    it('selecting a different size calls the update mutation with the resolved variant id, quantity untouched', async () => {
+      const user = userEvent.setup();
+      mock.getCart.mockResolvedValue(cart([itemWithChoices()], 24) as never);
+      mock.updateCartItem.mockResolvedValue({ id: 'item-1', variantID: 'v2' } as never);
+      renderCart();
+      const row = (await screen.findByText('Everyday Cotton T-Shirt')).closest('tr') as HTMLElement;
+      await user.click(within(row).getByRole('button', { name: 'Change' }));
+
+      await user.selectOptions(within(row).getByLabelText('Size'), '4-5Y');
+
+      expect(mock.updateCartItem).toHaveBeenCalledWith('item-1', { quantity: undefined, variantId: 'v2' });
+    });
+
+    it("an unavailable size/color combination shows an inline error and doesn't call the mutation for it", async () => {
+      const user = userEvent.setup();
+      mock.getCart.mockResolvedValue(cart([itemWithChoices()], 24) as never);
+      mock.updateCartItem.mockResolvedValue({ id: 'item-1', variantID: 'v2' } as never);
+      renderCart();
+      const row = (await screen.findByText('Everyday Cotton T-Shirt')).closest('tr') as HTMLElement;
+      await user.click(within(row).getByRole('button', { name: 'Change' }));
+
+      await user.selectOptions(within(row).getByLabelText('Size'), '4-5Y'); // -> v2, valid
+      expect(mock.updateCartItem).toHaveBeenCalledTimes(1);
+
+      await user.selectOptions(within(row).getByLabelText('Color'), 'White'); // (4-5Y, White) doesn't exist
+      expect(within(row).getByRole('alert')).toHaveTextContent("That combination isn't available.");
+      expect(mock.updateCartItem).toHaveBeenCalledTimes(1); // no second call
+    });
+
+    it('a 409 OUT_OF_STOCK from the switch shows a specific inline error', async () => {
+      const user = userEvent.setup();
+      mock.getCart.mockResolvedValue(cart([itemWithChoices()], 24) as never);
+      mock.updateCartItem.mockRejectedValueOnce(
+        new ApiError(409, { code: 'OUT_OF_STOCK', message: 'Not enough stock for this variant' })
+      );
+      renderCart();
+      const row = (await screen.findByText('Everyday Cotton T-Shirt')).closest('tr') as HTMLElement;
+      await user.click(within(row).getByRole('button', { name: 'Change' }));
+
+      await user.selectOptions(within(row).getByLabelText('Size'), '4-5Y');
+
+      expect(await within(row).findByRole('alert')).toHaveTextContent('Not enough stock for that option.');
+    });
   });
 });

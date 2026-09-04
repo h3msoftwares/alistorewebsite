@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import { createWrapper } from '@/test/utils';
+import { createWrapper, makeGuestStore } from '@/test/utils';
 import { selectCartCount } from '@/store/slices/cartSlice';
 import { useCart, useAddToCart, useClearCart } from './use-cart';
 
@@ -27,7 +27,7 @@ beforeEach(() => vi.clearAllMocks());
 describe('useCart', () => {
   it('fetches the cart and mirrors the line-item count into the redux badge', async () => {
     mockCart.getCart.mockResolvedValue(cartWith(2, 3) as never);
-    const { Wrapper, store } = createWrapper();
+    const { Wrapper, store } = createWrapper(makeGuestStore());
     const { result } = renderHook(() => useCart(), { wrapper: Wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
@@ -35,7 +35,7 @@ describe('useCart', () => {
   });
 
   it('respects enabled:false', () => {
-    const { Wrapper } = createWrapper();
+    const { Wrapper } = createWrapper(makeGuestStore());
     renderHook(() => useCart({ enabled: false }), { wrapper: Wrapper });
     expect(mockCart.getCart).not.toHaveBeenCalled();
   });
@@ -46,7 +46,7 @@ describe('cart mutations', () => {
     mockCart.addCartItem.mockResolvedValue({ id: 'i1' } as never);
     mockCart.getCart.mockResolvedValueOnce(cartWith() as never).mockResolvedValue(cartWith(4) as never);
 
-    const { Wrapper, store } = createWrapper();
+    const { Wrapper, store } = createWrapper(makeGuestStore());
     // an active useCart() gives invalidateQueries something to refetch
     const { result } = renderHook(() => ({ cart: useCart(), add: useAddToCart() }), {
       wrapper: Wrapper,
@@ -64,7 +64,7 @@ describe('cart mutations', () => {
   it('useClearCart calls the DELETE endpoint', async () => {
     mockCart.clearCart.mockResolvedValue(undefined as never);
     mockCart.getCart.mockResolvedValue(cartWith() as never);
-    const { Wrapper } = createWrapper();
+    const { Wrapper } = createWrapper(makeGuestStore());
     const { result } = renderHook(() => useClearCart(), { wrapper: Wrapper });
 
     await result.current.mutateAsync(undefined as never);

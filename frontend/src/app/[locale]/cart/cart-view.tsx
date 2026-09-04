@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ShoppingBag } from 'lucide-react';
@@ -7,8 +8,10 @@ import {
   Button,
   DataTable,
   EmptyState,
+  Field,
   PriceTag,
   QuantityStepper,
+  Select,
   Skeleton,
 } from '@/components/ui';
 import {
@@ -17,6 +20,7 @@ import {
   useRemoveCartItem,
   useUpdateCartItem,
 } from '@/hooks/use-cart';
+import { isApiError } from '@/lib/api';
 import type { CartItem } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
@@ -94,7 +98,11 @@ export function CartView({ locale }: { locale: Locale }) {
     <div className="container section">
       {heading}
 
-      <DataTable responsive style={{ marginBlockStart: 'var(--space-5)', minWidth: '40rem' }}>
+      {/* No forced minWidth here — .table--responsive's own <=640px breakpoint
+          collapses each row to a stacked card, and a fixed minWidth would
+          override the table wider than the viewport and defeat that (found
+          while verifying the new size/color picker at 375px). */}
+      <DataTable responsive style={{ marginBlockStart: 'var(--space-5)' }}>
         <thead>
           <tr>
             <th>{t('Product', 'المنتج')}</th>
@@ -147,7 +155,8 @@ function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
-  const update = useUpdateCartItem();
+  const quantityUpdate = useUpdateCartItem();
+  const variantUpdate = useUpdateCartItem();
   const remove = useRemoveCartItem();
 
   const { product } = item.variant;
@@ -155,7 +164,63 @@ function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
   const image = product.images[0];
   const variantBits = [item.variant.size, item.variant.color].filter(Boolean).join(' · ');
   const lineTotal = Number(product.price) * item.quantity;
-  const busy = update.isPending || remove.isPending;
+  const busy = quantityUpdate.isPending || variantUpdate.isPending || remove.isPending;
+
+  // ---- size/color picker ---------------------------------------------
+  const siblingVariants = product.variants;
+  const sizes = useMemo(
+    () => Array.from(new Set(siblingVariants.map((v) => v.size).filter((s): s is string => Boolean(s)))),
+    [siblingVariants]
+  );
+  const colors = useMemo(
+    () => Array.from(new Set(siblingVariants.map((v) => v.color).filter((s): s is string => Boolean(s)))),
+    [siblingVariants]
+  );
+  const canChangeSize = sizes.length > 1;
+  const canChangeColor = colors.length > 1;
+  const canChangeVariant = canChangeSize || canChangeColor;
+
+  const [editingVariant, setEditingVariant] = useState(false);
+  const [selectedSize, setSelectedSize] = useState(item.variant.size ?? '');
+  const [selectedColor, setSelectedColor] = useState(item.variant.color ?? '');
+  const [noMatchError, setNoMatchError] = useState(false);
+
+  // Resync the local picker whenever the server-confirmed variant changes
+  // (e.g. after a successful switch) — the row keeps the same React key
+  // (same cart-item id) across a size/color change, so state wouldn't
+  // otherwise refresh on its own. Adjusted during render (React's documented
+  // pattern for this), not in an effect, so it doesn't cost an extra paint.
+  const [syncedVariantId, setSyncedVariantId] = useState(item.variant.id);
+  if (item.variant.id !== syncedVariantId) {
+    setSyncedVariantId(item.variant.id);
+    setSelectedSize(item.variant.size ?? '');
+    setSelectedColor(item.variant.color ?? '');
+    setNoMatchError(false);
+  }
+
+  const applyVariantChange = (nextSize: string, nextColor: string) => {
+    const match = siblingVariants.find(
+      (v) => (v.size ?? '') === nextSize && (v.color ?? '') === nextColor
+    );
+    if (!match) {
+      setNoMatchError(true);
+      return;
+    }
+    setNoMatchError(false);
+    if (match.id === item.variant.id) return; // selecting the current combo again — no-op
+    // Stays open after a successful switch (rather than auto-closing) so
+    // picking a new size and then a new color doesn't need two "Change"
+    // clicks; "Done" is the explicit way to collapse it.
+    variantUpdate.mutate({ itemId: item.id, variantId: match.id });
+  };
+
+  const variantErrorMessage = noMatchError
+    ? t("That combination isn't available.", 'هذا الخيار غير متوفر.')
+    : variantUpdate.isError
+      ? isApiError(variantUpdate.error) && variantUpdate.error.code === 'OUT_OF_STOCK'
+        ? t('Not enough stock for that option.', 'الكمية غير متوفرة لهذا الخيار.')
+        : t("Couldn't change that option. Try again.", 'تعذّر تغيير هذا الخيار. حاول مرة أخرى.')
+      : null;
 
   return (
     <tr aria-busy={busy || undefined} data-loading={busy || undefined}>
@@ -187,12 +252,103 @@ function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
               flexDirection: 'column',
               gap: 'var(--space-1)',
               minWidth: 0,
+              flex: 1,
             }}
           >
             <Link href={`/${locale}/product/${product.id}`}>{name}</Link>
-            {variantBits && (
-              <span style={{ color: 'var(--color-text-muted)' }}>{variantBits}</span>
+
+            {!editingVariant && (variantBits || canChangeVariant) && (
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--space-2)',
+                  flexWrap: 'wrap',
+                  color: 'var(--color-text-muted)',
+                }}
+              >
+                {variantBits}
+                {canChangeVariant && (
+                  <Button variant="ghost" size="sm" onClick={() => setEditingVariant(true)} disabled={busy}>
+                    {t('Change', 'تغيير')}
+                  </Button>
+                )}
+              </span>
             )}
+
+            {editingVariant && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 'var(--space-3)',
+                  alignItems: 'flex-end',
+                  marginBlock: 'var(--space-1)',
+                }}
+              >
+                {canChangeSize && (
+                  <div style={{ minWidth: '6.5rem' }}>
+                    <Field label={t('Size', 'المقاس')}>
+                      {(p) => (
+                        <Select
+                          {...p}
+                          value={selectedSize}
+                          disabled={variantUpdate.isPending}
+                          onChange={(e) => {
+                            setSelectedSize(e.target.value);
+                            applyVariantChange(e.target.value, selectedColor);
+                          }}
+                        >
+                          {sizes.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+                  </div>
+                )}
+                {canChangeColor && (
+                  <div style={{ minWidth: '7.5rem' }}>
+                    <Field label={t('Color', 'اللون')}>
+                      {(p) => (
+                        <Select
+                          {...p}
+                          value={selectedColor}
+                          disabled={variantUpdate.isPending}
+                          onChange={(e) => {
+                            setSelectedColor(e.target.value);
+                            applyVariantChange(selectedSize, e.target.value);
+                          }}
+                        >
+                          {colors.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+                  </div>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditingVariant(false)}
+                  disabled={variantUpdate.isPending}
+                >
+                  {t('Done', 'تم')}
+                </Button>
+              </div>
+            )}
+
+            {variantErrorMessage && (
+              <span role="alert" style={{ color: 'var(--color-danger-text)' }}>
+                {variantErrorMessage}
+              </span>
+            )}
+
             <PriceTag
               price={product.price}
               compareAtPrice={product.compareAtPrice}
@@ -214,7 +370,7 @@ function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
         >
           <QuantityStepper
             value={item.quantity}
-            onChange={(next) => update.mutate({ itemId: item.id, quantity: next })}
+            onChange={(next) => quantityUpdate.mutate({ itemId: item.id, quantity: next })}
             min={1}
             max={Math.max(1, item.variant.stockQuantity)}
             disabled={busy}
