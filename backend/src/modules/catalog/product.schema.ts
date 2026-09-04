@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createImageSchema } from './image.schema';
 
 export const listProductsQuerySchema = z.object({
   collectionId: z.string().uuid().optional(),
@@ -42,10 +43,13 @@ export const updateStockSchema = z.object({
 });
 
 // size / color are nullable in the schema (one-size / no-colour products).
+// price is nullish too — omit it (or send null) to fall back to the
+// product's own price; set it to give this size/colour its own price.
 const variantInputSchema = z.object({
   sku: z.string().min(1),
   size: z.string().min(1).nullish(),
   color: z.string().min(1).nullish(),
+  price: z.number().positive().nullish(),
   stockQuantity: z.number().int().nonnegative().default(0),
 });
 
@@ -75,3 +79,12 @@ export const updateProductSchema = createProductSchema.partial().omit({ variants
 
 export const createVariantSchema = variantInputSchema;
 export const updateVariantSchema = variantInputSchema.partial();
+
+// Product images extend the shared Collection/Category/Product image shape
+// with an optional colour tag — ties the image to one of the product's
+// colour options so the product page can swap to it when that colour is
+// selected. null/omitted = shown regardless of colour.
+export const createProductImageSchema = createImageSchema.extend({
+  color: z.string().min(1).nullish(),
+});
+export const updateProductImageSchema = createProductImageSchema.partial();

@@ -8,6 +8,7 @@ import type {
   ImageBody,
   Product,
   ProductBody,
+  ProductImageBody,
   ProductListQuery,
   ProductListResult,
   ProductVariant,
@@ -85,6 +86,14 @@ export function listCategories(collectionId?: UUID) {
 export function listStandaloneCategories() {
   return api
     .get<{ categories: Category[] }>('/api/categories', { query: { standalone: true } })
+    .then((r) => r.categories);
+}
+
+/** Categories promoted to their own home-page row, across every collection
+ *  (`GET /api/categories?showOnHome=true`). */
+export function listFeaturedCategories() {
+  return api
+    .get<{ categories: Category[] }>('/api/categories', { query: { showOnHome: true } })
     .then((r) => r.categories);
 }
 
@@ -196,11 +205,11 @@ export function deleteProductVariant(id: UUID, variantId: UUID) {
   return api.del(`/api/products/${id}/variants/${variantId}`);
 }
 
-export function addProductImage(id: UUID, body: ImageBody) {
+export function addProductImage(id: UUID, body: ProductImageBody) {
   return api.post<{ image: CatalogImage }>(`/api/products/${id}/images`, body).then((r) => r.image);
 }
 
-export function updateProductImage(id: UUID, imageId: UUID, body: Partial<ImageBody>) {
+export function updateProductImage(id: UUID, imageId: UUID, body: Partial<ProductImageBody>) {
   return api
     .patch<{ image: CatalogImage }>(`/api/products/${id}/images/${imageId}`, body)
     .then((r) => r.image);

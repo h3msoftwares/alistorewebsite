@@ -150,6 +150,16 @@ describe('Collections API', () => {
       expect(res.body.collection).toMatchObject({ showInNav: true, accentColor: '#123abc' });
     });
 
+    it('showOnHome defaults false and can be set true (independent of showInNav)', async () => {
+      await tokens();
+      const res = await request(app)
+        .post('/api/collections')
+        .set(bearer(adminToken))
+        .send({ nameEn: 'Featured', nameAr: 'مميز', slug: 'featured-col', showOnHome: true });
+      expect(res.status).toBe(201);
+      expect(res.body.collection).toMatchObject({ showOnHome: true, showInNav: false });
+    });
+
     it('400s a non-hex accentColor', async () => {
       await tokens();
       const res = await request(app)
@@ -179,8 +189,13 @@ describe('Collections API', () => {
       const on = await request(app)
         .patch(`/api/collections/${col.id}`)
         .set(bearer(adminToken))
-        .send({ showInNav: true, sortOrder: 5, accentColor: '#abcdef' });
-      expect(on.body.collection).toMatchObject({ showInNav: true, sortOrder: 5, accentColor: '#abcdef' });
+        .send({ showInNav: true, showOnHome: true, sortOrder: 5, accentColor: '#abcdef' });
+      expect(on.body.collection).toMatchObject({
+        showInNav: true,
+        showOnHome: true,
+        sortOrder: 5,
+        accentColor: '#abcdef',
+      });
 
       const clear = await request(app)
         .patch(`/api/collections/${col.id}`)

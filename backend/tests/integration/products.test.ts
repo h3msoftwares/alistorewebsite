@@ -385,4 +385,96 @@ describe('Products API', () => {
       expect(Number(res.body.product.effectivePrice)).toBe(40);
     });
   });
+
+  describe('per-variant price + per-image colour', () => {
+    it('a variant with no price falls back to the product price', async () => {
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody({ price: 20 }));
+      expect(res.status).toBe(201);
+      const [variant] = res.body.product.variants;
+      expect(variant.price).toBeNull();
+      expect(Number(variant.effectivePrice)).toBe(20);
+    });
+
+    it('a variant with its own price uses that instead of the product price', async () => {
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(
+          productBody({
+            price: 20,
+            variants: [
+              { sku: 'SKU-1-S', size: 'S', color: 'Black', stockQuantity: 5 },
+              { sku: 'SKU-1-XL', size: 'XL', color: 'Black', price: 24, stockQuantity: 5 },
+            ],
+          })
+        );
+      expect(res.status).toBe(201);
+      const bySize = Object.fromEntries(
+        res.body.product.variants.map((v: { size: string; price: string | null; effectivePrice: string }) => [
+          v.size,
+          v,
+        ])
+      );
+      expect(bySize.S.price).toBeNull();
+      expect(Number(bySize.S.effectivePrice)).toBe(20);
+      expect(Number(bySize.XL.price)).toBe(24);
+      expect(Number(bySize.XL.effectivePrice)).toBe(24);
+    });
+
+    it("a variant's own price still gets the product-level sale applied on top", async () => {
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(
+          productBody({
+            price: 20,
+            saleType: 'PERCENT',
+            saleValue: 50,
+            variants: [{ sku: 'SKU-1-XL', size: 'XL', color: 'Black', price: 30, stockQuantity: 5 }],
+          })
+        );
+      expect(res.status).toBe(201);
+      const [variant] = res.body.product.variants;
+      expect(Number(variant.price)).toBe(30);
+      expect(Number(variant.effectivePrice)).toBe(15); // 50% off the variant's own 30, not the product's 20
+      expect(variant.onSale).toBe(true);
+    });
+
+    it('POST /variants and PATCH /variants/:id accept and clear a price override', async () => {
+      const p = await makeProduct(collectionId, categoryId);
+      const added = await request(app)
+        .post(`/api/products/${p.id}/variants`)
+        .set(bearer(adminToken))
+        .send({ sku: 'NEW-V', size: 'L', color: 'White', price: 33, stockQuantity: 4 });
+      expect(added.status).toBe(201);
+      expect(Number(added.body.variant.price)).toBe(33);
+
+      const cleared = await request(app)
+        .patch(`/api/products/${p.id}/variants/${added.body.variant.id}`)
+        .set(bearer(adminToken))
+        .send({ price: null });
+      expect(cleared.status).toBe(200);
+      expect(cleared.body.variant.price).toBeNull();
+    });
+
+    it('a product image can be tagged with a colour, and cleared back to generic', async () => {
+      const p = await makeProduct(collectionId, categoryId);
+      const add = await request(app)
+        .post(`/api/products/${p.id}/images`)
+        .set(bearer(adminToken))
+        .send({ url: 'https://cdn.test/black.jpg', color: 'Black' });
+      expect(add.status).toBe(201);
+      expect(add.body.image.color).toBe('Black');
+
+      const cleared = await request(app)
+        .patch(`/api/products/${p.id}/images/${add.body.image.id}`)
+        .set(bearer(adminToken))
+        .send({ color: null });
+      expect(cleared.status).toBe(200);
+      expect(cleared.body.image.color).toBeNull();
+    });
+  });
 });

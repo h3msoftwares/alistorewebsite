@@ -3,11 +3,12 @@ import * as categoryService from './category.service';
 import { paramString } from '../../lib/params';
 
 export async function listCategoriesHandler(req: Request, res: Response) {
-  const { collectionId, standalone } = (req.validatedQuery ?? {}) as {
+  const { collectionId, standalone, showOnHome } = (req.validatedQuery ?? {}) as {
     collectionId?: string;
     standalone?: boolean;
+    showOnHome?: boolean;
   };
-  const categories = await categoryService.listCategories({ collectionId, standalone });
+  const categories = await categoryService.listCategories({ collectionId, standalone, showOnHome });
   res.json({ categories });
 }
 

@@ -32,7 +32,13 @@ export async function makeCategory(
 
 interface MakeProductOpts {
   over?: Record<string, unknown>;
-  variants?: { sku?: string; size?: string | null; color?: string | null; stockQuantity?: number }[];
+  variants?: {
+    sku?: string;
+    size?: string | null;
+    color?: string | null;
+    price?: number | null;
+    stockQuantity?: number;
+  }[];
 }
 
 export async function makeProduct(
@@ -56,6 +62,7 @@ export async function makeProduct(
           sku: v.sku ?? `${sku}-v${i + 1}`,
           size: v.size ?? null,
           color: v.color ?? null,
+          price: v.price ?? null,
           stockQuantity: v.stockQuantity ?? 10,
         })),
       },

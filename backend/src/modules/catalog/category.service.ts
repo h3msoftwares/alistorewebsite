@@ -31,15 +31,18 @@ interface ListCategoriesOpts {
   collectionId?: string;
   /** Only categories not attached to any collection. */
   standalone?: boolean;
+  /** Only categories promoted to their own home-page row (any collection). */
+  showOnHome?: boolean;
 }
 
 export async function listCategories(opts: ListCategoriesOpts = {}) {
-  const { collectionId, standalone } = opts;
+  const { collectionId, standalone, showOnHome } = opts;
   return prisma.category.findMany({
     where: {
       isActive: true,
       ...(collectionId ? { collectionID: collectionId } : {}),
       ...(standalone ? { collectionID: null } : {}),
+      ...(showOnHome ? { showOnHome: true } : {}),
     },
     orderBy: { sortOrder: 'asc' },
     include: categoryInclude,

@@ -1,10 +1,9 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { catalogApi } from '@/lib/api';
 import { ApiError } from '@/lib/api/errors';
 import { accentStyle } from '@/lib/collections';
-import { CategoryCard } from '@/components/home/category-card';
+import { MediaTile } from '@/components/home/media-tile';
 import { CategoryProducts } from '@/components/collection/category-products';
 import type { Category } from '@/lib/types';
 
@@ -55,17 +54,6 @@ export default async function CategoryPage({
       data-collection={parentCollection?.slug}
       style={accentStyle(parentCollection?.accentColor)}
     >
-      <header className="container section collection-page__head">
-        {parentCollection && (
-          <p className="collection-page__eyebrow">
-            <Link href={`/${locale}/${parentCollection.slug}`}>
-              {isAr ? parentCollection.nameAr : parentCollection.nameEn}
-            </Link>
-          </p>
-        )}
-        <h1 className="collection-page__title">{name}</h1>
-      </header>
-
       {children.length > 0 && (
         <section className="container section--tight" aria-label={isAr ? 'الفئات الفرعية' : 'Subcategories'}>
           <h2 className="collection-page__subhead">
@@ -74,9 +62,11 @@ export default async function CategoryPage({
           <ul className="category-grid" role="list">
             {children.map((child) => (
               <li key={child.id}>
-                <CategoryCard
+                <MediaTile
                   href={`/${locale}/category/${child.slug}`}
                   name={isAr ? child.nameAr : child.nameEn}
+                  imageUrl={child.images[0]?.url}
+                  imageAlt={(isAr ? child.images[0]?.altAr : child.images[0]?.altEn) ?? undefined}
                 />
               </li>
             ))}
@@ -84,7 +74,16 @@ export default async function CategoryPage({
         </section>
       )}
 
-      <CategoryProducts categoryId={cat.id} locale={locale} />
+      <CategoryProducts
+        categoryId={cat.id}
+        locale={locale}
+        name={name}
+        collection={
+          parentCollection
+            ? { slug: parentCollection.slug, name: isAr ? parentCollection.nameAr : parentCollection.nameEn }
+            : null
+        }
+      />
     </div>
   );
 }

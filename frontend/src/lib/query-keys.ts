@@ -15,6 +15,7 @@ export const queryKeys = {
     all: () => ['categories'] as const,
     list: (collectionId?: UUID) => ['categories', 'list', collectionId ?? null] as const,
     standalone: () => ['categories', 'list', 'standalone'] as const,
+    featured: () => ['categories', 'list', 'featured'] as const,
     detail: (id: UUID) => ['categories', 'detail', id] as const,
     bySlug: (slug: string) => ['categories', 'slug', slug] as const,
     products: (id: UUID, query: ProductListQuery) =>
@@ -24,6 +25,10 @@ export const queryKeys = {
     all: () => ['products'] as const,
     list: (query: ProductListQuery) => ['products', 'list', query] as const,
     detail: (id: UUID) => ['products', 'detail', id] as const,
+    // Available size/colour filter options for a listing page — derived from
+    // an unfiltered fetch of the scope, independent of the current filters.
+    facetsByCollection: (id: UUID) => ['products', 'facets', 'collection', id] as const,
+    facetsByCategory: (id: UUID) => ['products', 'facets', 'category', id] as const,
   },
   cart: {
     root: () => ['cart'] as const,

@@ -38,6 +38,21 @@ describe('Categories API', () => {
       expect(res.body.categories[0].nameEn).toBe('Free');
       expect(res.body.categories[0].collection).toBeNull();
     });
+
+    it('?showOnHome=true returns featured categories across every collection', async () => {
+      const a = await makeCollection({ slug: 'home-a' });
+      const b = await makeCollection({ slug: 'home-b' });
+      await makeCategory(a.id, { nameEn: 'Featured A', showOnHome: true });
+      await makeCategory(b.id, { nameEn: 'Featured B', showOnHome: true });
+      await makeCategory(null, { nameEn: 'Featured standalone', showOnHome: true });
+      await makeCategory(a.id, { nameEn: 'Not featured', showOnHome: false });
+
+      const res = await request(app).get('/api/categories?showOnHome=true');
+      expect(res.status).toBe(200);
+      expect(res.body.categories.map((c: { nameEn: string }) => c.nameEn).sort()).toEqual(
+        ['Featured A', 'Featured B', 'Featured standalone'].sort()
+      );
+    });
   });
 
   describe('GET /api/categories/slug/:slug', () => {
@@ -138,6 +153,23 @@ describe('Categories API', () => {
         .send({ collectionId: null, nameEn: 'Bundles', nameAr: 'حزم', slug: 'bundles' });
       expect(res.status).toBe(201);
       expect(res.body.category.collectionID).toBeNull();
+    });
+
+    it('showOnHome defaults false and can be set true on create, then toggled off via PATCH', async () => {
+      const { token } = await createAdmin();
+      const created = await request(app)
+        .post('/api/categories')
+        .set(bearer(token))
+        .send({ nameEn: 'Row', nameAr: 'صف', slug: 'home-row-cat', showOnHome: true });
+      expect(created.status).toBe(201);
+      expect(created.body.category.showOnHome).toBe(true);
+
+      const patched = await request(app)
+        .patch(`/api/categories/${created.body.category.id}`)
+        .set(bearer(token))
+        .send({ showOnHome: false });
+      expect(patched.status).toBe(200);
+      expect(patched.body.category.showOnHome).toBe(false);
     });
 
     it('404s when the collection does not exist', async () => {

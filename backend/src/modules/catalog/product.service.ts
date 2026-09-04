@@ -10,14 +10,17 @@ import {
   updateProductSchema,
   createVariantSchema,
   updateVariantSchema,
+  createProductImageSchema,
+  updateProductImageSchema,
 } from './product.schema';
-import type { CreateImageInput, UpdateImageInput } from './image.schema';
 
 type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
 type CreateProductInput = z.infer<typeof createProductSchema>;
 type UpdateProductInput = z.infer<typeof updateProductSchema>;
 type CreateVariantInput = z.infer<typeof createVariantSchema>;
 type UpdateVariantInput = z.infer<typeof updateVariantSchema>;
+type CreateProductImageInput = z.infer<typeof createProductImageSchema>;
+type UpdateProductImageInput = z.infer<typeof updateProductImageSchema>;
 
 const productInclude = {
   images: { orderBy: { sortOrder: 'asc' as const } },
@@ -26,17 +29,28 @@ const productInclude = {
   collection: { select: { id: true, nameEn: true, nameAr: true, slug: true } },
 };
 
-// Attach the post-sale price so every product read carries what a shopper pays.
+// Attach the post-sale price so every product/variant read carries what a
+// shopper actually pays.
 type Priced = {
   price: Prisma.Decimal;
   saleType: DiscountType | null;
   saleValue: Prisma.Decimal | null;
+  variants?: { price: Prisma.Decimal | null }[];
 };
 function withPricing<T extends Priced>(p: T) {
+  // A variant with no price of its own falls back to the product's price —
+  // the sale (defined at the product level) still applies on top of whichever
+  // base price is in play.
+  const priceFor = (base: Prisma.Decimal | number) => effectivePrice(base, p.saleType, p.saleValue);
+  const onSaleFor = (base: Prisma.Decimal | number) => isOnSale(base, p.saleType, p.saleValue);
   return {
     ...p,
-    effectivePrice: effectivePrice(p.price, p.saleType, p.saleValue),
-    onSale: isOnSale(p.price, p.saleType, p.saleValue),
+    effectivePrice: priceFor(p.price),
+    onSale: onSaleFor(p.price),
+    variants: p.variants?.map((v) => {
+      const base = v.price ?? p.price;
+      return { ...v, effectivePrice: priceFor(base), onSale: onSaleFor(base) };
+    }),
   };
 }
 
@@ -131,6 +145,7 @@ export async function createProduct(input: CreateProductInput) {
             sku: v.sku,
             size: v.size ?? null,
             color: v.color ?? null,
+            price: v.price ?? null,
             stockQuantity: v.stockQuantity,
           })),
         },
@@ -209,6 +224,7 @@ export async function addVariant(productId: string, input: CreateVariantInput) {
           sku: input.sku,
           size: input.size ?? null,
           color: input.color ?? null,
+          price: input.price ?? null,
           stockQuantity: input.stockQuantity,
         },
       });
@@ -259,6 +275,7 @@ export async function updateVariant(
           ...(input.sku !== undefined ? { sku: input.sku } : {}),
           ...(input.size !== undefined ? { size: input.size } : {}),
           ...(input.color !== undefined ? { color: input.color } : {}),
+          ...(input.price !== undefined ? { price: input.price } : {}),
           ...(nextStock !== undefined ? { stockQuantity: nextStock } : {}),
         },
       });
@@ -313,12 +330,12 @@ export async function updateStock(variantId: string, stockQuantity: number, acto
 
 // ---- Images (sub-resource) ----
 
-export async function addImage(productId: string, input: CreateImageInput) {
+export async function addImage(productId: string, input: CreateProductImageInput) {
   await ensureProductExists(productId);
   return prisma.productImage.create({ data: { productID: productId, ...input } });
 }
 
-export async function updateImage(productId: string, imageId: string, input: UpdateImageInput) {
+export async function updateImage(productId: string, imageId: string, input: UpdateProductImageInput) {
   await ensureImageExists(productId, imageId);
   return prisma.productImage.update({ where: { id: imageId }, data: input });
 }
