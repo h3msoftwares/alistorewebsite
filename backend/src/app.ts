@@ -10,6 +10,7 @@ import collectionRoutes from './modules/catalog/collection.routes';
 import categoryRoutes from './modules/catalog/category.routes';
 import productRoutes from './modules/catalog/product.routes';
 import cartRoutes from './modules/cart/cart.routes';
+import favouriteRoutes from './modules/favourites/favourites.routes';
 import orderRoutes from './modules/orders/order.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import addressRoutes from './modules/account/address.routes';
@@ -37,6 +38,7 @@ export function buildApp() {
   app.use('/api/categories', categoryRoutes);
   app.use('/api/products', productRoutes);
   app.use('/api/cart', cartRoutes);
+  app.use('/api/favourites', favouriteRoutes);
   app.use('/api/orders', orderRoutes);
   app.use('/api/addresses', addressRoutes);
   app.use('/api/users', userRoutes);

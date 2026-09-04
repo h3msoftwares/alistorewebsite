@@ -8,6 +8,7 @@ const TABLES = [
   'order',
   'cartitem',
   'cart',
+  'favorite',
   'auditlog',
   'oauthaccount',
   'passwordresettoken',
