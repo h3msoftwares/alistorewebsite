@@ -110,12 +110,16 @@
   --collection-tracking: -0.01em;
 
   /* ---- Typography ---- */
-  /* var(--font-inter)/--font-playfair/--font-noto-naskh are set on <html> by
-     next/font in app/[locale]/layout.tsx; quoted names are the graceful
-     fallback if this file is used outside that layout. */
-  --font-sans: var(--font-inter), 'Inter', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
-  --font-serif: var(--font-playfair), 'Playfair Display', Georgia, 'Times New Roman', serif;
-  --font-arabic: var(--font-noto-naskh), 'Noto Naskh Arabic', 'Tahoma', sans-serif;
+  /* var(--font-dosis)/--font-cairo are set on <html> by next/font in
+     app/[locale]/layout.tsx; quoted names are the graceful fallback if this
+     file is used outside that layout. Dosis covers both English roles (body
+     + headings) — there's no separate serif face in this system anymore,
+     --font-serif just points at the same family so every existing
+     font-family: var(--font-serif) rule (headings, wordmark, etc.) picks it
+     up without a find-and-replace across the file. */
+  --font-sans: var(--font-dosis), 'Dosis', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-serif: var(--font-dosis), 'Dosis', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-arabic: var(--font-cairo), 'Cairo', 'Tahoma', sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
   /* size / line-height pairs */
@@ -756,35 +760,102 @@ ul, ol {
   .hero__cta { display: flex; width: 100%; }
 }
 
-.collections-showcase { display: block; }
+/* ---- Home middle: featured + "rest of the collections" zones ---- */
+.home-middle { display: block; }
 
-.collection-section { padding-block: clamp(var(--space-8), 9vw, var(--section-gap)); }
-.collection-section[data-surface='bg'] { background: var(--color-bg); }
-.collection-section[data-surface='surface'] { background: var(--color-surface); }
-.collection-section[data-surface='tint'] {
-  background: var(--collection-accent-soft, var(--color-accent-soft));
+.home-zone--more { padding-top: var(--space-4); }
+.home-zone__eyebrow {
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  margin-block: 0 var(--space-2);
 }
+[lang='ar'] .home-zone__eyebrow { letter-spacing: 0; }
 
-.collection-section__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-  margin-bottom: var(--space-6);
-}
-.collection-section__title {
+/* One horizontally-scrollable row (a collection's categories, or a
+   category's products) — see components/home/horizontal-scroller.tsx. */
+.home-row { padding-block: clamp(var(--space-6), 6vw, var(--space-8)); }
+
+.home-row__head { margin-bottom: var(--space-3); }
+.home-row__title {
   margin: 0;
+  font-family: var(--collection-heading-font, var(--font-serif));
+  font-size: var(--fs-2xl);
   color: var(--collection-accent, var(--color-text));
 }
-.collection-section__all {
-  flex: none;
-  font-size: var(--fs-sm);
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
-.collection-section__all:hover { color: var(--color-text); text-decoration: underline; }
+[lang='ar'] .home-row__title { font-family: var(--font-arabic); }
 
+/* Bleeds to the viewport edge (negative margin cancels .container's inline
+   padding) so the arrows sit at the actual edge of the tile row, and the
+   next tile peeks in, hinting there's more to scroll. */
+.home-row__viewport {
+  position: relative;
+  margin-inline: calc(var(--gutter) * -1);
+}
+
+.home-row__track {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-inline: var(--gutter);
+  scrollbar-width: none;
+  cursor: grab;
+  user-select: none;
+}
+.home-row__track:active { cursor: grabbing; }
+.home-row__track::-webkit-scrollbar { display: none; }
+
+.home-row__track > * {
+  flex: 0 0 auto;
+  width: clamp(8.5rem, 26vw, 11rem);
+  scroll-snap-align: start;
+}
+
+/* Overlaid directly on the track, vertically centered on the tiles — reads
+   as a control for this row's content, not the page header. */
+.home-row__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+}
+.home-row__arrow--prev { inset-inline-start: var(--space-2); }
+.home-row__arrow--next { inset-inline-end: var(--space-2); }
+.home-row__arrow:hover:not(:disabled) { background: var(--color-surface); }
+.home-row__arrow:disabled { opacity: 0; pointer-events: none; }
+
+/* Small screens: keep each row short so the home page isn't one long scroll —
+   shorter media, tighter spacing. */
+@media (max-width: 599px) {
+  .home-row { padding-block: var(--space-6); }
+  .home-row__head { margin-bottom: var(--space-2); }
+  .home-row__title { font-size: var(--fs-xl); }
+  .media-tile__media { aspect-ratio: 3 / 2; }
+  .media-tile__name {
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--fs-sm);
+  }
+}
+@media (max-width: 380px) {
+  .media-tile__media { aspect-ratio: 16 / 10; }
+}
+
+/* ---- Media tile: image + name — a category card, a product card, in a
+   scroller or in a plain grid (listing pages' .category-grid). ---- */
 .category-grid {
   list-style: none;
   margin: 0;
@@ -800,47 +871,44 @@ ul, ol {
 @media (min-width: 1024px) {
   .category-grid { grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); }
 }
-
-/* Small screens: keep each collection block short so the home page isn't one
-   long scroll — two compact tiles per row, shorter media, tighter spacing. */
 @media (max-width: 599px) {
-  .collection-section { padding-block: var(--space-7); }
-  .collection-section__head { margin-bottom: var(--space-4); }
-  .collection-section__title { font-size: var(--fs-xl); }
   .category-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-2);
   }
-  .category-card__media { aspect-ratio: 3 / 2; }
-  .category-card__name {
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--fs-sm);
-  }
-}
-@media (max-width: 380px) {
-  .category-card__media { aspect-ratio: 16 / 10; }
 }
 
-.category-card {
+.media-tile {
   display: flex;
   flex-direction: column;
   overflow: hidden;
   padding: 0;
 }
-.category-card__media {
+.media-tile__media {
+  position: relative;
   aspect-ratio: 4 / 3;
   background: var(--color-surface);
 }
-.category-card__media-placeholder {
+.media-tile__media img { object-fit: cover; }
+.media-tile__media-placeholder {
   display: block;
   width: 100%;
   height: 100%;
   background:
     linear-gradient(135deg, var(--color-surface) 0%, var(--collection-accent-soft, var(--color-accent-soft)) 120%);
 }
-.category-card__name {
+.media-tile__name {
   padding: var(--space-3) var(--space-4);
   font-weight: var(--fw-semibold);
+}
+
+/* Loading placeholder for a row tile — same footprint as .media-tile so the
+   row doesn't jump when real tiles swap in. */
+.media-tile-skeleton {
+  flex: 0 0 auto;
+  width: clamp(8.5rem, 26vw, 11rem);
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
 }
 
 @media (max-width: 768px) {
@@ -913,6 +981,196 @@ ul, ol {
   color: var(--color-text-muted);
   margin-block-start: var(--space-2);
 }
+
+/* ============================================================
+   LISTING PAGES — collection / category page + product filters
+   ============================================================ */
+
+.collection-page__lede {
+  padding-top: var(--space-5);
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-sm);
+}
+.collection-page__subhead {
+  font-size: var(--fs-lg);
+  margin-bottom: var(--space-4);
+}
+
+/* The products section itself: a small top gap under the topbar (it's the
+   .container.products-section instead of .section--tight so it doesn't
+   affect the category-grid sections, which share that class) — keeps the
+   bottom padding a normal section gets. */
+.products-section { padding-block: var(--space-2) var(--space-7); }
+
+/* Route breadcrumb (Home / Collection / Category) + the filter panel share
+   one dense, short row so the product grid starts as high on the page as
+   possible. */
+.products-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  padding-block: var(--space-2);
+  margin-bottom: var(--space-3);
+  border-block: 1px solid var(--color-border);
+}
+
+.breadcrumb { flex: none; min-width: 0; }
+.breadcrumb__list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+}
+.breadcrumb__item { display: inline-flex; align-items: center; gap: var(--space-1); }
+.breadcrumb__link { color: var(--color-text-muted); white-space: nowrap; }
+.breadcrumb__link:hover { color: var(--color-text); text-decoration: underline; }
+.breadcrumb__sep { color: var(--color-text-disabled); }
+.breadcrumb__current {
+  margin: 0;
+  font: inherit;
+  font-weight: var(--fw-semibold);
+  color: var(--collection-accent, var(--color-text));
+  white-space: nowrap;
+}
+
+.product-filters {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-4);
+}
+.product-filters__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.product-filters__label {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-text-muted);
+}
+[lang='ar'] .product-filters__label { letter-spacing: 0; }
+.product-filters__price {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.product-filters__price-sep { color: var(--color-text-muted); }
+.product-filters__sort { min-width: 9rem; }
+.product-filters__clear {
+  align-self: center;
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.product-filters__clear:hover { color: var(--color-text); }
+
+/* Compact controls, scoped to the filter bar only — the same .chip/.input/
+   .select classes keep their full (touch-target-safe) size everywhere else,
+   e.g. the product detail page's own size selector. */
+.product-filters .chip {
+  min-height: 32px;
+  padding-inline: var(--space-2);
+  font-size: var(--fs-xs);
+}
+.product-filters .input {
+  min-height: 32px;
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  font-size: var(--fs-sm);
+  width: 4.5rem;
+}
+.product-filters .select {
+  min-height: 32px;
+  padding-block: var(--space-1);
+  padding-inline-start: var(--space-2);
+  font-size: var(--fs-sm);
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-4);
+}
+@media (max-width: 599px) {
+  .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+}
+
+.product-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-top: var(--space-7);
+}
+.product-pager__status {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* Product tile for a collection/category grid — <ProductCard> plus inline
+   favourite / add-to-cart icons and size/colour buttons (see
+   components/collection/product-preview-card.tsx). */
+.product-preview-card { position: relative; display: flex; flex-direction: column; }
+
+.product-preview-card__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 3 / 4;
+  background: var(--color-surface);
+}
+.product-preview-card__media img { object-fit: cover; }
+.product-preview-card__sale-badge {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+}
+
+.product-preview-card__favourite {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-end: var(--space-2);
+  width: 32px;
+  height: 32px;
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+}
+.product-preview-card__favourite[data-active] { color: var(--color-danger); border-color: var(--color-danger); }
+
+.product-preview-card__body { display: flex; flex-direction: column; gap: var(--space-2); }
+.product-preview-card__name { font-weight: var(--fw-semibold); }
+.product-preview-card__name:hover { text-decoration: underline; }
+
+.product-preview-card__chips.chip-group { gap: var(--space-1); }
+.product-preview-card__chips .chip {
+  min-height: 28px;
+  padding-inline: var(--space-2);
+  font-size: var(--fs-2xs);
+}
+
+.product-preview-card__swatches.swatch-group { gap: var(--space-1); }
+.product-preview-card__swatches .swatch { width: 26px; height: 26px; padding: 2px; }
+.product-preview-card__swatches .swatch[data-selected='true'] { padding: 1px; }
+
+.product-preview-card__add-to-cart {
+  align-self: flex-end;
+  width: 36px;
+  height: 36px;
+}
+.product-preview-card__add-to-cart[data-loading] { opacity: 0.6; }
 
 /* ============================================================
    5. BASE COMPONENTS
@@ -1610,7 +1868,7 @@ ul, ol {
    uses the default accent.
    ============================================================ */
 
-/* Arabic headings: force the Arabic face regardless of collection (Playfair
+/* Arabic headings: force the Arabic face regardless of collection (Dosis
    has no Arabic coverage). Element-level selector beats the h1..h4 rule. */
 [lang='ar'] h1,
 [lang='ar'] h2,

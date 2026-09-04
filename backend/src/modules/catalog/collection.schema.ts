@@ -61,6 +61,9 @@ export const createCollectionSchema = z.object({
   isActive: z.boolean().default(true),
   // Nav curation: appears in the storefront chrome, ordered by sortOrder.
   showInNav: z.boolean().default(false),
+  // Home curation: gets its own featured row (name + horizontal scroll of its
+  // categories) on the home page. Independent of showInNav.
+  showOnHome: z.boolean().default(false),
   sortOrder: z.number().int().nonnegative().default(0),
   accentColor: hexColor.optional().nullable(),
   // Optionally attach existing categories to the new collection on creation.

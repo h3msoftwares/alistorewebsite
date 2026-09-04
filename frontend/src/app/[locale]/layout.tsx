@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, Playfair_Display, Noto_Naskh_Arabic } from 'next/font/google';
+import { Dosis, Cairo } from 'next/font/google';
 import { dehydrate } from '@tanstack/react-query';
 import { StoreProvider } from '@/store/provider';
 import { SiteHeader } from '@/components/site-header';
@@ -17,9 +17,12 @@ import '@/styles/globals.css';
 // in globals.css — loaded here via next/font (self-hosted, no layout shift)
 // and exposed as CSS variables so the stylesheet's fallback chains resolve
 // to a real face instead of silently falling back to system fonts.
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
-const playfair = Playfair_Display({ subsets: ['latin'], variable: '--font-playfair', display: 'swap' });
-const notoNaskhArabic = Noto_Naskh_Arabic({ subsets: ['arabic'], variable: '--font-noto-naskh', display: 'swap' });
+// Dosis covers both English roles (body + headings — see --font-sans /
+// --font-serif in globals.css); Cairo covers Arabic. Neither ships a true
+// italic, so the "one italic accent word per headline" heading pattern
+// renders as a browser-synthesized (faux) slant.
+const dosis = Dosis({ subsets: ['latin'], variable: '--font-dosis', display: 'swap' });
+const cairo = Cairo({ subsets: ['arabic', 'latin'], variable: '--font-cairo', display: 'swap' });
 
 export const metadata: Metadata = {
   title: "Ali's Store",
@@ -62,7 +65,7 @@ export default async function LocaleLayout({
   });
 
   return (
-    <html lang={locale} dir={dir} className={`${inter.variable} ${playfair.variable} ${notoNaskhArabic.variable}`}>
+    <html lang={locale} dir={dir} className={`${dosis.variable} ${cairo.variable}`}>
       <body>
         <StoreProvider dehydratedState={dehydrate(queryClient)}>
           <a href="#main" className="skip-link">

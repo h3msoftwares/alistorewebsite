@@ -7,6 +7,13 @@ export const listCategoriesQuerySchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v === 'true'),
+  // Home-featured view: categories with their own row on the home page,
+  // across every collection (and standalone) in one call — there's no other
+  // "all categories" listing endpoint for the home page to piggyback on.
+  showOnHome: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => v === 'true'),
 });
 
 export const categoryIdParamSchema = z.object({
@@ -39,6 +46,10 @@ export const createCategorySchema = z.object({
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be kebab-case'),
   parentCategoryId: z.string().uuid().optional(),
   isActive: z.boolean().default(true),
+  // Home curation: gets its own featured row (name + horizontal scroll of its
+  // products) on the home page. Independent of its parent collection's own
+  // showOnHome.
+  showOnHome: z.boolean().default(false),
   sortOrder: z.number().int().nonnegative().default(0),
 });
 

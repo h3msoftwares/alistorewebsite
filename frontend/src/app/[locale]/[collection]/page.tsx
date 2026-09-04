@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { catalogApi } from '@/lib/api';
 import { ApiError } from '@/lib/api/errors';
 import { accentStyle } from '@/lib/collections';
-import { CategoryCard } from '@/components/home/category-card';
+import { MediaTile } from '@/components/home/media-tile';
 import { CollectionProducts } from '@/components/collection/collection-products';
 import type { Collection } from '@/lib/types';
 
@@ -52,10 +52,9 @@ export default async function CollectionPage({
 
   return (
     <div className="collection-page" data-collection={col.slug} style={accentStyle(col.accentColor)}>
-      <header className="container section collection-page__head">
-        <h1 className="collection-page__title">{name}</h1>
-        {description && <p className="collection-page__lede prose">{description}</p>}
-      </header>
+      {description && (
+        <p className="container collection-page__lede prose">{description}</p>
+      )}
 
       {categories.length > 0 && (
         <section className="container section--tight" aria-label={isAr ? 'الفئات' : 'Categories'}>
@@ -65,9 +64,11 @@ export default async function CollectionPage({
           <ul className="category-grid" role="list">
             {categories.map((cat) => (
               <li key={cat.id}>
-                <CategoryCard
-                  href={`/${locale}/${col.slug}?category=${cat.slug}`}
+                <MediaTile
+                  href={`/${locale}/category/${cat.slug}`}
                   name={isAr ? cat.nameAr : cat.nameEn}
+                  imageUrl={cat.images[0]?.url}
+                  imageAlt={(isAr ? cat.images[0]?.altAr : cat.images[0]?.altEn) ?? undefined}
                 />
               </li>
             ))}
@@ -75,7 +76,7 @@ export default async function CollectionPage({
         </section>
       )}
 
-      <CollectionProducts collectionId={col.id} locale={locale} />
+      <CollectionProducts collectionId={col.id} locale={locale} name={name} />
     </div>
   );
 }

@@ -5,6 +5,9 @@ import { queryKeys } from '@/lib/query-keys';
 import {
   useCollections,
   useNavCollections,
+  useFeaturedCollections,
+  useOtherCollections,
+  useFeaturedCategories,
   useCollection,
   useProducts,
   useProduct,
@@ -13,6 +16,8 @@ import {
   useCategoryBySlug,
   useStandaloneCategories,
   useCategoryProducts,
+  useCollectionFacets,
+  useCategoryFacets,
 } from './use-catalog';
 
 vi.mock('@/lib/api', () => ({
@@ -22,6 +27,7 @@ vi.mock('@/lib/api', () => ({
     getCollectionBySlug: vi.fn(),
     listCategories: vi.fn(),
     listStandaloneCategories: vi.fn(),
+    listFeaturedCategories: vi.fn(),
     getCategory: vi.fn(),
     getCategoryBySlug: vi.fn(),
     listCategoryProducts: vi.fn(),
@@ -69,6 +75,84 @@ describe('use-catalog queries', () => {
 
     await waitFor(() => expect(result.current.data).toBeDefined());
     expect(result.current.data?.map((c) => c.slug)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('useFeaturedCollections keeps only showOnHome and orders by sortOrder', async () => {
+    mockCatalog.listCollections.mockResolvedValue([
+      { id: 'c', slug: 'c', showOnHome: true, sortOrder: 3 },
+      { id: 'a', slug: 'a', showOnHome: true, sortOrder: 1 },
+      { id: 'hidden', slug: 'hidden', showOnHome: false, sortOrder: 0 },
+    ] as never);
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useFeaturedCollections(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data?.map((c) => c.slug)).toEqual(['a', 'c']);
+  });
+
+  it('useOtherCollections keeps everything showOnHome=false, ordered by sortOrder', async () => {
+    mockCatalog.listCollections.mockResolvedValue([
+      { id: 'featured', slug: 'featured', showOnHome: true, sortOrder: 0 },
+      { id: 'z', slug: 'z', showOnHome: false, sortOrder: 2 },
+      { id: 'a', slug: 'a', showOnHome: false, sortOrder: 1 },
+    ] as never);
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useOtherCollections(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data?.map((c) => c.slug)).toEqual(['a', 'z']);
+  });
+
+  it('useFeaturedCategories fetches showOnHome=true categories, sorted by sortOrder', async () => {
+    mockCatalog.listFeaturedCategories.mockResolvedValue([
+      { id: 'c', slug: 'c', sortOrder: 2 },
+      { id: 'a', slug: 'a', sortOrder: 1 },
+    ] as never);
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useFeaturedCategories(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data?.map((c) => c.slug)).toEqual(['a', 'c']);
+    expect(mockCatalog.listFeaturedCategories).toHaveBeenCalled();
+  });
+
+  it('useCollectionFacets derives unique sorted sizes/colours from the variants, only when given an id', async () => {
+    mockCatalog.listProducts.mockResolvedValue({
+      items: [
+        { variants: [{ size: 'M', color: 'Black' }, { size: 'S', color: 'Black' }] },
+        { variants: [{ size: 'M', color: 'Navy' }, { size: null, color: null }] },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 60,
+    } as never);
+    const { Wrapper } = createWrapper();
+
+    const off = renderHook(() => useCollectionFacets(undefined), { wrapper: Wrapper });
+    expect(off.result.current.fetchStatus).toBe('idle');
+
+    const { result } = renderHook(() => useCollectionFacets('col-1'), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data).toEqual({ sizes: ['M', 'S'], colors: ['Black', 'Navy'] });
+    expect(mockCatalog.listProducts).toHaveBeenCalledWith({ collectionId: 'col-1', pageSize: 60 });
+  });
+
+  it('useCategoryFacets derives facets from listCategoryProducts, only when given an id', async () => {
+    mockCatalog.listCategoryProducts.mockResolvedValue({
+      items: [{ variants: [{ size: 'L', color: 'White' }] }],
+      total: 1,
+      page: 1,
+      pageSize: 60,
+    } as never);
+    const { Wrapper } = createWrapper();
+
+    const off = renderHook(() => useCategoryFacets(undefined), { wrapper: Wrapper });
+    expect(off.result.current.fetchStatus).toBe('idle');
+
+    const { result } = renderHook(() => useCategoryFacets('cat-1'), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data).toEqual({ sizes: ['L'], colors: ['White'] });
+    expect(mockCatalog.listCategoryProducts).toHaveBeenCalledWith('cat-1', { pageSize: 60 });
   });
 
   it('useCollection is disabled without an id and enabled with one', async () => {

@@ -3,7 +3,6 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
 import { requireAuth, optionalAuth } from '../../middleware/auth.middleware';
 import { requireRole } from '../../middleware/rbac.middleware';
-import { createImageSchema, updateImageSchema } from './image.schema';
 import {
   listProductsQuerySchema,
   productIdParamSchema,
@@ -13,6 +12,8 @@ import {
   updateProductSchema,
   createVariantSchema,
   updateVariantSchema,
+  createProductImageSchema,
+  updateProductImageSchema,
 } from './product.schema';
 import {
   listProductsHandler,
@@ -80,13 +81,13 @@ router.delete(
 router.post(
   '/:id/images',
   ...admin,
-  validate({ params: productIdParamSchema, body: createImageSchema }),
+  validate({ params: productIdParamSchema, body: createProductImageSchema }),
   asyncHandler(addProductImageHandler)
 );
 router.patch(
   '/:id/images/:imageId',
   ...admin,
-  validate({ params: productImageParamSchema, body: updateImageSchema }),
+  validate({ params: productImageParamSchema, body: updateProductImageSchema }),
   asyncHandler(updateProductImageHandler)
 );
 router.delete(

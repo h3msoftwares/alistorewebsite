@@ -45,7 +45,12 @@ export interface CatalogImage {
   altAr?: string | null;
   sortOrder: number;
 }
-export type ProductImage = CatalogImage & { productID: UUID };
+export type ProductImage = CatalogImage & {
+  productID: UUID;
+  /** Ties this image to one of the product's colour options — `null` means
+   *  it's shown regardless of colour (generic/fallback shots). */
+  color?: string | null;
+};
 export type CollectionImage = CatalogImage & { collectionID: UUID };
 export type CategoryImage = CatalogImage & { categoryID: UUID };
 
@@ -62,6 +67,11 @@ export interface Collection {
   isActive: boolean;
   /** Owner-picked: appears in the top nav / footer. Order reuses `sortOrder`. */
   showInNav: boolean;
+  /** Owner-picked: gets its own featured row on the home page (name + a
+   *  horizontal scroll of its categories). Independent of `showInNav`. Order
+   *  among featured rows (collections + categories, interleaved) reuses
+   *  `sortOrder` as a shared ranking key. */
+  showOnHome: boolean;
   sortOrder: number;
   /** `#rrggbb` — drives the `--collection-accent*` CSS vars (see `accentStyle`). */
   accentColor?: string | null;
@@ -81,6 +91,10 @@ export interface Category {
   slug: string;
   parentCategoryID?: UUID | null;
   isActive: boolean;
+  /** Owner-picked: gets its own featured row on the home page (name + a
+   *  horizontal scroll of its products), independent of its parent
+   *  collection's own `showOnHome`. */
+  showOnHome: boolean;
   sortOrder: number;
   images: CategoryImage[];
   /** Present on `GET /categories` (one level of nesting). */
@@ -96,6 +110,16 @@ export interface ProductVariant {
   /** Nullable now — not every product has a size or a colour. */
   size?: string | null;
   color?: string | null;
+  /** Per-variant price override — `null`/absent falls back to the product's
+   *  own `price`, so sizes/colours can share one price or each carry their
+   *  own. */
+  price?: Decimalish | null;
+  /** Computed by the API, using this variant's price-or-fallback with the
+   *  product's sale applied on top — present when the variant is nested in a
+   *  Product response (list/get/create/update); absent on the bare variant
+   *  sub-resource endpoints (POST/PATCH /products/:id/variants). */
+  effectivePrice?: number;
+  onSale?: boolean;
   stockQuantity: number;
 }
 
@@ -301,6 +325,13 @@ export interface ImageBody {
   sortOrder?: number;
 }
 
+/** Product images extend the shared shape with an optional colour tag —
+ *  `null`/omitted shows the image regardless of colour. Collection/category
+ *  images don't have this (they use the plain `ImageBody`). */
+export interface ProductImageBody extends ImageBody {
+  color?: string | null;
+}
+
 export interface CollectionBody {
   nameEn: string;
   nameAr: string;
@@ -308,8 +339,9 @@ export interface CollectionBody {
   descriptionEn?: string;
   descriptionAr?: string;
   isActive?: boolean;
-  // TODO(admin-collections): expose showInNav / sortOrder / accentColor in the admin form.
+  // TODO(admin-collections): expose showInNav / showOnHome / sortOrder / accentColor in the admin form.
   showInNav?: boolean;
+  showOnHome?: boolean;
   sortOrder?: number;
   accentColor?: string | null;
   categoryIds?: UUID[];
@@ -324,6 +356,7 @@ export interface CategoryBody {
   slug: string;
   parentCategoryId?: UUID;
   isActive?: boolean;
+  showOnHome?: boolean;
   sortOrder?: number;
 }
 
@@ -331,6 +364,8 @@ export interface VariantBody {
   sku: string;
   size?: string | null;
   color?: string | null;
+  /** Omit or `null` to fall back to the product's own price. */
+  price?: number | null;
   stockQuantity?: number;
 }
 

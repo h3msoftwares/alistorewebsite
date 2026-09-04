@@ -43,10 +43,13 @@ async function main() {
   });
 
   // ---- Collections (replace the old Department enum; owner-editable) ----
+  // showOnHome demos the home page's featured row: women + men get their own
+  // "collection row" (name + horizontal scroll of categories); kids is left
+  // out to demo the "rest of the collections" zone below it.
   const collectionDefs = [
-    { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, showInNav: true, accentColor: '#a65a7e' },
-    { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, showInNav: true, accentColor: '#38455c' },
-    { slug: 'kids', nameEn: 'Kids', nameAr: 'أطفال', sortOrder: 3, showInNav: true, accentColor: '#b4611e' },
+    { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, showInNav: true, showOnHome: true, accentColor: '#a65a7e' },
+    { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, showInNav: true, showOnHome: true, accentColor: '#38455c' },
+    { slug: 'kids', nameEn: 'Kids', nameAr: 'أطفال', sortOrder: 3, showInNav: true, showOnHome: false, accentColor: '#b4611e' },
   ];
 
   const collections = new Map<string, { id: string }>();
@@ -58,6 +61,7 @@ async function main() {
         nameAr: c.nameAr,
         sortOrder: c.sortOrder,
         showInNav: c.showInNav,
+        showOnHome: c.showOnHome,
         accentColor: c.accentColor,
       },
       create: c,
@@ -66,22 +70,32 @@ async function main() {
   }
 
   // ---- Categories (bilingual, each linked to one collection) ----
+  // kids-pajamas is individually featured too, to demo a category getting its
+  // own "product row" on the home page independent of its collection.
   const categoryDefs = [
-    { collectionSlug: 'women', nameEn: 'Lingerie', nameAr: 'ملابس داخلية نسائية', slug: 'women-lingerie' },
-    { collectionSlug: 'women', nameEn: 'Nightwear', nameAr: 'ملابس النوم النسائية', slug: 'women-nightwear' },
-    { collectionSlug: 'men', nameEn: "Men's Shirts", nameAr: 'قمصان رجالي', slug: 'men-shirts' },
-    { collectionSlug: 'men', nameEn: "Men's Underwear", nameAr: 'ملابس داخلية رجالية', slug: 'men-underwear' },
-    { collectionSlug: 'kids', nameEn: "Kids' Pajamas", nameAr: 'بيجامات أطفال', slug: 'kids-pajamas' },
-    { collectionSlug: 'kids', nameEn: "Kids' Everyday", nameAr: 'ملابس أطفال يومية', slug: 'kids-everyday' },
+    { collectionSlug: 'women', nameEn: 'Lingerie', nameAr: 'ملابس داخلية نسائية', slug: 'women-lingerie', sortOrder: 1 },
+    { collectionSlug: 'women', nameEn: 'Nightwear', nameAr: 'ملابس النوم النسائية', slug: 'women-nightwear', sortOrder: 2 },
+    { collectionSlug: 'men', nameEn: "Men's Shirts", nameAr: 'قمصان رجالي', slug: 'men-shirts', sortOrder: 1 },
+    { collectionSlug: 'men', nameEn: "Men's Underwear", nameAr: 'ملابس داخلية رجالية', slug: 'men-underwear', sortOrder: 2 },
+    { collectionSlug: 'kids', nameEn: "Kids' Pajamas", nameAr: 'بيجامات أطفال', slug: 'kids-pajamas', sortOrder: 4, showOnHome: true },
+    { collectionSlug: 'kids', nameEn: "Kids' Everyday", nameAr: 'ملابس أطفال يومية', slug: 'kids-everyday', sortOrder: 2 },
   ];
 
   const categories = new Map<string, { id: string; collectionID: string }>();
   for (const c of categoryDefs) {
     const collectionID = collections.get(c.collectionSlug)!.id;
+    const data = {
+      nameEn: c.nameEn,
+      nameAr: c.nameAr,
+      slug: c.slug,
+      collectionID,
+      sortOrder: c.sortOrder,
+      showOnHome: c.showOnHome ?? false,
+    };
     const cat = await prisma.category.upsert({
       where: { slug: c.slug },
-      update: { collectionID },
-      create: { nameEn: c.nameEn, nameAr: c.nameAr, slug: c.slug, collectionID },
+      update: data,
+      create: data,
     });
     categories.set(c.slug, { id: cat.id, collectionID });
   }

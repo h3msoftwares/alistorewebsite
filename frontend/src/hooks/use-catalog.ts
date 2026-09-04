@@ -8,6 +8,7 @@ import type {
   CollectionBody,
   ImageBody,
   ProductBody,
+  ProductImageBody,
   ProductListQuery,
   UUID,
   VariantBody,
@@ -31,6 +32,33 @@ export function useNavCollections() {
     ...q,
     data: q.data
       ?.filter((c) => c.showInNav)
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder),
+  };
+}
+
+/** Collections promoted into the home page's featured row (own row: name +
+ *  a horizontal scroll of its categories), in `sortOrder`. Derived from
+ *  `useCollections()` — no separate request. */
+export function useFeaturedCollections() {
+  const q = useCollections();
+  return {
+    ...q,
+    data: q.data
+      ?.filter((c) => c.showOnHome)
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder),
+  };
+}
+
+/** Every collection NOT promoted to the home page's featured row — the "rest
+ *  of the collections" block below it, in `sortOrder`. */
+export function useOtherCollections() {
+  const q = useCollections();
+  return {
+    ...q,
+    data: q.data
+      ?.filter((c) => !c.showOnHome)
       .slice()
       .sort((a, b) => a.sortOrder - b.sortOrder),
   };
@@ -64,6 +92,17 @@ export function useStandaloneCategories() {
   return useQuery({
     queryKey: queryKeys.categories.standalone(),
     queryFn: () => catalogApi.listStandaloneCategories(),
+  });
+}
+
+/** Categories promoted to their own home-page row, across every collection,
+ *  sorted client-side by `sortOrder` (shared ranking key with featured
+ *  collections — see `useFeaturedCollections`). */
+export function useFeaturedCategories() {
+  return useQuery({
+    queryKey: queryKeys.categories.featured(),
+    queryFn: () => catalogApi.listFeaturedCategories(),
+    select: (data) => data.slice().sort((a, b) => a.sortOrder - b.sortOrder),
   });
 }
 
@@ -106,6 +145,51 @@ export function useProduct(id: UUID | undefined) {
     queryKey: queryKeys.products.detail(id ?? ''),
     queryFn: () => catalogApi.getProduct(id as UUID),
     enabled: Boolean(id),
+  });
+}
+
+export interface ProductFacets {
+  sizes: string[];
+  colors: string[];
+}
+
+// Unique, sorted size/colour values across a product page's variants — used
+// to populate the filter chips. Independent of the currently-applied filters
+// (always the full unfiltered scope) so switching one filter never hides the
+// options for another.
+function extractFacets(items: { variants: { size?: string | null; color?: string | null }[] }[]): ProductFacets {
+  const sizes = new Set<string>();
+  const colors = new Set<string>();
+  for (const item of items) {
+    for (const v of item.variants) {
+      if (v.size) sizes.add(v.size);
+      if (v.color) colors.add(v.color);
+    }
+  }
+  return { sizes: [...sizes].sort(), colors: [...colors].sort() };
+}
+
+const FACETS_PAGE_SIZE = 60; // the API's max — good enough to sample facets for a small-catalog storefront
+
+/** Available size/colour filter options across a collection (all its
+ *  categories), independent of the currently-applied filters. */
+export function useCollectionFacets(collectionId: UUID | undefined) {
+  return useQuery({
+    queryKey: queryKeys.products.facetsByCollection(collectionId ?? ''),
+    queryFn: () => catalogApi.listProducts({ collectionId, pageSize: FACETS_PAGE_SIZE }),
+    enabled: Boolean(collectionId),
+    select: (data) => extractFacets(data.items),
+  });
+}
+
+/** Available size/colour filter options within a category, independent of
+ *  the currently-applied filters. */
+export function useCategoryFacets(categoryId: UUID | undefined) {
+  return useQuery({
+    queryKey: queryKeys.products.facetsByCategory(categoryId ?? ''),
+    queryFn: () => catalogApi.listCategoryProducts(categoryId as UUID, { pageSize: FACETS_PAGE_SIZE }),
+    enabled: Boolean(categoryId),
+    select: (data) => extractFacets(data.items),
   });
 }
 
@@ -255,6 +339,8 @@ export function useDeleteProductVariant() {
 type ImageTarget = { id: UUID; body: ImageBody };
 type ImageEditTarget = { id: UUID; imageId: UUID; body: Partial<ImageBody> };
 type ImageDeleteTarget = { id: UUID; imageId: UUID };
+type ProductImageTarget = { id: UUID; body: ProductImageBody };
+type ProductImageEditTarget = { id: UUID; imageId: UUID; body: Partial<ProductImageBody> };
 
 export function useAddCollectionImage() {
   const inv = useInvalidator();
@@ -306,14 +392,14 @@ export function useDeleteCategoryImage() {
 export function useAddProductImage() {
   const inv = useInvalidator();
   return useMutation({
-    mutationFn: ({ id, body }: ImageTarget) => catalogApi.addProductImage(id, body),
+    mutationFn: ({ id, body }: ProductImageTarget) => catalogApi.addProductImage(id, body),
     onSuccess: inv.products,
   });
 }
 export function useUpdateProductImage() {
   const inv = useInvalidator();
   return useMutation({
-    mutationFn: ({ id, imageId, body }: ImageEditTarget) =>
+    mutationFn: ({ id, imageId, body }: ProductImageEditTarget) =>
       catalogApi.updateProductImage(id, imageId, body),
     onSuccess: inv.products,
   });

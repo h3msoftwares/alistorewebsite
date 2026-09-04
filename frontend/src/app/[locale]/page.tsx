@@ -1,14 +1,15 @@
 import { Hero } from '@/components/home/hero';
-import { CollectionsShowcase } from '@/components/home/collections-showcase';
+import { HomeMiddle } from '@/components/home/home-middle';
 
 /**
  * Home page structure:
- *   1. Hero        — text + Discover button + image
- *   2. Collections — one block per storefront collection (name + its category
- *                    grid), each on its own background
+ *   1. Hero — text + Discover button + image
+ *   2. Zone 1 (featured) — admin-picked collections + categories
+ *      (Collection.showOnHome / Category.showOnHome), interleaved by
+ *      sortOrder, each its own horizontally-scrollable row
+ *   3. Zone 2 (more) — every other collection, same row treatment
  *
- * Structure only — see the TODOs in the child components for where the data
- * hooks (useCollections / useCategories) plug in.
+ * See `home-middle.tsx` for the data assembly.
  */
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -16,7 +17,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
   return (
     <>
       <Hero locale={locale} />
-      <CollectionsShowcase locale={locale} />
+      <HomeMiddle locale={locale} />
     </>
   );
 }
