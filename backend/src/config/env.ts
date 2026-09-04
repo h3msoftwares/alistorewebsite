@@ -21,11 +21,58 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().min(1),
-  JWT_ACCESS_SECRET: z.string().min(16),
-  JWT_REFRESH_SECRET: z.string().min(16),
+  // 32 chars is the floor everywhere; production additionally rejects known
+  // placeholders and a shared access/refresh secret (see assertStrongSecrets).
+  JWT_ACCESS_SECRET: z.string().min(32),
+  JWT_REFRESH_SECRET: z.string().min(32),
   JWT_ACCESS_TTL: z.string().default('15m'),
+  // Privileged (STAFF/ADMIN) sessions get a shorter access token — see
+  // signAccessToken in modules/auth/auth.service.ts.
+  JWT_ADMIN_ACCESS_TTL: z.string().default('5m'),
   JWT_REFRESH_TTL_DAYS: z.coerce.number().default(30),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
 });
 
 export const env = envSchema.parse(process.env);
+
+// Substrings that mean "this is a copied-from-.env.example placeholder, not a
+// real secret". A forged admin JWT is game-over, so in production we refuse to
+// boot rather than run on a guessable signing key.
+const PLACEHOLDER_PATTERNS = [
+  /change[-_ ]?me/i,
+  /changeme/i,
+  /your[-_ ]?secret/i,
+  /replace[-_ ]?with/i,
+  /example/i,
+  /placeholder/i,
+  /^secret$/i,
+  /^changeit$/i,
+];
+
+/** Throws if a JWT secret is too weak to sign auth tokens with. Enforced at
+ *  boot in production; exported so it can be unit-tested. */
+export function assertStrongSecret(value: string, name: string): void {
+  if (value.length < 32) {
+    throw new Error(`${name} must be at least 32 characters.`);
+  }
+  if (PLACEHOLDER_PATTERNS.some((re) => re.test(value))) {
+    throw new Error(
+      `${name} looks like a placeholder from .env.example. Generate a real one, e.g. \`openssl rand -hex 32\`.`
+    );
+  }
+  if (new Set(value).size < 12) {
+    throw new Error(`${name} has too little variety to be a real random secret.`);
+  }
+}
+
+export function assertStrongSecrets(e: Pick<typeof env, 'JWT_ACCESS_SECRET' | 'JWT_REFRESH_SECRET'>): void {
+  assertStrongSecret(e.JWT_ACCESS_SECRET, 'JWT_ACCESS_SECRET');
+  assertStrongSecret(e.JWT_REFRESH_SECRET, 'JWT_REFRESH_SECRET');
+  if (e.JWT_ACCESS_SECRET === e.JWT_REFRESH_SECRET) {
+    throw new Error('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different values.');
+  }
+}
+
+if (env.NODE_ENV === 'production') {
+  assertStrongSecrets(env);
+}

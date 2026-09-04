@@ -78,6 +78,25 @@ export function useLogin() {
   });
 }
 
+/** Admin-panel sign-in. Mirrors `useLogin` (verify → prime token → load
+ *  profile → mark authenticated) but hits POST /api/auth/admin-login and does
+ *  no cart work — the admin flow isn't a storefront session. The backend only
+ *  returns 200 for a STAFF/ADMIN account, so a resolved profile here is
+ *  already an admin. */
+export function useAdminLogin() {
+  const dispatch = useAppDispatch();
+  return useMutation({
+    mutationFn: async (body: LoginBody) => {
+      const { accessToken } = await authApi.adminLogin(body);
+      setAccessToken(accessToken);
+      return accountApi.getProfile();
+    },
+    onSuccess: (profile) => {
+      dispatch(authenticated(profile));
+    },
+  });
+}
+
 export function useRegister() {
   const dispatch = useAppDispatch();
   const qc = useQueryClient();

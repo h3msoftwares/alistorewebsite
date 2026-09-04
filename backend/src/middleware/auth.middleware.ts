@@ -25,7 +25,9 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   }
   const token = header.slice('Bearer '.length);
   try {
-    const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as AuthedUser;
+    const payload = jwt.verify(token, env.JWT_ACCESS_SECRET, {
+      algorithms: ['HS256'],
+    }) as AuthedUser;
     req.user = { id: payload.id, role: payload.role };
     next();
   } catch {
@@ -41,7 +43,9 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   if (!header?.startsWith('Bearer ')) return next();
   const token = header.slice('Bearer '.length);
   try {
-    const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as AuthedUser;
+    const payload = jwt.verify(token, env.JWT_ACCESS_SECRET, {
+      algorithms: ['HS256'],
+    }) as AuthedUser;
     req.user = { id: payload.id, role: payload.role };
   } catch {
     // ignore invalid token on optional routes — treated as guest

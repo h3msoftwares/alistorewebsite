@@ -1,13 +1,36 @@
 import { PrismaClient } from '@prisma/client';
 import argon2 from 'argon2';
 
+// Load backend/.env (same mechanism as src/config/env.ts) so SEED_ADMIN_PASSWORD
+// — and DATABASE_URL — are available whether this runs via `npm run seed`
+// locally or with real env vars injected in CI. Node's native loader; no dep.
+try {
+  process.loadEnvFile();
+} catch {
+  // no .env file on disk — assume the environment already provides these vars
+}
+
 const prisma = new PrismaClient();
+
+/** The initial admin password comes from the environment and is Argon2-hashed
+ *  here at seed time. The plaintext is never written to the database and never
+ *  committed to source — see backend/.env.example. */
+function requireSeedAdminPassword(): string {
+  const pw = process.env.SEED_ADMIN_PASSWORD;
+  if (!pw || pw.length < 8) {
+    throw new Error(
+      'SEED_ADMIN_PASSWORD must be set to at least 8 characters before seeding. ' +
+        'Add it to backend/.env (see backend/.env.example).'
+    );
+  }
+  return pw;
+}
 
 async function main() {
   console.log('[seed] starting…');
 
   // ---- Admin user ----
-  const adminPasswordHash = await argon2.hash('ChangeMe123!');
+  const adminPasswordHash = await argon2.hash(requireSeedAdminPassword());
   await prisma.user.upsert({
     where: { email: 'admin@alistore.com' },
     update: {},
