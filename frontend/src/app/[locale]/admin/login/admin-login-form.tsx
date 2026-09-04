@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -80,6 +81,10 @@ export function AdminLoginForm({ locale }: { locale: Locale }) {
           {t('Sign in', 'تسجيل الدخول')}
         </Button>
       </form>
+
+      <p className="prose" style={{ marginBlockStart: 'var(--space-5)' }}>
+        <Link href={`/${locale}/forgot-password`}>{t('Forgot your password?', 'نسيت كلمة المرور؟')}</Link>
+      </p>
     </div>
   );
 }

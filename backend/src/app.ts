@@ -7,6 +7,7 @@ import { env } from './config/env';
 
 import authRoutes from './modules/auth/auth.routes';
 import { adminAuthRoutes } from './modules/auth/admin-auth.routes';
+import { passwordResetRoutes } from './modules/auth/password-reset.routes';
 import collectionRoutes from './modules/catalog/collection.routes';
 import categoryRoutes from './modules/catalog/category.routes';
 import productRoutes from './modules/catalog/product.routes';
@@ -17,7 +18,13 @@ import adminRoutes from './modules/admin/admin.routes';
 import addressRoutes from './modules/account/address.routes';
 import userRoutes from './modules/account/user.routes';
 
-export function buildApp(opts: { adminLoginRateLimit?: boolean } = {}) {
+export function buildApp(
+  opts: {
+    adminLoginRateLimit?: boolean;
+    forgotPasswordRateLimit?: boolean;
+    resetPasswordRateLimit?: boolean;
+  } = {}
+) {
   const app = express();
 
   // In production the API sits behind one reverse-proxy hop (Railway/Fly).
@@ -47,6 +54,14 @@ export function buildApp(opts: { adminLoginRateLimit?: boolean } = {}) {
   app.use(
     '/api/auth',
     adminAuthRoutes({ rateLimit: opts.adminLoginRateLimit ?? env.NODE_ENV !== 'test' })
+  );
+  // Forgot/reset-password — shared across every role, not role-specific.
+  app.use(
+    '/api/auth',
+    passwordResetRoutes({
+      forgotPasswordRateLimit: opts.forgotPasswordRateLimit ?? env.NODE_ENV !== 'test',
+      resetPasswordRateLimit: opts.resetPasswordRateLimit ?? env.NODE_ENV !== 'test',
+    })
   );
   app.use('/api/collections', collectionRoutes);
   app.use('/api/categories', categoryRoutes);

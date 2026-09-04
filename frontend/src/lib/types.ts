@@ -276,6 +276,19 @@ export interface LoginBody {
   password: string;
 }
 
+/** Delivery is email-only (no SMS provider is wired), so — unlike LoginBody's
+ *  identifier — this is keyed on `email`. `locale` only shapes the link the
+ *  email contains; defaults to 'en' server-side if omitted. */
+export interface ForgotPasswordBody {
+  email: string;
+  locale?: 'en' | 'ar';
+}
+
+export interface ResetPasswordBody {
+  token: string;
+  newPassword: string;
+}
+
 export interface AuthResult {
   accessToken: string;
   user?: AuthUser;

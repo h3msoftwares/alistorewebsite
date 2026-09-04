@@ -31,6 +31,22 @@ const envSchema = z.object({
   JWT_ADMIN_ACCESS_TTL: z.string().default('5m'),
   JWT_REFRESH_TTL_DAYS: z.coerce.number().default(30),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
+
+  // Email (forgot-password). Defaulted to empty rather than required — a
+  // checkout without SMTP configured yet should still boot; lib/mailer.ts
+  // treats an unset SMTP_HOST as "not configured" and no-ops (logging a
+  // warning) instead of throwing, so the endpoint's response is never
+  // affected either way.
+  SMTP_HOST: z.string().default(''),
+  SMTP_PORT: z.coerce.number().default(587),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASSWORD: z.string().default(''),
+  SMTP_FROM: z.string().default("Ali's Store <no-reply@example.com>"),
+  // Password-reset token lifetime, in minutes.
+  RESET_TOKEN_TTL_MIN: z.coerce.number().default(30),
+  // Base URL the reset link is built against:
+  // `${FRONTEND_URL}/{locale}/reset-password?token=...`
+  FRONTEND_URL: z.string().default('http://localhost:3000'),
 });
 
 export const env = envSchema.parse(process.env);
