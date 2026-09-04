@@ -28,6 +28,10 @@ export const queryKeys = {
   cart: {
     root: () => ['cart'] as const,
   },
+  favourites: {
+    // Logged-in only — the guest list lives in the `favourites` Redux slice.
+    root: () => ['favourites'] as const,
+  },
   orders: {
     all: () => ['orders'] as const,
     mine: () => ['orders', 'mine'] as const,

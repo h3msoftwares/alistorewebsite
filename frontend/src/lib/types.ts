@@ -147,6 +147,19 @@ export interface CartView {
   subtotal: number;
 }
 
+// ---- Favourites ----
+
+/** One row of `GET /api/favourites` — a hydrated product (same shape the
+ *  catalog endpoints return, incl. `effectivePrice` / `onSale` / `images`)
+ *  plus when it was hearted. Backend requires auth; guests never hit this
+ *  endpoint (see `useFavourites` — guest favourites live in the Redux slice
+ *  + localStorage). */
+export interface FavouriteEntry {
+  id: UUID;
+  dateCreated: IsoDateTime;
+  product: Product;
+}
+
 // ---- Orders ----
 
 export interface OrderItem {
