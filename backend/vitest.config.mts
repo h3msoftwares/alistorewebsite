@@ -24,6 +24,7 @@ export default defineConfig({
       JWT_ACCESS_TTL: '15m',
       JWT_REFRESH_TTL_DAYS: '30',
       CORS_ORIGIN: 'http://localhost:3000',
+      IMAGEKIT_PRIVATE_KEY: 'test-imagekit-private-key-0123456789',
     },
   },
 });

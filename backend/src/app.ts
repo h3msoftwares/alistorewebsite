@@ -17,6 +17,7 @@ import orderRoutes from './modules/orders/order.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import addressRoutes from './modules/account/address.routes';
 import userRoutes from './modules/account/user.routes';
+import uploadRoutes from './modules/uploads/upload.routes';
 
 export function buildApp(
   opts: {
@@ -72,6 +73,7 @@ export function buildApp(
   app.use('/api/addresses', addressRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/uploads', uploadRoutes);
 
   // 404 fallback
   app.use((req, res) => {

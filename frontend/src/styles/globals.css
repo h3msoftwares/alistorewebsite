@@ -1173,6 +1173,129 @@ ul, ol {
 .product-preview-card__add-to-cart[data-loading] { opacity: 0.6; }
 
 /* ============================================================
+   ADMIN — nav shell, image uploader/gallery
+   ============================================================ */
+
+.admin-shell { padding-block: var(--space-6); }
+.admin-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+.admin-nav__link {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-muted);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.admin-nav__link:hover { color: var(--color-text); background: var(--color-surface); }
+.admin-nav__link[data-active] { color: var(--color-on-primary); background: var(--color-primary); }
+
+.admin-page__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+.admin-page__head h1 { margin: 0; }
+
+.image-uploader { display: inline-flex; flex-direction: column; gap: var(--space-1); }
+.image-uploader__trigger { cursor: pointer; }
+.image-uploader__trigger[data-disabled] { opacity: 0.5; pointer-events: none; }
+.image-uploader__error { margin: 0; font-size: var(--fs-xs); color: var(--color-danger); }
+
+.image-gallery { display: flex; flex-direction: column; gap: var(--space-3); }
+.image-gallery__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+.image-gallery__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 120px;
+}
+.image-gallery__thumb {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+.image-gallery__thumb img { object-fit: cover; }
+.image-gallery__color { font-size: var(--fs-2xs); min-height: 32px; padding-block: var(--space-1); }
+.image-gallery__remove {
+  position: absolute;
+  top: var(--space-1);
+  inset-inline-end: var(--space-1);
+  width: 28px;
+  height: 28px;
+  background: var(--color-surface-raised);
+  color: var(--color-danger);
+}
+
+/* Repeatable form layout for the admin create/edit pages. */
+.admin-form { display: flex; flex-direction: column; gap: var(--space-5); max-width: 42rem; }
+.admin-form__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-4);
+}
+.admin-form__section-title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+.admin-form__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+.admin-form__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+.admin-form__hint { font-size: var(--fs-xs); color: var(--color-text-muted); margin: 0; }
+
+/* One row per product variant (SKU/size/colour/price override/stock + remove). */
+.admin-variant-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)) auto;
+  gap: var(--space-3);
+  align-items: end;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+.admin-variant-row + .admin-variant-row { margin-top: var(--space-3); }
+.admin-variant-row__remove { align-self: end; }
+
+/* Edit-page variant line items — each row saves/deletes independently. */
+.admin-variants-list { display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* ============================================================
    5. BASE COMPONENTS
    ============================================================ */
 

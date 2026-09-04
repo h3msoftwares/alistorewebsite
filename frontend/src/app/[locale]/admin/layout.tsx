@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
+import { AdminNav } from '@/components/admin/admin-nav';
 import { useAuth } from '@/hooks/use-auth';
 
 /**
@@ -45,7 +46,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Rest of /admin: hold the content until the viewer is a confirmed admin.
   if (resolving || !isAdmin) return shell(<GuardPending />);
-  return shell(children);
+
+  return (
+    <div className="container admin-shell">
+      <AdminNav locale={locale} />
+      {children}
+    </div>
+  );
 }
 
 function GuardPending() {

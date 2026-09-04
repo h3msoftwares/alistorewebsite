@@ -47,6 +47,12 @@ const envSchema = z.object({
   // Base URL the reset link is built against:
   // `${FRONTEND_URL}/{locale}/reset-password?token=...`
   FRONTEND_URL: z.string().default('http://localhost:3000'),
+
+  // ImageKit — signs the admin image uploader's short-lived upload token
+  // (see modules/uploads). Defaulted to empty rather than required, same
+  // reasoning as SMTP_HOST: the server still boots, the upload-auth endpoint
+  // just 503s with a clear "not configured" message instead.
+  IMAGEKIT_PRIVATE_KEY: z.string().default(''),
 });
 
 export const env = envSchema.parse(process.env);
