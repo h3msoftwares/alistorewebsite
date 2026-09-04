@@ -35,26 +35,26 @@
   color-scheme: light;
 
   /* ---- Neutrals / backgrounds / surfaces ---- */
-  --color-bg: #ffffff;                 /* page */
+  --color-bg: #ffd800;                 /* page — brand yellow */
   --color-bg-subtle: #faf9f7;          /* alternating sections, auth/legal pages */
   --color-surface: #f6f4f1;            /* filter rails, footer, inset panels */
   --color-surface-raised: #ffffff;     /* cards, dropdowns, modals, drawers */
   --color-surface-sunken: #efebe6;     /* skeletons, track backgrounds */
 
   /* ---- Text ---- */
-  --color-text: #1c1917;              /* primary — ~16:1 on white */
-  --color-text-secondary: #57514a;    /* ~7.8:1 */
-  --color-text-muted: #6b6459;        /* ~5.9:1 — captions/meta; light bg only, never on an accent */
+  --color-text: #1c1917;              /* primary — ~16:1 on white, ~12.6:1 on --color-bg */
+  --color-text-secondary: #57514a;    /* ~7.8:1 on white, ~5.6:1 on --color-bg */
+  --color-text-muted: #615a4f;        /* ~6.3:1 on white, ~4.9:1 on --color-bg — captions/meta; light bg only, never on an accent */
   --color-text-disabled: #a8a29e;     /* decorative only — never sole carrier of meaning */
   --color-text-inverse: #ffffff;
 
   /* ---- Primary / secondary / accent ---- */
-  --color-primary: #1c1917;           /* ink — wordmark, primary CTA */
-  --color-primary-hover: #322d2a;
-  --color-on-primary: #ffffff;
+  --color-primary: #ffd800;           /* brand yellow — wordmark, primary CTA, page background */
+  --color-primary-hover: #e6c200;
+  --color-on-primary: #1c1917;        /* ink on primary — white fails contrast on this yellow (~1.4:1) */
 
-  --color-secondary: #44403c;         /* quiet emphasis, secondary buttons */
-  --color-secondary-hover: #57514a;
+  --color-secondary: #2b2620;         /* deep espresso — pairs with the yellow primary; quiet emphasis, secondary buttons */
+  --color-secondary-hover: #3d362d;
 
   --color-accent: #a16207;            /* antique gold — used sparingly (sale, active state, emphasis) */
   --color-accent-hover: #855209;
@@ -882,6 +882,7 @@ ul, ol {
 
 .btn--primary {
   background: var(--color-primary);
+  border-color: var(--color-on-primary); /* --color-bg is now the same yellow — keep the CTA legible as a shape */
   color: var(--color-on-primary);
 }
 .btn--primary:hover { background: var(--color-primary-hover); }
