@@ -4,21 +4,34 @@ import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { cartApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
-import { useAppDispatch } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { setItemCount } from '@/store/slices/cartSlice';
+import { selectAuthStatus } from '@/store/slices/authSlice';
 import type { CartView, UUID } from '@/lib/types';
 
 const countItems = (cart: CartView | undefined) =>
   cart?.items.reduce((n, i) => n + i.quantity, 0) ?? 0;
 
 /** The authoritative cart. Also mirrors the line-item count into the Redux
- *  `cart` slice so the header badge updates without subscribing to the query. */
+ *  `cart` slice so the header badge updates without subscribing to the query.
+ *
+ *  Held off (`enabled`) until the auth bootstrap resolves (`status !==
+ *  'loading'`, whether that lands on 'guest' or 'authenticated') — the cart is
+ *  fetched *as* whichever owner is true, guest cookie or Bearer token. Firing
+ *  before that resolves would race the token: it goes out with no
+ *  Authorization header, so a logged-in shopper gets back a fresh empty guest
+ *  cart, and nothing would later refetch it once the token actually lands
+ *  (auth state changing doesn't itself invalidate this query) — the header
+ *  badge and cart page/drawer would just be silently wrong on any page load
+ *  where bootstrap hasn't finished yet. Since CartDrawer now mounts this on
+ *  every page (not just /cart), that race went from rare to routine. */
 export function useCart(opts?: { enabled?: boolean }) {
   const dispatch = useAppDispatch();
+  const authStatus = useAppSelector(selectAuthStatus);
   const query = useQuery({
     queryKey: queryKeys.cart.root(),
     queryFn: cartApi.getCart,
-    enabled: opts?.enabled ?? true,
+    enabled: (opts?.enabled ?? true) && authStatus !== 'loading',
   });
 
   useEffect(() => {
@@ -47,9 +60,14 @@ export function useAddToCart() {
   );
 }
 
+/** `quantity` and/or `variantId` (size/color change) — see lib/api/cart.ts.
+ *  Same invalidate-and-refetch as every other cart mutation, so a variant
+ *  change that merges into (and deletes) a different line is picked up
+ *  automatically — nothing here needs to track the old item id. */
 export function useUpdateCartItem() {
-  return useCartMutation(({ itemId, quantity }: { itemId: UUID; quantity: number }) =>
-    cartApi.updateCartItem(itemId, quantity)
+  return useCartMutation(
+    ({ itemId, quantity, variantId }: { itemId: UUID; quantity?: number; variantId?: UUID }) =>
+      cartApi.updateCartItem(itemId, { quantity, variantId })
   );
 }
 

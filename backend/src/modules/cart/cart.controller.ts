@@ -35,7 +35,10 @@ export async function addCartItemHandler(req: Request, res: Response) {
 
 export async function updateCartItemHandler(req: Request, res: Response) {
   const owner = resolveOwner(req, res);
-  const item = await cartService.updateItemQuantity(owner, paramString(req.params.itemId), req.body.quantity);
+  const item = await cartService.updateItem(owner, paramString(req.params.itemId), {
+    quantity: req.body.quantity,
+    variantId: req.body.variantId,
+  });
   res.json({ item });
 }
 

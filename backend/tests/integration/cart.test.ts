@@ -9,6 +9,7 @@ const app = buildApp();
 
 let variantId: string;
 let lowStockVariantId: string;
+let altVariantId: string;
 
 beforeEach(async () => {
   const col = await makeCollection({ slug: 'c' });
@@ -18,10 +19,12 @@ beforeEach(async () => {
     variants: [
       { sku: 'v-main', size: 'M', color: 'Black', stockQuantity: 20 },
       { sku: 'v-low', size: 'S', color: 'Black', stockQuantity: 1 },
+      { sku: 'v-alt', size: 'L', color: 'Black', stockQuantity: 20 },
     ],
   });
   variantId = p.variants[0].id;
   lowStockVariantId = p.variants[1].id;
+  altVariantId = p.variants[2].id;
 });
 
 describe('Cart API', () => {
@@ -315,5 +318,129 @@ describe('Cart API — invalid / soft-deleted product', () => {
 
     const get = await agent.get('/api/cart');
     expect(get.body.items).toHaveLength(1);
+  });
+});
+
+describe("Cart API — changing a line's variant (size/color)", () => {
+  it('switches to a different variant of the same product, keeping quantity, when there is no collision', async () => {
+    const agent = request.agent(app);
+    const add = await agent.post('/api/cart/items').send({ variantId, quantity: 2 });
+    const itemId = add.body.item.id;
+
+    const res = await agent.patch(`/api/cart/items/${itemId}`).send({ variantId: altVariantId });
+    expect(res.status).toBe(200);
+    expect(res.body.item.variantID).toBe(altVariantId);
+    expect(res.body.item.quantity).toBe(2);
+
+    const get = await agent.get('/api/cart');
+    expect(get.body.items).toHaveLength(1);
+    expect(get.body.items[0].variantID).toBe(altVariantId);
+  });
+
+  it('can change variant and quantity in the same request', async () => {
+    const agent = request.agent(app);
+    const add = await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+    const itemId = add.body.item.id;
+
+    const res = await agent
+      .patch(`/api/cart/items/${itemId}`)
+      .send({ variantId: altVariantId, quantity: 5 });
+    expect(res.status).toBe(200);
+    expect(res.body.item.variantID).toBe(altVariantId);
+    expect(res.body.item.quantity).toBe(5);
+  });
+
+  it('rejects the switch when the target variant lacks stock for the current quantity, leaving the line untouched', async () => {
+    const agent = request.agent(app);
+    const add = await agent.post('/api/cart/items').send({ variantId, quantity: 2 }); // stock 20, fine
+    const itemId = add.body.item.id;
+
+    // lowStockVariantId has only 1 in stock — current quantity is 2
+    const res = await agent.patch(`/api/cart/items/${itemId}`).send({ variantId: lowStockVariantId });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('OUT_OF_STOCK');
+
+    const get = await agent.get('/api/cart');
+    expect(get.body.items[0].variantID).toBe(variantId); // unchanged
+    expect(get.body.items[0].quantity).toBe(2);
+  });
+
+  it('404s a switch to an unknown variant id', async () => {
+    const agent = request.agent(app);
+    const add = await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+    const res = await agent
+      .patch(`/api/cart/items/${add.body.item.id}`)
+      .send({ variantId: '00000000-0000-4000-8000-000000000000' });
+    expect(res.status).toBe(404);
+  });
+
+  it('404s a switch to a variant whose product is soft-deleted', async () => {
+    const agent = request.agent(app);
+    const add = await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+
+    const { productID } = (await prisma.productVariant.findUnique({ where: { id: altVariantId } }))!;
+    await prisma.product.update({ where: { id: productID }, data: { isActive: false, deletedAt: new Date() } });
+
+    const res = await agent.patch(`/api/cart/items/${add.body.item.id}`).send({ variantId: altVariantId });
+    expect(res.status).toBe(404);
+  });
+
+  it('merges into an existing line for the target variant instead of creating a duplicate', async () => {
+    const agent = request.agent(app);
+    const lineA = await agent.post('/api/cart/items').send({ variantId, quantity: 2 });
+    await agent.post('/api/cart/items').send({ variantId: altVariantId, quantity: 3 });
+
+    // repoint lineA (variantId, qty 2) at altVariantId, which already has its own line (qty 3)
+    const res = await agent
+      .patch(`/api/cart/items/${lineA.body.item.id}`)
+      .send({ variantId: altVariantId });
+    expect(res.status).toBe(200);
+    expect(res.body.item.variantID).toBe(altVariantId);
+    expect(res.body.item.quantity).toBe(5); // 3 + 2
+
+    const get = await agent.get('/api/cart');
+    expect(get.body.items).toHaveLength(1); // lineA is gone, folded into the survivor
+    expect(get.body.items[0].variantID).toBe(altVariantId);
+    expect(get.body.items[0].quantity).toBe(5);
+  });
+
+  it('a merge is still stock-checked against the MERGED total, and rejects without touching either line', async () => {
+    const agent = request.agent(app);
+    // give altVariantId a tight stock cap for this test
+    await prisma.productVariant.update({ where: { id: altVariantId }, data: { stockQuantity: 4 } });
+
+    const lineA = await agent.post('/api/cart/items').send({ variantId, quantity: 2 });
+    await agent.post('/api/cart/items').send({ variantId: altVariantId, quantity: 3 }); // 3 <= 4, fine alone
+
+    // merged would be 3 + 2 = 5 > stock 4
+    const res = await agent
+      .patch(`/api/cart/items/${lineA.body.item.id}`)
+      .send({ variantId: altVariantId });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('OUT_OF_STOCK');
+
+    const get = await agent.get('/api/cart');
+    expect(get.body.items).toHaveLength(2); // neither line was touched
+    const byVariant = Object.fromEntries(get.body.items.map((i: { variantID: string; quantity: number }) => [i.variantID, i.quantity]));
+    expect(byVariant[variantId]).toBe(2);
+    expect(byVariant[altVariantId]).toBe(3);
+  });
+
+  it('setting variantId to the line\'s own current variant is a no-op repoint (plain quantity update still works)', async () => {
+    const agent = request.agent(app);
+    const add = await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+    const res = await agent
+      .patch(`/api/cart/items/${add.body.item.id}`)
+      .send({ variantId, quantity: 5 });
+    expect(res.status).toBe(200);
+    expect(res.body.item.variantID).toBe(variantId);
+    expect(res.body.item.quantity).toBe(5);
+  });
+
+  it('400s a body with neither quantity nor variantId', async () => {
+    const agent = request.agent(app);
+    const add = await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+    const res = await agent.patch(`/api/cart/items/${add.body.item.id}`).send({});
+    expect(res.status).toBe(400);
   });
 });

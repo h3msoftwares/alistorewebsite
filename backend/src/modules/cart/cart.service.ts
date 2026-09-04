@@ -21,7 +21,9 @@ export async function getCart(owner: CartOwner) {
   const cart = await getOrCreateCart(owner);
   const items = await prisma.cartItem.findMany({
     where: { cartID: cart.id },
-    include: { variant: { include: { product: { include: { images: true } } } } },
+    // `variants: true` lets the cart page/drawer build a size/color picker
+    // (sibling variants of the same product) without a second request per row.
+    include: { variant: { include: { product: { include: { images: true, variants: true } } } } },
     orderBy: { dateCreated: 'asc' },
   });
 
@@ -58,18 +60,71 @@ export async function addItem(owner: CartOwner, variantId: string, quantity: num
   });
 }
 
-export async function updateItemQuantity(owner: CartOwner, itemId: string, quantity: number) {
+interface UpdateItemChanges {
+  quantity?: number;
+  /** Repoints the line at a different variant of the same (or any) product —
+   *  a size/color change. Omit to change quantity only. */
+  variantId?: string;
+}
+
+/** Updates a cart line's quantity and/or which variant it points at.
+ *
+ *  A variant change is not a simple field write: if another line in this
+ *  cart already holds the target variant, the two lines are merged (same
+ *  rule addItem uses for a duplicate add) and this line is deleted instead
+ *  of leaving a second line for the same variant. Either way, stock is
+ *  checked against the variant the line will end up on, not the one it
+ *  started on. */
+export async function updateItem(owner: CartOwner, itemId: string, changes: UpdateItemChanges) {
   const cart = await getOrCreateCart(owner);
   const item = await prisma.cartItem.findFirst({ where: { id: itemId, cartID: cart.id } });
   if (!item) throw new AppError('NOT_FOUND', 'Cart item not found');
 
-  const variant = await prisma.productVariant.findUnique({ where: { id: item.variantID } });
-  if (!variant) throw new AppError('NOT_FOUND', 'Product variant not found');
-  if (variant.stockQuantity < quantity) {
-    throw new AppError('OUT_OF_STOCK', 'Not enough stock for this variant');
+  const targetVariantId = changes.variantId ?? item.variantID;
+  const variant = await prisma.productVariant.findUnique({
+    where: { id: targetVariantId },
+    include: { product: { select: { deletedAt: true } } },
+  });
+  if (!variant || variant.product.deletedAt) {
+    throw new AppError('NOT_FOUND', 'Product variant not found');
   }
 
-  return prisma.cartItem.update({ where: { id: itemId }, data: { quantity } });
+  const changingVariant = changes.variantId !== undefined && changes.variantId !== item.variantID;
+  const requestedQuantity = changes.quantity ?? item.quantity;
+
+  if (!changingVariant) {
+    if (variant.stockQuantity < requestedQuantity) {
+      throw new AppError('OUT_OF_STOCK', 'Not enough stock for this variant');
+    }
+    return prisma.cartItem.update({ where: { id: itemId }, data: { quantity: requestedQuantity } });
+  }
+
+  // Repointing at a different variant — another line for it may already
+  // exist (the shopper had both sizes in their cart, say). If so, merge into
+  // that line and drop this one rather than leaving two lines for one variant.
+  const collision = await prisma.cartItem.findFirst({
+    where: { cartID: cart.id, variantID: targetVariantId, id: { not: itemId } },
+  });
+
+  if (collision) {
+    const mergedQuantity = collision.quantity + requestedQuantity;
+    if (variant.stockQuantity < mergedQuantity) {
+      throw new AppError('OUT_OF_STOCK', 'Not enough stock for this variant');
+    }
+    const [merged] = await prisma.$transaction([
+      prisma.cartItem.update({ where: { id: collision.id }, data: { quantity: mergedQuantity } }),
+      prisma.cartItem.delete({ where: { id: itemId } }),
+    ]);
+    return merged;
+  }
+
+  if (variant.stockQuantity < requestedQuantity) {
+    throw new AppError('OUT_OF_STOCK', 'Not enough stock for this variant');
+  }
+  return prisma.cartItem.update({
+    where: { id: itemId },
+    data: { variantID: targetVariantId, quantity: requestedQuantity },
+  });
 }
 
 export async function removeItem(owner: CartOwner, itemId: string) {
