@@ -1,3 +1,5 @@
+import { formatCurrency } from '@/lib/format';
+
 export interface PriceTagProps {
   /** Prisma Decimal fields (Product.price/compareAtPrice) may arrive as a
    *  string once serialized over JSON — accept both. */
@@ -34,17 +36,12 @@ export function PriceTag({
   const struck =
     sale != null && sale < base ? base : compare != null && compare > current ? compare : null;
 
-  const format = new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US', {
-    style: 'currency',
-    currency,
-  });
-
   return (
     <span className="price-tag">
-      <span className="price-tag__current">{format.format(current)}</span>
+      <span className="price-tag__current">{formatCurrency(current, locale, currency)}</span>
       {struck != null && (
         <>
-          <span className="price-tag__compare">{format.format(struck)}</span>
+          <span className="price-tag__compare">{formatCurrency(struck, locale, currency)}</span>
           {showBadge && (
             <span className="badge badge--sale">{locale === 'ar' ? 'تخفيض' : 'Sale'}</span>
           )}

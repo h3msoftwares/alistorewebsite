@@ -1,5 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
+import { formatCurrency } from '@/lib/format';
 import { PriceTag } from './price-tag';
 import { Badge } from './badge';
 
@@ -50,8 +51,6 @@ export function ProductCard({ product, locale, collection }: ProductCardProps) {
     sale != null && sale < price ? price : compare != null && compare > current ? compare : null;
   const onSale = wasPrice != null;
 
-  const saveFmt = new Intl.NumberFormat(isAr ? 'ar-EG' : 'en-US', { style: 'currency', currency: 'USD' });
-
   return (
     <Link href={`/${locale}/product/${product.id}`} className="card product-card" data-collection={collection}>
       <div className="product-card__media">
@@ -60,8 +59,8 @@ export function ProductCard({ product, locale, collection }: ProductCardProps) {
         {onSale && (
           <Badge variant="save" className="product-card__badge">
             {isAr
-              ? `توفير ${saveFmt.format(wasPrice! - current)}`
-              : `Save ${saveFmt.format(wasPrice! - current)}`}
+              ? `توفير ${formatCurrency(wasPrice! - current, locale, 'USD')}`
+              : `Save ${formatCurrency(wasPrice! - current, locale, 'USD')}`}
           </Badge>
         )}
       </div>
