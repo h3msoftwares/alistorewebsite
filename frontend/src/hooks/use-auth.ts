@@ -14,7 +14,7 @@ import { resetItemCount } from '@/store/slices/cartSlice';
 import { accountApi, authApi, setAccessToken } from '@/lib/api';
 import { refreshAccessToken } from '@/lib/api/client';
 import { queryKeys } from '@/lib/query-keys';
-import type { LoginBody, RegisterBody } from '@/lib/types';
+import type { ForgotPasswordBody, LoginBody, RegisterBody, ResetPasswordBody } from '@/lib/types';
 
 export function useAuth() {
   const user = useAppSelector(selectAuthUser);
@@ -94,6 +94,25 @@ export function useAdminLogin() {
     onSuccess: (profile) => {
       dispatch(authenticated(profile));
     },
+  });
+}
+
+/** No session side-effects — just wraps the request for loading/error state.
+ *  The response is identical whether or not the email matches an account;
+ *  the form must not infer anything from success vs failure beyond
+ *  "request accepted" vs "network/rate-limit problem". */
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: (body: ForgotPasswordBody) => authApi.forgotPassword(body),
+  });
+}
+
+/** Also no session side-effects — a reset doesn't log the browser in, it just
+ *  revokes every existing session server-side. The caller re-authenticates
+ *  via useLogin/useAdminLogin afterward. */
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: (body: ResetPasswordBody) => authApi.resetPassword(body),
   });
 }
 

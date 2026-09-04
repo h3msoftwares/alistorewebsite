@@ -1,5 +1,12 @@
 import { api } from './client';
-import type { AuthResult, AuthUser, LoginBody, RegisterBody } from '../types';
+import type {
+  AuthResult,
+  AuthUser,
+  ForgotPasswordBody,
+  LoginBody,
+  RegisterBody,
+  ResetPasswordBody,
+} from '../types';
 
 export function register(body: RegisterBody) {
   return api.post<AuthResult>('/api/auth/register', body, { auth: false });
@@ -13,6 +20,17 @@ export function login(body: LoginBody) {
  *  server-side STAFF/ADMIN gate; identical response shape to `login`. */
 export function adminLogin(body: LoginBody) {
   return api.post<{ accessToken: string }>('/api/auth/admin-login', body, { auth: false });
+}
+
+/** Always resolves with the same generic message whether or not the email
+ *  matches an account — the backend guarantees that; never branch UI on
+ *  which account exists from this response. */
+export function forgotPassword(body: ForgotPasswordBody) {
+  return api.post<{ message: string }>('/api/auth/forgot-password', body, { auth: false });
+}
+
+export function resetPassword(body: ResetPasswordBody) {
+  return api.post<{ message: string }>('/api/auth/reset-password', body, { auth: false });
 }
 
 export function logout() {
