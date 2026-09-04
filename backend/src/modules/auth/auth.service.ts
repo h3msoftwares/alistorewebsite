@@ -19,15 +19,23 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
-function signAccessToken(user: AuthedUser) {
-  return jwt.sign(user, env.JWT_ACCESS_SECRET, {
-    expiresIn: env.JWT_ACCESS_TTL,
-  } as jwt.SignOptions);
+const PRIVILEGED_ROLES: AuthedUser['role'][] = ['ADMIN', 'STAFF'];
+
+// Exported so the admin-login flow (modules/auth/admin-auth.service.ts) issues
+// the exact same token pair as customer login instead of forking the crypto.
+// TTL is derived from the *role*, not from which endpoint minted the token, so
+// a STAFF/ADMIN always gets the shorter admin TTL — including on silent
+// refresh, where refresh() re-signs with the account's current role.
+export function signAccessToken(user: AuthedUser) {
+  const expiresIn = PRIVILEGED_ROLES.includes(user.role)
+    ? env.JWT_ADMIN_ACCESS_TTL
+    : env.JWT_ACCESS_TTL;
+  return jwt.sign(user, env.JWT_ACCESS_SECRET, { expiresIn } as jwt.SignOptions);
 }
 
 // Returns the raw JWT plus the stored row id (the id is needed to link a
 // rotated token back to its predecessor via `replacedByTokenID`).
-async function issueRefreshToken(userID: string, familyID?: string): Promise<{ token: string; id: string }> {
+export async function issueRefreshToken(userID: string, familyID?: string): Promise<{ token: string; id: string }> {
   const jti = randomUUID();
   const token = jwt.sign({ sub: userID, jti }, env.JWT_REFRESH_SECRET, {
     expiresIn: `${env.JWT_REFRESH_TTL_DAYS}d`,
@@ -118,7 +126,9 @@ export async function login(
 export async function refresh(refreshToken: string): Promise<TokenPair> {
   let payload: { sub: string; jti: string };
   try {
-    payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as { sub: string; jti: string };
+    payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET, {
+      algorithms: ['HS256'], // pin — never let the token's own header pick the alg
+    }) as { sub: string; jti: string };
   } catch {
     throw new AppError('UNAUTHORIZED', 'Invalid or expired refresh token');
   }

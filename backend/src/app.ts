@@ -6,6 +6,7 @@ import { errorHandler } from './middleware/errorHandler.middleware';
 import { env } from './config/env';
 
 import authRoutes from './modules/auth/auth.routes';
+import { adminAuthRoutes } from './modules/auth/admin-auth.routes';
 import collectionRoutes from './modules/catalog/collection.routes';
 import categoryRoutes from './modules/catalog/category.routes';
 import productRoutes from './modules/catalog/product.routes';
@@ -16,8 +17,15 @@ import adminRoutes from './modules/admin/admin.routes';
 import addressRoutes from './modules/account/address.routes';
 import userRoutes from './modules/account/user.routes';
 
-export function buildApp() {
+export function buildApp(opts: { adminLoginRateLimit?: boolean } = {}) {
   const app = express();
+
+  // In production the API sits behind one reverse-proxy hop (Railway/Fly).
+  // Trust exactly that hop so `req.ip` is the real client — used for per-IP
+  // rate limiting and for the admin-login audit log — and not the proxy's
+  // address. Left off in dev/test so `req.ip` is the raw socket address and
+  // a spoofed X-Forwarded-For can't be trusted.
+  if (env.NODE_ENV === 'production') app.set('trust proxy', 1);
 
   app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
   app.use(express.json());
@@ -34,6 +42,12 @@ export function buildApp() {
   // Vertical-slice module mounting, same convention as pos-backend:
   // one line per module.
   app.use('/api/auth', authRoutes);
+  // Separate admin-login path mounted on the same prefix. Its rate limiter is
+  // on everywhere except tests, where it would throttle the suite.
+  app.use(
+    '/api/auth',
+    adminAuthRoutes({ rateLimit: opts.adminLoginRateLimit ?? env.NODE_ENV !== 'test' })
+  );
   app.use('/api/collections', collectionRoutes);
   app.use('/api/categories', categoryRoutes);
   app.use('/api/products', productRoutes);
