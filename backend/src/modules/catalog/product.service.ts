@@ -13,6 +13,7 @@ import {
   createProductImageSchema,
   updateProductImageSchema,
 } from './product.schema';
+import { cleanupCatalogImageIfOrphaned } from './image-cleanup.service';
 
 type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
 type CreateProductInput = z.infer<typeof createProductSchema>;
@@ -341,8 +342,9 @@ export async function updateImage(productId: string, imageId: string, input: Upd
 }
 
 export async function deleteImage(productId: string, imageId: string) {
-  await ensureImageExists(productId, imageId);
+  const image = await ensureImageExists(productId, imageId);
   await prisma.productImage.delete({ where: { id: imageId } });
+  await cleanupCatalogImageIfOrphaned(image.fileId);
 }
 
 // ---- helpers ----
@@ -363,11 +365,12 @@ async function getVariantOrThrow(productId: string, variantId: string) {
 async function ensureImageExists(productId: string, imageId: string) {
   const img = await prisma.productImage.findUnique({
     where: { id: imageId },
-    select: { productID: true },
+    select: { productID: true, fileId: true },
   });
   if (!img || img.productID !== productId) {
     throw new AppError('NOT_FOUND', 'Product image not found');
   }
+  return img;
 }
 
 // Resolve a category's collection id (the denormalized value a product mirrors).

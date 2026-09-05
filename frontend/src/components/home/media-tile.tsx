@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import Image from 'next/image';
+import { CatalogImage } from '@/components/ui';
 
 /** A single image + name tile — a category inside a collection row, a
  *  product inside a category row, or a category inside a listing page's
@@ -22,7 +22,7 @@ export function MediaTile({
     <Link href={href} className={['media-tile', 'card', className].filter(Boolean).join(' ')}>
       <div className="media-tile__media">
         {imageUrl ? (
-          <Image src={imageUrl} alt={imageAlt ?? name} fill sizes="(max-width: 640px) 45vw, 220px" />
+          <CatalogImage src={imageUrl} alt={imageAlt ?? name} fill sizes="(max-width: 640px) 45vw, 220px" />
         ) : (
           <span className="media-tile__media-placeholder" aria-hidden />
         )}

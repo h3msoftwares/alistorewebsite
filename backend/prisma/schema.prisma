@@ -228,6 +228,11 @@ model CollectionImage {
   id           String  @id @default(uuid()) @db.Uuid
   collectionID String  @db.Uuid
   url          String
+  // ImageKit's file id for this asset — lets us delete the underlying file
+  // (not just the DB row) when the image is removed. Nullable: rows created
+  // before this column existed have no known fileId, so they're left alone
+  // on delete rather than guessed at.
+  fileId       String?
   altEn        String?
   altAr        String?
   sortOrder    Int     @default(0)
@@ -272,6 +277,8 @@ model CategoryImage {
   id         String  @id @default(uuid()) @db.Uuid
   categoryID String  @db.Uuid
   url        String
+  // See CollectionImage.fileId.
+  fileId     String?
   altEn      String?
   altAr      String?
   sortOrder  Int     @default(0)
@@ -319,6 +326,8 @@ model ProductImage {
   id        String  @id @default(uuid()) @db.Uuid
   productID String  @db.Uuid
   url       String
+  // See CollectionImage.fileId.
+  fileId    String?
   altEn     String?
   altAr     String?
   sortOrder Int     @default(0)

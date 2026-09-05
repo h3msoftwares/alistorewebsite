@@ -118,7 +118,7 @@ export default function EditCategoryPage() {
           images={category.images}
           folder="/categories"
           locale={locale}
-          onAdd={(url) => addImage.mutate({ id, body: { url } })}
+          onAdd={(img) => addImage.mutate({ id, body: { url: img.url, fileId: img.fileId } })}
           onDelete={(imageId) => {
             setDeleteImageId(imageId);
             deleteImage.mutate(

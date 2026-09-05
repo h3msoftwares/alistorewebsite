@@ -1,13 +1,17 @@
 'use client';
 
-import Image from 'next/image';
 import { Trash2 } from 'lucide-react';
-import { Icon, Select } from '@/components/ui';
+import { CatalogImage, Icon, Select } from '@/components/ui';
 import { ImageUploader } from './image-uploader';
+import type { UploadedImage } from '@/lib/imagekit-upload';
 
 export interface GalleryImage {
   id: string;
   url: string;
+  /** ImageKit's file id — threaded through so deleting this row also cleans
+   *  up the underlying ImageKit asset (see the backend's image-cleanup
+   *  service). `null`/absent on images uploaded before this field existed. */
+  fileId?: string | null;
   altEn?: string | null;
   altAr?: string | null;
   /** Product images only — which colour option this photo belongs to.
@@ -21,8 +25,8 @@ export interface GalleryImage {
  * uploader to add more — the shared building block behind every admin
  * form's image management (collections, categories, products). Deliberately
  * dumb: it doesn't know about collections/categories/products, just calls
- * back with a URL to add or an id to remove; the caller wires those to the
- * right add/update/delete-image mutation.
+ * back with an uploaded {url, fileId} to add or an id to remove; the caller
+ * wires those to the right add/update/delete-image mutation.
  */
 export function ImageGallery({
   images,
@@ -35,7 +39,7 @@ export function ImageGallery({
   isDeleting,
 }: {
   images: GalleryImage[];
-  onAdd: (url: string) => void;
+  onAdd: (image: UploadedImage) => void;
   onDelete: (imageId: string) => void;
   /** Present only for product images — omit entirely for collections/categories. */
   onColorChange?: (imageId: string, color: string | null) => void;
@@ -54,7 +58,7 @@ export function ImageGallery({
           {images.map((img) => (
             <li key={img.id} className="image-gallery__item">
               <div className="image-gallery__thumb">
-                <Image src={img.url} alt={(isAr ? img.altAr : img.altEn) ?? ''} fill sizes="120px" />
+                <CatalogImage src={img.url} alt={(isAr ? img.altAr : img.altEn) ?? ''} fill sizes="120px" />
               </div>
 
               {colorOptions && colorOptions.length > 0 && (

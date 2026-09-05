@@ -2,6 +2,9 @@ import { uploadsApi } from './api';
 
 const UPLOAD_URL = 'https://upload.imagekit.io/api/v1/files/upload';
 
+const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif']);
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // generous for product photography, well under ImageKit's own cap
+
 export interface UploadedImage {
   url: string;
   fileId: string;
@@ -15,6 +18,38 @@ export interface UploadImageOptions {
 }
 
 /**
+ * Rejects anything that isn't a real, reasonably-sized image before it ever
+ * reaches the network — the `accept="image/*"` picker hint on the file
+ * input only narrows the OS dialog, it doesn't stop a drag-drop or a
+ * renamed file, and `file.type` itself comes from the extension, not the
+ * bytes. Sniffing the first few bytes for each format's magic number catches
+ * a mislabelled or corrupted file that a MIME-type check alone would miss.
+ */
+async function assertLooksLikeAnImage(file: File): Promise<void> {
+  if (!ALLOWED_MIME_TYPES.has(file.type)) {
+    throw new Error(`Unsupported file type "${file.type || 'unknown'}" — please upload a JPEG, PNG, WebP, GIF, or AVIF image.`);
+  }
+  if (file.size === 0) {
+    throw new Error('That file is empty.');
+  }
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    throw new Error(`Image is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB) — the maximum is ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB.`);
+  }
+
+  const header = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  const matches = (bytes: number[], offset = 0) => bytes.every((b, i) => header[offset + i] === b);
+  const isJpeg = matches([0xff, 0xd8, 0xff]);
+  const isPng = matches([0x89, 0x50, 0x4e, 0x47]);
+  const isGif = matches([0x47, 0x49, 0x46, 0x38]);
+  const isWebp = matches([0x52, 0x49, 0x46, 0x46]) && matches([0x57, 0x45, 0x42, 0x50], 8);
+  const isAvif =
+    matches([0x66, 0x74, 0x79, 0x70], 4) && (matches([0x61, 0x76, 0x69, 0x66], 8) || matches([0x61, 0x76, 0x69, 0x73], 8));
+  if (!isJpeg && !isPng && !isGif && !isWebp && !isAvif) {
+    throw new Error("That file doesn't look like a valid image — it may be corrupted or renamed.");
+  }
+}
+
+/**
  * Uploads a file straight from the browser to ImageKit, authorized by a
  * fresh signed token from our own server (`GET /api/uploads/imagekit-auth`,
  * admin-only — see lib/api/uploads.ts) — the file itself never passes
@@ -24,6 +59,8 @@ export interface UploadImageOptions {
  * error, or ImageKit-side rejection (bad file type, over the size limit).
  */
 export async function uploadImage(file: File, opts: UploadImageOptions = {}): Promise<UploadedImage> {
+  await assertLooksLikeAnImage(file);
+
   const publicKey = process.env.NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY;
   if (!publicKey) {
     throw new Error('Image uploads are not configured (NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY is unset).');

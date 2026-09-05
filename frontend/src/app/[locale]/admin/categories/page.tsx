@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import { Alert, Badge, Button, DataTable, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
+import { AdminThumb } from '@/components/admin/admin-thumb';
 import { useCategories, useDeleteCategory } from '@/hooks/use-catalog';
 
 export default function AdminCategoriesPage() {
@@ -73,6 +74,7 @@ export default function AdminCategoriesPage() {
         <DataTable responsive>
           <thead>
             <tr>
+              <th aria-hidden="true" />
               <th>{t('Name', 'الاسم')}</th>
               <th>{t('Slug', 'الرابط')}</th>
               <th>{t('Collection', 'المجموعة')}</th>
@@ -84,6 +86,9 @@ export default function AdminCategoriesPage() {
           <tbody>
             {categories.map((c) => (
               <tr key={c.id}>
+                <td data-label={t('Image', 'الصورة')}>
+                  <AdminThumb url={c.images[0]?.url} alt={isAr ? c.nameAr : c.nameEn} />
+                </td>
                 <td data-label={t('Name', 'الاسم')}>
                   <Link href={`/${locale}/admin/categories/${c.id}`}>{isAr ? c.nameAr : c.nameEn}</Link>
                 </td>

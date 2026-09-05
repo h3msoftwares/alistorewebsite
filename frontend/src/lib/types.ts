@@ -41,6 +41,10 @@ export type DiscountType = 'PERCENT' | 'AMOUNT';
 export interface CatalogImage {
   id: UUID;
   url: string;
+  /** ImageKit's file id for this asset — lets the delete endpoint remove the
+   *  underlying file, not just this row. `null`/absent on rows uploaded
+   *  before this field existed. */
+  fileId?: string | null;
   altEn?: string | null;
   altAr?: string | null;
   sortOrder: number;
@@ -320,6 +324,7 @@ export interface AuthResult {
 
 export interface ImageBody {
   url: string;
+  fileId?: string;
   altEn?: string;
   altAr?: string;
   sortOrder?: number;

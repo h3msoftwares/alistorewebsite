@@ -124,7 +124,7 @@ export default function EditCollectionPage() {
           images={collection.images}
           folder="/collections"
           locale={locale}
-          onAdd={(url) => addImage.mutate({ id, body: { url } })}
+          onAdd={(img) => addImage.mutate({ id, body: { url: img.url, fileId: img.fileId } })}
           onDelete={(imageId) => {
             setDeleteImageId(imageId);
             deleteImage.mutate(

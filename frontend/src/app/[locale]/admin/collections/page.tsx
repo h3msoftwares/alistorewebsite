@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import { Alert, Badge, Button, DataTable, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
+import { AdminThumb } from '@/components/admin/admin-thumb';
 import { useCollections, useDeleteCollection } from '@/hooks/use-catalog';
 
 export default function AdminCollectionsPage() {
@@ -72,6 +73,7 @@ export default function AdminCollectionsPage() {
         <DataTable responsive>
           <thead>
             <tr>
+              <th aria-hidden="true" />
               <th>{t('Name', 'الاسم')}</th>
               <th>{t('Slug', 'الرابط')}</th>
               <th>{t('Status', 'الحالة')}</th>
@@ -85,6 +87,9 @@ export default function AdminCollectionsPage() {
           <tbody>
             {collections.map((c) => (
               <tr key={c.id}>
+                <td data-label={t('Image', 'الصورة')}>
+                  <AdminThumb url={c.images[0]?.url} alt={isAr ? c.nameAr : c.nameEn} />
+                </td>
                 <td data-label={t('Name', 'الاسم')}>
                   <Link href={`/${locale}/admin/collections/${c.id}`}>{isAr ? c.nameAr : c.nameEn}</Link>
                 </td>

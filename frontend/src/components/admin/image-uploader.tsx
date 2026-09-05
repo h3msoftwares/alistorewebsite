@@ -3,13 +3,14 @@
 import { useId, useRef, useState } from 'react';
 import { UploadCloud } from 'lucide-react';
 import { Icon } from '@/components/ui';
-import { uploadImage } from '@/lib/imagekit-upload';
+import { uploadImage, type UploadedImage } from '@/lib/imagekit-upload';
 
-/** File picker that uploads straight to ImageKit and hands the resulting URL
- *  back — it doesn't know or care what resource the image belongs to; the
- *  caller wires `onUploaded` to the right add-image mutation. See
- *  `<ImageGallery>` for the list-existing + upload-new combination used by
- *  the admin forms. */
+/** File picker that uploads straight to ImageKit and hands the resulting
+ *  {url, fileId} back — it doesn't know or care what resource the image
+ *  belongs to; the caller wires `onUploaded` to the right add-image
+ *  mutation (fileId lets that image be cleaned up from ImageKit later, see
+ *  the backend's image-cleanup.service). See `<ImageGallery>` for the
+ *  list-existing + upload-new combination used by the admin forms. */
 export function ImageUploader({
   folder,
   onUploaded,
@@ -17,7 +18,7 @@ export function ImageUploader({
   disabled = false,
 }: {
   folder?: string;
-  onUploaded: (url: string) => void;
+  onUploaded: (image: UploadedImage) => void;
   locale?: 'en' | 'ar';
   disabled?: boolean;
 }) {
@@ -34,8 +35,8 @@ export function ImageUploader({
     setError(null);
     setIsUploading(true);
     try {
-      const { url } = await uploadImage(file, { folder });
-      onUploaded(url);
+      const uploaded = await uploadImage(file, { folder });
+      onUploaded(uploaded);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Upload failed', 'فشل الرفع'));
     } finally {

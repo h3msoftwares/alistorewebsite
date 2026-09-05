@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
 import { Alert, Badge, Button, DataTable, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
+import { AdminThumb } from '@/components/admin/admin-thumb';
 import { useDeleteProduct, useProducts } from '@/hooks/use-catalog';
 
 export default function AdminProductsPage() {
@@ -76,6 +77,7 @@ export default function AdminProductsPage() {
         <DataTable responsive>
           <thead>
             <tr>
+              <th aria-hidden="true" />
               <th>{t('Name', 'الاسم')}</th>
               <th>{t('SKU', 'رمز المنتج')}</th>
               <th>{t('Category', 'الفئة')}</th>
@@ -88,6 +90,9 @@ export default function AdminProductsPage() {
           <tbody>
             {products.map((p) => (
               <tr key={p.id}>
+                <td data-label={t('Image', 'الصورة')}>
+                  <AdminThumb url={p.images[0]?.url} alt={isAr ? p.nameAr : p.nameEn} />
+                </td>
                 <td data-label={t('Name', 'الاسم')}>
                   <Link href={`/${locale}/admin/products/${p.id}`}>{isAr ? p.nameAr : p.nameEn}</Link>
                 </td>

@@ -4,6 +4,13 @@ const nextConfig = {
   images: {
     loader: 'custom',
     loaderFile: './src/lib/imagekit-loader.ts',
+    // Tuned to this app's actual breakpoints/variants (see lib/imagekit-url.ts's
+    // IMAGE_VARIANTS) rather than Next's generic defaults, so the srcset widths
+    // next/image generates for a `sizes`-annotated image line up with sizes
+    // ImageKit (and its CDN cache) actually sees repeated across the site —
+    // nothing here ever needs to go past the 2000px zoom variant.
+    deviceSizes: [400, 600, 828, 1080, 1200, 1920, 2000],
+    imageSizes: [80, 120, 160, 256, 300],
   },
 };
 

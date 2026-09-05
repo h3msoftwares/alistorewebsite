@@ -29,3 +29,30 @@ export function getImageKitAuthParams(): ImageKitAuthParams {
   const signature = createHmac('sha1', env.IMAGEKIT_PRIVATE_KEY).update(token + expire).digest('hex');
   return { token, expire, signature };
 }
+
+/**
+ * Deletes a file from ImageKit's Media Library by id, via its Media API
+ * (Basic Auth: private key as username, empty password — same credential
+ * used to sign uploads, never the browser-facing public key). Best-effort:
+ * catalog image rows are the source of truth for the app, so a failure here
+ * (network blip, already-deleted file, misconfigured key) is logged and
+ * swallowed rather than blocking the caller's own delete.
+ */
+export async function deleteImageKitFile(fileId: string): Promise<void> {
+  if (!env.IMAGEKIT_PRIVATE_KEY) return;
+  try {
+    const res = await fetch(`https://api.imagekit.io/v1/files/${encodeURIComponent(fileId)}`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${env.IMAGEKIT_PRIVATE_KEY}:`).toString('base64')}`,
+      },
+    });
+    // 404 = already gone (e.g. deleted directly in the ImageKit dashboard) — not an error for us.
+    if (!res.ok && res.status !== 404) {
+      const body = await res.text().catch(() => '');
+      console.error(`[imagekit] failed to delete file ${fileId}: ${res.status} ${body}`);
+    }
+  } catch (e) {
+    console.error(`[imagekit] failed to delete file ${fileId}`, e);
+  }
+}

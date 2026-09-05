@@ -6,6 +6,7 @@ import { createCategorySchema, updateCategorySchema } from './category.schema';
 import type { listProductsQuerySchema } from './product.schema';
 import { listProducts } from './product.service';
 import type { CreateImageInput, UpdateImageInput } from './image.schema';
+import { cleanupCatalogImageIfOrphaned } from './image-cleanup.service';
 
 type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
@@ -135,7 +136,11 @@ export async function deleteCategory(id: string) {
       `Cannot delete a category that still has ${productCount} product(s).`
     );
   }
+  const images = await prisma.categoryImage.findMany({ where: { categoryID: id }, select: { fileId: true } });
+  // Postgres cascade (CategoryImage.category onDelete: Cascade) removes the
+  // image rows along with the category itself.
   await prisma.category.delete({ where: { id } });
+  await Promise.all(images.map((img) => cleanupCatalogImageIfOrphaned(img.fileId)));
 }
 
 // ---- Images (sub-resource) ----
@@ -151,8 +156,9 @@ export async function updateImage(categoryId: string, imageId: string, input: Up
 }
 
 export async function deleteImage(categoryId: string, imageId: string) {
-  await ensureImageExists(categoryId, imageId);
+  const image = await ensureImageExists(categoryId, imageId);
   await prisma.categoryImage.delete({ where: { id: imageId } });
+  await cleanupCatalogImageIfOrphaned(image.fileId);
 }
 
 async function ensureCategoryExists(id: string) {
@@ -163,11 +169,12 @@ async function ensureCategoryExists(id: string) {
 async function ensureImageExists(categoryId: string, imageId: string) {
   const img = await prisma.categoryImage.findUnique({
     where: { id: imageId },
-    select: { categoryID: true },
+    select: { categoryID: true, fileId: true },
   });
   if (!img || img.categoryID !== categoryId) {
     throw new AppError('NOT_FOUND', 'Category image not found');
   }
+  return img;
 }
 
 async function ensureCollectionExists(id: string) {

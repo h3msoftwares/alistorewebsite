@@ -4,6 +4,7 @@ import { AppError } from '../../lib/AppError';
 import { z } from 'zod';
 import { createCollectionSchema, updateCollectionSchema } from './collection.schema';
 import type { CreateImageInput, UpdateImageInput } from './image.schema';
+import { cleanupCatalogImageIfOrphaned } from './image-cleanup.service';
 
 type CreateCollectionInput = z.infer<typeof createCollectionSchema>;
 type UpdateCollectionInput = z.infer<typeof updateCollectionSchema>;
@@ -94,9 +95,11 @@ export async function deleteCollection(id: string) {
       `Cannot delete a collection that still has ${productCount} product(s). Move or remove them first.`
     );
   }
+  const images = await prisma.collectionImage.findMany({ where: { collectionID: id }, select: { fileId: true } });
   // Categories are detached (collectionID SET NULL) via the schema relation —
-  // they survive as standalone categories.
+  // they survive as standalone categories. CollectionImage rows cascade-delete.
   await prisma.collection.delete({ where: { id } });
+  await Promise.all(images.map((img) => cleanupCatalogImageIfOrphaned(img.fileId)));
 }
 
 // Link (move) existing categories into this collection.
@@ -139,8 +142,9 @@ export async function updateImage(
 }
 
 export async function deleteImage(collectionId: string, imageId: string) {
-  await ensureImageExists(collectionId, imageId);
+  const image = await ensureImageExists(collectionId, imageId);
   await prisma.collectionImage.delete({ where: { id: imageId } });
+  await cleanupCatalogImageIfOrphaned(image.fileId);
 }
 
 async function ensureExists(id: string) {
@@ -151,9 +155,10 @@ async function ensureExists(id: string) {
 async function ensureImageExists(collectionId: string, imageId: string) {
   const img = await prisma.collectionImage.findUnique({
     where: { id: imageId },
-    select: { collectionID: true },
+    select: { collectionID: true, fileId: true },
   });
   if (!img || img.collectionID !== collectionId) {
     throw new AppError('NOT_FOUND', 'Collection image not found');
   }
+  return img;
 }

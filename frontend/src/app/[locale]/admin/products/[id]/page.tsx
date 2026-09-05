@@ -154,7 +154,7 @@ export default function EditProductPage() {
           colorOptions={colorOptions}
           folder="/products"
           locale={locale}
-          onAdd={(url) => addImage.mutate({ id, body: { url } })}
+          onAdd={(img) => addImage.mutate({ id, body: { url: img.url, fileId: img.fileId } })}
           onColorChange={(imageId, color) => updateImage.mutate({ id, imageId, body: { color } })}
           onDelete={(imageId) => {
             setDeleteImageId(imageId);

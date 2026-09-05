@@ -1,8 +1,8 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import { formatCurrency } from '@/lib/format';
 import { PriceTag } from './price-tag';
 import { Badge } from './badge';
+import { CatalogImage } from './catalog-image';
 
 export interface ProductCardImage {
   url: string;
@@ -54,8 +54,8 @@ export function ProductCard({ product, locale, collection }: ProductCardProps) {
   return (
     <Link href={`/${locale}/product/${product.id}`} className="card product-card" data-collection={collection}>
       <div className="product-card__media">
-        {image && <Image src={image.url} alt={alt} fill sizes="(max-width: 640px) 50vw, 25vw" />}
-        {hoverImage && <Image src={hoverImage.url} alt="" fill sizes="(max-width: 640px) 50vw, 25vw" />}
+        {image && <CatalogImage src={image.url} alt={alt} fill sizes="(max-width: 640px) 50vw, 25vw" />}
+        {hoverImage && <CatalogImage src={hoverImage.url} alt="" fill sizes="(max-width: 640px) 50vw, 25vw" />}
         {onSale && (
           <Badge variant="save" className="product-card__badge">
             {isAr

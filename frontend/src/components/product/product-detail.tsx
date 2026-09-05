@@ -1,10 +1,21 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { AlertTriangle, Compass, Heart } from 'lucide-react';
-import { Alert, Badge, Button, EmptyState, Icon, PriceTag, QuantityStepper, Skeleton, SizeChip, Swatch } from '@/components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  CatalogImage,
+  EmptyState,
+  Icon,
+  PriceTag,
+  QuantityStepper,
+  Skeleton,
+  SizeChip,
+  Swatch,
+} from '@/components/ui';
 import { Breadcrumb, type Crumb } from '@/components/collection/breadcrumb';
 import { useProduct } from '@/hooks/use-catalog';
 import { useAddToCart } from '@/hooks/use-cart';
@@ -199,7 +210,7 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
         <div className="pdp__gallery">
           <div className="card pdp__main-media">
             {mainImage ? (
-              <Image
+              <CatalogImage
                 key={mainImage.id}
                 src={mainImage.url}
                 alt={(isAr ? mainImage.altAr : mainImage.altEn) ?? name}
@@ -208,7 +219,7 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
                 priority
               />
             ) : (
-              <span className="category-card__media-placeholder" aria-hidden />
+              <span className="catalog-image__fallback" aria-hidden />
             )}
             {onSale && (
               <Badge variant="save" className="product-card__badge">
@@ -231,7 +242,7 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
                   aria-label={t(`Image ${i + 1} of ${images.length}`, `صورة ${i + 1} من ${images.length}`)}
                   onClick={() => setActiveImage(i)}
                 >
-                  <Image src={img.url} alt="" fill sizes="80px" />
+                  <CatalogImage src={img.url} alt="" fill sizes="80px" />
                 </button>
               ))}
             </div>

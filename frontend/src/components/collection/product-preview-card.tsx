@@ -1,12 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { Heart, ShoppingBag } from 'lucide-react';
 import { useFavourites } from '@/hooks/use-favourites';
 import { useAddToCart } from '@/hooks/use-cart';
-import { Badge, Icon, PriceTag, SizeChip, Swatch } from '@/components/ui';
+import { Badge, CatalogImage, Icon, PriceTag, SizeChip, Swatch } from '@/components/ui';
 import { isOptionOutOfStock } from '@/lib/product-variants';
 import type { Product } from '@/lib/types';
 
@@ -106,7 +105,7 @@ export function ProductPreviewCard({ product, locale }: { product: Product; loca
     <div className="card product-preview-card">
       <Link href={href} className="product-preview-card__media">
         {image && (
-          <Image
+          <CatalogImage
             src={image.url}
             alt={(isAr ? image.altAr : image.altEn) ?? name}
             fill

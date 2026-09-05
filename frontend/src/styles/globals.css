@@ -942,6 +942,7 @@ ul, ol {
   position: relative;
   aspect-ratio: 4 / 5;
 }
+.pdp__main-media img { object-fit: cover; }
 
 .pdp__thumbs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
@@ -952,6 +953,7 @@ ul, ol {
   padding: 0;
   cursor: pointer;
 }
+.pdp__thumb img { object-fit: cover; }
 .pdp__thumb[aria-current='true'] { border-color: var(--collection-accent); border-width: 2px; }
 
 .pdp__content { min-width: 0; }
@@ -1206,6 +1208,18 @@ ul, ol {
 }
 .admin-page__head h1 { margin: 0; }
 
+.admin-thumb {
+  display: block;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--color-surface);
+}
+.admin-thumb--empty {
+  background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-accent-soft) 120%);
+}
+
 .image-uploader { display: inline-flex; flex-direction: column; gap: var(--space-1); }
 .image-uploader__trigger { cursor: pointer; }
 .image-uploader__trigger[data-disabled] { opacity: 0.5; pointer-events: none; }
@@ -1298,6 +1312,18 @@ ul, ol {
 /* ============================================================
    5. BASE COMPONENTS
    ============================================================ */
+
+/* ---- 5.0 Catalog image fallback ---- */
+/* Shown by <CatalogImage> in place of a broken/failed photo, and reused for
+   the plain "no image yet" case — same soft gradient media-tile's own
+   placeholder uses, but generic (no fixed aspect-ratio) since this fills
+   whatever `position: relative` media container it's dropped into. */
+.catalog-image__fallback {
+  display: block;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--color-surface) 0%, var(--collection-accent-soft, var(--color-accent-soft)) 120%);
+}
 
 /* ---- 5.1 Buttons ---- */
 .btn {
