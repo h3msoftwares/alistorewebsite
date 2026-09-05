@@ -56,8 +56,15 @@ export default async function CollectionPage({
         <p className="container collection-page__lede prose">{description}</p>
       )}
 
+      {/* Products lead the page — the grid starts above the fold. The
+          "shop by category" links move below it (secondary navigation). */}
+      <CollectionProducts collectionId={col.id} locale={locale} name={name} />
+
       {categories.length > 0 && (
-        <section className="container section--tight" aria-label={isAr ? 'الفئات' : 'Categories'}>
+        <section
+          className="container section--tight collection-page__categories"
+          aria-label={isAr ? 'الفئات' : 'Categories'}
+        >
           <h2 className="collection-page__subhead">
             {isAr ? 'تسوّق حسب الفئة' : 'Shop by category'}
           </h2>
@@ -75,8 +82,6 @@ export default async function CollectionPage({
           </ul>
         </section>
       )}
-
-      <CollectionProducts collectionId={col.id} locale={locale} name={name} />
     </div>
   );
 }

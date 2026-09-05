@@ -1095,6 +1095,12 @@ ul, ol {
   font-size: var(--fs-lg);
   margin-bottom: var(--space-4);
 }
+/* Secondary "shop by category" block, now below the product grid. */
+.collection-page__categories {
+  margin-block-start: var(--space-7);
+  padding-block-start: var(--space-6);
+  border-block-start: 1px solid var(--color-border);
+}
 
 /* The products section itself: a small top gap under the topbar (it's the
    .container.products-section instead of .section--tight so it doesn't
@@ -1198,11 +1204,21 @@ ul, ol {
   font-size: var(--fs-sm);
 }
 
-/* The inline panel wrapper is transparent to layout (display:contents) so
-   .product-filters still behaves as a direct flex child of .products-toolbar
-   — until the mobile breakpoint hides it in favour of the drawer trigger. */
-.product-filters-inline { display: contents; }
-.product-filters__trigger { display: none; }
+/* The whole filter UI is one compact group at the end of .products-toolbar:
+   a "Filters" button (opens the drawer) + an inline Sort dropdown, side by
+   side, so the product grid keeps as much room as possible. */
+.product-filters-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+.product-filters__sort-inline {
+  min-height: 32px;
+  padding-block: var(--space-1);
+  padding-inline-start: var(--space-2);
+  font-size: var(--fs-sm);
+}
 .product-filters__trigger-dot {
   display: inline-block;
   width: 6px;
@@ -1211,11 +1227,6 @@ ul, ol {
   border-radius: var(--radius-pill);
   background: var(--color-primary);
   vertical-align: middle;
-}
-
-@media (max-width: 599px) {
-  .product-filters-inline { display: none; }
-  .product-filters__trigger { display: inline-flex; }
 }
 
 /* Filters shown inside the mobile drawer: stack the groups vertically and
