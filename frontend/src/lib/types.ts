@@ -79,6 +79,8 @@ export interface Collection {
   sortOrder: number;
   /** `#rrggbb` — drives the `--collection-accent*` CSS vars (see `accentStyle`). */
   accentColor?: string | null;
+  /** Set when archived from the admin — hidden from the storefront, restorable. */
+  archivedAt?: string | null;
   images: CollectionImage[];
   /** Present on `GET /api/collections/:id` and `/slug/:slug` — active categories,
    *  one level of nesting, ordered by `sortOrder`. */
@@ -100,6 +102,8 @@ export interface Category {
    *  collection's own `showOnHome`. */
   showOnHome: boolean;
   sortOrder: number;
+  /** Set when archived from the admin — hidden from the storefront, restorable. */
+  archivedAt?: string | null;
   images: CategoryImage[];
   /** Present on `GET /categories` (one level of nesting). */
   children?: Category[];
@@ -150,6 +154,8 @@ export interface Product {
   effectivePrice: number;
   onSale: boolean;
   isActive: boolean;
+  /** Set when the product is archived (soft-deleted) from the admin. */
+  deletedAt?: string | null;
   dateCreated: IsoDateTime;
   images: ProductImage[];
   variants: ProductVariant[];
@@ -270,6 +276,10 @@ export interface AuthUser {
 
 export type ProductSort = 'newest' | 'price_asc' | 'price_desc';
 
+/** `active` = live on the storefront; `archived` = archived only; `all` = both.
+ *  Anything other than `active` is admin-only. */
+export type CatalogStatus = 'active' | 'archived' | 'all';
+
 export interface ProductListQuery {
   collectionId?: UUID;
   categoryId?: UUID;
@@ -281,6 +291,14 @@ export interface ProductListQuery {
   sort?: ProductSort;
   page?: number;
   pageSize?: number;
+  status?: CatalogStatus;
+}
+
+/** Query for the admin collection / category list (small sets — the array
+ *  comes back whole and the page paginates it client-side). */
+export interface CatalogListQuery {
+  search?: string;
+  status?: CatalogStatus;
 }
 
 export interface ProductListResult {

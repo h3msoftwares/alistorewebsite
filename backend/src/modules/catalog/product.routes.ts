@@ -21,6 +21,8 @@ import {
   createProductHandler,
   updateProductHandler,
   deleteProductHandler,
+  restoreProductHandler,
+  hardDeleteProductHandler,
   addVariantHandler,
   updateVariantHandler,
   deleteVariantHandler,
@@ -33,8 +35,13 @@ const router = Router();
 
 const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
 
-// ---- Storefront (public; optionalAuth lets admins see inactive products) ----
-router.get('/', validate({ query: listProductsQuerySchema }), asyncHandler(listProductsHandler));
+// ---- Storefront (public; optionalAuth lets staff pass ?status=archived|all) ----
+router.get(
+  '/',
+  optionalAuth,
+  validate({ query: listProductsQuerySchema }),
+  asyncHandler(listProductsHandler)
+);
 router.get(
   '/:id',
   optionalAuth,
@@ -50,11 +57,24 @@ router.patch(
   validate({ params: productIdParamSchema, body: updateProductSchema }),
   asyncHandler(updateProductHandler)
 );
+// DELETE /:id archives (soft-delete). Restore + permanent delete follow.
 router.delete(
   '/:id',
   ...admin,
   validate({ params: productIdParamSchema }),
   asyncHandler(deleteProductHandler)
+);
+router.post(
+  '/:id/restore',
+  ...admin,
+  validate({ params: productIdParamSchema }),
+  asyncHandler(restoreProductHandler)
+);
+router.delete(
+  '/:id/permanent',
+  ...admin,
+  validate({ params: productIdParamSchema }),
+  asyncHandler(hardDeleteProductHandler)
 );
 
 // ---- Variants ----

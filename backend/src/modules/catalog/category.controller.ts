@@ -1,14 +1,24 @@
 import { Request, Response } from 'express';
 import * as categoryService from './category.service';
 import { paramString } from '../../lib/params';
+import { resolveListStatus, type CatalogListStatus } from './list-access';
 
 export async function listCategoriesHandler(req: Request, res: Response) {
-  const { collectionId, standalone, showOnHome } = (req.validatedQuery ?? {}) as {
+  const q = (req.validatedQuery ?? {}) as {
     collectionId?: string;
     standalone?: boolean;
     showOnHome?: boolean;
+    search?: string;
+    status?: CatalogListStatus;
   };
-  const categories = await categoryService.listCategories({ collectionId, standalone, showOnHome });
+  const status = resolveListStatus(req, q.status);
+  const categories = await categoryService.listCategories({
+    collectionId: q.collectionId,
+    standalone: q.standalone,
+    showOnHome: q.showOnHome,
+    search: q.search,
+    status,
+  });
   res.json({ categories });
 }
 
@@ -39,6 +49,16 @@ export async function createCategoryHandler(req: Request, res: Response) {
 
 export async function updateCategoryHandler(req: Request, res: Response) {
   const category = await categoryService.updateCategory(paramString(req.params.id), req.body);
+  res.json({ category });
+}
+
+export async function archiveCategoryHandler(req: Request, res: Response) {
+  const category = await categoryService.archiveCategory(paramString(req.params.id));
+  res.json({ category });
+}
+
+export async function restoreCategoryHandler(req: Request, res: Response) {
+  const category = await categoryService.restoreCategory(paramString(req.params.id));
   res.json({ category });
 }
 

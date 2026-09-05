@@ -19,9 +19,38 @@ const categoryTree = {
   include: { images: imageOrder },
 };
 
-export async function listCollections(includeInactive = false) {
+export type CatalogStatus = 'active' | 'archived' | 'all';
+
+export interface ListCollectionsOpts {
+  search?: string;
+  status?: CatalogStatus;
+}
+
+// `active` = live on the storefront (not archived, still isActive);
+// `archived` = archived only; `all` = both. Non-active is admin-only — the
+// controller gates it.
+function statusWhere(status: CatalogStatus): Prisma.CollectionWhereInput {
+  if (status === 'archived') return { archivedAt: { not: null } };
+  if (status === 'all') return {};
+  return { archivedAt: null, isActive: true };
+}
+
+export async function listCollections(opts: ListCollectionsOpts = {}) {
+  const where: Prisma.CollectionWhereInput = {
+    ...statusWhere(opts.status ?? 'active'),
+    ...(opts.search
+      ? {
+          OR: [
+            { nameEn: { contains: opts.search, mode: 'insensitive' } },
+            { nameAr: { contains: opts.search, mode: 'insensitive' } },
+            { slug: { contains: opts.search, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+  };
+
   return prisma.collection.findMany({
-    where: includeInactive ? {} : { isActive: true },
+    where,
     orderBy: { sortOrder: 'asc' },
     include: {
       images: imageOrder,
@@ -86,8 +115,35 @@ export async function updateCollection(id: string, input: UpdateCollectionInput)
   }
 }
 
-export async function deleteCollection(id: string) {
+// The admin's primary "remove" action — hides the collection from the
+// storefront but keeps every row, so it can be restored.
+export async function archiveCollection(id: string) {
   await ensureExists(id);
+  return prisma.collection.update({
+    where: { id },
+    data: { archivedAt: new Date(), isActive: false },
+    include: { images: imageOrder, categories: categoryTree },
+  });
+}
+
+export async function restoreCollection(id: string) {
+  await ensureExists(id);
+  return prisma.collection.update({
+    where: { id },
+    data: { archivedAt: null, isActive: true },
+    include: { images: imageOrder, categories: categoryTree },
+  });
+}
+
+// Permanent, irreversible delete — only once the collection is archived AND
+// empty of products (categories detach to standalone; images cascade + get
+// cleaned up from ImageKit).
+export async function deleteCollection(id: string) {
+  const existing = await prisma.collection.findUnique({ where: { id }, select: { archivedAt: true } });
+  if (!existing) throw new AppError('NOT_FOUND', 'Collection not found');
+  if (!existing.archivedAt) {
+    throw new AppError('CONFLICT', 'Archive the collection before deleting it permanently.');
+  }
   const productCount = await prisma.product.count({ where: { collectionID: id } });
   if (productCount > 0) {
     throw new AppError(
@@ -96,8 +152,6 @@ export async function deleteCollection(id: string) {
     );
   }
   const images = await prisma.collectionImage.findMany({ where: { collectionID: id }, select: { fileId: true } });
-  // Categories are detached (collectionID SET NULL) via the schema relation —
-  // they survive as standalone categories. CollectionImage rows cascade-delete.
   await prisma.collection.delete({ where: { id } });
   await Promise.all(images.map((img) => cleanupCatalogImageIfOrphaned(img.fileId)));
 }

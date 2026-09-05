@@ -1,0 +1,136 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import request from 'supertest';
+import { buildApp } from '../../src/app';
+import { prisma } from '../../src/config/prisma';
+import { createAdmin, createCustomer, bearer } from '../helpers/auth';
+import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
+
+const app = buildApp();
+
+let adminToken: string;
+let customerToken: string;
+let collectionId: string;
+let categoryId: string;
+
+beforeEach(async () => {
+  adminToken = (await createAdmin()).token;
+  customerToken = (await createCustomer()).token;
+  const col = await makeCollection({ slug: 'root' });
+  const cat = await makeCategory(col.id);
+  collectionId = col.id;
+  categoryId = cat.id;
+});
+
+describe('Catalog archive / restore / permanent delete', () => {
+  describe('products', () => {
+    it('DELETE archives; the public list omits it; status=archived shows it to admin only', async () => {
+      const p = await makeProduct(collectionId, categoryId);
+
+      const del = await request(app).delete(`/api/products/${p.id}`).set(bearer(adminToken));
+      expect(del.status).toBe(204);
+
+      const pub = await request(app).get('/api/products');
+      expect(pub.body.items.map((x: { id: string }) => x.id)).not.toContain(p.id);
+
+      const anon = await request(app).get('/api/products?status=archived');
+      expect(anon.status).toBe(403);
+
+      const asCustomer = await request(app)
+        .get('/api/products?status=archived')
+        .set(bearer(customerToken));
+      expect(asCustomer.status).toBe(403);
+
+      const asAdmin = await request(app)
+        .get('/api/products?status=archived')
+        .set(bearer(adminToken));
+      expect(asAdmin.status).toBe(200);
+      expect(asAdmin.body.items.map((x: { id: string }) => x.id)).toContain(p.id);
+    });
+
+    it('restore brings a product back to the live list', async () => {
+      const p = await makeProduct(collectionId, categoryId);
+      await request(app).delete(`/api/products/${p.id}`).set(bearer(adminToken));
+
+      const res = await request(app).post(`/api/products/${p.id}/restore`).set(bearer(adminToken));
+      expect(res.status).toBe(200);
+      expect(res.body.product.deletedAt).toBeNull();
+
+      const pub = await request(app).get('/api/products');
+      expect(pub.body.items.map((x: { id: string }) => x.id)).toContain(p.id);
+    });
+
+    it('permanent delete: 409 unless archived, 204 for an archived product with no orders', async () => {
+      const p = await makeProduct(collectionId, categoryId);
+
+      const tooSoon = await request(app)
+        .delete(`/api/products/${p.id}/permanent`)
+        .set(bearer(adminToken));
+      expect(tooSoon.status).toBe(409);
+
+      await request(app).delete(`/api/products/${p.id}`).set(bearer(adminToken));
+      const ok = await request(app)
+        .delete(`/api/products/${p.id}/permanent`)
+        .set(bearer(adminToken));
+      expect(ok.status).toBe(204);
+      expect(await prisma.product.findUnique({ where: { id: p.id } })).toBeNull();
+    });
+
+    it('permanent delete: 409 for an archived product that appears in a past order', async () => {
+      const p = await makeProduct(collectionId, categoryId);
+      await prisma.order.create({
+        data: {
+          orderNumber: 'AS-ARCH-1',
+          deliveryName: 'x',
+          deliveryPhone: '123456',
+          deliveryAddress: 'street',
+          deliveryCity: 'city',
+          subtotal: 1,
+          total: 1,
+          items: {
+            create: {
+              variantID: p.variants[0].id,
+              productName: 'x',
+              productSKU: 'x',
+              variantSKU: 'x',
+              quantity: 1,
+              unitPrice: 1,
+              lineTotal: 1,
+            },
+          },
+        },
+      });
+      await request(app).delete(`/api/products/${p.id}`).set(bearer(adminToken));
+
+      const res = await request(app)
+        .delete(`/api/products/${p.id}/permanent`)
+        .set(bearer(adminToken));
+      expect(res.status).toBe(409);
+    });
+  });
+
+  describe('collections & categories', () => {
+    it('archived collection is hidden from the public list and nav', async () => {
+      const col = await makeCollection({ slug: 'summer', showInNav: true });
+      await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken));
+
+      const pub = await request(app).get('/api/collections');
+      expect(pub.body.collections.map((c: { id: string }) => c.id)).not.toContain(col.id);
+    });
+
+    it('anon cannot request status=archived / status=all', async () => {
+      expect((await request(app).get('/api/collections?status=archived')).status).toBe(403);
+      expect((await request(app).get('/api/collections?status=all')).status).toBe(403);
+      expect((await request(app).get('/api/categories?status=all')).status).toBe(403);
+    });
+
+    it('search filters by name / slug (case-insensitive)', async () => {
+      await makeCollection({ nameEn: 'Winter Warmers', slug: 'winter-warmers' });
+      await makeCollection({ nameEn: 'Beachwear', slug: 'beachwear' });
+
+      const res = await request(app).get('/api/collections?search=winter');
+      const slugs = res.body.collections.map((c: { slug: string }) => c.slug);
+      expect(slugs).toContain('winter-warmers');
+      expect(slugs).not.toContain('beachwear');
+    });
+  });
+});

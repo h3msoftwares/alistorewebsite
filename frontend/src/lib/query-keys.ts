@@ -1,4 +1,4 @@
-import type { ProductListQuery, UUID } from './types';
+import type { CatalogListQuery, ProductListQuery, UUID } from './types';
 
 // Central query-key factory so invalidation stays consistent across hooks.
 export const queryKeys = {
@@ -8,12 +8,14 @@ export const queryKeys = {
   collections: {
     all: () => ['collections'] as const,
     list: (includeInactive = false) => ['collections', 'list', { includeInactive }] as const,
+    adminList: (query: CatalogListQuery) => ['collections', 'list', 'admin', query] as const,
     detail: (id: UUID) => ['collections', 'detail', id] as const,
     bySlug: (slug: string) => ['collections', 'slug', slug] as const,
   },
   categories: {
     all: () => ['categories'] as const,
     list: (collectionId?: UUID) => ['categories', 'list', collectionId ?? null] as const,
+    adminList: (query: CatalogListQuery) => ['categories', 'list', 'admin', query] as const,
     standalone: () => ['categories', 'list', 'standalone'] as const,
     featured: () => ['categories', 'list', 'featured'] as const,
     detail: (id: UUID) => ['categories', 'detail', id] as const,

@@ -210,6 +210,10 @@ model Collection {
   // #rrggbb — the storefront derives the --collection-accent* CSS custom
   // properties from this. null ⇒ the collection uses the default accent.
   accentColor   String?
+  // Set when the owner archives the collection from the admin: hidden from
+  // the storefront, kept in the DB, restorable. Permanent delete is only
+  // allowed once archived (and empty of products).
+  archivedAt    DateTime?
   dateCreated   DateTime @default(now())
   lastEdit      DateTime @default(now()) @updatedAt
 
@@ -218,6 +222,7 @@ model Collection {
   products   Product[]
 
   @@index([isActive])
+  @@index([archivedAt])
   @@map("collection")
 }
 
@@ -259,6 +264,9 @@ model Category {
   // Collection.showOnHome for one interleaved featured-row order.
   showOnHome       Boolean @default(false)
   sortOrder        Int     @default(0)
+  // See Collection.archivedAt — archive is the admin's primary "remove"
+  // action; permanent delete needs the category archived and empty first.
+  archivedAt       DateTime?
 
   collection Collection?     @relation(fields: [collectionID], references: [id], onDelete: SetNull)
   parent     Category?       @relation("CategoryToSubcategory", fields: [parentCategoryID], references: [id], onDelete: SetNull)
@@ -268,6 +276,7 @@ model Category {
 
   @@index([collectionID])
   @@index([parentCategoryID])
+  @@index([archivedAt])
   @@map("category")
 }
 

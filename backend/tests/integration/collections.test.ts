@@ -33,11 +33,17 @@ describe('Collections API', () => {
       expect(Array.isArray(res.body.collections[0].images)).toBe(true);
     });
 
-    it('includeInactive=true returns hidden collections too', async () => {
+    it('includeInactive=true returns hidden collections too (admin only)', async () => {
+      await tokens();
       await makeCollection({ slug: 'a-col' });
       await makeCollection({ slug: 'b-col', isActive: false });
 
-      const res = await request(app).get('/api/collections?includeInactive=true');
+      const anon = await request(app).get('/api/collections?includeInactive=true');
+      expect(anon.status).toBe(403);
+
+      const res = await request(app)
+        .get('/api/collections?includeInactive=true')
+        .set(bearer(adminToken));
       expect(res.status).toBe(200);
       expect(res.body.collections).toHaveLength(2);
     });
@@ -215,30 +221,78 @@ describe('Collections API', () => {
     });
   });
 
-  describe('DELETE /api/collections/:id (admin)', () => {
-    it('deletes an empty collection and detaches its categories (they survive as standalone)', async () => {
+  describe('DELETE /api/collections/:id (admin) — archives', () => {
+    it('archives the collection: hidden from the public list, kept in the DB', async () => {
       await tokens();
       const col = await makeCollection({ slug: 'del' });
-      const cat = await makeCategory(col.id);
+      await makeCategory(col.id);
 
       const res = await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken));
+      expect(res.status).toBe(200);
+      expect(res.body.collection.archivedAt).not.toBeNull();
+
+      const row = await prisma.collection.findUnique({ where: { id: col.id } });
+      expect(row).not.toBeNull();
+      expect(row?.archivedAt).not.toBeNull();
+      expect(row?.isActive).toBe(false);
+
+      const publicList = await request(app).get('/api/collections');
+      expect(publicList.body.collections.map((c: { id: string }) => c.id)).not.toContain(col.id);
+    });
+
+    it('restores an archived collection', async () => {
+      await tokens();
+      const col = await makeCollection({ slug: 'restore-me' });
+      await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken));
+
+      const res = await request(app)
+        .post(`/api/collections/${col.id}/restore`)
+        .set(bearer(adminToken));
+      expect(res.status).toBe(200);
+      expect(res.body.collection.archivedAt).toBeNull();
+      expect(res.body.collection.isActive).toBe(true);
+    });
+  });
+
+  describe('DELETE /api/collections/:id/permanent (admin)', () => {
+    it('409s a collection that is not archived yet', async () => {
+      await tokens();
+      const col = await makeCollection({ slug: 'not-archived' });
+      const res = await request(app)
+        .delete(`/api/collections/${col.id}/permanent`)
+        .set(bearer(adminToken));
+      expect(res.status).toBe(409);
+    });
+
+    it('permanently deletes an archived, empty collection and detaches its categories', async () => {
+      await tokens();
+      const col = await makeCollection({ slug: 'del-perm' });
+      const cat = await makeCategory(col.id);
+      await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken)); // archive first
+
+      const res = await request(app)
+        .delete(`/api/collections/${col.id}/permanent`)
+        .set(bearer(adminToken));
       expect(res.status).toBe(204);
-      expect(await prisma.collection.count()).toBe(0);
+      expect(await prisma.collection.findUnique({ where: { id: col.id } })).toBeNull();
 
       const row = await prisma.category.findUnique({ where: { id: cat.id } });
       expect(row).not.toBeNull();
       expect(row?.collectionID).toBeNull();
     });
 
-    it('409s when the collection still has products', async () => {
+    it('409s when the archived collection still has products', async () => {
       await tokens();
       const col = await makeCollection({ slug: 'has-prod' });
       const cat = await makeCategory(col.id);
       await prisma.product.create({
         data: { sku: 'P1', nameEn: 'P', nameAr: 'P', categoryID: cat.id, collectionID: col.id, price: 10 },
       });
+      await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken)); // archive first
 
-      const res = await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken));
+      const res = await request(app)
+        .delete(`/api/collections/${col.id}/permanent`)
+        .set(bearer(adminToken));
       expect(res.status).toBe(409);
     });
   });

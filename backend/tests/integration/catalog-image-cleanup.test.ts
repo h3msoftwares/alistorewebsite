@@ -72,7 +72,7 @@ describe('Catalog image ImageKit cleanup (admin sub-resource routes)', () => {
     expect(deleteImageKitFile).toHaveBeenCalledWith('cf-1');
   });
 
-  it('deleting an (empty) category cascades ImageKit cleanup for all its images', async () => {
+  it('permanently deleting an (empty) category cascades ImageKit cleanup for all its images', async () => {
     const { token } = await createAdmin();
     const col = await makeCollection();
     const cat = await makeCategory(col.id);
@@ -86,7 +86,8 @@ describe('Catalog image ImageKit cleanup (admin sub-resource routes)', () => {
       .set(bearer(token))
       .send({ url: 'https://ik.imagekit.io/demo/c2.jpg', fileId: 'cf-b' });
 
-    const del = await request(app).delete(`/api/categories/${cat.id}`).set(bearer(token));
+    await request(app).delete(`/api/categories/${cat.id}`).set(bearer(token)); // archive first
+    const del = await request(app).delete(`/api/categories/${cat.id}/permanent`).set(bearer(token));
     expect(del.status).toBe(204);
     expect(deleteImageKitFile).toHaveBeenCalledWith('cf-a');
     expect(deleteImageKitFile).toHaveBeenCalledWith('cf-b');
@@ -105,7 +106,7 @@ describe('Catalog image ImageKit cleanup (admin sub-resource routes)', () => {
     expect(deleteImageKitFile).toHaveBeenCalledWith('kf-1');
   });
 
-  it('deleting an (empty) collection cascades ImageKit cleanup for its images', async () => {
+  it('permanently deleting an (empty) collection cascades ImageKit cleanup for its images', async () => {
     const { token } = await createAdmin();
     const col = await makeCollection();
 
@@ -114,7 +115,8 @@ describe('Catalog image ImageKit cleanup (admin sub-resource routes)', () => {
       .set(bearer(token))
       .send({ url: 'https://ik.imagekit.io/demo/k.jpg', fileId: 'kf-2' });
 
-    const del = await request(app).delete(`/api/collections/${col.id}`).set(bearer(token));
+    await request(app).delete(`/api/collections/${col.id}`).set(bearer(token)); // archive first
+    const del = await request(app).delete(`/api/collections/${col.id}/permanent`).set(bearer(token));
     expect(del.status).toBe(204);
     expect(deleteImageKitFile).toHaveBeenCalledWith('kf-2');
   });

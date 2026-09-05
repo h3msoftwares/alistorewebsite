@@ -14,6 +14,12 @@ export const listCategoriesQuerySchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v === 'true'),
+  // Matches nameEn / nameAr / slug, case-insensitive.
+  search: z.string().trim().min(1).optional(),
+  // active = not archived (and isActive); archived = archived only; all = both.
+  // Anything other than 'active' is admin-only (see the list controller). The
+  // filtered array comes back whole — the admin list page paginates client-side.
+  status: z.enum(['active', 'archived', 'all']).optional(),
 });
 
 export const categoryIdParamSchema = z.object({

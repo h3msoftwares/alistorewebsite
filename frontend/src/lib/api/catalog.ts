@@ -1,6 +1,7 @@
 import { api } from './client';
 import type {
   CatalogImage,
+  CatalogListQuery,
   Category,
   CategoryBody,
   Collection,
@@ -18,10 +19,14 @@ import type {
 
 // ---- Collections (public) ----
 
-export function listCollections(params?: { includeInactive?: boolean }) {
+export function listCollections(params?: CatalogListQuery & { includeInactive?: boolean }) {
   return api
     .get<{ collections: Collection[] }>('/api/collections', {
-      query: { includeInactive: params?.includeInactive },
+      query: {
+        search: params?.search,
+        status: params?.status,
+        includeInactive: params?.includeInactive,
+      },
     })
     .then((r) => r.collections);
 }
@@ -48,8 +53,20 @@ export function updateCollection(id: UUID, body: Partial<CollectionBody>) {
     .then((r) => r.collection);
 }
 
+/** Archives the collection (the primary "remove"). */
 export function deleteCollection(id: UUID) {
   return api.del(`/api/collections/${id}`);
+}
+
+export function restoreCollection(id: UUID) {
+  return api
+    .post<{ collection: Collection }>(`/api/collections/${id}/restore`, {})
+    .then((r) => r.collection);
+}
+
+/** Permanent, irreversible — only for an archived + empty collection. */
+export function permanentDeleteCollection(id: UUID) {
+  return api.del(`/api/collections/${id}/permanent`);
 }
 
 export function linkCategoriesToCollection(id: UUID, categoryIds: UUID[]) {
@@ -76,9 +93,13 @@ export function deleteCollectionImage(id: UUID, imageId: UUID) {
 
 // ---- Categories (public) ----
 
-export function listCategories(collectionId?: UUID) {
+export function listCategories(params?: UUID | (CatalogListQuery & { collectionId?: UUID })) {
+  // Back-compat: a bare string arg is still treated as a collectionId filter.
+  const q = typeof params === 'string' ? { collectionId: params } : (params ?? {});
   return api
-    .get<{ categories: Category[] }>('/api/categories', { query: { collectionId } })
+    .get<{ categories: Category[] }>('/api/categories', {
+      query: { collectionId: q.collectionId, search: q.search, status: q.status },
+    })
     .then((r) => r.categories);
 }
 
@@ -134,8 +155,20 @@ export function updateCategory(id: UUID, body: Partial<CategoryBody>) {
   return api.patch<{ category: Category }>(`/api/categories/${id}`, body).then((r) => r.category);
 }
 
+/** Archives the category (the primary "remove"). */
 export function deleteCategory(id: UUID) {
   return api.del(`/api/categories/${id}`);
+}
+
+export function restoreCategory(id: UUID) {
+  return api
+    .post<{ category: Category }>(`/api/categories/${id}/restore`, {})
+    .then((r) => r.category);
+}
+
+/** Permanent, irreversible — only for an archived + empty category. */
+export function permanentDeleteCategory(id: UUID) {
+  return api.del(`/api/categories/${id}/permanent`);
 }
 
 export function addCategoryImage(id: UUID, body: ImageBody) {
@@ -167,6 +200,7 @@ export function listProducts(query: ProductListQuery = {}) {
       sort: query.sort,
       page: query.page,
       pageSize: query.pageSize,
+      status: query.status,
     },
   });
 }
@@ -185,8 +219,18 @@ export function updateProduct(id: UUID, body: Partial<Omit<ProductBody, 'variant
   return api.patch<{ product: Product }>(`/api/products/${id}`, body).then((r) => r.product);
 }
 
+/** Archives the product (soft-delete — keeps order history intact). */
 export function deleteProduct(id: UUID) {
   return api.del(`/api/products/${id}`);
+}
+
+export function restoreProduct(id: UUID) {
+  return api.post<{ product: Product }>(`/api/products/${id}/restore`, {}).then((r) => r.product);
+}
+
+/** Permanent, irreversible — only for an archived product with no order history. */
+export function permanentDeleteProduct(id: UUID) {
+  return api.del(`/api/products/${id}/permanent`);
 }
 
 export function addProductVariant(id: UUID, body: VariantBody) {

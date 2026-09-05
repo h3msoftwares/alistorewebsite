@@ -1,35 +1,74 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Plus, Trash2 } from 'lucide-react';
+import { Archive, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { Alert, Badge, Button, DataTable, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
 import { AdminThumb } from '@/components/admin/admin-thumb';
-import { useCollections, useDeleteCollection } from '@/hooks/use-catalog';
+import { AdminListControls } from '@/components/admin/admin-list-controls';
+import { AdminPager } from '@/components/admin/admin-pager';
+import {
+  useAdminCollections,
+  useDeleteCollection,
+  usePermanentDeleteCollection,
+  useRestoreCollection,
+} from '@/hooks/use-catalog';
+import type { CatalogStatus, Collection } from '@/lib/types';
+
+const PAGE_SIZE = 20;
 
 export default function AdminCollectionsPage() {
   const params = useParams();
-  const locale = (typeof params?.locale === 'string' ? params.locale : 'en') || 'en';
+  const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
-  const { data: collections, isPending, isError, refetch } = useCollections({ includeInactive: true });
-  const deleteCollection = useDeleteCollection();
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<CatalogStatus>('active');
+  const [page, setPage] = useState(1);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(t(`Delete "${name}"? This can't be undone.`, `حذف "${name}"؟ لا يمكن التراجع عن هذا.`))) return;
-    setDeleteError(null);
-    setPendingDeleteId(id);
+  const { data, isPending, isError, refetch } = useAdminCollections({
+    search: search || undefined,
+    status,
+  });
+  const archive = useDeleteCollection();
+  const restore = useRestoreCollection();
+  const permanentDelete = usePermanentDeleteCollection();
+
+  const rows = data ?? [];
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = useMemo(
+    () => (data ?? []).slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [data, safePage]
+  );
+
+  const name = (c: Collection) => (isAr ? c.nameAr : c.nameEn);
+
+  const runAction = async (id: string, fn: () => Promise<unknown>, failMsg: string) => {
+    setActionError(null);
+    setBusyId(id);
     try {
-      await deleteCollection.mutateAsync(id);
+      await fn();
     } catch (e) {
-      setDeleteError(e instanceof Error ? e.message : t('Delete failed', 'فشل الحذف'));
+      setActionError(e instanceof Error ? e.message : failMsg);
     } finally {
-      setPendingDeleteId(null);
+      setBusyId(null);
     }
+  };
+
+  const onArchive = (c: Collection) => {
+    if (!window.confirm(t(`Archive "${name(c)}"? It will be hidden from the storefront but kept.`, `أرشفة "${name(c)}"؟ ستُخفى من المتجر مع الاحتفاظ بها.`))) return;
+    void runAction(c.id, () => archive.mutateAsync(c.id), t('Archive failed', 'فشلت الأرشفة'));
+  };
+  const onRestore = (c: Collection) =>
+    void runAction(c.id, () => restore.mutateAsync(c.id), t('Restore failed', 'فشلت الاستعادة'));
+  const onPermanentDelete = (c: Collection) => {
+    if (!window.confirm(t(`Permanently delete "${name(c)}"? This cannot be undone.`, `حذف "${name(c)}" نهائيًا؟ لا يمكن التراجع.`))) return;
+    void runAction(c.id, () => permanentDelete.mutateAsync(c.id), t('Delete failed', 'فشل الحذف'));
   };
 
   return (
@@ -42,11 +81,21 @@ export default function AdminCollectionsPage() {
         </Link>
       </div>
 
-      {deleteError && (
-        <Alert tone="danger" className="stack">
-          {deleteError}
-        </Alert>
-      )}
+      <AdminListControls
+        search={search}
+        onSearchChange={(v) => {
+          setSearch(v);
+          setPage(1);
+        }}
+        status={status}
+        onStatusChange={(v) => {
+          setStatus(v);
+          setPage(1);
+        }}
+        locale={locale}
+      />
+
+      {actionError && <Alert tone="danger" className="stack">{actionError}</Alert>}
 
       {isPending ? (
         <ProductGridSkeleton count={4} />
@@ -60,9 +109,9 @@ export default function AdminCollectionsPage() {
             </Button>
           }
         />
-      ) : !collections || collections.length === 0 ? (
+      ) : rows.length === 0 ? (
         <EmptyState
-          title={t('No collections yet', 'لا توجد مجموعات بعد')}
+          title={search || status !== 'active' ? t('No matches', 'لا نتائج') : t('No collections yet', 'لا توجد مجموعات بعد')}
           action={
             <Link href={`/${locale}/admin/collections/new`} className="btn btn--primary">
               {t('New collection', 'مجموعة جديدة')}
@@ -70,60 +119,104 @@ export default function AdminCollectionsPage() {
           }
         />
       ) : (
-        <DataTable responsive>
-          <thead>
-            <tr>
-              <th aria-hidden="true" />
-              <th>{t('Name', 'الاسم')}</th>
-              <th>{t('Slug', 'الرابط')}</th>
-              <th>{t('Status', 'الحالة')}</th>
-              <th>{t('Nav', 'التنقل')}</th>
-              <th>{t('Home', 'الرئيسية')}</th>
-              <th className="is-numeric">{t('Categories', 'الفئات')}</th>
-              <th className="is-numeric">{t('Products', 'المنتجات')}</th>
-              <th aria-hidden="true" />
-            </tr>
-          </thead>
-          <tbody>
-            {collections.map((c) => (
-              <tr key={c.id}>
-                <td data-label={t('Image', 'الصورة')}>
-                  <AdminThumb url={c.images[0]?.url} alt={isAr ? c.nameAr : c.nameEn} />
-                </td>
-                <td data-label={t('Name', 'الاسم')}>
-                  <Link href={`/${locale}/admin/collections/${c.id}`}>{isAr ? c.nameAr : c.nameEn}</Link>
-                </td>
-                <td data-label={t('Slug', 'الرابط')}>{c.slug}</td>
-                <td data-label={t('Status', 'الحالة')}>
-                  {c.isActive ? (
-                    <Badge variant="new">{t('Active', 'مفعّل')}</Badge>
-                  ) : (
-                    <Badge variant="low-stock">{t('Hidden', 'مخفي')}</Badge>
-                  )}
-                </td>
-                <td data-label={t('Nav', 'التنقل')}>{c.showInNav ? t('Yes', 'نعم') : '—'}</td>
-                <td data-label={t('Home', 'الرئيسية')}>{c.showOnHome ? t('Yes', 'نعم') : '—'}</td>
-                <td className="is-numeric" data-label={t('Categories', 'الفئات')}>
-                  {c._count?.categories ?? 0}
-                </td>
-                <td className="is-numeric" data-label={t('Products', 'المنتجات')}>
-                  {c._count?.products ?? 0}
-                </td>
-                <td data-label={t('Actions', 'إجراءات')}>
-                  <button
-                    type="button"
-                    className="icon-btn icon-btn--bordered"
-                    onClick={() => handleDelete(c.id, isAr ? c.nameAr : c.nameEn)}
-                    disabled={pendingDeleteId === c.id}
-                    aria-label={t('Delete', 'حذف')}
-                  >
-                    <Icon as={Trash2} size={16} />
-                  </button>
-                </td>
+        <>
+          <DataTable responsive>
+            <thead>
+              <tr>
+                <th aria-hidden="true" />
+                <th>{t('Name', 'الاسم')}</th>
+                <th>{t('Slug', 'الرابط')}</th>
+                <th>{t('Status', 'الحالة')}</th>
+                <th>{t('Nav', 'التنقل')}</th>
+                <th>{t('Home', 'الرئيسية')}</th>
+                <th className="is-numeric">{t('Categories', 'الفئات')}</th>
+                <th className="is-numeric">{t('Products', 'المنتجات')}</th>
+                <th aria-hidden="true" />
               </tr>
-            ))}
-          </tbody>
-        </DataTable>
+            </thead>
+            <tbody>
+              {pageRows.map((c) => (
+                <tr key={c.id}>
+                  <td data-label={t('Image', 'الصورة')}>
+                    <AdminThumb url={c.images[0]?.url} alt={name(c)} />
+                  </td>
+                  <td data-label={t('Name', 'الاسم')}>
+                    <Link href={`/${locale}/admin/collections/${c.id}`}>{name(c)}</Link>
+                  </td>
+                  <td data-label={t('Slug', 'الرابط')}>{c.slug}</td>
+                  <td data-label={t('Status', 'الحالة')}>
+                    {c.archivedAt ? (
+                      <Badge variant="low-stock" className="admin-status-badge--archived">
+                        {t('Archived', 'مؤرشفة')}
+                      </Badge>
+                    ) : c.isActive ? (
+                      <Badge variant="new">{t('Active', 'مفعّلة')}</Badge>
+                    ) : (
+                      <Badge variant="low-stock">{t('Hidden', 'مخفية')}</Badge>
+                    )}
+                  </td>
+                  <td data-label={t('Nav', 'التنقل')}>{c.showInNav ? t('Yes', 'نعم') : '—'}</td>
+                  <td data-label={t('Home', 'الرئيسية')}>{c.showOnHome ? t('Yes', 'نعم') : '—'}</td>
+                  <td className="is-numeric" data-label={t('Categories', 'الفئات')}>
+                    {c._count?.categories ?? 0}
+                  </td>
+                  <td className="is-numeric" data-label={t('Products', 'المنتجات')}>
+                    {c._count?.products ?? 0}
+                  </td>
+                  <td data-label={t('Actions', 'إجراءات')}>
+                    <span className="admin-row-actions">
+                      <Link
+                        href={`/${locale}/admin/collections/${c.id}`}
+                        className="icon-btn icon-btn--bordered"
+                        aria-label={t('Edit', 'تعديل')}
+                        title={t('Edit', 'تعديل')}
+                      >
+                        <Icon as={Pencil} size={16} />
+                      </Link>
+                      {c.archivedAt ? (
+                        <>
+                          <button
+                            type="button"
+                            className="icon-btn icon-btn--bordered"
+                            onClick={() => onRestore(c)}
+                            disabled={busyId === c.id}
+                            aria-label={t('Restore', 'استعادة')}
+                            title={t('Restore', 'استعادة')}
+                          >
+                            <Icon as={RotateCcw} size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-btn icon-btn--bordered"
+                            onClick={() => onPermanentDelete(c)}
+                            disabled={busyId === c.id}
+                            aria-label={t('Delete permanently', 'حذف نهائي')}
+                            title={t('Delete permanently', 'حذف نهائي')}
+                          >
+                            <Icon as={Trash2} size={16} />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="icon-btn icon-btn--bordered"
+                          onClick={() => onArchive(c)}
+                          disabled={busyId === c.id}
+                          aria-label={t('Archive', 'أرشفة')}
+                          title={t('Archive', 'أرشفة')}
+                        >
+                          <Icon as={Archive} size={16} />
+                        </button>
+                      )}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+
+          <AdminPager page={safePage} totalPages={totalPages} onPageChange={setPage} locale={locale} />
+        </>
       )}
     </div>
   );

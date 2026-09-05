@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
-import { requireAuth } from '../../middleware/auth.middleware';
+import { requireAuth, optionalAuth } from '../../middleware/auth.middleware';
 import { requireRole } from '../../middleware/rbac.middleware';
 import { createImageSchema, updateImageSchema } from './image.schema';
 import { listProductsQuerySchema } from './product.schema';
@@ -20,6 +20,8 @@ import {
   listCategoryProductsHandler,
   createCategoryHandler,
   updateCategoryHandler,
+  archiveCategoryHandler,
+  restoreCategoryHandler,
   deleteCategoryHandler,
   addCategoryImageHandler,
   updateCategoryImageHandler,
@@ -34,7 +36,12 @@ const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
 // Optional ?collectionId= filters to one collection; ?standalone=true returns
 // only categories attached to no collection. The storefront nav renders the
 // returned parent/children tree client-side.
-router.get('/', validate({ query: listCategoriesQuerySchema }), asyncHandler(listCategoriesHandler));
+router.get(
+  '/',
+  optionalAuth,
+  validate({ query: listCategoriesQuerySchema }),
+  asyncHandler(listCategoriesHandler)
+);
 router.get(
   '/slug/:slug',
   validate({ params: categorySlugParamSchema }),
@@ -56,8 +63,21 @@ router.patch(
   validate({ params: categoryIdParamSchema, body: updateCategorySchema }),
   asyncHandler(updateCategoryHandler)
 );
+// DELETE /:id archives; restore + permanent delete are their own routes.
 router.delete(
   '/:id',
+  ...admin,
+  validate({ params: categoryIdParamSchema }),
+  asyncHandler(archiveCategoryHandler)
+);
+router.post(
+  '/:id/restore',
+  ...admin,
+  validate({ params: categoryIdParamSchema }),
+  asyncHandler(restoreCategoryHandler)
+);
+router.delete(
+  '/:id/permanent',
   ...admin,
   validate({ params: categoryIdParamSchema }),
   asyncHandler(deleteCategoryHandler)

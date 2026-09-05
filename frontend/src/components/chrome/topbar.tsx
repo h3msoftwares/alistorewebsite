@@ -37,17 +37,33 @@ export function Topbar({ locale }: { locale: string }) {
   const pathname = usePathname();
   const activeSlug = pathname?.split('/')[2];
 
+  // The home page's first screenful is a near-black band; while the sticky
+  // header sits over it, it borrows that colour so it reads as part of the
+  // page. Seed from the route (dark from first paint, no flash) then let the
+  // scroll listener drop it once the header clears the hero.
+  const isHome = pathname === `/${locale}`;
+  const [onDark, setOnDark] = useState(isHome);
+
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 4);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
+    const HEADER_PX = 72; // --header-height
+    const sync = () => {
+      setScrolled(window.scrollY > 4);
+      const hero = document.querySelector<HTMLElement>('[data-home-hero]');
+      setOnDark(!!hero && hero.getBoundingClientRect().bottom > HEADER_PX);
+    };
+    sync();
+    window.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync);
+    return () => {
+      window.removeEventListener('scroll', sync);
+      window.removeEventListener('resize', sync);
+    };
+  }, [pathname]);
 
   const accountHref = isAuthenticated ? `/${locale}/account` : `/${locale}/login`;
 
   return (
-    <header className="site-header topbar" data-scrolled={scrolled}>
+    <header className="site-header topbar" data-scrolled={scrolled} data-on-dark={onDark}>
       <div className="container topbar__inner">
         <button
           type="button"

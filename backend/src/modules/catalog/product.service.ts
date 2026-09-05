@@ -55,9 +55,19 @@ function withPricing<T extends Priced>(p: T) {
   };
 }
 
+// `active` = live products; `archived` = soft-deleted only; `all` = both.
+// `includeInactive` is a deprecated alias for `all`. Non-active is admin-only
+// (gated in listProductsHandler).
+function productStatusWhere(query: ListProductsQuery): Prisma.ProductWhereInput {
+  const status = query.status ?? (query.includeInactive ? 'all' : 'active');
+  if (status === 'archived') return { deletedAt: { not: null } };
+  if (status === 'all') return {};
+  return { isActive: true, deletedAt: null };
+}
+
 export async function listProducts(query: ListProductsQuery) {
   const where: Prisma.ProductWhereInput = {
-    ...(query.includeInactive ? {} : { isActive: true, deletedAt: null }),
+    ...productStatusWhere(query),
     ...(query.collectionId ? { collectionID: query.collectionId } : {}),
     ...(query.categoryId ? { categoryID: query.categoryId } : {}),
     ...(query.search
@@ -206,8 +216,36 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
 
 export async function deleteProduct(id: string) {
   await ensureProductExists(id);
-  // Soft delete — keeps history for past OrderItems intact.
+  // Archive (soft delete) — keeps history for past OrderItems intact, and is
+  // restorable. The admin's primary "remove" action.
   await prisma.product.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
+}
+
+export async function restoreProduct(id: string) {
+  const existing = await prisma.product.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) throw new AppError('NOT_FOUND', 'Product not found');
+  return prisma.product.update({
+    where: { id },
+    data: { isActive: true, deletedAt: null },
+    include: productInclude,
+  }).then(withPricing);
+}
+
+// Permanent, irreversible — only for an already-archived product with no
+// order history to protect.
+export async function hardDeleteProduct(id: string) {
+  const existing = await prisma.product.findUnique({ where: { id }, select: { deletedAt: true } });
+  if (!existing) throw new AppError('NOT_FOUND', 'Product not found');
+  if (!existing.deletedAt) {
+    throw new AppError('CONFLICT', 'Archive the product before deleting it permanently.');
+  }
+  const inOrder = await prisma.orderItem.count({ where: { variant: { productID: id } } });
+  if (inOrder > 0) {
+    throw new AppError('CONFLICT', 'Cannot delete a product that appears in past orders. Keep it archived.');
+  }
+  const images = await prisma.productImage.findMany({ where: { productID: id }, select: { fileId: true } });
+  await prisma.product.delete({ where: { id } });
+  await Promise.all(images.map((img) => cleanupCatalogImageIfOrphaned(img.fileId)));
 }
 
 // ---- Variants (sub-resource) ----

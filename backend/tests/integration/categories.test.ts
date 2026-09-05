@@ -242,13 +242,16 @@ describe('Categories API', () => {
     });
   });
 
-  describe('deleting a collection detaches its categories', () => {
+  describe('permanently deleting a collection detaches its categories', () => {
     it('leaves the category as standalone (SET NULL, not cascade delete)', async () => {
       const { token } = await createAdmin();
       const col = await makeCollection({ slug: 'delcol' });
       const cat = await makeCategory(col.id);
 
-      const del = await request(app).delete(`/api/collections/${col.id}`).set(bearer(token));
+      await request(app).delete(`/api/collections/${col.id}`).set(bearer(token)); // archive first
+      const del = await request(app)
+        .delete(`/api/collections/${col.id}/permanent`)
+        .set(bearer(token));
       expect(del.status).toBe(204);
 
       const row = await prisma.category.findUnique({ where: { id: cat.id } });
@@ -257,21 +260,55 @@ describe('Categories API', () => {
     });
   });
 
-  describe('DELETE /api/categories/:id (admin)', () => {
-    it('deletes an empty category', async () => {
+  describe('DELETE /api/categories/:id (admin) — archives', () => {
+    it('archives the category (kept in the DB, hidden from the public list)', async () => {
       const { token } = await createAdmin();
       const col = await makeCollection({ slug: 'dc' });
       const cat = await makeCategory(col.id);
       const res = await request(app).delete(`/api/categories/${cat.id}`).set(bearer(token));
-      expect(res.status).toBe(204);
+      expect(res.status).toBe(200);
+      expect(res.body.category.archivedAt).not.toBeNull();
+
+      const row = await prisma.category.findUnique({ where: { id: cat.id } });
+      expect(row?.archivedAt).not.toBeNull();
+      expect(row?.isActive).toBe(false);
     });
 
-    it('409s a category that still has products', async () => {
+    it('restores an archived category', async () => {
+      const { token } = await createAdmin();
+      const cat = await makeCategory(null);
+      await request(app).delete(`/api/categories/${cat.id}`).set(bearer(token));
+      const res = await request(app).post(`/api/categories/${cat.id}/restore`).set(bearer(token));
+      expect(res.status).toBe(200);
+      expect(res.body.category.archivedAt).toBeNull();
+      expect(res.body.category.isActive).toBe(true);
+    });
+  });
+
+  describe('DELETE /api/categories/:id/permanent (admin)', () => {
+    it('409s a category that is not archived yet', async () => {
+      const { token } = await createAdmin();
+      const cat = await makeCategory(null);
+      const res = await request(app).delete(`/api/categories/${cat.id}/permanent`).set(bearer(token));
+      expect(res.status).toBe(409);
+    });
+
+    it('permanently deletes an archived, empty category', async () => {
+      const { token } = await createAdmin();
+      const cat = await makeCategory(null);
+      await request(app).delete(`/api/categories/${cat.id}`).set(bearer(token)); // archive first
+      const res = await request(app).delete(`/api/categories/${cat.id}/permanent`).set(bearer(token));
+      expect(res.status).toBe(204);
+      expect(await prisma.category.findUnique({ where: { id: cat.id } })).toBeNull();
+    });
+
+    it('409s an archived category that still has products', async () => {
       const { token } = await createAdmin();
       const col = await makeCollection({ slug: 'dc2' });
       const cat = await makeCategory(col.id);
       await makeProduct(col.id, cat.id);
-      const res = await request(app).delete(`/api/categories/${cat.id}`).set(bearer(token));
+      await request(app).delete(`/api/categories/${cat.id}`).set(bearer(token)); // archive first
+      const res = await request(app).delete(`/api/categories/${cat.id}/permanent`).set(bearer(token));
       expect(res.status).toBe(409);
     });
   });

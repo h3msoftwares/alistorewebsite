@@ -12,7 +12,10 @@ export const listProductsQuerySchema = z.object({
   sort: z.enum(['newest', 'price_asc', 'price_desc']).default('newest'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(60).default(24),
-  // Admin-only: also return inactive / soft-deleted products.
+  // active = live products; archived = soft-deleted only; all = both.
+  // Anything other than 'active' is admin-only (see listProductsHandler).
+  status: z.enum(['active', 'archived', 'all']).optional(),
+  // Deprecated alias for status=all — kept so existing admin callers don't break.
   includeInactive: z
     .enum(['true', 'false'])
     .optional()

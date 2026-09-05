@@ -28,7 +28,15 @@ const hexColor = z
   .regex(/^#[0-9a-fA-F]{6}$/, 'accentColor must be a #rrggbb hex colour');
 
 export const listCollectionsQuerySchema = z.object({
-  // Admins can pass includeInactive=true to see hidden collections.
+  // Matches nameEn / nameAr / slug, case-insensitive.
+  search: z.string().trim().min(1).optional(),
+  // active = not archived (and isActive); archived = archived only; all = both.
+  // Anything other than 'active' is admin-only (see the list controller). The
+  // set is small (dozens at most) so this returns the whole filtered array —
+  // the admin list page paginates client-side. Left un-defaulted so the
+  // controller can fall back to the `includeInactive` alias.
+  status: z.enum(['active', 'archived', 'all']).optional(),
+  // Deprecated alias for status=all — kept so existing admin callers don't break.
   includeInactive: z
     .enum(['true', 'false'])
     .optional()

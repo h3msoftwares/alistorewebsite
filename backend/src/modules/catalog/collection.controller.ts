@@ -1,10 +1,16 @@
 import { Request, Response } from 'express';
 import * as collectionService from './collection.service';
 import { paramString } from '../../lib/params';
+import { resolveListStatus, type CatalogListStatus } from './list-access';
 
 export async function listCollectionsHandler(req: Request, res: Response) {
-  const { includeInactive } = (req.validatedQuery ?? {}) as { includeInactive?: boolean };
-  const collections = await collectionService.listCollections(includeInactive);
+  const q = (req.validatedQuery ?? {}) as {
+    search?: string;
+    status?: CatalogListStatus;
+    includeInactive?: boolean;
+  };
+  const status = resolveListStatus(req, q.status, q.includeInactive);
+  const collections = await collectionService.listCollections({ search: q.search, status });
   res.json({ collections });
 }
 
@@ -27,6 +33,16 @@ export async function createCollectionHandler(req: Request, res: Response) {
 
 export async function updateCollectionHandler(req: Request, res: Response) {
   const collection = await collectionService.updateCollection(paramString(req.params.id), req.body);
+  res.json({ collection });
+}
+
+export async function archiveCollectionHandler(req: Request, res: Response) {
+  const collection = await collectionService.archiveCollection(paramString(req.params.id));
+  res.json({ collection });
+}
+
+export async function restoreCollectionHandler(req: Request, res: Response) {
+  const collection = await collectionService.restoreCollection(paramString(req.params.id));
   res.json({ collection });
 }
 

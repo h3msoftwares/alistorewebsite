@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { catalogApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 import type {
+  CatalogListQuery,
   CategoryBody,
   CollectionBody,
   ImageBody,
@@ -64,6 +65,16 @@ export function useOtherCollections() {
   };
 }
 
+/** Admin collection list — the whole filtered set (small), with search +
+ *  status. The admin list page paginates the returned array client-side. */
+export function useAdminCollections(query: CatalogListQuery = {}) {
+  return useQuery({
+    queryKey: queryKeys.collections.adminList(query),
+    queryFn: () => catalogApi.listCollections({ status: 'all', ...query }),
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useCollection(id: UUID | undefined) {
   return useQuery({
     queryKey: queryKeys.collections.detail(id ?? ''),
@@ -84,6 +95,16 @@ export function useCategories(collectionId?: UUID) {
   return useQuery({
     queryKey: queryKeys.categories.list(collectionId),
     queryFn: () => catalogApi.listCategories(collectionId),
+  });
+}
+
+/** Admin category list — the whole filtered set (every collection + standalone),
+ *  with search + status. The admin list page paginates it client-side. */
+export function useAdminCategories(query: CatalogListQuery = {}) {
+  return useQuery({
+    queryKey: queryKeys.categories.adminList(query),
+    queryFn: () => catalogApi.listCategories({ status: 'all', ...query }),
+    placeholderData: (prev) => prev,
   });
 }
 
@@ -224,6 +245,7 @@ export function useUpdateCollection() {
   });
 }
 
+/** Archives the collection (the primary "remove"). */
 export function useDeleteCollection() {
   const inv = useInvalidator();
   return useMutation({
@@ -232,6 +254,29 @@ export function useDeleteCollection() {
       inv.collections();
       inv.categories();
       inv.products();
+    },
+  });
+}
+
+export function useRestoreCollection() {
+  const inv = useInvalidator();
+  return useMutation({
+    mutationFn: (id: UUID) => catalogApi.restoreCollection(id),
+    onSuccess: () => {
+      inv.collections();
+      inv.categories();
+      inv.products();
+    },
+  });
+}
+
+export function usePermanentDeleteCollection() {
+  const inv = useInvalidator();
+  return useMutation({
+    mutationFn: (id: UUID) => catalogApi.permanentDeleteCollection(id),
+    onSuccess: () => {
+      inv.collections();
+      inv.categories();
     },
   });
 }
@@ -273,10 +318,33 @@ export function useUpdateCategory() {
   });
 }
 
+/** Archives the category (the primary "remove"). */
 export function useDeleteCategory() {
   const inv = useInvalidator();
   return useMutation({
     mutationFn: (id: UUID) => catalogApi.deleteCategory(id),
+    onSuccess: () => {
+      inv.categories();
+      inv.collections();
+    },
+  });
+}
+
+export function useRestoreCategory() {
+  const inv = useInvalidator();
+  return useMutation({
+    mutationFn: (id: UUID) => catalogApi.restoreCategory(id),
+    onSuccess: () => {
+      inv.categories();
+      inv.collections();
+    },
+  });
+}
+
+export function usePermanentDeleteCategory() {
+  const inv = useInvalidator();
+  return useMutation({
+    mutationFn: (id: UUID) => catalogApi.permanentDeleteCategory(id),
     onSuccess: () => {
       inv.categories();
       inv.collections();
@@ -301,10 +369,27 @@ export function useUpdateProduct() {
   });
 }
 
+/** Archives the product (soft-delete — order history stays intact). */
 export function useDeleteProduct() {
   const inv = useInvalidator();
   return useMutation({
     mutationFn: (id: UUID) => catalogApi.deleteProduct(id),
+    onSuccess: inv.products,
+  });
+}
+
+export function useRestoreProduct() {
+  const inv = useInvalidator();
+  return useMutation({
+    mutationFn: (id: UUID) => catalogApi.restoreProduct(id),
+    onSuccess: inv.products,
+  });
+}
+
+export function usePermanentDeleteProduct() {
+  const inv = useInvalidator();
+  return useMutation({
+    mutationFn: (id: UUID) => catalogApi.permanentDeleteProduct(id),
     onSuccess: inv.products,
   });
 }

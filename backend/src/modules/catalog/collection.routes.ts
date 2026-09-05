@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
-import { requireAuth } from '../../middleware/auth.middleware';
+import { requireAuth, optionalAuth } from '../../middleware/auth.middleware';
 import { requireRole } from '../../middleware/rbac.middleware';
 import { createImageSchema, updateImageSchema } from './image.schema';
 import {
@@ -19,6 +19,8 @@ import {
   getCollectionBySlugHandler,
   createCollectionHandler,
   updateCollectionHandler,
+  archiveCollectionHandler,
+  restoreCollectionHandler,
   deleteCollectionHandler,
   linkCategoriesHandler,
   addCollectionImageHandler,
@@ -30,8 +32,13 @@ const router = Router();
 
 const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
 
-// ---- Storefront (public) ----
-router.get('/', validate({ query: listCollectionsQuerySchema }), asyncHandler(listCollectionsHandler));
+// ---- Storefront (public; optionalAuth lets staff pass ?status=archived|all) ----
+router.get(
+  '/',
+  optionalAuth,
+  validate({ query: listCollectionsQuerySchema }),
+  asyncHandler(listCollectionsHandler)
+);
 router.get(
   '/slug/:slug',
   validate({ params: collectionSlugParamSchema }),
@@ -47,8 +54,22 @@ router.patch(
   validate({ params: collectionIdParamSchema, body: updateCollectionSchema }),
   asyncHandler(updateCollectionHandler)
 );
+// DELETE /:id archives (the primary "remove"). Restore + permanent delete
+// are their own routes below.
 router.delete(
   '/:id',
+  ...admin,
+  validate({ params: collectionIdParamSchema }),
+  asyncHandler(archiveCollectionHandler)
+);
+router.post(
+  '/:id/restore',
+  ...admin,
+  validate({ params: collectionIdParamSchema }),
+  asyncHandler(restoreCollectionHandler)
+);
+router.delete(
+  '/:id/permanent',
   ...admin,
   validate({ params: collectionIdParamSchema }),
   asyncHandler(deleteCollectionHandler)

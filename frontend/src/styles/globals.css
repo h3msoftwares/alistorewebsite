@@ -42,6 +42,8 @@
   --dark-ultramarine: #251b91;
   --yellow: #fffa00;
   --bright-gold: #ffd800; /* main brand colour — primary CTA / wordmark */
+  --ink: #0f0e12;         /* near-black field from the home artwork — secondary emphasis + footer band (user-directed 2026-09-05, replaces navy-2 as secondary) */
+  --ink-2: #26242e;       /* lifted ink for hover — not a colour swap */
 
   /* ---- Neutrals / backgrounds / surfaces ---- */
   --color-bg: #fafbfe;                 /* page — cool near-white so navy/gold pop instead of the CTA drowning in its own colour */
@@ -69,9 +71,9 @@
   --color-primary-hover: #e0b400;      /* darker gold, not a colour swap */
   --color-on-primary: var(--navy);     /* white fails contrast on this gold (~1.4:1); navy gives ~12:1 and reads as the brand pairing */
 
-  --color-secondary: var(--navy-2);    /* quiet emphasis, secondary buttons/badges */
-  --color-secondary-hover: var(--dark-ultramarine);
-  --color-on-secondary: #ffffff;       /* ~15.7:1 on --color-secondary */
+  --color-secondary: var(--ink);       /* quiet emphasis, secondary buttons/badges, footer band — near-black from the home artwork */
+  --color-secondary-hover: var(--ink-2);
+  --color-on-secondary: #ffffff;       /* ~19:1 on --color-secondary */
 
   --color-accent: var(--yellow);       /* hot accent — used sparingly (sale, active state, emphasis); distinct from primary gold */
   --color-accent-hover: #e0d400;
@@ -417,11 +419,46 @@ ul, ol {
   z-index: var(--z-header);
   background: var(--color-bg);
   border-bottom: 1px solid transparent;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast),
+    border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 .site-header[data-scrolled='true'] {
   border-bottom-color: var(--color-border);
   box-shadow: var(--shadow-xs);
+}
+
+/* On the home page, while the header sits over the dark hero it adopts the
+   hero's near-black field (== --color-secondary) with light chrome and drops
+   the light-mode divider/shadow — so the topbar reads as part of whatever page
+   is open. Toggled from topbar.tsx by measuring the hero against the header. */
+.site-header[data-on-dark='true'] {
+  background: var(--color-secondary);
+  border-bottom-color: transparent;
+  box-shadow: none;
+  color: var(--color-text-on-dark);
+}
+.site-header[data-on-dark='true'] .site-header__logo,
+.site-header[data-on-dark='true'] .icon-btn,
+.site-header[data-on-dark='true'] .topbar__account-label {
+  color: var(--color-text-on-dark);
+}
+.site-header[data-on-dark='true'] .icon-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.site-header[data-on-dark='true'] .collection-switcher {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.site-header[data-on-dark='true'] .collection-switcher__link {
+  color: var(--color-text-muted-on-dark);
+}
+.site-header[data-on-dark='true'] .collection-switcher__link:hover {
+  color: var(--color-text-on-dark);
+}
+.site-header[data-on-dark='true'] .collection-switcher__link[data-active='true'] {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--color-text-on-dark);
+  box-shadow: none;
 }
 
 .site-header__inner {
@@ -487,11 +524,11 @@ ul, ol {
   box-shadow: var(--shadow-xs);
 }
 
-/* Footer — the one deliberate dark band in an otherwise light-mode system
+/* Footer — the one persistent dark band in an otherwise light-mode system
    (a dark footer under a light body is a standard, fully-light-mode pattern,
-   not a dark-mode toggle). Carries the navy+gold brand pairing on every page. */
+   not a dark-mode toggle). Near-black (--color-secondary) + gold on every page. */
 .site-footer {
-  background: var(--navy);
+  background: var(--color-secondary);
   padding-block: var(--space-9) var(--space-7);
   margin-top: var(--section-gap);
   font-size: var(--fs-sm);
@@ -692,35 +729,63 @@ ul, ol {
    HOME — hero + collection blocks
    ============================================================ */
 
+/* First screenful: a full-bleed near-black band (== --color-secondary, the home
+   page's own background colour) filling the viewport, with the brand
+   illustration centred in the middle column and the copy split to the side
+   columns — eyebrow + headline at the inline-start, lede + Discover CTA at the
+   inline-end. Light text on the dark field; a deliberate dark band, not a
+   dark-mode toggle. */
 .hero {
-  display: grid;
-  /* text is short — give the illustration the larger share so big screens
-     don't leave dead space around it */
-  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  background: var(--color-secondary);
+  color: var(--color-text-on-dark);
+  min-height: calc(100svh - var(--header-height) - var(--offers-strip-h));
+  display: flex;
   align-items: center;
-  gap: clamp(var(--space-5), 4vw, var(--space-8));
+}
+.hero__inner {
+  width: 100%;
   max-width: var(--container-max);
   margin-inline: auto;
-  padding: clamp(var(--space-7), 7vw, var(--section-gap)) var(--gutter);
+  padding: clamp(var(--space-6), 6vh, var(--space-9)) var(--gutter);
+  display: grid;
+  /* side columns hold short copy; the centre column gets the picture */
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.3fr) minmax(0, 0.85fr);
+  align-items: center;
+  gap: clamp(var(--space-4), 3vw, var(--space-7));
 }
-.hero__content { max-width: 34rem; }
+.hero__lead { max-width: 24rem; }
+.hero__aside {
+  max-width: 22rem;
+  justify-self: end;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-5);
+  text-align: end;
+}
+[lang='ar'] .hero__aside { align-items: flex-start; text-align: start; }
+
+.hero__eyebrow { color: var(--bright-gold); }
 .hero__title {
   /* own clamp with a smaller floor than --fs-4xl so it doesn't dominate a phone */
   font-size: clamp(1.9rem, 1.1rem + 4.5vw, 3.5rem);
   line-height: 1.08;
-  margin-block: var(--space-3) var(--space-4);
+  margin-block: var(--space-3) 0;
   text-wrap: balance;
+  color: var(--color-text-on-dark);
 }
-.hero__title em { font-style: italic; color: var(--color-text-muted); }
+.hero__title em { font-style: italic; color: var(--bright-gold); }
 .hero__lede {
   font-size: clamp(1rem, 0.95rem + 0.5vw, 1.125rem);
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-6);
-  max-width: 42ch;
+  color: var(--color-text-muted-on-dark);
+  margin: 0;
+  max-width: min(42ch, 100%);
 }
-.hero__cta { text-decoration: none; }
-/* Transparent-PNG brand illustration — rendered at its own width, no crop,
-   no letterbox. Fills its grid column on large screens; shown whole on small. */
+.hero__cta { text-decoration: none; align-self: flex-end; }
+[lang='ar'] .hero__cta { align-self: flex-start; }
+
+/* Centred illustration — shown whole; its own black backdrop blends into the
+   band so no frame/shadow is needed. */
 .hero__media {
   display: flex;
   align-items: center;
@@ -730,34 +795,39 @@ ul, ol {
 .hero__img {
   width: 100%;
   height: auto;
-  /* only caps height on tall/short viewports; width stays column-filling */
-  max-height: min(90vh, 820px);
+  object-fit: contain;
+  max-height: calc(100svh - var(--header-height) - var(--offers-strip-h) - 2 * var(--space-8));
 }
 
-/* Big screens: the hero fills the first screenful and Ali is bottom-anchored,
-   so the illustration's feet sit exactly on the fold. */
-@media (min-width: 861px) {
-  .hero {
-    min-height: calc(100svh - var(--header-height) - var(--offers-strip-h));
-    align-items: end;
-    padding: clamp(var(--space-6), 5vh, var(--space-8)) var(--gutter) 0;
+/* Tablet / narrow: one column — headline, then the picture, then lede + CTA. */
+@media (max-width: 900px) {
+  .hero { min-height: 0; }
+  .hero__inner {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: stretch;
+    gap: var(--space-6);
   }
-  .hero__content {
-    align-self: center;
-    padding-bottom: clamp(var(--space-6), 6vh, var(--space-9));
+  .hero__lead,
+  .hero__aside {
+    max-width: min(44ch, 100%);
+    width: 100%;
+    min-width: 0;
   }
-  .hero__media { align-self: end; }
-  .hero__img { max-height: calc(100svh - var(--header-height) - var(--offers-strip-h)); }
-}
-
-@media (max-width: 860px) {
-  .hero { grid-template-columns: 1fr; gap: var(--space-5); }
-  .hero__content { max-width: none; }
-  .hero__media { order: -1; }
-  .hero__img { max-height: 72vh; }
+  .hero__aside {
+    justify-self: stretch;
+    align-items: flex-start;
+    text-align: start;
+  }
+  [lang='ar'] .hero__aside { align-items: flex-start; text-align: start; }
+  .hero__cta,
+  [lang='ar'] .hero__cta { align-self: flex-start; }
+  .hero__media { width: 100%; min-width: 0; }
+  .hero__img { max-height: 70vh; }
 }
 @media (max-width: 480px) {
-  .hero__cta { display: flex; width: 100%; }
+  .hero__aside { max-width: none; align-items: stretch; }
+  .hero__cta,
+  [lang='ar'] .hero__cta { display: flex; width: 100%; align-self: auto; }
 }
 
 /* ---- Home middle: featured + "rest of the collections" zones ---- */
@@ -1274,6 +1344,46 @@ ul, ol {
 .admin-thumb--empty {
   background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-accent-soft) 120%);
 }
+
+/* Search + status filter row above an admin list table. */
+.admin-list-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.admin-list-controls__search {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 16rem;
+  min-width: 0;
+  padding-inline-start: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+}
+.admin-list-controls__search .input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+}
+.admin-list-controls__search .input:focus { box-shadow: none; outline: none; }
+
+/* Prev / page / next below an admin list table. */
+.admin-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+.admin-pager__status { font-size: var(--fs-sm); color: var(--color-text-muted); }
+
+.admin-row-actions { display: inline-flex; gap: var(--space-2); }
+.admin-status-badge--archived { opacity: 0.7; }
 
 .image-uploader { display: inline-flex; flex-direction: column; gap: var(--space-1); }
 .image-uploader__trigger { cursor: pointer; }

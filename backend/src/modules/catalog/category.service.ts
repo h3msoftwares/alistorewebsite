@@ -28,23 +28,45 @@ const categoryInclude = {
   },
 };
 
+export type CatalogStatus = 'active' | 'archived' | 'all';
+
 interface ListCategoriesOpts {
   collectionId?: string;
   /** Only categories not attached to any collection. */
   standalone?: boolean;
   /** Only categories promoted to their own home-page row (any collection). */
   showOnHome?: boolean;
+  search?: string;
+  /** `active` (storefront) = not archived + isActive; `archived` / `all` are admin-only. */
+  status?: CatalogStatus;
+}
+
+function statusWhere(status: CatalogStatus): Prisma.CategoryWhereInput {
+  if (status === 'archived') return { archivedAt: { not: null } };
+  if (status === 'all') return {};
+  return { archivedAt: null, isActive: true };
 }
 
 export async function listCategories(opts: ListCategoriesOpts = {}) {
   const { collectionId, standalone, showOnHome } = opts;
+  const where: Prisma.CategoryWhereInput = {
+    ...statusWhere(opts.status ?? 'active'),
+    ...(collectionId ? { collectionID: collectionId } : {}),
+    ...(standalone ? { collectionID: null } : {}),
+    ...(showOnHome ? { showOnHome: true } : {}),
+    ...(opts.search
+      ? {
+          OR: [
+            { nameEn: { contains: opts.search, mode: 'insensitive' } },
+            { nameAr: { contains: opts.search, mode: 'insensitive' } },
+            { slug: { contains: opts.search, mode: 'insensitive' } },
+          ],
+        }
+      : {}),
+  };
+
   return prisma.category.findMany({
-    where: {
-      isActive: true,
-      ...(collectionId ? { collectionID: collectionId } : {}),
-      ...(standalone ? { collectionID: null } : {}),
-      ...(showOnHome ? { showOnHome: true } : {}),
-    },
+    where,
     orderBy: { sortOrder: 'asc' },
     include: categoryInclude,
   });
@@ -127,8 +149,32 @@ export async function updateCategory(id: string, input: UpdateCategoryInput) {
   }
 }
 
-export async function deleteCategory(id: string) {
+// Admin's primary "remove" — hidden from the storefront, kept + restorable.
+export async function archiveCategory(id: string) {
   await ensureCategoryExists(id);
+  return prisma.category.update({
+    where: { id },
+    data: { archivedAt: new Date(), isActive: false },
+    include: categoryInclude,
+  });
+}
+
+export async function restoreCategory(id: string) {
+  await ensureCategoryExists(id);
+  return prisma.category.update({
+    where: { id },
+    data: { archivedAt: null, isActive: true },
+    include: categoryInclude,
+  });
+}
+
+// Permanent, irreversible — only once the category is archived AND empty.
+export async function deleteCategory(id: string) {
+  const existing = await prisma.category.findUnique({ where: { id }, select: { archivedAt: true } });
+  if (!existing) throw new AppError('NOT_FOUND', 'Category not found');
+  if (!existing.archivedAt) {
+    throw new AppError('CONFLICT', 'Archive the category before deleting it permanently.');
+  }
   const productCount = await prisma.product.count({ where: { categoryID: id } });
   if (productCount > 0) {
     throw new AppError(

@@ -1,12 +1,18 @@
 import { Request, Response } from 'express';
 import * as productService from './product.service';
 import { paramString } from '../../lib/params';
+import { resolveListStatus, type CatalogListStatus } from './list-access';
 
 export async function listProductsHandler(req: Request, res: Response) {
   // Coerced/defaulted by the validate() middleware — see req.validatedQuery
   // in middleware/validate.middleware.ts (req.query itself can't carry
   // this: Express 5 made it a read-only getter).
-  const result = await productService.listProducts(req.validatedQuery as never);
+  const q = (req.validatedQuery ?? {}) as Record<string, unknown> & {
+    status?: CatalogListStatus;
+    includeInactive?: boolean;
+  };
+  const status = resolveListStatus(req, q.status, q.includeInactive);
+  const result = await productService.listProducts({ ...q, status } as never);
   res.json(result);
 }
 
@@ -30,6 +36,16 @@ export async function updateProductHandler(req: Request, res: Response) {
 
 export async function deleteProductHandler(req: Request, res: Response) {
   await productService.deleteProduct(paramString(req.params.id));
+  res.status(204).send();
+}
+
+export async function restoreProductHandler(req: Request, res: Response) {
+  const product = await productService.restoreProduct(paramString(req.params.id));
+  res.json({ product });
+}
+
+export async function hardDeleteProductHandler(req: Request, res: Response) {
+  await productService.hardDeleteProduct(paramString(req.params.id));
   res.status(204).send();
 }
 

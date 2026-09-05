@@ -3,7 +3,7 @@ import { HomeMiddle } from '@/components/home/home-middle';
 
 /**
  * Home page structure:
- *   1. Hero — text + Discover button + image
+ *   1. Hero — full-bleed brand illustration; text + Discover button in the gutters
  *   2. Zone 1 (featured) — admin-picked collections + categories
  *      (Collection.showOnHome / Category.showOnHome), interleaved by
  *      sortOrder, each its own horizontally-scrollable row
