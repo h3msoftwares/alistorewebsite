@@ -6,6 +6,7 @@ import { ShoppingBag } from 'lucide-react';
 import { Drawer } from '@/components/ui/drawer';
 import { Button, EmptyState, PriceTag, QuantityStepper, Skeleton } from '@/components/ui';
 import { useCart, useRemoveCartItem, useUpdateCartItem } from '@/hooks/use-cart';
+import { cartItemToGaItem, trackRemoveFromCart } from '@/lib/analytics/ga';
 import type { CartItem } from '@/lib/types';
 
 /**
@@ -205,7 +206,12 @@ function CartDrawerRow({
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => remove.mutate({ itemId: item.id })}
+            onClick={() =>
+              remove.mutate(
+                { itemId: item.id },
+                { onSuccess: () => trackRemoveFromCart(cartItemToGaItem(item)) }
+              )
+            }
             loading={remove.isPending}
             disabled={busy}
           >

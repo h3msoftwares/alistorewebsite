@@ -46,6 +46,10 @@ export const queryKeys = {
     admin: (status?: string) => ['orders', 'admin', status ?? null] as const,
     dashboard: () => ['orders', 'dashboard'] as const,
   },
+  analytics: {
+    all: () => ['analytics'] as const,
+    report: (name: string, preset: string) => ['analytics', name, preset] as const,
+  },
   addresses: {
     all: () => ['addresses'] as const,
     list: () => ['addresses', 'list'] as const,
