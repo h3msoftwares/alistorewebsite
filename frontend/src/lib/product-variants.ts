@@ -79,6 +79,15 @@ export function resolveVariant(
   );
 }
 
+/** The variant "Add to cart" should use when the shopper hasn't picked a
+ *  size/colour themselves — e.g. from a favourites list, which is
+ *  product-level. First in-stock variant, or the first variant if none has
+ *  stock (so callers can still show it and disable the button). `undefined`
+ *  only for a product with no variants at all. */
+export function firstPurchasableVariant(variants: ProductVariant[]): ProductVariant | undefined {
+  return variants.find((v) => v.stockQuantity > 0) ?? variants[0];
+}
+
 /**
  * Best-effort CSS colour guess from a free-text colour name (e.g. "Navy" ->
  * "navy", "Light Blue" -> "lightblue"). There is no colour->hex table

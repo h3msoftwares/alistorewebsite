@@ -72,6 +72,26 @@ describe('Favourites API', () => {
     expect(Array.isArray(entry.product.variants)).toBe(true);
   });
 
+  it('lists favourites newest-first', async () => {
+    const { token } = await createCustomer();
+    // Heart the older product first, then the other one.
+    await request(app).post('/api/favourites').set(bearer(token)).send({ productID: otherProductId });
+    await request(app).post('/api/favourites').set(bearer(token)).send({ productID: productId });
+
+    // Make the first heart unambiguously older (POSTs in one test can land in
+    // the same millisecond).
+    await prisma.favorite.updateMany({
+      where: { productID: otherProductId },
+      data: { dateCreated: new Date('2000-01-01T00:00:00Z') },
+    });
+
+    const list = await request(app).get('/api/favourites').set(bearer(token));
+    expect(list.body.favourites.map((f: { product: { id: string } }) => f.product.id)).toEqual([
+      productId,
+      otherProductId,
+    ]);
+  });
+
   it('is idempotent — POSTing the same product twice does not error or duplicate', async () => {
     const { token } = await createCustomer();
 
