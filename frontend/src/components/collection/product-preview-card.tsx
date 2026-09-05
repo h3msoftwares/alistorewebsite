@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Heart, ShoppingBag } from 'lucide-react';
+import { Heart, ShoppingBag, ZoomIn } from 'lucide-react';
 import { useFavourites } from '@/hooks/use-favourites';
 import { useAddToCart } from '@/hooks/use-cart';
 import { Badge, CatalogImage, Icon, PriceTag, SizeChip, Swatch } from '@/components/ui';
 import { isOptionOutOfStock } from '@/lib/product-variants';
 import type { Product } from '@/lib/types';
+import { ProductZoomModal } from './product-zoom-modal';
 
 // Unique, sorted, defined values only — `variants` may have null size/color
 // (one-size / no-colour products).
@@ -39,6 +40,10 @@ export function ProductPreviewCard({ product, locale }: { product: Product; loca
 
   const { isFavourited, toggleFavourite, pendingId: favouritePendingId } = useFavourites();
   const addToCart = useAddToCart();
+  const [zoomOpen, setZoomOpen] = useState(false);
+  // Bumped on every open so <ProductZoomModal> remounts with fresh zoom
+  // state instead of resuming whatever pan/zoom was left over last time.
+  const [zoomKey, setZoomKey] = useState(0);
 
   // null = "not touched by the shopper yet" — falls back to the first
   // variant's size/colour below, derived at render (no effect needed).
@@ -103,33 +108,49 @@ export function ProductPreviewCard({ product, locale }: { product: Product; loca
 
   return (
     <div className="card product-preview-card">
-      <Link href={href} className="product-preview-card__media">
-        {image && (
-          <CatalogImage
-            src={image.url}
-            alt={(isAr ? image.altAr : image.altEn) ?? name}
-            fill
-            sizes="(max-width: 640px) 50vw, 25vw"
-          />
-        )}
-        {priceSale != null && (
-          <Badge variant="sale" className="product-preview-card__sale-badge">
-            {t('Sale', 'تخفيض')}
-          </Badge>
-        )}
-      </Link>
+      <div className="product-preview-card__media-wrap">
+        <Link href={href} className="product-preview-card__media">
+          {image && (
+            <CatalogImage
+              src={image.url}
+              alt={(isAr ? image.altAr : image.altEn) ?? name}
+              fill
+              sizes="(max-width: 640px) 50vw, 25vw"
+            />
+          )}
+          {priceSale != null && (
+            <Badge variant="sale" className="product-preview-card__sale-badge">
+              {t('Sale', 'تخفيض')}
+            </Badge>
+          )}
+        </Link>
 
-      <button
-        type="button"
-        className="icon-btn icon-btn--bordered product-preview-card__favourite"
-        data-active={favourited || undefined}
-        onClick={() => toggleFavourite(product.id)}
-        disabled={favouritePendingId === product.id}
-        aria-pressed={favourited}
-        aria-label={favourited ? t('Remove from favourites', 'إزالة من المفضّلة') : t('Add to favourites', 'أضف إلى المفضّلة')}
-      >
-        <Icon as={Heart} size={16} fill={favourited ? 'currentColor' : 'none'} />
-      </button>
+        <button
+          type="button"
+          className="icon-btn icon-btn--bordered product-preview-card__favourite"
+          data-active={favourited || undefined}
+          onClick={() => toggleFavourite(product.id)}
+          disabled={favouritePendingId === product.id}
+          aria-pressed={favourited}
+          aria-label={favourited ? t('Remove from favourites', 'إزالة من المفضّلة') : t('Add to favourites', 'أضف إلى المفضّلة')}
+        >
+          <Icon as={Heart} size={16} fill={favourited ? 'currentColor' : 'none'} />
+        </button>
+
+        {image && (
+          <button
+            type="button"
+            className="icon-btn icon-btn--bordered product-preview-card__zoom"
+            onClick={() => {
+              setZoomKey((k) => k + 1);
+              setZoomOpen(true);
+            }}
+            aria-label={t('View larger image', 'عرض صورة أكبر')}
+          >
+            <Icon as={ZoomIn} size={16} />
+          </button>
+        )}
+      </div>
 
       <div className="card__body product-preview-card__body">
         <Link href={href} className="product-preview-card__name">
@@ -179,6 +200,15 @@ export function ProductPreviewCard({ product, locale }: { product: Product; loca
           <Icon as={ShoppingBag} size={16} />
         </button>
       </div>
+
+      <ProductZoomModal
+        key={zoomKey}
+        open={zoomOpen}
+        onClose={() => setZoomOpen(false)}
+        image={image}
+        name={name}
+        locale={locale}
+      />
     </div>
   );
 }

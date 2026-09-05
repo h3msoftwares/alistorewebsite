@@ -1128,6 +1128,11 @@ ul, ol {
    components/collection/product-preview-card.tsx). */
 .product-preview-card { position: relative; display: flex; flex-direction: column; }
 
+/* Wraps the media Link + its overlay buttons so the buttons can anchor to
+   the image's own box — not the whole card, which extends further down
+   through the body content below. */
+.product-preview-card__media-wrap { position: relative; }
+
 .product-preview-card__media {
   position: relative;
   display: block;
@@ -1151,6 +1156,16 @@ ul, ol {
   color: var(--color-text-muted);
 }
 .product-preview-card__favourite[data-active] { color: var(--color-danger); border-color: var(--color-danger); }
+
+.product-preview-card__zoom {
+  position: absolute;
+  inset-block-end: var(--space-2);
+  inset-inline-end: var(--space-2);
+  width: 32px;
+  height: 32px;
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+}
 
 .product-preview-card__body { display: flex; flex-direction: column; gap: var(--space-2); }
 .product-preview-card__name { font-weight: var(--fw-semibold); }
@@ -1893,6 +1908,80 @@ ul, ol {
   font-size: var(--fs-base);
   border-bottom: 1px solid var(--color-border);
 }
+
+/* ---- 5.11b Centered modal (product image zoom, etc.) ---- */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-drawer);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+}
+.modal__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  animation: modal-fade-in var(--transition-base);
+}
+.modal__panel {
+  position: relative;
+  z-index: 1;
+  max-width: min(92vw, 720px);
+  max-height: 90vh;
+  background: var(--color-surface-raised);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: modal-scale-in var(--transition-base);
+}
+.modal__close {
+  position: absolute;
+  top: var(--space-2);
+  inset-inline-end: var(--space-2);
+  z-index: 1;
+  background: var(--color-surface-raised);
+}
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* The magnifier's content — a single, uncropped image (unlike the grid
+   card's deliberate edge-to-edge `cover` crop, the whole point here is to
+   let the shopper see the full, undistorted product) with a click-to-zoom
+   interaction (see product-zoom-modal.tsx: click zooms in on that point,
+   mouse-move pans while zoomed, click again zooms back out). */
+.product-zoom-modal { display: flex; flex-direction: column; }
+.product-zoom-modal__media {
+  position: relative;
+  display: block;
+  width: min(92vw, 720px);
+  aspect-ratio: 1 / 1;
+  background: var(--color-surface);
+  overflow: hidden;
+  /* Reset <button> chrome — this is a plain image surface, not a form control. */
+  padding: 0;
+  border: none;
+  cursor: zoom-in;
+}
+.product-zoom-modal__media[data-zoomed] { cursor: zoom-out; }
+.product-zoom-modal__media img {
+  object-fit: contain;
+  transition: transform 150ms ease;
+}
+.product-zoom-modal__name {
+  padding: var(--space-3) var(--space-4);
+  font-weight: var(--fw-semibold);
+  text-align: center;
+  border-top: 1px solid var(--color-border);
+}
+.product-zoom-modal__hint { font-weight: var(--fw-regular); color: var(--color-text-muted); }
 
 /* ---- 5.12 Skeletons ---- */
 .skeleton {

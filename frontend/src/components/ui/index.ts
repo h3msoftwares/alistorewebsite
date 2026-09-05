@@ -16,4 +16,5 @@ export { Skeleton, ProductGridSkeleton, type SkeletonProps } from './skeleton';
 export { EmptyState, type EmptyStateProps } from './empty-state';
 export { Alert, type AlertProps, type AlertTone } from './alert';
 export { Drawer, type DrawerProps } from './drawer';
+export { Modal, type ModalProps } from './modal';
 export { CatalogImage, type CatalogImageProps } from './catalog-image';
