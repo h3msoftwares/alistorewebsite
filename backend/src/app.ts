@@ -36,7 +36,12 @@ export function buildApp(
   // a spoofed X-Forwarded-For can't be trusted.
   if (env.NODE_ENV === 'production') app.set('trust proxy', 1);
 
-  app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
+  // CORS_ORIGIN may be a comma-separated list (e.g. localhost + a LAN IP for
+  // testing on a phone). credentials:true still requires an exact match.
+  const corsOrigins = env.CORS_ORIGIN.split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  app.use(cors({ origin: corsOrigins, credentials: true }));
   app.use(express.json());
   app.use(cookieParser());
 

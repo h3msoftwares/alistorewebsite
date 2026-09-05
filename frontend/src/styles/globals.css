@@ -1157,8 +1157,8 @@ ul, ol {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-5);
-  padding-block: var(--space-2);
-  margin-bottom: var(--space-3);
+  padding-block: var(--space-1);
+  margin-bottom: var(--space-2);
   border-block: 1px solid var(--color-border);
 }
 
@@ -1185,14 +1185,6 @@ ul, ol {
   white-space: nowrap;
 }
 
-.product-filters {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: flex-end;
-  gap: var(--space-2) var(--space-4);
-}
 .product-filters__group {
   display: flex;
   flex-direction: column;
@@ -1212,7 +1204,6 @@ ul, ol {
   gap: var(--space-1);
 }
 .product-filters__price-sep { color: var(--color-text-muted); }
-.product-filters__sort { min-width: 9rem; }
 .product-filters__clear {
   align-self: center;
   font-size: var(--fs-xs);
@@ -1222,42 +1213,43 @@ ul, ol {
 }
 .product-filters__clear:hover { color: var(--color-text); }
 
-/* Compact controls, scoped to the filter bar only — the same .chip/.input/
-   .select classes keep their full (touch-target-safe) size everywhere else,
-   e.g. the product detail page's own size selector. */
-.product-filters .chip {
-  min-height: 32px;
-  padding-inline: var(--space-2);
-  font-size: var(--fs-xs);
-}
-.product-filters .input {
-  min-height: 32px;
-  padding-block: var(--space-1);
-  padding-inline: var(--space-2);
-  font-size: var(--fs-sm);
-  width: 4.5rem;
-}
-.product-filters .select {
-  min-height: 32px;
-  padding-block: var(--space-1);
-  padding-inline-start: var(--space-2);
-  font-size: var(--fs-sm);
+/* Groups the visible bar (or collapsed button) + the pin toggle together at
+   the end of .products-toolbar, and carries the pinned flag for the sticky
+   rule below. */
+.product-filters-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
-/* The whole filter UI is one compact group at the end of .products-toolbar:
-   a "Filters" button (opens the drawer) + an inline Sort dropdown, side by
-   side, so the product grid keeps as much room as possible. */
+/* Wide screens — the filter row in .products-toolbar: category / size /
+   colour / sort dropdowns + a price range, all one consistent compact size
+   so the toolbar stays short and the first product card clears the fold. */
 .product-filters-bar {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
   flex: none;
 }
-.product-filters__sort-inline {
-  min-height: 32px;
-  padding-block: var(--space-1);
-  padding-inline-start: var(--space-2);
-  font-size: var(--fs-sm);
+.product-filters-bar .select,
+.product-filters-bar .input {
+  min-height: 28px;
+  padding-block: 0;
+  font-size: var(--fs-xs);
+}
+.product-filters-bar .select { padding-inline-start: var(--space-2); }
+.product-filters-bar .input { width: 4rem; padding-inline: var(--space-2); }
+
+/* Narrow screens (≤767px): one "Filters" button opening the drawer. */
+.product-filters-bar--collapsed { display: none; align-items: center; gap: var(--space-2); }
+.product-filters__trigger {
+  min-height: 28px;
+  padding-block: 0;
+  padding-inline: var(--space-3);
+  font-size: var(--fs-xs);
 }
 .product-filters__trigger-dot {
   display: inline-block;
@@ -1268,19 +1260,41 @@ ul, ol {
   background: var(--color-primary);
   vertical-align: middle;
 }
+.product-filters__pin { width: 28px; height: 28px; }
+.product-filters__pin[data-active] { color: var(--color-primary); border-color: var(--color-primary); }
 
-/* Filters shown inside the mobile drawer: stack the groups vertically and
-   let the price/sort controls fill the (narrow) panel width. */
+@media (max-width: 767px) {
+  .product-filters-bar--inline { display: none; }
+  .product-filters-bar--collapsed { display: flex; }
+}
+
+/* Drawer copy of the controls: stacked, full-size for touch. */
 .product-filters--drawer {
+  display: flex;
   flex-direction: column;
   align-items: stretch;
-  justify-content: flex-start;
-  gap: var(--space-5);
+  gap: var(--space-4);
 }
+.product-filters--drawer .product-filters__group { gap: var(--space-2); }
+.product-filters--drawer .select { width: 100%; min-height: var(--control-h); font-size: var(--fs-sm); }
 .product-filters--drawer .product-filters__price { width: 100%; }
-.product-filters--drawer .product-filters__price .input { flex: 1; width: auto; }
-.product-filters--drawer .product-filters__sort .select { width: 100%; }
+.product-filters--drawer .product-filters__price .input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-h);
+  font-size: var(--fs-sm);
+}
 .product-filters--drawer .product-filters__clear { align-self: flex-start; }
+
+/* Pin toggle: the whole toolbar sticks just below the header while the
+   product grid scrolls. */
+.products-toolbar:has(.product-filters-wrap[data-filters-pinned]) {
+  position: sticky;
+  top: var(--header-height, 0px);
+  z-index: 20;
+  background: var(--color-bg);
+  box-shadow: var(--shadow-sm);
+}
 
 .product-grid {
   display: grid;
