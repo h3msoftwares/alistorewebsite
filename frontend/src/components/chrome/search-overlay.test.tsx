@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { createWrapper } from '@/test/utils';
 import { SearchOverlay } from './search-overlay';
 
+const push = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 vi.mock('next/image', () => ({
   default: ({ src, alt }: Record<string, unknown>) => (
     // eslint-disable-next-line @next/next/no-img-element
@@ -28,6 +30,8 @@ vi.mock('@/lib/api', async (importActual) => {
 
 import { catalogApi } from '@/lib/api';
 const mock = vi.mocked(catalogApi, true);
+
+const RECENT_KEY = 'alistore:recent-searches';
 
 const makeProduct = (over: Record<string, unknown> = {}) => ({
   id: 'p1',
@@ -54,17 +58,18 @@ const renderOverlay = (props: Partial<{ open: boolean; onClose: () => void; loca
   return { ...utils, onClose };
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  window.localStorage.clear();
+});
 
-describe('<SearchOverlay>', () => {
+describe('<SearchOverlay> — search', () => {
   it('does not query until at least 2 characters are typed', async () => {
     const user = userEvent.setup();
     renderOverlay();
 
     expect(screen.getByText(/Type at least 2 characters/i)).toBeInTheDocument();
-
-    await user.type(screen.getByRole('searchbox'), 'a');
-    // let the debounce elapse — a single character must still not query
+    await user.type(screen.getByRole('combobox'), 'a');
     await act(() => new Promise((r) => setTimeout(r, 350)));
     expect(mock.listProducts).not.toHaveBeenCalled();
   });
@@ -74,13 +79,12 @@ describe('<SearchOverlay>', () => {
     mock.listProducts.mockResolvedValue(result([makeProduct()]) as never);
     renderOverlay();
 
-    await user.type(screen.getByRole('searchbox'), 'satin');
-
+    await user.type(screen.getByRole('combobox'), 'satin');
     await waitFor(() =>
       expect(mock.listProducts).toHaveBeenLastCalledWith({ search: 'satin', pageSize: 8 }),
     );
-    const link = await screen.findByRole('link', { name: /Satin Nightgown/ });
-    expect(link).toHaveAttribute('href', '/en/product/p1');
+    const option = await screen.findByRole('option', { name: /Satin Nightgown/ });
+    expect(option).toHaveAttribute('href', '/en/product/p1');
   });
 
   it('picking a result closes the overlay', async () => {
@@ -88,9 +92,8 @@ describe('<SearchOverlay>', () => {
     mock.listProducts.mockResolvedValue(result([makeProduct()]) as never);
     const { onClose } = renderOverlay();
 
-    await user.type(screen.getByRole('searchbox'), 'satin');
-    const link = await screen.findByRole('link', { name: /Satin Nightgown/ });
-    await user.click(link);
+    await user.type(screen.getByRole('combobox'), 'satin');
+    await user.click(await screen.findByRole('option', { name: /Satin Nightgown/ }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -99,16 +102,18 @@ describe('<SearchOverlay>', () => {
     mock.listProducts.mockResolvedValue(result([]) as never);
     renderOverlay();
 
-    await user.type(screen.getByRole('searchbox'), 'zzzz');
+    await user.type(screen.getByRole('combobox'), 'zzzz');
     expect(await screen.findByText(/No products match/i)).toBeInTheDocument();
   });
 
   it('notes when there are more matches than the shown page', async () => {
     const user = userEvent.setup();
-    mock.listProducts.mockResolvedValue(result([makeProduct(), makeProduct({ id: 'p2', nameEn: 'Satin Robe' })], 25) as never);
+    mock.listProducts.mockResolvedValue(
+      result([makeProduct(), makeProduct({ id: 'p2', nameEn: 'Satin Robe' })], 25) as never,
+    );
     renderOverlay();
 
-    await user.type(screen.getByRole('searchbox'), 'satin');
+    await user.type(screen.getByRole('combobox'), 'satin');
     expect(await screen.findByText(/Showing the first 2 of 25 matches/i)).toBeInTheDocument();
   });
 
@@ -117,7 +122,114 @@ describe('<SearchOverlay>', () => {
     mock.listProducts.mockRejectedValue(new Error('network'));
     renderOverlay();
 
-    await user.type(screen.getByRole('searchbox'), 'satin');
+    await user.type(screen.getByRole('combobox'), 'satin');
     expect(await screen.findByRole('alert')).toHaveTextContent(/Couldn't run that search/i);
+  });
+});
+
+describe('<SearchOverlay> — recent-search suggestions', () => {
+  it('offers recent searches while the box is empty, and clicking one runs it', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(['satin dress', 'wool coat']));
+    mock.listProducts.mockResolvedValue(result([makeProduct()]) as never);
+    renderOverlay();
+
+    expect(await screen.findByText('Recent searches')).toBeInTheDocument();
+    await user.click(screen.getByRole('option', { name: 'satin dress' }));
+
+    expect(screen.getByRole('combobox')).toHaveValue('satin dress');
+    await waitFor(() =>
+      expect(mock.listProducts).toHaveBeenLastCalledWith({ search: 'satin dress', pageSize: 8 }),
+    );
+  });
+
+  it('remembers a search once a result is opened', async () => {
+    const user = userEvent.setup();
+    mock.listProducts.mockResolvedValue(result([makeProduct()]) as never);
+    renderOverlay();
+
+    await user.type(screen.getByRole('combobox'), 'satin');
+    await user.click(await screen.findByRole('option', { name: /Satin Nightgown/ }));
+
+    expect(JSON.parse(window.localStorage.getItem(RECENT_KEY)!)).toEqual(['satin']);
+  });
+
+  it('"Clear" wipes the recent list', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(['satin dress']));
+    renderOverlay();
+
+    await user.click(await screen.findByRole('button', { name: 'Clear' }));
+    expect(screen.queryByText('Recent searches')).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(RECENT_KEY)).toBeNull();
+  });
+});
+
+describe('<SearchOverlay> — keyboard navigation', () => {
+  const twoResults = () =>
+    result([makeProduct({ id: 'p1', nameEn: 'Satin Nightgown' }), makeProduct({ id: 'p2', nameEn: 'Satin Robe' })]);
+
+  it('↓/↑ move a highlight over the results (focus stays in the box)', async () => {
+    const user = userEvent.setup();
+    mock.listProducts.mockResolvedValue(twoResults() as never);
+    renderOverlay();
+
+    const box = screen.getByRole('combobox');
+    await user.type(box, 'satin');
+    await screen.findByRole('option', { name: /Satin Nightgown/ });
+
+    await user.keyboard('{ArrowDown}');
+    expect(box).toHaveAttribute('aria-activedescendant', 'search-option-0');
+    expect(screen.getByRole('option', { name: /Satin Nightgown/ })).toHaveAttribute('aria-selected', 'true');
+    expect(box).toHaveFocus();
+
+    await user.keyboard('{ArrowDown}');
+    expect(box).toHaveAttribute('aria-activedescendant', 'search-option-1');
+
+    await user.keyboard('{ArrowUp}{ArrowUp}');
+    expect(box).not.toHaveAttribute('aria-activedescendant');
+  });
+
+  it('Enter on a highlighted result opens it and closes the overlay', async () => {
+    const user = userEvent.setup();
+    mock.listProducts.mockResolvedValue(twoResults() as never);
+    const { onClose } = renderOverlay();
+
+    await user.type(screen.getByRole('combobox'), 'satin');
+    await screen.findByRole('option', { name: /Satin Nightgown/ });
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}'); // highlight the 2nd, open it
+
+    expect(push).toHaveBeenCalledWith('/en/product/p2');
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(window.localStorage.getItem('alistore:recent-searches')!)).toEqual(['satin']);
+  });
+
+  it('Enter with nothing highlighted opens the top hit', async () => {
+    const user = userEvent.setup();
+    mock.listProducts.mockResolvedValue(twoResults() as never);
+    renderOverlay();
+
+    await user.type(screen.getByRole('combobox'), 'satin');
+    await screen.findByRole('option', { name: /Satin Nightgown/ });
+    await user.keyboard('{Enter}');
+
+    expect(push).toHaveBeenCalledWith('/en/product/p1');
+  });
+
+  it('Enter on a highlighted recent search re-runs it', async () => {
+    const user = userEvent.setup();
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(['satin dress', 'wool coat']));
+    mock.listProducts.mockResolvedValue(result([makeProduct()]) as never);
+    renderOverlay();
+
+    const box = await screen.findByRole('combobox');
+    await screen.findByText('Recent searches');
+    await user.click(box);
+    await user.keyboard('{ArrowDown}{ArrowDown}{Enter}'); // 2nd recent entry
+
+    expect(box).toHaveValue('wool coat');
+    await waitFor(() =>
+      expect(mock.listProducts).toHaveBeenLastCalledWith({ search: 'wool coat', pageSize: 8 }),
+    );
   });
 });
