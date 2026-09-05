@@ -51,7 +51,7 @@ describe('RelatedProducts', () => {
     expect(document.querySelector('.pdp__related[aria-busy="true"]')).toBeInTheDocument();
   });
 
-  it('excludes the current product and caps at 4, prioritizing in-stock candidates', async () => {
+  it('excludes the current product and caps at 8, prioritizing in-stock candidates', async () => {
     mockCatalog.listCategoryProducts.mockResolvedValue({
       items: [
         makeProduct('p1'), // the current product — must be excluded even though the API returned it
@@ -61,10 +61,15 @@ describe('RelatedProducts', () => {
         makeProduct('p5'), // in stock
         makeProduct('p6'), // in stock
         makeProduct('p7'), // in stock
+        makeProduct('p8'), // in stock
+        makeProduct('p9'), // in stock
+        makeProduct('p10'), // in stock
+        makeProduct('p11'), // in stock
+        makeProduct('p12', { variants: outOfStockVariant('p12') }),
       ],
-      total: 7,
+      total: 12,
       page: 1,
-      pageSize: 12,
+      pageSize: 20,
     });
     const { Wrapper } = createWrapper();
     render(<RelatedProducts categoryId="cat1" excludeProductId="p1" locale="en" />, { wrapper: Wrapper });
@@ -74,30 +79,31 @@ describe('RelatedProducts', () => {
     // the pending state instead of after the data actually settles.
     await waitFor(() => expect(screen.getByText('Product p3')).toBeInTheDocument());
 
-    // Exactly 4 in-stock candidates (p3, p5, p6, p7) — the two out-of-stock
-    // ones (p2, p4) don't make the cut since 4 in-stock ones already fill it.
-    expect(screen.getByText('Product p5')).toBeInTheDocument();
-    expect(screen.getByText('Product p6')).toBeInTheDocument();
-    expect(screen.getByText('Product p7')).toBeInTheDocument();
+    // Exactly 8 in-stock candidates (p3, p5-p11) — the out-of-stock ones
+    // (p2, p4, p12) don't make the cut since 8 in-stock ones already fill it.
+    for (const id of ['p5', 'p6', 'p7', 'p8', 'p9', 'p10', 'p11']) {
+      expect(screen.getByText(`Product ${id}`)).toBeInTheDocument();
+    }
     expect(screen.queryByText('Product p1')).not.toBeInTheDocument();
     expect(screen.queryByText('Product p2')).not.toBeInTheDocument();
     expect(screen.queryByText('Product p4')).not.toBeInTheDocument();
+    expect(screen.queryByText('Product p12')).not.toBeInTheDocument();
   });
 
-  it('renders fewer than 4 cards — not padded or broken — when the category has fewer than 4 other products', async () => {
+  it('renders fewer than 8 cards — not padded or broken — when the category has fewer than 8 other products', async () => {
     mockCatalog.listCategoryProducts.mockResolvedValue({
       items: [makeProduct('p1'), makeProduct('p2'), makeProduct('p3')],
       total: 3,
       page: 1,
-      pageSize: 12,
+      pageSize: 20,
     });
     const { Wrapper } = createWrapper();
     render(<RelatedProducts categoryId="cat1" excludeProductId="p1" locale="en" />, { wrapper: Wrapper });
 
     await waitFor(() => expect(screen.getByText('Product p2')).toBeInTheDocument());
 
-    const grid = document.querySelector('.product-grid');
-    expect(grid?.children).toHaveLength(2); // p2, p3 — p1 excluded, no padding to reach 4
+    const track = document.querySelector('.home-row__track');
+    expect(track?.children).toHaveLength(2); // p2, p3 — p1 excluded, no padding to reach 8
     expect(screen.getByText('Product p2')).toBeInTheDocument();
     expect(screen.getByText('Product p3')).toBeInTheDocument();
   });

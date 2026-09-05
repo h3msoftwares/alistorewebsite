@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Compass, Heart } from 'lucide-react';
+import { AlertTriangle, Compass, Heart, ZoomIn } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -17,6 +17,7 @@ import {
   Swatch,
 } from '@/components/ui';
 import { Breadcrumb, type Crumb } from '@/components/collection/breadcrumb';
+import { ImageZoomModal } from './image-zoom-modal';
 import { RelatedProducts } from './related-products';
 import { productToGaItem, trackAddToCart, trackViewItem } from '@/lib/analytics/ga';
 import { useProduct } from '@/hooks/use-catalog';
@@ -56,6 +57,7 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
   const [color, setColor] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
+  const [zoomOpen, setZoomOpen] = useState(false);
 
   useEffect(() => {
     if (product) trackViewItem(productToGaItem(product));
@@ -216,26 +218,33 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
         <div className="pdp__gallery">
           <div className="card pdp__main-media">
             {mainImage ? (
-              <CatalogImage
-                key={mainImage.id}
-                src={mainImage.url}
-                alt={(isAr ? mainImage.altAr : mainImage.altEn) ?? name}
-                fill
-                sizes="(max-width: 860px) 92vw, 46vw"
-                // `priority` was deprecated in Next 16 (silent no-op —
-                // rendered neither `loading="eager"` nor `fetchPriority`, so
-                // this LCP hero image was actually still lazy-loadable).
-                // `preload` is the replacement Next recommends for exactly
-                // this case (the LCP element / above-the-fold hero image) —
-                // it inserts a real <link rel="preload"> in <head>, verified
-                // present. The dev-mode "add loading=eager" console warning
-                // persists regardless of preload/loading/fetchPriority (all
-                // three tried and confirmed rendered correctly) — looks like
-                // a mismatch between this warning's URL-matching and the
-                // custom ImageKit loader's `?tr=...` suffix (next.config.mjs),
-                // not an actual unfixed loading issue.
-                preload
-              />
+              <button
+                type="button"
+                className="pdp__zoom-trigger"
+                onClick={() => setZoomOpen(true)}
+                aria-label={t('View larger image', 'عرض صورة أكبر')}
+              >
+                <CatalogImage
+                  key={mainImage.id}
+                  src={mainImage.url}
+                  alt={(isAr ? mainImage.altAr : mainImage.altEn) ?? name}
+                  fill
+                  sizes="(max-width: 860px) 92vw, 46vw"
+                  // `priority` was deprecated in Next 16 (silent no-op —
+                  // rendered neither `loading="eager"` nor `fetchPriority`, so
+                  // this LCP hero image was actually still lazy-loadable).
+                  // `preload` is the replacement Next recommends for exactly
+                  // this case (the LCP element / above-the-fold hero image) —
+                  // it inserts a real <link rel="preload"> in <head>, verified
+                  // present. The dev-mode "add loading=eager" console warning
+                  // persists regardless of preload/loading/fetchPriority (all
+                  // three tried and confirmed rendered correctly) — looks like
+                  // a mismatch between this warning's URL-matching and the
+                  // custom ImageKit loader's `?tr=...` suffix (next.config.mjs),
+                  // not an actual unfixed loading issue.
+                  preload
+                />
+              </button>
             ) : (
               <span className="catalog-image__fallback" aria-hidden />
             )}
@@ -245,6 +254,11 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
                   ? `توفير ${formatCurrency(wasPrice! - current, locale, 'USD')}`
                   : `Save ${formatCurrency(wasPrice! - current, locale, 'USD')}`}
               </Badge>
+            )}
+            {mainImage && (
+              <span className="pdp__zoom-hint" aria-hidden="true">
+                <Icon as={ZoomIn} size={16} />
+              </span>
             )}
           </div>
 
@@ -405,6 +419,24 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
       </div>
 
       <RelatedProducts categoryId={product.categoryID} excludeProductId={product.id} locale={locale} />
+
+      {product.category && categoryName && (
+        <div className="pdp__discover">
+          <Link href={`/${locale}/category/${product.category.slug}`} className="btn btn--outline">
+            {t(`Discover more in ${categoryName}`, `اكتشف المزيد في ${categoryName}`)}
+          </Link>
+        </div>
+      )}
+
+      {mainImage && (
+        <ImageZoomModal
+          open={zoomOpen}
+          onClose={() => setZoomOpen(false)}
+          src={mainImage.url}
+          alt={(isAr ? mainImage.altAr : mainImage.altEn) ?? name}
+          closeLabel={t('Close', 'إغلاق')}
+        />
+      )}
     </div>
   );
 }

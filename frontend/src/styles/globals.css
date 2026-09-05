@@ -1114,18 +1114,66 @@ ul, ol {
   .pdp { grid-template-columns: 1fr; gap: var(--space-5); }
 }
 
-.pdp__gallery { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+/* Filmstrip beside the main image (desktop) — thumbs get `order: 1` rather
+   than leading in source order, so they land at the inline-start edge in
+   both LTR and RTL without a [dir='rtl'] override (flex lays lower-`order`
+   items at the row's start regardless of writing direction). Collapses to
+   thumbs-below-image on narrow screens, in the shared 860px breakpoint. */
+.pdp__gallery { display: flex; flex-direction: row; align-items: flex-start; gap: var(--space-3); min-width: 0; }
 
+/* Capped so the gallery (image + thumbs) always fits within one viewport
+   height, even on a short laptop screen — never taller than the space below
+   the sticky header, regardless of window width. */
 .pdp__main-media {
   position: relative;
+  order: 2;
+  flex: 1 1 auto;
+  min-width: 0;
   aspect-ratio: 4 / 5;
+  max-height: min(70vh, calc(100svh - var(--header-height) - var(--space-8)));
 }
 .pdp__main-media img { object-fit: cover; }
 
-.pdp__thumbs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.pdp__zoom-trigger {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.pdp__zoom-hint {
+  position: absolute;
+  inset-block-end: var(--space-2);
+  inset-inline-end: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+}
+
+.pdp__thumbs {
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+  max-height: min(70vh, calc(100svh - var(--header-height) - var(--space-8)));
+  overflow-y: auto;
+}
 
 .pdp__thumb {
   position: relative;
+  flex-shrink: 0;
   width: calc(var(--control-h) * 1.4);
   height: calc(var(--control-h) * 1.4);
   padding: 0;
@@ -1133,6 +1181,16 @@ ul, ol {
 }
 .pdp__thumb img { object-fit: cover; }
 .pdp__thumb[aria-current='true'] { border-color: var(--collection-accent); border-width: 2px; }
+
+@media (max-width: 860px) {
+  /* `align-items: flex-start` (needed so the row layout doesn't stretch the
+     thumb column to the main image's height) must be reset here — carried
+     into this column layout unchanged, it shrinks .pdp__main-media to its
+     min-content width instead of letting it stretch full-width. */
+  .pdp__gallery { flex-direction: column; align-items: stretch; }
+  .pdp__main-media { order: 1; max-height: none; }
+  .pdp__thumbs { order: 2; flex-direction: row; flex-wrap: wrap; max-height: none; overflow: visible; }
+}
 
 .pdp__content { min-width: 0; }
 
@@ -1162,12 +1220,60 @@ ul, ol {
   margin-block-start: var(--space-2);
 }
 
-/* "You might also like" — sits below the main .pdp grid as its own section;
-   heading spacing/size come from the shared h2 rule (§2), the grid reuses
-   .product-grid as-is (§5.3). */
+/* "You might also like" — sits below the main .pdp grid; the row itself
+   reuses HorizontalScroller/.home-row as-is (§5.2 home page rows), this just
+   places it under the main grid. */
 .pdp__related {
   margin-block-start: var(--space-9);
 }
+
+.pdp__discover {
+  display: flex;
+  justify-content: center;
+  margin-block-start: var(--space-6);
+}
+
+/* ---- PDP image zoom modal ---- */
+.zoom-modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-drawer);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.zoom-modal__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+}
+.zoom-modal__panel {
+  position: relative;
+}
+.zoom-modal__close {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-end: var(--space-2);
+  z-index: 1;
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+.zoom-modal__frame {
+  position: relative;
+  width: min(92vw, 1000px);
+  height: min(85svh, 1000px);
+  overflow: hidden;
+  cursor: zoom-in;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+.zoom-modal__frame[data-zoomed] { cursor: zoom-out; }
+.zoom-modal__image {
+  object-fit: contain;
+  transition: transform var(--transition-base);
+  transform: scale(1);
+}
+.zoom-modal__frame[data-zoomed] .zoom-modal__image { transform: scale(2); }
 
 /* ============================================================
    LISTING PAGES — collection / category page + product filters
