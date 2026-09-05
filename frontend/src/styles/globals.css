@@ -764,6 +764,54 @@ ul, ol {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Keyboard highlight — deliberately distinct from :hover so both can be
+   visible at once (mouse over one row, arrow-keys on another). */
+.search-overlay__result[data-active] {
+  background: var(--color-surface-sunken);
+  border-radius: var(--radius-sm);
+}
+.search-overlay__result[data-active] .search-overlay__result-name { text-decoration: underline; }
+
+/* ---- Recent-search suggestions ---- */
+.search-overlay__recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+.search-overlay__clear {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.search-overlay__clear:hover { color: var(--color-text); text-decoration: underline; }
+.search-overlay__recent {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+}
+.search-overlay__recent-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: var(--space-2);
+  font: inherit;
+  color: var(--color-text);
+  text-align: start;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.search-overlay__recent-item svg { color: var(--color-text-muted); flex-shrink: 0; }
+.search-overlay__recent-item:hover,
+.search-overlay__recent-item[data-active] { background: var(--color-surface-sunken); }
 
 .drawer__divider {
   border: 0;
