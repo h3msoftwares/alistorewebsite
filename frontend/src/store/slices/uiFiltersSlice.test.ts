@@ -3,6 +3,8 @@ import reducer, {
   setCategory,
   toggleSize,
   toggleColor,
+  setSize,
+  setColor,
   setPriceRange,
   setSort,
   setSearch,
@@ -40,6 +42,17 @@ describe('uiFiltersSlice', () => {
     const s = reducer(initial, toggleColor('Black'));
     expect(s.color).toBe('Black');
     expect(reducer(s, toggleColor('Black')).color).toBeNull();
+  });
+
+  it('setSize / setColor set an absolute value, and "" clears', () => {
+    const s1 = reducer(initial, setSize('L'));
+    expect(s1.size).toBe('L');
+    expect(reducer(s1, setSize('')).size).toBeNull();
+    expect(reducer(s1, setSize(null)).size).toBeNull();
+
+    const c1 = reducer(initial, setColor('Red'));
+    expect(c1.color).toBe('Red');
+    expect(reducer(c1, setColor('')).color).toBeNull();
   });
 
   it('any filter change resets the page to 1', () => {

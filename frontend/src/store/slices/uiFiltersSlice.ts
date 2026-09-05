@@ -47,6 +47,15 @@ const uiFiltersSlice = createSlice({
       state.color = state.color === action.payload ? null : action.payload;
       state.page = 1;
     },
+    // Absolute set (used by the <select> filters); null clears.
+    setSize(state, action: PayloadAction<string | null>) {
+      state.size = action.payload || null;
+      state.page = 1;
+    },
+    setColor(state, action: PayloadAction<string | null>) {
+      state.color = action.payload || null;
+      state.page = 1;
+    },
     setPriceRange(state, action: PayloadAction<{ min: number | null; max: number | null }>) {
       state.minPrice = action.payload.min;
       state.maxPrice = action.payload.max;
@@ -73,6 +82,8 @@ export const {
   setCategory,
   toggleSize,
   toggleColor,
+  setSize,
+  setColor,
   setPriceRange,
   setSort,
   setSearch,

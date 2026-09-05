@@ -14,23 +14,23 @@ describe('ProductFilters', () => {
     renderFilters();
     expect(screen.getByRole('button', { name: /filters/i })).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Sort by' })).toBeInTheDocument();
-    // Size/colour chips live in the closed (aria-hidden) drawer — not exposed yet.
-    expect(screen.queryByRole('button', { name: 'S' })).not.toBeInTheDocument();
+    // Size/colour selects live in the closed (aria-hidden) drawer — not exposed yet.
+    expect(screen.queryByRole('combobox', { name: 'Size' })).not.toBeInTheDocument();
   });
 
-  it('opens the drawer from the Filters button and exposes the size/colour/price controls', async () => {
+  it('opens the drawer from the Filters button and exposes the size/colour/price selects', async () => {
     const user = userEvent.setup();
     renderFilters();
 
     await user.click(screen.getByRole('button', { name: /filters/i }));
 
     const dialog = screen.getByRole('dialog', { name: 'Filters' });
-    expect(within(dialog).getByRole('button', { name: 'S' })).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Red' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('combobox', { name: 'Size' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('combobox', { name: 'Colour' })).toBeInTheDocument();
     expect(within(dialog).getByRole('spinbutton', { name: 'Minimum price' })).toBeInTheDocument();
   });
 
-  it('shows a "Clear filters" control once a filter is active, and it resets them', async () => {
+  it('shows a "Clear filters" control once a filter is picked, and it resets them', async () => {
     const user = userEvent.setup();
     renderFilters();
 
@@ -38,12 +38,13 @@ describe('ProductFilters', () => {
     const dialog = screen.getByRole('dialog', { name: 'Filters' });
     expect(within(dialog).queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
 
-    await user.click(within(dialog).getByRole('button', { name: 'S' }));
-    expect(within(dialog).getByRole('button', { name: 'S' })).toHaveAttribute('aria-pressed', 'true');
+    const sizeSelect = within(dialog).getByRole('combobox', { name: 'Size' });
+    await user.selectOptions(sizeSelect, 'S');
+    expect(sizeSelect).toHaveValue('S');
     expect(within(dialog).getByRole('button', { name: 'Clear filters' })).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: 'Clear filters' }));
     expect(within(dialog).queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'S' })).toHaveAttribute('aria-pressed', 'false');
+    expect(within(dialog).getByRole('combobox', { name: 'Size' })).toHaveValue('');
   });
 });

@@ -6,13 +6,13 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
   selectUiFilters,
   setCategory,
+  setColor,
   setPriceRange,
+  setSize,
   setSort,
-  toggleColor,
-  toggleSize,
   resetFilters,
 } from '@/store/slices/uiFiltersSlice';
-import { Button, Drawer, Icon, Input, SizeChip, Select } from '@/components/ui';
+import { Button, Drawer, Icon, Input, Select } from '@/components/ui';
 import type { Category, ProductSort } from '@/lib/types';
 
 /**
@@ -55,47 +55,61 @@ export function ProductFilters({
     <>
       {categories && categories.length > 0 && (
         <div className="product-filters__group">
-          <span className="product-filters__label">{isAr ? 'الفئة' : 'Category'}</span>
-          <div className="chip-group">
-            <SizeChip selected={filters.categoryId === null} onClick={() => dispatch(setCategory(null))}>
-              {isAr ? 'الكل' : 'All'}
-            </SizeChip>
+          <label htmlFor="pf-category" className="product-filters__label">
+            {isAr ? 'الفئة' : 'Category'}
+          </label>
+          <Select
+            id="pf-category"
+            value={filters.categoryId ?? ''}
+            onChange={(e) => dispatch(setCategory(e.target.value || null))}
+          >
+            <option value="">{isAr ? 'كل الفئات' : 'All categories'}</option>
             {categories.map((cat) => (
-              <SizeChip
-                key={cat.id}
-                selected={filters.categoryId === cat.id}
-                onClick={() => dispatch(setCategory(cat.id))}
-              >
+              <option key={cat.id} value={cat.id}>
                 {isAr ? cat.nameAr : cat.nameEn}
-              </SizeChip>
+              </option>
             ))}
-          </div>
+          </Select>
         </div>
       )}
 
       {sizes.length > 0 && (
         <div className="product-filters__group">
-          <span className="product-filters__label">{isAr ? 'المقاس' : 'Size'}</span>
-          <div className="chip-group">
+          <label htmlFor="pf-size" className="product-filters__label">
+            {isAr ? 'المقاس' : 'Size'}
+          </label>
+          <Select
+            id="pf-size"
+            value={filters.size ?? ''}
+            onChange={(e) => dispatch(setSize(e.target.value || null))}
+          >
+            <option value="">{isAr ? 'كل المقاسات' : 'Any size'}</option>
             {sizes.map((size) => (
-              <SizeChip key={size} selected={filters.size === size} onClick={() => dispatch(toggleSize(size))}>
+              <option key={size} value={size}>
                 {size}
-              </SizeChip>
+              </option>
             ))}
-          </div>
+          </Select>
         </div>
       )}
 
       {colors.length > 0 && (
         <div className="product-filters__group">
-          <span className="product-filters__label">{isAr ? 'اللون' : 'Colour'}</span>
-          <div className="chip-group">
+          <label htmlFor="pf-color" className="product-filters__label">
+            {isAr ? 'اللون' : 'Colour'}
+          </label>
+          <Select
+            id="pf-color"
+            value={filters.color ?? ''}
+            onChange={(e) => dispatch(setColor(e.target.value || null))}
+          >
+            <option value="">{isAr ? 'كل الألوان' : 'Any colour'}</option>
             {colors.map((color) => (
-              <SizeChip key={color} selected={filters.color === color} onClick={() => dispatch(toggleColor(color))}>
+              <option key={color} value={color}>
                 {color}
-              </SizeChip>
+              </option>
             ))}
-          </div>
+          </Select>
         </div>
       )}
 
