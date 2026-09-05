@@ -5,3 +5,7 @@ tsconfig.tsbuildinfo
 .env
 .env.local
 *.log
+
+# local .env backups
+.env.bak
+.env*.bak
