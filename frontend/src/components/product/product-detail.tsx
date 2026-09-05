@@ -3,11 +3,13 @@
 import { useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { AlertTriangle, Compass } from 'lucide-react';
-import { Alert, Badge, Button, EmptyState, PriceTag, QuantityStepper, Skeleton, SizeChip, Swatch } from '@/components/ui';
+import { AlertTriangle, Compass, Heart } from 'lucide-react';
+import { Alert, Badge, Button, EmptyState, Icon, PriceTag, QuantityStepper, Skeleton, SizeChip, Swatch } from '@/components/ui';
+import { Breadcrumb, type Crumb } from '@/components/collection/breadcrumb';
 import { useProduct } from '@/hooks/use-catalog';
 import { useAddToCart } from '@/hooks/use-cart';
 import { useAuth } from '@/hooks/use-auth';
+import { useFavourites } from '@/hooks/use-favourites';
 import { isApiError } from '@/lib/api/errors';
 import { formatCurrency } from '@/lib/format';
 import {
@@ -27,6 +29,7 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
   const query = useProduct(id);
   const addToCart = useAddToCart();
   const { isAdmin } = useAuth();
+  const { isFavourited, toggleFavourite, pendingId: favouritePendingId } = useFavourites();
 
   const product = query.data;
   const variants = useMemo(() => product?.variants ?? [], [product]);
@@ -62,10 +65,28 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
     }
   }
 
-  const images = useMemo(
-    () => [...(product?.images ?? [])].sort((a, b) => a.sortOrder - b.sortOrder),
-    [product]
-  );
+  // Colour-tagged photos take over once a colour is selected — same
+  // fallback chain as ProductPreviewCard (this colour's tagged shots -> the
+  // untagged/generic shots -> everything), adapted from a single photo slot
+  // to a full gallery here.
+  const images = useMemo(() => {
+    const sorted = [...(product?.images ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
+    if (!effectiveColor) return sorted;
+    const forColor = sorted.filter((img) => img.color === effectiveColor);
+    if (forColor.length > 0) return forColor;
+    const generic = sorted.filter((img) => !img.color);
+    return generic.length > 0 ? generic : sorted;
+  }, [product, effectiveColor]);
+
+  // Reset to the first photo whenever the filtered set changes underneath
+  // the shopper (a colour swap) so activeImage never points past a shorter
+  // list — adjusted during render, same pattern as the stock clamp above.
+  const [lastGalleryColor, setLastGalleryColor] = useState(effectiveColor);
+  if (effectiveColor !== lastGalleryColor) {
+    setLastGalleryColor(effectiveColor);
+    setActiveImage(0);
+  }
+
   const mainImage = images[activeImage] ?? images[0];
 
   if (query.isLoading) {
@@ -108,6 +129,8 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
 
   if (!product) return null;
 
+  const favourited = isFavourited(product.id);
+
   const name = isAr ? product.nameAr : product.nameEn;
   const description = isAr ? product.descriptionAr : product.descriptionEn;
   const collectionName = product.collection
@@ -121,170 +144,230 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
   // there's nothing to feed accentStyle() with. Falls back to the :root
   // accent defaults, same as any other collection-less page.
 
-  // Same sale-price precedence as ProductCard/PriceTag: an active
-  // saleType/saleValue discount (product.effectivePrice, when onSale) beats
-  // compareAtPrice when both are present. Kept local to this component
-  // (rather than only relying on PriceTag's own copy of this math) because
-  // the "Save $X" corner badge needs the same current/was numbers.
-  const price = Number(product.price);
-  const sale = product.onSale ? product.effectivePrice : null;
-  const compare = product.compareAtPrice != null ? Number(product.compareAtPrice) : null;
+  // Home / Collection / Category — same shape and "last crumb has no href"
+  // convention CategoryProducts already uses. GET /api/products/:id already
+  // selects both `category` (full row: nameEn/nameAr/slug) and `collection`
+  // (nameEn/nameAr/slug) — no backend change needed for this.
+  const categoryName = product.category ? (isAr ? product.category.nameAr : product.category.nameEn) : undefined;
+  const crumbs: Crumb[] = [
+    { label: t('Home', 'الرئيسية'), href: `/${locale}` },
+    ...(product.collection && collectionName
+      ? [{ label: collectionName, href: `/${locale}/${product.collection.slug}` }]
+      : []),
+    ...(product.category && categoryName ? [{ label: categoryName }] : []),
+  ];
 
-  const current = sale != null && sale < price ? sale : price;
+  // Threshold for the low-stock nudge — picked arbitrarily at 5 (your own
+  // example number); not sourced from anywhere else in the schema/backend.
+  const LOW_STOCK_THRESHOLD = 5;
+  const lowStock =
+    Boolean(activeVariant) && activeVariant!.stockQuantity > 0 && activeVariant!.stockQuantity <= LOW_STOCK_THRESHOLD;
+
+  // Same variant-aware precedence as ProductPreviewCard (the validated
+  // pattern for this — not diverging from it): once a variant is resolved,
+  // its own price/effectivePrice/onSale win over the product's; fall back
+  // to the product-level values only before a variant is chosen.
+  const priceBase = activeVariant?.price ?? product.price;
+  const priceSale = activeVariant
+    ? activeVariant.onSale
+      ? (activeVariant.effectivePrice ?? null)
+      : null
+    : product.onSale
+      ? product.effectivePrice
+      : null;
+
+  // Local current/was numbers purely to size the "Save $X" corner badge —
+  // PriceTag redoes this same current/struck calc internally from the same
+  // three inputs (price/compareAtPrice/salePrice).
+  const base = Number(priceBase);
+  const compare = product.compareAtPrice != null ? Number(product.compareAtPrice) : null;
+  const current = priceSale != null && priceSale < base ? priceSale : base;
   const wasPrice =
-    sale != null && sale < price ? price : compare != null && compare > current ? compare : null;
+    priceSale != null && priceSale < base ? base : compare != null && compare > current ? compare : null;
   const onSale = wasPrice != null;
 
   const outOfStock = Boolean(activeVariant) && activeVariant!.stockQuantity <= 0;
   const canAddToCart = Boolean(activeVariant) && !outOfStock;
 
   return (
-    <div className="container section pdp">
-      <div className="pdp__gallery">
-        <div className="card pdp__main-media">
-          {mainImage ? (
-            <Image
-              key={mainImage.id}
-              src={mainImage.url}
-              alt={(isAr ? mainImage.altAr : mainImage.altEn) ?? name}
-              fill
-              sizes="(max-width: 860px) 92vw, 46vw"
-              priority
-            />
-          ) : (
-            <span className="category-card__media-placeholder" aria-hidden />
-          )}
-          {onSale && (
-            <Badge variant="save" className="product-card__badge">
-              {isAr
-                ? `توفير ${formatCurrency(wasPrice! - current, locale, 'USD')}`
-                : `Save ${formatCurrency(wasPrice! - current, locale, 'USD')}`}
-            </Badge>
-          )}
-        </div>
-
-        {images.length > 1 && (
-          <div className="pdp__thumbs" role="list">
-            {images.map((img, i) => (
-              <button
-                key={img.id}
-                type="button"
-                role="listitem"
-                className="card pdp__thumb"
-                aria-current={i === activeImage}
-                aria-label={t(`Image ${i + 1} of ${images.length}`, `صورة ${i + 1} من ${images.length}`)}
-                onClick={() => setActiveImage(i)}
-              >
-                <Image src={img.url} alt="" fill sizes="80px" />
-              </button>
-            ))}
-          </div>
-        )}
+    <div className="container section">
+      <div style={{ marginBlockEnd: 'var(--space-5)' }}>
+        <Breadcrumb ariaLabel={t('Breadcrumb', 'مسار التنقل')} items={crumbs} />
       </div>
 
-      <div className="pdp__content">
-        {collectionName && <p className="eyebrow">{collectionName}</p>}
-        <h1 className="pdp__title">{name}</h1>
-        <PriceTag
-          price={product.price}
-          compareAtPrice={product.compareAtPrice}
-          salePrice={product.onSale ? product.effectivePrice : null}
-          locale={locale}
-          showBadge={false}
-        />
+      <div className="pdp">
+        <div className="pdp__gallery">
+          <div className="card pdp__main-media">
+            {mainImage ? (
+              <Image
+                key={mainImage.id}
+                src={mainImage.url}
+                alt={(isAr ? mainImage.altAr : mainImage.altEn) ?? name}
+                fill
+                sizes="(max-width: 860px) 92vw, 46vw"
+                priority
+              />
+            ) : (
+              <span className="category-card__media-placeholder" aria-hidden />
+            )}
+            {onSale && (
+              <Badge variant="save" className="product-card__badge">
+                {isAr
+                  ? `توفير ${formatCurrency(wasPrice! - current, locale, 'USD')}`
+                  : `Save ${formatCurrency(wasPrice! - current, locale, 'USD')}`}
+              </Badge>
+            )}
+          </div>
 
-        {!product.isActive && isAdmin && (
-          <Alert tone="warning" title={t('Hidden from customers', 'مخفي عن الزبائن')}>
-            {t('This product is inactive and only visible to staff.', 'هذا المنتج غير مفعّل ومرئي للموظفين فقط.')}
-          </Alert>
-        )}
-
-        {description && <p className="prose pdp__description">{description}</p>}
-
-        <div className="pdp__options">
-          {needsSize && (
-            <div className="pdp__option-group">
-              <p className="pdp__option-label">{t('Size', 'المقاس')}</p>
-              <div className="chip-group">
-                {sizeOptions.map((s) => (
-                  <SizeChip
-                    key={s}
-                    selected={effectiveSize === s}
-                    outOfStock={isOptionOutOfStock(variants, 'size', s, effectiveColor)}
-                    onClick={() => setSize(s)}
-                  >
-                    {s}
-                  </SizeChip>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {needsColor && (
-            <div className="pdp__option-group">
-              <p className="pdp__option-label">{t('Colour', 'اللون')}</p>
-              {/* swatchColor is a best-effort CSS-keyword guess from free
-                  text — see colorNameToCss's doc comment for why it can't
-                  be exact and how it degrades. */}
-              <div className="swatch-group">
-                {colorOptions.map((c) => (
-                  <Swatch
-                    key={c}
-                    colorName={c}
-                    swatchColor={colorNameToCss(c)}
-                    selected={effectiveColor === c}
-                    outOfStock={isOptionOutOfStock(variants, 'color', c, effectiveSize)}
-                    onClick={() => setColor(c)}
-                  />
-                ))}
-              </div>
+          {images.length > 1 && (
+            <div className="pdp__thumbs" role="list">
+              {images.map((img, i) => (
+                <button
+                  key={img.id}
+                  type="button"
+                  role="listitem"
+                  className="card pdp__thumb"
+                  aria-current={i === activeImage}
+                  aria-label={t(`Image ${i + 1} of ${images.length}`, `صورة ${i + 1} من ${images.length}`)}
+                  onClick={() => setActiveImage(i)}
+                >
+                  <Image src={img.url} alt="" fill sizes="80px" />
+                </button>
+              ))}
             </div>
           )}
         </div>
 
-        {outOfStock && (
-          <Alert tone="warning">
-            {t('This combination is out of stock.', 'هذا المقاس/اللون غير متوفر حاليًا.')}
-          </Alert>
-        )}
-
-        <div className="pdp__actions">
-          <QuantityStepper
-            value={quantity}
-            onChange={setQuantity}
-            min={1}
-            max={activeVariant ? activeVariant.stockQuantity : 1}
-            label={t(`Quantity for ${name}`, `الكمية لـ ${name}`)}
-            disabled={!canAddToCart}
+        <div className="pdp__content">
+          {collectionName && product.collection && (
+            <Link href={`/${locale}/${product.collection.slug}`} className="eyebrow">
+              {collectionName}
+            </Link>
+          )}
+          <h1 className="pdp__title">{name}</h1>
+          <PriceTag
+            price={priceBase}
+            compareAtPrice={product.compareAtPrice}
+            salePrice={priceSale}
+            locale={locale}
+            showBadge={false}
           />
-          <Button
-            variant="primary"
-            size="lg"
-            disabled={!canAddToCart}
-            loading={addToCart.isPending}
-            onClick={() => {
-              if (!activeVariant) return;
-              addToCart.mutate(
-                { variantId: activeVariant.id, quantity },
-                { onSuccess: () => setQuantity(1) }
-              );
-            }}
-          >
-            {t('Add to cart', 'أضف إلى السلة')}
-          </Button>
+
+          {lowStock && (
+            <Badge variant="low-stock">
+              {t(
+                `Only ${activeVariant!.stockQuantity} left`,
+                `تبقّى ${activeVariant!.stockQuantity} فقط`
+              )}
+            </Badge>
+          )}
+
+          {!product.isActive && isAdmin && (
+            <Alert tone="warning" title={t('Hidden from customers', 'مخفي عن الزبائن')}>
+              {t('This product is inactive and only visible to staff.', 'هذا المنتج غير مفعّل ومرئي للموظفين فقط.')}
+            </Alert>
+          )}
+
+          {description && <p className="prose pdp__description">{description}</p>}
+
+          <div className="pdp__options">
+            {needsSize && (
+              <div className="pdp__option-group">
+                <p className="pdp__option-label">{t('Size', 'المقاس')}</p>
+                <div className="chip-group">
+                  {sizeOptions.map((s) => (
+                    <SizeChip
+                      key={s}
+                      selected={effectiveSize === s}
+                      outOfStock={isOptionOutOfStock(variants, 'size', s, effectiveColor)}
+                      onClick={() => setSize(s)}
+                    >
+                      {s}
+                    </SizeChip>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {needsColor && (
+              <div className="pdp__option-group">
+                <p className="pdp__option-label">{t('Colour', 'اللون')}</p>
+                {/* swatchColor is a best-effort CSS-keyword guess from free
+                    text — see colorNameToCss's doc comment for why it can't
+                    be exact and how it degrades. */}
+                <div className="swatch-group">
+                  {colorOptions.map((c) => (
+                    <Swatch
+                      key={c}
+                      colorName={c}
+                      swatchColor={colorNameToCss(c)}
+                      selected={effectiveColor === c}
+                      outOfStock={isOptionOutOfStock(variants, 'color', c, effectiveSize)}
+                      onClick={() => setColor(c)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {outOfStock && (
+            <Alert tone="warning">
+              {t('This combination is out of stock.', 'هذا المقاس/اللون غير متوفر حاليًا.')}
+            </Alert>
+          )}
+
+          <div className="pdp__actions">
+            <QuantityStepper
+              value={quantity}
+              onChange={setQuantity}
+              min={1}
+              max={activeVariant ? activeVariant.stockQuantity : 1}
+              label={t(`Quantity for ${name}`, `الكمية لـ ${name}`)}
+              disabled={!canAddToCart}
+            />
+            <Button
+              variant="primary"
+              size="lg"
+              disabled={!canAddToCart}
+              loading={addToCart.isPending}
+              onClick={() => {
+                if (!activeVariant) return;
+                addToCart.mutate(
+                  { variantId: activeVariant.id, quantity },
+                  { onSuccess: () => setQuantity(1) }
+                );
+              }}
+            >
+              {t('Add to cart', 'أضف إلى السلة')}
+            </Button>
+            <button
+              type="button"
+              className="icon-btn icon-btn--bordered"
+              data-active={favourited || undefined}
+              onClick={() => toggleFavourite(product.id)}
+              disabled={favouritePendingId === product.id}
+              aria-pressed={favourited}
+              aria-label={
+                favourited ? t('Remove from favourites', 'إزالة من المفضّلة') : t('Add to favourites', 'أضف إلى المفضّلة')
+              }
+            >
+              <Icon as={Heart} size={16} fill={favourited ? 'currentColor' : 'none'} />
+            </button>
+          </div>
+
+          {!activeVariant && (needsSize || needsColor) && (
+            <p className="pdp__stock-note">
+              {t('Select every option to add this to your cart.', 'اختر كل الخيارات لإضافة المنتج إلى السلة.')}
+            </p>
+          )}
+
+          {addToCart.isError && (
+            <Alert tone="danger">
+              {isApiError(addToCart.error) ? addToCart.error.message : t('Something went wrong.', 'حدث خطأ ما.')}
+            </Alert>
+          )}
         </div>
-
-        {!activeVariant && (needsSize || needsColor) && (
-          <p className="pdp__stock-note">
-            {t('Select every option to add this to your cart.', 'اختر كل الخيارات لإضافة المنتج إلى السلة.')}
-          </p>
-        )}
-
-        {addToCart.isError && (
-          <Alert tone="danger">
-            {isApiError(addToCart.error) ? addToCart.error.message : t('Something went wrong.', 'حدث خطأ ما.')}
-          </Alert>
-        )}
       </div>
     </div>
   );

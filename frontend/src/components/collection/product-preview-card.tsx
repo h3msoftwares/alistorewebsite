@@ -7,6 +7,7 @@ import { Heart, ShoppingBag } from 'lucide-react';
 import { useFavourites } from '@/hooks/use-favourites';
 import { useAddToCart } from '@/hooks/use-cart';
 import { Badge, Icon, PriceTag, SizeChip, Swatch } from '@/components/ui';
+import { isOptionOutOfStock } from '@/lib/product-variants';
 import type { Product } from '@/lib/types';
 
 // Unique, sorted, defined values only — `variants` may have null size/color
@@ -72,10 +73,20 @@ export function ProductPreviewCard({ product, locale }: { product: Product; loca
     return generic ?? product.images[0];
   }, [product, effectiveColor]);
 
-  const sizeSoldOut = (size: string) =>
-    !product.variants.some((v) => v.size === size && v.stockQuantity > 0);
-  const colorSoldOut = (color: string) =>
-    !product.variants.some((v) => v.color === color && v.stockQuantity > 0);
+  // Two-axis-aware: a size is only "in stock" if a variant exists with that
+  // size AND whatever colour is currently selected (and vice versa) — the
+  // same isOptionOutOfStock used on the product detail page. Checking each
+  // axis alone (any variant with this size, in any colour) would mark a
+  // combination available when the specific size/colour pair doesn't exist.
+  //
+  // Cross-checks against the shopper's actual `selectedSize`/`selectedColor`
+  // (null until they've clicked something), NOT `effectiveSize`/`effectiveColor`
+  // — those default to the first variant's values purely for pricing/image
+  // purposes below, and cross-checking against an arbitrary default would
+  // wrongly disable every option that doesn't happen to share an axis value
+  // with that first variant, before the shopper has chosen anything.
+  const sizeSoldOut = (size: string) => isOptionOutOfStock(product.variants, 'size', size, selectedColor);
+  const colorSoldOut = (color: string) => isOptionOutOfStock(product.variants, 'color', color, selectedSize);
 
   const priceBase = selectedVariant?.price ?? product.price;
   const priceSale = selectedVariant
