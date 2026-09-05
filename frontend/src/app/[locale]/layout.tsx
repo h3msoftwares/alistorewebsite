@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Dosis, Cairo } from 'next/font/google';
 import { dehydrate } from '@tanstack/react-query';
 import { StoreProvider } from '@/store/provider';
+import { GoogleAnalytics } from '@/components/analytics/google-analytics';
 import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
 import { makeQueryClient } from '@/lib/query-client';
@@ -89,6 +90,7 @@ export default async function LocaleLayout({
     <html lang={locale} dir={dir} className={`${dosis.variable} ${cairo.variable}`}>
       <body>
         <StoreProvider dehydratedState={dehydrate(queryClient)}>
+          <GoogleAnalytics />
           <a href="#main" className="skip-link">
             {skipLabel}
           </a>

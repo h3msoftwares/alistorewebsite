@@ -21,6 +21,7 @@ import {
   useUpdateCartItem,
 } from '@/hooks/use-cart';
 import { isApiError } from '@/lib/api';
+import { cartItemToGaItem, trackRemoveFromCart } from '@/lib/analytics/ga';
 import type { CartItem } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
@@ -379,7 +380,12 @@ function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => remove.mutate({ itemId: item.id })}
+            onClick={() =>
+              remove.mutate(
+                { itemId: item.id },
+                { onSuccess: () => trackRemoveFromCart(cartItemToGaItem(item)) }
+              )
+            }
             loading={remove.isPending}
             disabled={busy}
           >

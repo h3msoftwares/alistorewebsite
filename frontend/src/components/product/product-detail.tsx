@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AlertTriangle, Compass, Heart } from 'lucide-react';
 import {
@@ -18,6 +18,7 @@ import {
 } from '@/components/ui';
 import { Breadcrumb, type Crumb } from '@/components/collection/breadcrumb';
 import { RelatedProducts } from './related-products';
+import { productToGaItem, trackAddToCart, trackViewItem } from '@/lib/analytics/ga';
 import { useProduct } from '@/hooks/use-catalog';
 import { useAddToCart } from '@/hooks/use-cart';
 import { useAuth } from '@/hooks/use-auth';
@@ -55,6 +56,10 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
   const [color, setColor] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
+
+  useEffect(() => {
+    if (product) trackViewItem(productToGaItem(product));
+  }, [product]);
 
   // Auto-pick the only option on an axis so a one-size/one-colour product
   // never shows a picker that requires clicking something with no choice.
@@ -359,7 +364,12 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
                 if (!activeVariant) return;
                 addToCart.mutate(
                   { variantId: activeVariant.id, quantity },
-                  { onSuccess: () => setQuantity(1) }
+                  {
+                    onSuccess: () => {
+                      trackAddToCart(productToGaItem(product, activeVariant, quantity));
+                      setQuantity(1);
+                    },
+                  }
                 );
               }}
             >

@@ -48,7 +48,12 @@ describe('order queries', () => {
 
 describe('useCheckout', () => {
   it('places the order, empties the cart cache + badge, and refreshes orders', async () => {
-    mockOrders.checkout.mockResolvedValue({ id: 'o5' } as never);
+    mockOrders.checkout.mockResolvedValue({
+      id: 'o5',
+      orderNumber: 'AS-0005',
+      total: 42,
+      items: [],
+    } as never);
     const { Wrapper, store, queryClient } = createWrapper();
     store.dispatch(setItemCount(3));
     const spy = vi.spyOn(queryClient, 'invalidateQueries');
