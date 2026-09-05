@@ -984,6 +984,13 @@ ul, ol {
   margin-block-start: var(--space-2);
 }
 
+/* "You might also like" — sits below the main .pdp grid as its own section;
+   heading spacing/size come from the shared h2 rule (§2), the grid reuses
+   .product-grid as-is (§5.3). */
+.pdp__related {
+  margin-block-start: var(--space-9);
+}
+
 /* ============================================================
    LISTING PAGES — collection / category page + product filters
    ============================================================ */

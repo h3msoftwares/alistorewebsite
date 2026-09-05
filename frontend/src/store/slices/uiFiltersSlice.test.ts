@@ -8,9 +8,8 @@ import reducer, {
   setSearch,
   setPage,
   resetFilters,
-  selectProductListQuery,
+  buildProductListQuery,
 } from './uiFiltersSlice';
-import type { RootState } from '../store';
 
 const initial = reducer(undefined, { type: '@@INIT' });
 
@@ -62,7 +61,7 @@ describe('uiFiltersSlice', () => {
     expect(reducer(dirty, resetFilters())).toEqual(initial);
   });
 
-  describe('selectProductListQuery', () => {
+  describe('buildProductListQuery', () => {
     it('maps active filters, drops empties, always includes sort + page', () => {
       let s = initial;
       s = reducer(s, setCategory('cat-1'));
@@ -71,7 +70,7 @@ describe('uiFiltersSlice', () => {
       s = reducer(s, setSort('price_desc'));
       s = reducer(s, setPage(2));
 
-      const query = selectProductListQuery('col-1')({ uiFilters: s } as RootState);
+      const query = buildProductListQuery(s, 'col-1');
       expect(query).toEqual({
         collectionId: 'col-1',
         categoryId: 'cat-1',
@@ -83,7 +82,7 @@ describe('uiFiltersSlice', () => {
     });
 
     it('omits collectionId when not given', () => {
-      const query = selectProductListQuery()({ uiFilters: initial } as RootState);
+      const query = buildProductListQuery(initial);
       expect(query).toEqual({ sort: 'newest', page: 1 });
     });
   });

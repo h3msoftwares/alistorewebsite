@@ -17,6 +17,7 @@ import {
   Swatch,
 } from '@/components/ui';
 import { Breadcrumb, type Crumb } from '@/components/collection/breadcrumb';
+import { RelatedProducts } from './related-products';
 import { useProduct } from '@/hooks/use-catalog';
 import { useAddToCart } from '@/hooks/use-cart';
 import { useAuth } from '@/hooks/use-auth';
@@ -216,7 +217,19 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
                 alt={(isAr ? mainImage.altAr : mainImage.altEn) ?? name}
                 fill
                 sizes="(max-width: 860px) 92vw, 46vw"
-                priority
+                // `priority` was deprecated in Next 16 (silent no-op —
+                // rendered neither `loading="eager"` nor `fetchPriority`, so
+                // this LCP hero image was actually still lazy-loadable).
+                // `preload` is the replacement Next recommends for exactly
+                // this case (the LCP element / above-the-fold hero image) —
+                // it inserts a real <link rel="preload"> in <head>, verified
+                // present. The dev-mode "add loading=eager" console warning
+                // persists regardless of preload/loading/fetchPriority (all
+                // three tried and confirmed rendered correctly) — looks like
+                // a mismatch between this warning's URL-matching and the
+                // custom ImageKit loader's `?tr=...` suffix (next.config.mjs),
+                // not an actual unfixed loading issue.
+                preload
               />
             ) : (
               <span className="catalog-image__fallback" aria-hidden />
@@ -380,6 +393,8 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
           )}
         </div>
       </div>
+
+      <RelatedProducts categoryId={product.categoryID} excludeProductId={product.id} locale={locale} />
     </div>
   );
 }
