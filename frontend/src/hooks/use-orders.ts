@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ordersApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
+import { trackPurchase } from '@/lib/analytics/ga';
 import { useAppDispatch } from '@/store/hooks';
 import { resetItemCount } from '@/store/slices/cartSlice';
 import type { CheckoutBody, OrderStatus, UUID } from '@/lib/types';
@@ -46,7 +47,18 @@ export function useCheckout() {
   const dispatch = useAppDispatch();
   return useMutation({
     mutationFn: (body: CheckoutBody) => ordersApi.checkout(body),
-    onSuccess: () => {
+    onSuccess: (order) => {
+      trackPurchase({
+        transactionId: order.orderNumber,
+        value: Number(order.total),
+        items: (order.items ?? []).map((oi) => ({
+          item_id: oi.productSKU,
+          item_name: oi.productName,
+          price: Number(oi.unitPrice),
+          item_variant: [oi.size, oi.color].filter(Boolean).join(' / ') || undefined,
+          quantity: oi.quantity,
+        })),
+      });
       // Checkout empties the cart server-side.
       qc.invalidateQueries({ queryKey: queryKeys.cart.root() });
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });

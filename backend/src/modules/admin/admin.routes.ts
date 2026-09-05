@@ -17,6 +17,7 @@ import {
   salesDashboardHandler,
 } from '../orders/order.controller';
 import { updateStockHandler } from '../catalog/product.controller';
+import analyticsRoutes from '../analytics/analytics.routes';
 
 const router = Router();
 
@@ -26,6 +27,8 @@ const router = Router();
 router.use(requireAuth, requireRole('STAFF', 'ADMIN'));
 
 router.get('/dashboard', asyncHandler(salesDashboardHandler));
+
+router.use('/analytics', analyticsRoutes);
 
 router.get(
   '/orders',

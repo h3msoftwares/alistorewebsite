@@ -477,3 +477,153 @@ export interface AdminDashboard {
   pendingOrders: number;
   totalRevenue: number;
 }
+
+// ---- Analytics ----
+// GET /api/admin/analytics/* — first-party aggregation (orders / inventory /
+// customers) plus GA4-sourced traffic & funnel. GA4-backed payloads collapse to
+// `{ configured: false }` when the GA4 service account is not set up.
+
+export interface AnalyticsRangeParams {
+  from?: string;
+  to?: string;
+  granularity?: 'day' | 'week' | 'month';
+}
+
+export type GaMaybe<T> = (T & { configured: true }) | { configured: false };
+
+export interface RevenuePoint {
+  bucket: string;
+  revenue: number;
+  orders: number;
+}
+
+export interface Breakdown {
+  label: string;
+  revenue: number;
+  units: number;
+}
+
+export interface FunnelStep {
+  step: string;
+  count: number;
+  conversionFromPrevious: number | null;
+  conversionFromTop: number | null;
+}
+
+export interface AnalyticsOverview {
+  range: { from: string; to: string };
+  kpis: {
+    revenue: number;
+    deliveredRevenue: number;
+    orders: number;
+    averageOrderValue: number;
+    itemsPerOrder: number;
+    unitsSold: number;
+    newCustomers: number;
+    returningCustomers: number;
+    lowStockVariants: number;
+  };
+  revenueSeries: RevenuePoint[];
+  funnel: GaMaybe<{ steps: FunnelStep[] }>;
+  note: string;
+}
+
+export interface AnalyticsSales {
+  range: { from: string; to: string };
+  revenueSeries: RevenuePoint[];
+  byCategory: Breakdown[];
+  byProduct: Breakdown[];
+  bySize: Breakdown[];
+  byColour: Breakdown[];
+  note: string;
+}
+
+export interface TopCustomer {
+  id: UUID;
+  name: string;
+  email: string;
+  orders: number;
+  revenue: number;
+}
+
+export interface AnalyticsCustomers {
+  range: { from: string; to: string };
+  kpis: {
+    customersWithOrders: number;
+    newCustomers: number;
+    returningCustomers: number;
+    repeatPurchaseRate: number;
+    ordersPerCustomer: number;
+    lifetimeValue: number;
+    avgDaysBetweenPurchases: number | null;
+  };
+  newVsReturningSeries: { bucket: string; new_customers: number; returning_orders: number }[];
+  topCustomers: TopCustomer[];
+  note: string;
+}
+
+export interface StockRow {
+  sku: string;
+  product: string;
+  size: string | null;
+  color: string | null;
+  stock?: number;
+}
+
+export interface StockMovementRow {
+  id: UUID;
+  quantity: number;
+  type: string;
+  reason: string | null;
+  createdAt: string;
+  variant: { sku: string; product: { nameEn: string } };
+}
+
+export interface AnalyticsInventory {
+  range: { from: string; to: string };
+  kpis: {
+    stockUnits: number;
+    stockValue: number;
+    unitsSold: number;
+    sellThroughRate: number;
+    lowStockCount: number;
+    outOfStockCount: number;
+  };
+  lowStock: StockRow[];
+  outOfStock: StockRow[];
+  bestSellingSizes: Breakdown[];
+  bestSellingColours: Breakdown[];
+  slowMovers: { product: string; sku: string }[];
+  recentMovements: StockMovementRow[];
+  note: string;
+}
+
+export interface ProductPerfRow {
+  name: string;
+  sku: string;
+  units: number;
+  revenue: number;
+  orders: number;
+  buyers: number;
+  views: number | null;
+  viewToPurchaseRate: number | null;
+  viewToCartRate: number | null;
+}
+
+export interface AnalyticsProducts {
+  range: { from: string; to: string };
+  products: ProductPerfRow[];
+  ga: { configured: boolean; rows?: Record<string, string | number>[] };
+  note: string;
+}
+
+export type GaRow = Record<string, string | number>;
+
+export interface AnalyticsVisitors {
+  configured: boolean;
+  traffic?: GaRow[];
+  sources?: GaRow[];
+  devices?: GaRow[];
+  geo?: GaRow[];
+  pages?: GaRow[];
+}

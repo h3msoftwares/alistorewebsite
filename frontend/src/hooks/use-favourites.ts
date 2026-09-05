@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { catalogApi, favouritesApi, isApiError } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
+import { trackAddToWishlist } from '@/lib/analytics/ga';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { selectFavouriteIds, setFavourites } from '@/store/slices/favouritesSlice';
 import { useAuth } from '@/hooks/use-auth';
@@ -157,15 +158,21 @@ export function useFavourites(): UseFavourites {
   const toggleFavourite = useCallback(
     (productId: UUID) => {
       if (isAuthenticated) {
-        if (idSet.has(productId)) removeMutation.mutate(productId);
-        else addMutation.mutate(productId);
+        if (idSet.has(productId)) {
+          removeMutation.mutate(productId);
+        } else {
+          addMutation.mutate(productId);
+          trackAddToWishlist(productId);
+        }
         return;
       }
-      const next = guestIds.includes(productId)
-        ? guestIds.filter((x) => x !== productId)
-        : [...guestIds, productId];
+      const isAdding = !guestIds.includes(productId);
+      const next = isAdding
+        ? [...guestIds, productId]
+        : guestIds.filter((x) => x !== productId);
       dispatch(setFavourites(next));
       writeLocalFavourites(next);
+      if (isAdding) trackAddToWishlist(productId);
     },
     [isAuthenticated, idSet, guestIds, addMutation, removeMutation, dispatch]
   );

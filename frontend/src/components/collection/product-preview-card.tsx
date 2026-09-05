@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Heart, ShoppingBag, ZoomIn } from 'lucide-react';
 import { useFavourites } from '@/hooks/use-favourites';
 import { useAddToCart } from '@/hooks/use-cart';
+import { productToGaItem, trackAddToCart } from '@/lib/analytics/ga';
 import { Badge, CatalogImage, Icon, PriceTag, SizeChip, Swatch } from '@/components/ui';
 import { isOptionOutOfStock } from '@/lib/product-variants';
 import type { Product } from '@/lib/types';
@@ -208,7 +209,13 @@ export function ProductPreviewCard({
           className="icon-btn icon-btn--bordered product-preview-card__add-to-cart"
           disabled={outOfStock || addToCart.isPending}
           data-loading={addToCart.isPending || undefined}
-          onClick={() => selectedVariant && addToCart.mutate({ variantId: selectedVariant.id, quantity: 1 })}
+          onClick={() =>
+            selectedVariant &&
+            addToCart.mutate(
+              { variantId: selectedVariant.id, quantity: 1 },
+              { onSuccess: () => trackAddToCart(productToGaItem(product, selectedVariant, 1)) }
+            )
+          }
           aria-label={outOfStock ? t('Out of stock', 'غير متوفر') : t('Add to cart', 'أضف إلى السلة')}
         >
           <Icon as={ShoppingBag} size={16} />
