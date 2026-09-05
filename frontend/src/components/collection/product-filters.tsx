@@ -1,7 +1,5 @@
 'use client';
 
-import { useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
   selectUiFilters,
@@ -12,15 +10,13 @@ import {
   setSort,
   resetFilters,
 } from '@/store/slices/uiFiltersSlice';
-import { Button, Drawer, Icon, Input, Select } from '@/components/ui';
+import { Input, Select } from '@/components/ui';
 import type { Category, ProductSort } from '@/lib/types';
 
 /**
- * Filter + sort controls for a product listing page, laid out as a single
- * compact row: a "Filters" button (opens a slide-in `<Drawer>` with the
- * category / size / colour / price controls) sitting next to an inline Sort
- * dropdown. Keeping only these two in the toolbar leaves the product grid as
- * much room as possible; the full control set lives in the drawer.
+ * Filter + sort controls for a product listing page — a row of small
+ * dropdowns (category / size / colour / sort) plus a price range, sitting
+ * in `.products-toolbar` next to the breadcrumb.
  *
  * `categories` is only passed on a collection page (it aggregates products
  * across categories, so a category filter narrows it); a category page is
@@ -39,10 +35,8 @@ export function ProductFilters({
   categories?: Category[];
 }) {
   const isAr = locale === 'ar';
-  const t = (en: string, ar: string) => (isAr ? ar : en);
   const dispatch = useAppDispatch();
   const filters = useAppSelector(selectUiFilters);
-  const [open, setOpen] = useState(false);
 
   const hasActiveFilters =
     filters.categoryId !== null ||
@@ -51,8 +45,8 @@ export function ProductFilters({
     filters.minPrice !== null ||
     filters.maxPrice !== null;
 
-  const filterGroups = (
-    <>
+  return (
+    <div className="product-filters-bar">
       {categories && categories.length > 0 && (
         <div className="product-filters__group">
           <label htmlFor="pf-category" className="product-filters__label">
@@ -114,6 +108,21 @@ export function ProductFilters({
       )}
 
       <div className="product-filters__group">
+        <label htmlFor="pf-sort" className="product-filters__label">
+          {isAr ? 'الترتيب' : 'Sort by'}
+        </label>
+        <Select
+          id="pf-sort"
+          value={filters.sort}
+          onChange={(e) => dispatch(setSort(e.target.value as ProductSort))}
+        >
+          <option value="newest">{isAr ? 'الأحدث' : 'Newest'}</option>
+          <option value="price_asc">{isAr ? 'الأقل سعرًا' : 'Price: low to high'}</option>
+          <option value="price_desc">{isAr ? 'الأعلى سعرًا' : 'Price: high to low'}</option>
+        </Select>
+      </div>
+
+      <div className="product-filters__group">
         <span className="product-filters__label">{isAr ? 'السعر' : 'Price'}</span>
         <div className="product-filters__price">
           <Input
@@ -156,47 +165,9 @@ export function ProductFilters({
 
       {hasActiveFilters && (
         <button type="button" className="product-filters__clear" onClick={() => dispatch(resetFilters())}>
-          {isAr ? 'مسح الفلاتر' : 'Clear filters'}
+          {isAr ? 'مسح' : 'Clear'}
         </button>
       )}
-    </>
-  );
-
-  return (
-    <div className="product-filters-bar">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="product-filters__trigger"
-        onClick={() => setOpen(true)}
-        aria-expanded={open}
-      >
-        <Icon as={SlidersHorizontal} size={14} style={{ marginInlineEnd: 'var(--space-2)' }} />
-        {isAr ? 'الفلاتر' : 'Filters'}
-        {hasActiveFilters && <span className="product-filters__trigger-dot" aria-hidden />}
-      </Button>
-
-      <Select
-        className="product-filters__sort-inline"
-        value={filters.sort}
-        onChange={(e) => dispatch(setSort(e.target.value as ProductSort))}
-        aria-label={isAr ? 'الترتيب' : 'Sort by'}
-      >
-        <option value="newest">{isAr ? 'الأحدث' : 'Newest'}</option>
-        <option value="price_asc">{isAr ? 'السعر: من الأقل للأعلى' : 'Price: Low to High'}</option>
-        <option value="price_desc">{isAr ? 'السعر: من الأعلى للأقل' : 'Price: High to Low'}</option>
-      </Select>
-
-      <Drawer
-        open={open}
-        onClose={() => setOpen(false)}
-        side="end"
-        title={isAr ? 'الفلاتر' : 'Filters'}
-        closeLabel={t('Close', 'إغلاق')}
-      >
-        <div className="product-filters product-filters--drawer">{filterGroups}</div>
-      </Drawer>
     </div>
   );
 }
