@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, Compass, Heart } from 'lucide-react';
+import { AlertTriangle, Compass, Heart, ZoomIn } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -17,6 +17,7 @@ import {
   Swatch,
 } from '@/components/ui';
 import { Breadcrumb, type Crumb } from '@/components/collection/breadcrumb';
+import { ProductZoomModal } from '@/components/collection/product-zoom-modal';
 import { RelatedProducts } from './related-products';
 import { productToGaItem, trackAddToCart, trackViewItem } from '@/lib/analytics/ga';
 import { useProduct } from '@/hooks/use-catalog';
@@ -56,6 +57,11 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
   const [color, setColor] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
+  const [zoomOpen, setZoomOpen] = useState(false);
+  // Bumped on every open so <ProductZoomModal> remounts with fresh zoom
+  // state instead of resuming whatever pan/zoom was left over last time —
+  // same pattern as ProductPreviewCard's zoom trigger.
+  const [zoomKey, setZoomKey] = useState(0);
 
   useEffect(() => {
     if (product) trackViewItem(productToGaItem(product));
@@ -246,6 +252,19 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
                   : `Save ${formatCurrency(wasPrice! - current, locale, 'USD')}`}
               </Badge>
             )}
+            {mainImage && (
+              <button
+                type="button"
+                className="icon-btn icon-btn--bordered pdp__zoom"
+                onClick={() => {
+                  setZoomKey((k) => k + 1);
+                  setZoomOpen(true);
+                }}
+                aria-label={t('View larger image', 'عرض صورة أكبر')}
+              >
+                <Icon as={ZoomIn} size={16} />
+              </button>
+            )}
           </div>
 
           {images.length > 1 && (
@@ -405,6 +424,23 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
       </div>
 
       <RelatedProducts categoryId={product.categoryID} excludeProductId={product.id} locale={locale} />
+
+      {product.category && categoryName && (
+        <div className="pdp__discover">
+          <Link href={`/${locale}/category/${product.category.slug}`} className="btn btn--outline">
+            {t(`Discover more in ${categoryName}`, `اكتشف المزيد في ${categoryName}`)}
+          </Link>
+        </div>
+      )}
+
+      <ProductZoomModal
+        key={zoomKey}
+        open={zoomOpen}
+        onClose={() => setZoomOpen(false)}
+        image={mainImage}
+        name={name}
+        locale={locale}
+      />
     </div>
   );
 }

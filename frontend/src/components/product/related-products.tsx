@@ -1,15 +1,15 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ProductGridSkeleton } from '@/components/ui';
 import { ProductPreviewCard } from '@/components/collection/product-preview-card';
+import { HorizontalScroller } from '@/components/home/horizontal-scroller';
 import { useCategoryProducts } from '@/hooks/use-catalog';
 import type { UUID } from '@/lib/types';
 
-const CAP = 4;
+const CAP = 8;
 // Fetched beyond CAP so there's still enough left to fill it after excluding
 // the current product and after in-stock candidates are given priority.
-const FETCH_BUFFER = 12;
+const FETCH_BUFFER = 20;
 
 /**
  * "You might also like" — other active products in the same category,
@@ -42,25 +42,29 @@ export function RelatedProducts({
     return [...inStock, ...outOfStock].slice(0, CAP);
   }, [data, excludeProductId]);
 
+  const title = t('You might also like', 'قد يعجبك أيضًا');
+
   if (isPending) {
     return (
-      <section className="pdp__related" aria-busy="true" aria-live="polite">
-        <h2>{t('You might also like', 'قد يعجبك أيضًا')}</h2>
-        <ProductGridSkeleton count={CAP} />
-      </section>
+      <div className="pdp__related" aria-busy="true" aria-live="polite">
+        <HorizontalScroller locale={locale} title={title} ariaLabel={title}>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <span key={i} className="media-tile-skeleton skeleton" aria-hidden />
+          ))}
+        </HorizontalScroller>
+      </div>
     );
   }
 
   if (isError || items.length === 0) return null;
 
   return (
-    <section className="pdp__related">
-      <h2>{t('You might also like', 'قد يعجبك أيضًا')}</h2>
-      <div className="product-grid">
+    <div className="pdp__related">
+      <HorizontalScroller locale={locale} title={title} ariaLabel={title}>
         {items.map((product) => (
           <ProductPreviewCard key={product.id} product={product} locale={locale} />
         ))}
-      </div>
-    </section>
+      </HorizontalScroller>
+    </div>
   );
 }

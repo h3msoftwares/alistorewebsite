@@ -978,6 +978,22 @@ ul, ol {
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   padding-inline: var(--gutter);
+  /* Without this, `scroll-snap-align: start` on the first/last card has no
+     way to know the container's own padding is part of the intended "start"/
+     "end" — it aligns the card's border box (inside the padding) to the raw
+     scrollport edge, which is only reachable at scrollLeft == the padding
+     value, not 0. `mandatory` snapping then forcibly corrects the resting
+     scroll position to that value on every layout, including the very first
+     one — before any user has scrolled at all. That phantom offset made the
+     prev arrow's `travelled > 1` boundary check true from initial load, so
+     it never showed as disabled. Matching `scroll-padding-inline` to the
+     container's own padding tells the snap engine the padding IS the
+     intended start/end, so scrollLeft 0 becomes a valid, aligned resting
+     position again. (Confirmed live: forcing scrollLeft to 0 with snapping
+     briefly disabled stuck at 0; re-enabling `scroll-snap-type` alone, with
+     no `scroll-padding-inline`, snapped it straight back to the padding
+     value — this single property was the fix.) */
+  scroll-padding-inline: var(--gutter);
   scrollbar-width: none;
   cursor: grab;
   user-select: none;
@@ -1114,18 +1130,78 @@ ul, ol {
   .pdp { grid-template-columns: 1fr; gap: var(--space-5); }
 }
 
-.pdp__gallery { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+/* Filmstrip beside the main image (desktop) — thumbs get `order: 1` rather
+   than leading in source order, so they land at the inline-start edge in
+   both LTR and RTL without a [dir='rtl'] override (flex lays lower-`order`
+   items at the row's start regardless of writing direction). Collapses to
+   thumbs-below-image on narrow screens, in the shared 860px breakpoint. */
+/* Capped so the gallery (image + thumbs) always fits within one viewport
+   height, even on a short laptop screen — never taller than the space below
+   everything that sits above it: the (optional) offers strip, the sticky
+   header, this page's own top section padding, and the breadcrumb row. An
+   earlier version subtracted only the header plus a flat --space-8 guess for
+   "everything else" — that guess was ~120px short of the real total
+   (confirmed live: at 1366×768 the gallery overflowed the viewport by ~25px
+   once the page picked up an extra bit of chrome elsewhere), so this now
+   references the actual tokens that make up that space instead of
+   approximating them. 3rem + --space-2 covers the breadcrumb's own line
+   height + margin plus a small rounding safety margin — the one piece here
+   that isn't already a token, since the breadcrumb's rendered height depends
+   on content, not a fixed value.
+   Set on the row itself (not just each child) and inherited via the custom
+   property — a flex row with an `aspect-ratio` + `max-height` item as one of
+   its children can render the row taller than either child's own final
+   height (confirmed live: .pdp__main-media and .pdp__thumbs both measured
+   within their max-height, but .pdp__gallery still came out ~27px taller
+   than the taller of the two) — so the cap has to hold the container itself,
+   not rely on it being implied by capping the children. */
+.pdp__gallery {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+  --pdp-gallery-max-h: min(70vh, calc(100svh - var(--header-height) - var(--offers-strip-h) - var(--section-gap) - 3rem - var(--space-2)));
+  max-height: var(--pdp-gallery-max-h);
+}
 
 .pdp__main-media {
   position: relative;
+  order: 2;
+  flex: 1 1 auto;
+  min-width: 0;
   aspect-ratio: 4 / 5;
+  max-height: var(--pdp-gallery-max-h);
 }
 .pdp__main-media img { object-fit: cover; }
 
-.pdp__thumbs { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+/* Opens <ProductZoomModal> — same trigger placement/styling as
+   .product-preview-card__zoom (§5.3), reused here rather than redeclared
+   with different values, so the PDP and the listing cards open the exact
+   same zoom experience from a visually consistent button. */
+.pdp__zoom {
+  position: absolute;
+  inset-block-end: var(--space-2);
+  inset-inline-end: var(--space-2);
+  width: 32px;
+  height: 32px;
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+}
+
+.pdp__thumbs {
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+  max-height: var(--pdp-gallery-max-h);
+  overflow-y: auto;
+}
 
 .pdp__thumb {
   position: relative;
+  flex-shrink: 0;
   width: calc(var(--control-h) * 1.4);
   height: calc(var(--control-h) * 1.4);
   padding: 0;
@@ -1133,6 +1209,16 @@ ul, ol {
 }
 .pdp__thumb img { object-fit: cover; }
 .pdp__thumb[aria-current='true'] { border-color: var(--collection-accent); border-width: 2px; }
+
+@media (max-width: 860px) {
+  /* `align-items: flex-start` (needed so the row layout doesn't stretch the
+     thumb column to the main image's height) must be reset here — carried
+     into this column layout unchanged, it shrinks .pdp__main-media to its
+     min-content width instead of letting it stretch full-width. */
+  .pdp__gallery { flex-direction: column; align-items: stretch; }
+  .pdp__main-media { order: 1; max-height: none; }
+  .pdp__thumbs { order: 2; flex-direction: row; flex-wrap: wrap; max-height: none; overflow: visible; }
+}
 
 .pdp__content { min-width: 0; }
 
@@ -1162,11 +1248,17 @@ ul, ol {
   margin-block-start: var(--space-2);
 }
 
-/* "You might also like" — sits below the main .pdp grid as its own section;
-   heading spacing/size come from the shared h2 rule (§2), the grid reuses
-   .product-grid as-is (§5.3). */
+/* "You might also like" — sits below the main .pdp grid; the row itself
+   reuses HorizontalScroller/.home-row as-is (§5.2 home page rows), this just
+   places it under the main grid. */
 .pdp__related {
   margin-block-start: var(--space-9);
+}
+
+.pdp__discover {
+  display: flex;
+  justify-content: center;
+  margin-block-start: var(--space-6);
 }
 
 /* ============================================================
@@ -2316,10 +2408,18 @@ ul, ol {
    interaction (see product-zoom-modal.tsx: click zooms in on that point,
    mouse-move pans while zoomed, click again zooms back out). */
 .product-zoom-modal { display: flex; flex-direction: column; }
+/* Sized from viewport height as well as width — a fixed 720px square (sized
+   from width alone) was taller than .modal__panel's own 90vh cap on a short
+   laptop screen (e.g. 768px tall), so the panel's `overflow: hidden` clipped
+   the image itself and pushed .product-zoom-modal__name below the fold
+   entirely, not just off the visible area. The 51px subtracted is the name
+   row's own rendered height (one base line + its --space-3 top/bottom
+   padding + 1px border) so image + name together always fit within the
+   panel's 90vh, matching that budget exactly rather than approximating it. */
 .product-zoom-modal__media {
   position: relative;
   display: block;
-  width: min(92vw, 720px);
+  width: min(92vw, 720px, calc(90vh - 51px));
   aspect-ratio: 1 / 1;
   background: var(--color-surface);
   overflow: hidden;
