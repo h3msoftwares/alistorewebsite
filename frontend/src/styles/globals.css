@@ -1135,18 +1135,43 @@ ul, ol {
    both LTR and RTL without a [dir='rtl'] override (flex lays lower-`order`
    items at the row's start regardless of writing direction). Collapses to
    thumbs-below-image on narrow screens, in the shared 860px breakpoint. */
-.pdp__gallery { display: flex; flex-direction: row; align-items: flex-start; gap: var(--space-3); min-width: 0; }
-
 /* Capped so the gallery (image + thumbs) always fits within one viewport
    height, even on a short laptop screen — never taller than the space below
-   the sticky header, regardless of window width. */
+   everything that sits above it: the (optional) offers strip, the sticky
+   header, this page's own top section padding, and the breadcrumb row. An
+   earlier version subtracted only the header plus a flat --space-8 guess for
+   "everything else" — that guess was ~120px short of the real total
+   (confirmed live: at 1366×768 the gallery overflowed the viewport by ~25px
+   once the page picked up an extra bit of chrome elsewhere), so this now
+   references the actual tokens that make up that space instead of
+   approximating them. 3rem + --space-2 covers the breadcrumb's own line
+   height + margin plus a small rounding safety margin — the one piece here
+   that isn't already a token, since the breadcrumb's rendered height depends
+   on content, not a fixed value.
+   Set on the row itself (not just each child) and inherited via the custom
+   property — a flex row with an `aspect-ratio` + `max-height` item as one of
+   its children can render the row taller than either child's own final
+   height (confirmed live: .pdp__main-media and .pdp__thumbs both measured
+   within their max-height, but .pdp__gallery still came out ~27px taller
+   than the taller of the two) — so the cap has to hold the container itself,
+   not rely on it being implied by capping the children. */
+.pdp__gallery {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+  --pdp-gallery-max-h: min(70vh, calc(100svh - var(--header-height) - var(--offers-strip-h) - var(--section-gap) - 3rem - var(--space-2)));
+  max-height: var(--pdp-gallery-max-h);
+}
+
 .pdp__main-media {
   position: relative;
   order: 2;
   flex: 1 1 auto;
   min-width: 0;
   aspect-ratio: 4 / 5;
-  max-height: min(70vh, calc(100svh - var(--header-height) - var(--space-8)));
+  max-height: var(--pdp-gallery-max-h);
 }
 .pdp__main-media img { object-fit: cover; }
 
@@ -1170,7 +1195,7 @@ ul, ol {
   flex-direction: column;
   flex: 0 0 auto;
   gap: var(--space-2);
-  max-height: min(70vh, calc(100svh - var(--header-height) - var(--space-8)));
+  max-height: var(--pdp-gallery-max-h);
   overflow-y: auto;
 }
 
