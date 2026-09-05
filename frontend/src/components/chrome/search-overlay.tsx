@@ -81,8 +81,11 @@ export function SearchOverlay({
   const hydrated = useHydrated();
 
   const [term, setTerm] = useState('');
-  const query = useDebouncedValue(term.trim(), 300);
-  const canSearch = query.length >= MIN_CHARS;
+  const rawQuery = term.trim();
+  const query = useDebouncedValue(rawQuery, 300);
+
+  const wantsSearch = rawQuery.length >= MIN_CHARS;
+  const queryLongEnough = query.length >= MIN_CHARS;
 
   // Recent searches — loaded from localStorage once, after mount (adjust
   // during render, so no hydration mismatch and no setState-in-effect), then
@@ -94,22 +97,36 @@ export function SearchOverlay({
     setRecent(readRecent());
   }
 
-  const { data, isError, isFetching } = useProducts(
+  // keepPreviousData:false — a type-ahead must never show the previous query's
+  // hits under a new search term, nor keep them after the new query resolves
+  // to fewer / zero.
+  const { data, isError } = useProducts(
     { search: query, pageSize: MAX_RESULTS },
-    { enabled: canSearch },
+    { enabled: queryLongEnough, keepPreviousData: false },
   );
 
-  const items = data?.items ?? [];
-  const extra = data ? data.total - items.length : 0;
-
-  // Which list (if any) the arrow keys walk right now.
-  const mode: 'results' | 'recent' | 'none' = canSearch
-    ? data && items.length > 0
-      ? 'results'
-      : 'none'
-    : recent.length > 0
+  // What to render. `data` is only trusted once the debounced query has caught
+  // up with what's typed (`query === rawQuery`) — otherwise we're mid-debounce
+  // and whatever `data` holds is for an older term.
+  type Phase = 'idle' | 'recent' | 'searching' | 'error' | 'empty' | 'results';
+  const settled = wantsSearch && query === rawQuery && queryLongEnough && !isError && data !== undefined;
+  const phase: Phase = !wantsSearch
+    ? recent.length > 0
       ? 'recent'
-      : 'none';
+      : 'idle'
+    : query === rawQuery && isError
+      ? 'error'
+      : !settled
+        ? 'searching'
+        : data!.items.length === 0
+          ? 'empty'
+          : 'results';
+
+  const items = phase === 'results' && data ? data.items : [];
+  const extra = phase === 'results' && data ? data.total - data.items.length : 0;
+
+  const mode: 'results' | 'recent' | 'none' =
+    phase === 'results' ? 'results' : phase === 'recent' ? 'recent' : 'none';
   const navLen = mode === 'results' ? items.length : mode === 'recent' ? recent.length : 0;
 
   // Clear the box each time the overlay closes, so reopening starts fresh —
@@ -122,7 +139,7 @@ export function SearchOverlay({
 
   // Reset the highlight whenever the navigable list changes (new query, results
   // arrived, overlay reopened) — adjust-during-render, not an effect.
-  const navSig = `${open}|${mode}|${query}|${items.map((p) => p.id).join(',')}|${recent.join(',')}`;
+  const navSig = `${open}|${phase}|${rawQuery}|${items.map((p) => p.id).join(',')}|${recent.join(',')}`;
   const [sig, setSig] = useState(navSig);
   const [activeIndex, setActiveIndex] = useState(-1);
   if (sig !== navSig) {
@@ -241,7 +258,7 @@ export function SearchOverlay({
         </div>
       )}
 
-      {!canSearch && mode === 'none' && (
+      {phase === 'idle' && (
         <p className="search-overlay__hint">
           {isAr
             ? 'اكتب حرفين على الأقل للبحث في الكتالوج.'
@@ -249,26 +266,26 @@ export function SearchOverlay({
         </p>
       )}
 
-      {canSearch && isError && (
-        <p className="search-overlay__hint" role="alert">
-          {isAr ? 'تعذّر البحث. حاول مرة أخرى.' : "Couldn't run that search. Try again."}
-        </p>
-      )}
-
-      {canSearch && !isError && !data && (
+      {phase === 'searching' && (
         <p className="search-overlay__hint" aria-live="polite">
           {isAr ? 'جارٍ البحث…' : 'Searching…'}
         </p>
       )}
 
-      {canSearch && !isError && data && items.length === 0 && (
-        <p className="search-overlay__hint" aria-live="polite">
-          {isAr ? `لا نتائج لـ «${query}».` : `No products match “${query}”.`}
+      {phase === 'error' && (
+        <p className="search-overlay__hint" role="alert">
+          {isAr ? 'تعذّر البحث. حاول مرة أخرى.' : "Couldn't run that search. Try again."}
         </p>
       )}
 
-      {mode === 'results' && (
-        <div aria-live="polite" aria-busy={isFetching || undefined}>
+      {phase === 'empty' && (
+        <p className="search-overlay__hint" aria-live="polite">
+          {isAr ? `لا نتائج لـ «${rawQuery}».` : `No products match “${rawQuery}”.`}
+        </p>
+      )}
+
+      {phase === 'results' && (
+        <div aria-live="polite">
           <ul id={listboxId} className="search-overlay__results" role="listbox">
             {items.map((product, i) => {
               const name = isAr ? product.nameAr : product.nameEn;
@@ -306,7 +323,7 @@ export function SearchOverlay({
               );
             })}
           </ul>
-          {data && extra > 0 && (
+          {extra > 0 && data && (
             <p className="search-overlay__hint">
               {isAr
                 ? `تُعرض أول ${items.length} من ${data.total} نتيجة.`

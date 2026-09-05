@@ -153,11 +153,18 @@ export function useCategoryProducts(id: UUID | undefined, query: ProductListQuer
   });
 }
 
-export function useProducts(query: ProductListQuery = {}, opts?: { enabled?: boolean }) {
+export function useProducts(
+  query: ProductListQuery = {},
+  opts?: { enabled?: boolean; keepPreviousData?: boolean },
+) {
+  // Paging a listing wants the old page to stay visible during the fetch;
+  // a type-ahead does NOT — showing the previous query's hits under a new
+  // search term (or after it resolves to zero) is just wrong.
+  const keepPreviousData = opts?.keepPreviousData ?? true;
   return useQuery({
     queryKey: queryKeys.products.list(query),
     queryFn: () => catalogApi.listProducts(query),
-    placeholderData: (prev) => prev, // keep the old page visible while paging
+    placeholderData: keepPreviousData ? (prev) => prev : undefined,
     enabled: opts?.enabled ?? true,
   });
 }

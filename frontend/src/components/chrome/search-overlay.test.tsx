@@ -125,6 +125,58 @@ describe('<SearchOverlay> — search', () => {
     await user.type(screen.getByRole('combobox'), 'satin');
     expect(await screen.findByRole('alert')).toHaveTextContent(/Couldn't run that search/i);
   });
+
+  it('drops the previous hits when a follow-up query matches nothing', async () => {
+    const user = userEvent.setup();
+    mock.listProducts
+      .mockResolvedValueOnce(
+        result([
+          makeProduct({ id: 'a', nameEn: 'Dino Print Pajama Set' }),
+          makeProduct({ id: 'b', nameEn: 'Lace Trim Bralette Set' }),
+        ]) as never,
+      )
+      .mockResolvedValue(result([]) as never);
+    renderOverlay();
+    const box = screen.getByRole('combobox');
+
+    await user.type(box, 'set');
+    expect(await screen.findByRole('option', { name: /Dino Print Pajama Set/ })).toBeInTheDocument();
+
+    await user.clear(box);
+    await user.type(box, 'xx');
+
+    expect(await screen.findByText(/No products match .xx./i)).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Dino Print Pajama Set/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Lace Trim Bralette Set/ })).not.toBeInTheDocument();
+  });
+
+  it('does not show the old hits while a new query is still resolving', async () => {
+    const user = userEvent.setup();
+    let resolveSecond!: (v: unknown) => void;
+    mock.listProducts
+      .mockResolvedValueOnce(result([makeProduct({ id: 'a', nameEn: 'Wool Coat' })]) as never)
+      .mockImplementationOnce(
+        () => new Promise((res) => { resolveSecond = res; }) as never,
+      );
+    renderOverlay();
+    const box = screen.getByRole('combobox');
+
+    await user.type(box, 'wool');
+    await screen.findByRole('option', { name: /Wool Coat/ });
+
+    await user.clear(box);
+    await user.type(box, 'dino');
+
+    // once the debounce fires, the 2nd query goes out and stays pending
+    await waitFor(() => expect(mock.listProducts).toHaveBeenCalledTimes(2));
+    // the old hit is gone and "Searching…" is shown — no stale results
+    expect(screen.queryByRole('option', { name: /Wool Coat/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Searching/i)).toBeInTheDocument();
+
+    resolveSecond(result([makeProduct({ id: 'b', nameEn: 'Dino Print Pajama Set' })]));
+    expect(await screen.findByRole('option', { name: /Dino Print Pajama Set/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Wool Coat/ })).not.toBeInTheDocument();
+  });
 });
 
 describe('<SearchOverlay> — recent-search suggestions', () => {
