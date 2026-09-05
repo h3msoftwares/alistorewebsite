@@ -34,7 +34,20 @@ function colorToCss(name: string): string {
  * variant right on the card — swatch swaps the card's photo too — all
  * without leaving the listing.
  */
-export function ProductPreviewCard({ product, locale }: { product: Product; locale: 'en' | 'ar' }) {
+export function ProductPreviewCard({
+  product,
+  locale,
+  preload = false,
+}: {
+  product: Product;
+  locale: 'en' | 'ar';
+  /** Set for the first row of a grid (above the fold) so Next.js preloads
+   *  that image instead of lazy-loading it — leave false for every other
+   *  card, or the point of preloading a specific image gets lost. Named to
+   *  match next/image's own `preload` prop it forwards to — `priority` was
+   *  deprecated in Next 16 and is silently a no-op there. */
+  preload?: boolean;
+}) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
@@ -116,6 +129,7 @@ export function ProductPreviewCard({ product, locale }: { product: Product; loca
               alt={(isAr ? image.altAr : image.altEn) ?? name}
               fill
               sizes="(max-width: 640px) 50vw, 25vw"
+              preload={preload}
             />
           )}
           {priceSale != null && (

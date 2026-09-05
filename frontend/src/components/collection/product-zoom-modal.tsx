@@ -79,7 +79,10 @@ export function ProductZoomModal({
               alt={(isAr ? image.altAr : image.altEn) ?? name}
               fill
               sizes="(max-width: 720px) 92vw, 720px"
-              priority
+              // `priority` is deprecated as of Next 16 (a silent no-op) —
+              // `preload` is the replacement for exactly this case (the
+              // modal's single hero image, wanted as soon as it opens).
+              preload
               style={{
                 transform: zoomed ? `scale(${ZOOM_SCALE})` : 'scale(1)',
                 transformOrigin: `${origin.x}% ${origin.y}%`,

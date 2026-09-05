@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { selectProductListQuery, selectUiFilters, setPage, resetFilters } from '@/store/slices/uiFiltersSlice';
+import { buildProductListQuery, selectUiFilters, setPage, resetFilters } from '@/store/slices/uiFiltersSlice';
 import { useCategoryFacets, useCategoryProducts } from '@/hooks/use-catalog';
 import { Button, EmptyState, ProductGridSkeleton } from '@/components/ui';
 import { ProductFilters } from './product-filters';
@@ -33,7 +33,7 @@ export function CategoryProducts({
   const filters = useAppSelector(selectUiFilters);
   // No collectionId scope — `listCategoryProducts` ignores categoryId/collectionId
   // from the query object anyway (the URL path already scopes it).
-  const query = useAppSelector(selectProductListQuery());
+  const query = useMemo(() => buildProductListQuery(filters), [filters]);
   const { data, isPending } = useCategoryProducts(categoryId, query);
   const { data: facets } = useCategoryFacets(categoryId);
 
@@ -68,8 +68,13 @@ export function CategoryProducts({
       ) : (
         <>
           <div className="product-grid">
-            {items.map((product) => (
-              <ProductPreviewCard key={product.id} product={product} locale={locale as 'en' | 'ar'} />
+            {items.map((product, index) => (
+              <ProductPreviewCard
+                key={product.id}
+                product={product}
+                locale={locale as 'en' | 'ar'}
+                preload={index < 4}
+              />
             ))}
           </div>
 
