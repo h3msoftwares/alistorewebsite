@@ -242,10 +242,11 @@ describe('POST /api/auth/admin-login', () => {
       expect(ttl(customer.body.accessToken)).toBe(15 * 60);
     });
 
-    it('a STAFF login also gets the short admin TTL', async () => {
+    it('a STAFF login (via admin-login) also gets the short admin TTL', async () => {
       const staff = await request(app)
-        .post('/api/auth/login')
+        .post('/api/auth/admin-login')
         .send({ identifier: STAFF_EMAIL, password: PASSWORD });
+      expect(staff.status).toBe(200);
       expect(ttl(staff.body.accessToken)).toBe(5 * 60);
     });
 

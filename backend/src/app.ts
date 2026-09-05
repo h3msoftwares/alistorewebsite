@@ -22,6 +22,7 @@ import settingsRoutes from './modules/settings/settings.routes';
 
 export function buildApp(
   opts: {
+    customerLoginRateLimit?: boolean;
     adminLoginRateLimit?: boolean;
     forgotPasswordRateLimit?: boolean;
     resetPasswordRateLimit?: boolean;
@@ -55,7 +56,10 @@ export function buildApp(
 
   // Vertical-slice module mounting, same convention as pos-backend:
   // one line per module.
-  app.use('/api/auth', authRoutes);
+  app.use(
+    '/api/auth',
+    authRoutes({ rateLimit: opts.customerLoginRateLimit ?? env.NODE_ENV !== 'test' })
+  );
   // Separate admin-login path mounted on the same prefix. Its rate limiter is
   // on everywhere except tests, where it would throttle the suite.
   app.use(
