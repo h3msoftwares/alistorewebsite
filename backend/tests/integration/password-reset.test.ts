@@ -279,14 +279,17 @@ describe('POST /api/auth/reset-password', () => {
     const reset = await resetPassword({ token, newPassword: 'NewAdminPass1!' });
     expect(reset.status).toBe(200);
 
-    const login = await request(app)
-      .post('/api/auth/login')
-      .send({ identifier: 'admin.pw@sec.test', password: 'NewAdminPass1!' });
-    expect(login.status).toBe(200);
-
+    // The new password works at the admin door...
     const adminLogin = await request(app)
       .post('/api/auth/admin-login')
       .send({ identifier: 'admin.pw@sec.test', password: 'NewAdminPass1!' });
     expect(adminLogin.status).toBe(200);
+
+    // ...and a privileged account is still refused at the customer door
+    // (that separation is independent of the password-reset flow).
+    const custDoor = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'admin.pw@sec.test', password: 'NewAdminPass1!' });
+    expect(custDoor.status).toBe(401);
   });
 });
