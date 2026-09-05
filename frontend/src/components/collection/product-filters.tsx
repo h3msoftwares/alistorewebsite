@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { Pin, PinOff, SlidersHorizontal } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
   selectUiFilters,
@@ -10,18 +12,21 @@ import {
   setSort,
   resetFilters,
 } from '@/store/slices/uiFiltersSlice';
-import { Input, Select } from '@/components/ui';
+import { Drawer, Icon, Input, Select } from '@/components/ui';
 import type { Category, ProductSort } from '@/lib/types';
 
 /**
- * Filter + sort controls for a product listing page — a row of small
- * dropdowns (category / size / colour / sort) plus a price range, sitting
- * in `.products-toolbar` next to the breadcrumb.
+ * Filter + sort controls for a product listing page.
  *
- * `categories` is only passed on a collection page (it aggregates products
- * across categories, so a category filter narrows it); a category page is
- * already scoped and omits it. `sizes` / `colors` are the available facet
- * values for the current scope, independent of the applied filters.
+ * - Wide screens: a row of compact `<select>` dropdowns (category / size /
+ *   colour / sort) + a price range, inline in `.products-toolbar`.
+ * - Narrow screens (≤767px): collapses to a single "Filters" button that
+ *   opens the same controls in a slide-in `<Drawer>`.
+ * - A pin toggle makes the whole toolbar stick below the header while the
+ *   grid scrolls.
+ *
+ * `categories` is only passed on a collection page. `sizes` / `colors` are
+ * the available facet values for the current scope.
  */
 export function ProductFilters({
   locale,
@@ -35,8 +40,11 @@ export function ProductFilters({
   categories?: Category[];
 }) {
   const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
   const dispatch = useAppDispatch();
   const filters = useAppSelector(selectUiFilters);
+  const [open, setOpen] = useState(false);
+  const [pinned, setPinned] = useState(false);
 
   const hasActiveFilters =
     filters.categoryId !== null ||
@@ -45,15 +53,16 @@ export function ProductFilters({
     filters.minPrice !== null ||
     filters.maxPrice !== null;
 
-  return (
-    <div className="product-filters-bar">
+  // Rendered twice (inline bar + drawer), so ids get a per-copy suffix.
+  const controls = (scope: 'bar' | 'drawer') => (
+    <>
       {categories && categories.length > 0 && (
         <div className="product-filters__group">
-          <label htmlFor="pf-category" className="product-filters__label">
+          <label htmlFor={`pf-category-${scope}`} className="product-filters__label">
             {isAr ? 'الفئة' : 'Category'}
           </label>
           <Select
-            id="pf-category"
+            id={`pf-category-${scope}`}
             value={filters.categoryId ?? ''}
             onChange={(e) => dispatch(setCategory(e.target.value || null))}
           >
@@ -69,11 +78,11 @@ export function ProductFilters({
 
       {sizes.length > 0 && (
         <div className="product-filters__group">
-          <label htmlFor="pf-size" className="product-filters__label">
+          <label htmlFor={`pf-size-${scope}`} className="product-filters__label">
             {isAr ? 'المقاس' : 'Size'}
           </label>
           <Select
-            id="pf-size"
+            id={`pf-size-${scope}`}
             value={filters.size ?? ''}
             onChange={(e) => dispatch(setSize(e.target.value || null))}
           >
@@ -89,11 +98,11 @@ export function ProductFilters({
 
       {colors.length > 0 && (
         <div className="product-filters__group">
-          <label htmlFor="pf-color" className="product-filters__label">
+          <label htmlFor={`pf-color-${scope}`} className="product-filters__label">
             {isAr ? 'اللون' : 'Colour'}
           </label>
           <Select
-            id="pf-color"
+            id={`pf-color-${scope}`}
             value={filters.color ?? ''}
             onChange={(e) => dispatch(setColor(e.target.value || null))}
           >
@@ -108,11 +117,11 @@ export function ProductFilters({
       )}
 
       <div className="product-filters__group">
-        <label htmlFor="pf-sort" className="product-filters__label">
+        <label htmlFor={`pf-sort-${scope}`} className="product-filters__label">
           {isAr ? 'الترتيب' : 'Sort by'}
         </label>
         <Select
-          id="pf-sort"
+          id={`pf-sort-${scope}`}
           value={filters.sort}
           onChange={(e) => dispatch(setSort(e.target.value as ProductSort))}
         >
@@ -168,6 +177,51 @@ export function ProductFilters({
           {isAr ? 'مسح' : 'Clear'}
         </button>
       )}
+    </>
+  );
+
+  return (
+    <div className="product-filters-wrap" data-filters-pinned={pinned || undefined}>
+      <div className="product-filters-bar product-filters-bar--inline">{controls('bar')}</div>
+
+      <div className="product-filters-bar product-filters-bar--collapsed">
+        <button
+          type="button"
+          className="btn btn--outline btn--sm product-filters__trigger"
+          onClick={() => setOpen(true)}
+          aria-expanded={open}
+        >
+          <Icon as={SlidersHorizontal} size={14} style={{ marginInlineEnd: 'var(--space-2)' }} />
+          {isAr ? 'الفلاتر' : 'Filters'}
+          {hasActiveFilters && <span className="product-filters__trigger-dot" aria-hidden />}
+        </button>
+      </div>
+
+      <button
+        type="button"
+        className="icon-btn icon-btn--bordered product-filters__pin"
+        data-active={pinned || undefined}
+        aria-pressed={pinned}
+        aria-label={
+          pinned
+            ? t('Unpin the filter bar', 'إلغاء تثبيت شريط الفلاتر')
+            : t('Pin the filter bar below the header', 'تثبيت شريط الفلاتر أسفل الترويسة')
+        }
+        title={pinned ? t('Unpin', 'إلغاء التثبيت') : t('Pin below header', 'تثبيت أسفل الترويسة')}
+        onClick={() => setPinned((p) => !p)}
+      >
+        <Icon as={pinned ? PinOff : Pin} size={14} />
+      </button>
+
+      <Drawer
+        open={open}
+        onClose={() => setOpen(false)}
+        side="end"
+        title={isAr ? 'الفلاتر' : 'Filters'}
+        closeLabel={t('Close', 'إغلاق')}
+      >
+        <div className="product-filters product-filters--drawer">{controls('drawer')}</div>
+      </Drawer>
     </div>
   );
 }
