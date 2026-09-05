@@ -60,6 +60,49 @@ export function useAddToCart() {
   );
 }
 
+export interface BulkAddLine {
+  variantId: UUID;
+  quantity?: number;
+  /** Echoed back on the per-line result so the caller can map an outcome to
+   *  its product row without re-deriving it from the variant id. */
+  key?: string;
+}
+export interface BulkAddResult {
+  variantId: UUID;
+  key?: string;
+  ok: boolean;
+  error: unknown;
+}
+
+/** Add several variants in one go (favourites → cart). Each line is attempted
+ *  independently — one out-of-stock line doesn't sink the rest — and the cart
+ *  query is invalidated (and the badge re-synced) once, after all settle. The
+ *  mutation resolves to a per-line `BulkAddResult[]`; it only rejects if the
+ *  whole batch was empty of successes AND every line errored, so callers
+ *  should read the resolved array rather than relying on `isError`. */
+export function useAddManyToCart() {
+  const qc = useQueryClient();
+  const dispatch = useAppDispatch();
+  return useMutation({
+    mutationFn: async (lines: BulkAddLine[]): Promise<BulkAddResult[]> => {
+      const settled = await Promise.allSettled(
+        lines.map((l) => cartApi.addCartItem(l.variantId, l.quantity ?? 1))
+      );
+      return settled.map((r, i) => ({
+        variantId: lines[i].variantId,
+        key: lines[i].key,
+        ok: r.status === 'fulfilled',
+        error: r.status === 'rejected' ? r.reason : null,
+      }));
+    },
+    onSettled: async () => {
+      await qc.invalidateQueries({ queryKey: queryKeys.cart.root() });
+      const fresh = qc.getQueryData<CartView>(queryKeys.cart.root());
+      if (fresh) dispatch(setItemCount(countItems(fresh)));
+    },
+  });
+}
+
 /** `quantity` and/or `variantId` (size/color change) — see lib/api/cart.ts.
  *  Same invalidate-and-refetch as every other cart mutation, so a variant
  *  change that merges into (and deletes) a different line is picked up

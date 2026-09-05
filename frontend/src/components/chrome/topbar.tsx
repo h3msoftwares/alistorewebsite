@@ -16,6 +16,7 @@ import { useSettings } from '@/hooks/use-settings';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 import { SearchOverlay } from './search-overlay';
 import { CartDrawer } from './cart-drawer';
+import { FavouritesDrawer } from './favourites-drawer';
 
 /**
  * The sticky topbar: hamburger (mobile) · logo · collection switcher · actions.
@@ -29,6 +30,7 @@ export function Topbar({ locale }: { locale: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [favOpen, setFavOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
   const cartCount = useAppSelector(selectCartCount);
@@ -137,13 +139,15 @@ export function Topbar({ locale }: { locale: string }) {
           </span>
 
           <span className="icon-btn-wrap topbar__fav">
-            <Link
-              href={`/${locale}/favourites`}
+            <button
+              type="button"
               className="icon-btn"
               aria-label={t('Favourites', 'المفضّلة')}
+              aria-expanded={favOpen}
+              onClick={() => setFavOpen(true)}
             >
               <Icon as={Heart} />
-            </Link>
+            </button>
             {favCount > 0 && (
               <span className="icon-btn__badge" aria-hidden="true">
                 {favCount}
@@ -166,6 +170,7 @@ export function Topbar({ locale }: { locale: string }) {
 
       <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} locale={locale} />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} locale={locale} />
+      <FavouritesDrawer open={favOpen} onClose={() => setFavOpen(false)} locale={locale} />
 
       <Drawer
         open={menuOpen}
