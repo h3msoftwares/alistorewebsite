@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { AlertTriangle, Compass, Heart } from 'lucide-react';
 import { Alert, Badge, Button, EmptyState, Icon, PriceTag, QuantityStepper, Skeleton, SizeChip, Swatch } from '@/components/ui';
 import { Breadcrumb, type Crumb } from '@/components/collection/breadcrumb';
+import { RelatedProducts } from './related-products';
 import { useProduct } from '@/hooks/use-catalog';
 import { useAddToCart } from '@/hooks/use-cart';
 import { useAuth } from '@/hooks/use-auth';
@@ -369,6 +370,8 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
           )}
         </div>
       </div>
+
+      <RelatedProducts categoryId={product.categoryID} excludeProductId={product.id} locale={locale} />
     </div>
   );
 }

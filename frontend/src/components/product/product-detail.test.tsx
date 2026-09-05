@@ -8,7 +8,7 @@ import { ProductDetail } from './product-detail';
 import type { Product } from '@/lib/types';
 
 vi.mock('@/lib/api', () => ({
-  catalogApi: { getProduct: vi.fn() },
+  catalogApi: { getProduct: vi.fn(), listCategoryProducts: vi.fn() },
   cartApi: { getCart: vi.fn(), addCartItem: vi.fn() },
   favouritesApi: { listFavourites: vi.fn(), addFavourite: vi.fn(), removeFavourite: vi.fn() },
   isApiError: () => false,
@@ -66,6 +66,10 @@ beforeEach(() => {
   // Default for the one test that authenticates — an authenticated user
   // enables useFavourites()'s backend query, which needs a resolved value.
   mockFavourites.listFavourites.mockResolvedValue([]);
+  // RelatedProducts (rendered by every ProductDetail test) fetches this —
+  // default to "nothing else in the category" so it renders null and stays
+  // out of the way of tests that aren't about it.
+  mockCatalog.listCategoryProducts.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 12 });
 });
 
 describe('ProductDetail', () => {
