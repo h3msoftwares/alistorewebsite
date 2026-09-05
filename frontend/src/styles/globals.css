@@ -744,16 +744,21 @@ ul, ol {
 .hero {
   background: var(--color-secondary);
   color: var(--color-text-on-dark);
-  min-height: calc(100svh - var(--header-height) - var(--offers-strip-h));
+  /* fill exactly the space under the chrome above (offers strip + header) so the
+     bottom-anchored illustration lands on the fold with no gap or overshoot.
+     --hero-chrome is measured in hero.tsx; the fallback (header only) is the
+     common no-strip case and only briefly wrong for one frame before JS runs. */
+  min-height: calc(100svh - var(--hero-chrome, var(--header-height)));
   display: flex;
-  align-items: center;
 }
 .hero__inner {
   width: 100%;
   min-width: 0;
   max-width: var(--container-max);
   margin-inline: auto;
-  padding: clamp(var(--space-6), 6vh, var(--space-9)) var(--gutter);
+  /* no bottom padding: the illustration bottoms out flush with the band's
+     bottom edge (= the fold), so there's no dark border under it */
+  padding: clamp(var(--space-6), 6vh, var(--space-9)) var(--gutter) 0;
   display: grid;
   /* side columns hold short copy; the centre column gets the picture */
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.3fr) minmax(0, 0.85fr);
@@ -791,22 +796,24 @@ ul, ol {
 .hero__cta { text-decoration: none; align-self: flex-end; }
 [lang='ar'] .hero__cta { align-self: flex-start; }
 
-/* Centred illustration — shown whole; its own black backdrop blends into the
-   band so no frame/shadow is needed. */
+/* Illustration — transparent PNG, so it sits straight on the band with no
+   frame. Bottom-anchored: Ali's feet land on the fold, no gap beneath. */
 .hero__media {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
+  align-self: end;
   min-width: 0;
 }
 .hero__img {
   /* portrait illustration — size to its own ratio, capped by the column width
      and the fold; no forced box so there's no letterbox gap around it */
+  display: block;
   width: auto;
   max-width: 100%;
   min-width: 0; /* flex item — let it shrink below the file's intrinsic width */
   height: auto;
-  max-height: calc(100svh - var(--header-height) - var(--offers-strip-h) - 2 * var(--space-8));
+  max-height: calc(100svh - var(--hero-chrome, var(--header-height)) - var(--space-6));
 }
 
 /* Tablet / narrow: one column — headline, then the picture, then lede + CTA. */
@@ -816,7 +823,10 @@ ul, ol {
     grid-template-columns: minmax(0, 1fr);
     justify-items: stretch;
     gap: var(--space-6);
+    /* stacked flow — restore the bottom breathing room the desktop band drops */
+    padding-bottom: var(--space-7);
   }
+  .hero__media { align-self: auto; }
   .hero__lead,
   .hero__aside {
     max-width: min(44ch, 100%);
