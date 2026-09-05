@@ -43,7 +43,9 @@ export function Hero({ locale }: { locale: string }) {
           src={heroAli}
           alt={t("Ali — Ali's Store", 'علي — متجر علي')}
           className="hero__img"
-          priority
+          // priority is deprecated in Next 16 (silent no-op) — preload is
+          // the replacement; see the same fix on product-detail.tsx.
+          preload
           sizes="(max-width: 860px) 92vw, (max-width: 1280px) 52vw, 640px"
         />
       </div>

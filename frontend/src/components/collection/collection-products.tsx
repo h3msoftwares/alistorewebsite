@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { selectProductListQuery, selectUiFilters, setPage, resetFilters } from '@/store/slices/uiFiltersSlice';
+import { buildProductListQuery, selectUiFilters, setPage, resetFilters } from '@/store/slices/uiFiltersSlice';
 import { useCategories, useCollectionFacets, useProducts } from '@/hooks/use-catalog';
 import { Button, EmptyState, ProductGridSkeleton } from '@/components/ui';
 import { ProductFilters } from './product-filters';
@@ -26,7 +26,7 @@ export function CollectionProducts({
   const isAr = locale === 'ar';
   const dispatch = useAppDispatch();
   const filters = useAppSelector(selectUiFilters);
-  const query = useAppSelector(selectProductListQuery(collectionId));
+  const query = useMemo(() => buildProductListQuery(filters, collectionId), [filters, collectionId]);
   const { data, isPending } = useProducts(query);
   const { data: categories } = useCategories(collectionId);
   const { data: facets } = useCollectionFacets(collectionId);
@@ -61,8 +61,13 @@ export function CollectionProducts({
       ) : (
         <>
           <div className="product-grid">
-            {items.map((product) => (
-              <ProductPreviewCard key={product.id} product={product} locale={locale as 'en' | 'ar'} />
+            {items.map((product, index) => (
+              <ProductPreviewCard
+                key={product.id}
+                product={product}
+                locale={locale as 'en' | 'ar'}
+                preload={index < 4}
+              />
             ))}
           </div>
 

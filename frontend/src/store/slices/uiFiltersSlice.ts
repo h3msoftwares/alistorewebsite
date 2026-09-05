@@ -85,21 +85,37 @@ export default uiFiltersSlice.reducer;
 // ---- selectors ----
 export const selectUiFilters = (s: RootState) => s.uiFilters;
 
-/** Turn the current filter state into a `GET /api/products` query object,
- *  dropping empty values. Pass the page's collection id to scope it. */
-export const selectProductListQuery =
-  (collectionId?: string) =>
-  (s: RootState): ProductListQuery => {
-    const f = s.uiFilters;
-    return {
-      ...(collectionId ? { collectionId } : {}),
-      ...(f.categoryId ? { categoryId: f.categoryId } : {}),
-      ...(f.search ? { search: f.search } : {}),
-      ...(f.size ? { size: f.size } : {}),
-      ...(f.color ? { color: f.color } : {}),
-      ...(f.minPrice != null ? { minPrice: f.minPrice } : {}),
-      ...(f.maxPrice != null ? { maxPrice: f.maxPrice } : {}),
-      sort: f.sort,
-      page: f.page,
-    };
+/**
+ * Turns filter state into a `GET /api/products` query object, dropping empty
+ * values. Pass the page's collection id to scope it.
+ *
+ * Deliberately a plain function over an already-selected `UiFiltersState`,
+ * not a Redux selector over the whole store — it used to be
+ * `(collectionId) => (state) => {...}`, called directly as
+ * `useAppSelector(selectProductListQuery(collectionId))`. That allocated a
+ * brand-new object on every single call (own spreads, no memoization), and
+ * since callers already separately read `selectUiFilters` in the same
+ * component, it was a second, redundant store read on top of being
+ * unmemoized. React-Redux calls a selector more than once per render to
+ * check for tearing; two calls with the same state each returning a
+ * different object reference is exactly what triggered "Selector unknown
+ * returned a different result when called with the same parameters" —
+ * confirmed live on both /category/:slug and /:collection.
+ *
+ * Callers now derive the query with `useMemo(() => buildProductListQuery(filters,
+ * collectionId), [filters, collectionId])` from the `filters` they already
+ * have, instead of a second store subscription.
+ */
+export function buildProductListQuery(f: UiFiltersState, collectionId?: string): ProductListQuery {
+  return {
+    ...(collectionId ? { collectionId } : {}),
+    ...(f.categoryId ? { categoryId: f.categoryId } : {}),
+    ...(f.search ? { search: f.search } : {}),
+    ...(f.size ? { size: f.size } : {}),
+    ...(f.color ? { color: f.color } : {}),
+    ...(f.minPrice != null ? { minPrice: f.minPrice } : {}),
+    ...(f.maxPrice != null ? { maxPrice: f.maxPrice } : {}),
+    sort: f.sort,
+    page: f.page,
   };
+}
