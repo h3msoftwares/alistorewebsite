@@ -978,6 +978,22 @@ ul, ol {
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   padding-inline: var(--gutter);
+  /* Without this, `scroll-snap-align: start` on the first/last card has no
+     way to know the container's own padding is part of the intended "start"/
+     "end" — it aligns the card's border box (inside the padding) to the raw
+     scrollport edge, which is only reachable at scrollLeft == the padding
+     value, not 0. `mandatory` snapping then forcibly corrects the resting
+     scroll position to that value on every layout, including the very first
+     one — before any user has scrolled at all. That phantom offset made the
+     prev arrow's `travelled > 1` boundary check true from initial load, so
+     it never showed as disabled. Matching `scroll-padding-inline` to the
+     container's own padding tells the snap engine the padding IS the
+     intended start/end, so scrollLeft 0 becomes a valid, aligned resting
+     position again. (Confirmed live: forcing scrollLeft to 0 with snapping
+     briefly disabled stuck at 0; re-enabling `scroll-snap-type` alone, with
+     no `scroll-padding-inline`, snapped it straight back to the padding
+     value — this single property was the fix.) */
+  scroll-padding-inline: var(--gutter);
   scrollbar-width: none;
   cursor: grab;
   user-select: none;
