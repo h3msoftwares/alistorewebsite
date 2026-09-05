@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   colorNameToCss,
+  firstPurchasableVariant,
   getColorOptions,
   getSizeOptions,
   hasColorAxis,
@@ -105,5 +106,28 @@ describe('colorNameToCss', () => {
   it('passes non-CSS-keyword names through unchanged in shape (caller-safe even if it will not paint)', () => {
     expect(colorNameToCss('Assorted')).toBe('assorted');
     expect(colorNameToCss('Rose')).toBe('rose');
+  });
+});
+
+describe('firstPurchasableVariant', () => {
+  it('returns the first variant that has stock', () => {
+    const picked = firstPurchasableVariant([
+      variant({ id: 'a', stockQuantity: 0 }),
+      variant({ id: 'b', stockQuantity: 4 }),
+      variant({ id: 'c', stockQuantity: 9 }),
+    ]);
+    expect(picked?.id).toBe('b');
+  });
+
+  it('falls back to the first variant when none are in stock', () => {
+    const picked = firstPurchasableVariant([
+      variant({ id: 'a', stockQuantity: 0 }),
+      variant({ id: 'b', stockQuantity: 0 }),
+    ]);
+    expect(picked?.id).toBe('a');
+  });
+
+  it('is undefined for a product with no variants', () => {
+    expect(firstPurchasableVariant([])).toBeUndefined();
   });
 });

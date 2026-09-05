@@ -9,15 +9,17 @@ export const registerSchema = z.object({
   message: 'Either email or phone is required',
 });
 
+// Login is a hostile surface — bound both fields so a giant body can't be
+// forced through express.json's cap into an Argon2 verify. 320 = RFC-max email
+// length; 200 comfortably covers any real passphrase. Same caps as
+// adminLoginSchema below.
 export const loginSchema = z.object({
-  identifier: z.string().min(1), // email or phone
-  password: z.string().min(1),
+  identifier: z.string().min(1).max(320), // email or phone
+  password: z.string().min(1).max(200),
 });
 
-// Admin login is a hostile surface — bound both fields so a giant body can't
-// be forced through express.json's 100 KB cap into an Argon2 verify. 320 =
-// RFC-max email length; 200 comfortably covers any real passphrase.
-// (The customer loginSchema above should get the same caps in a follow-up.)
+// Admin login carries the same caps for the same reason; kept as its own
+// schema so the two doors can diverge later without touching each other.
 export const adminLoginSchema = z.object({
   identifier: z.string().min(3).max(320),
   password: z.string().min(1).max(200),

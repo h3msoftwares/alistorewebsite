@@ -5,12 +5,15 @@ import Link from 'next/link';
 import { Heart, HeartCrack } from 'lucide-react';
 import {
   Button,
+  Choice,
   EmptyState,
   ProductCard,
   ProductGridSkeleton,
   type ProductCardData,
 } from '@/components/ui';
+import { FavouriteAddToCart } from '@/components/favourites/favourite-add-to-cart';
 import { useFavourites } from '@/hooks/use-favourites';
+import { useFavouritesCart } from '@/hooks/use-favourites-cart';
 import type { Product } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
@@ -43,6 +46,7 @@ export function FavouritesView({ locale }: { locale: Locale }) {
 
   const { favourites, count, isPending, isError, refetch, toggleFavourite, pendingId } =
     useFavourites();
+  const sel = useFavouritesCart(favourites);
 
   // Favourites are per-user and only knowable on the client (auth state, guest
   // localStorage) — like the cart page, there's nothing meaningful to SSR.
@@ -101,29 +105,79 @@ export function FavouritesView({ locale }: { locale: Locale }) {
   return (
     <div className="container section">
       {heading}
+
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 'var(--space-4)',
+          flexWrap: 'wrap',
+          marginBlockStart: 'var(--space-4)',
+        }}
+      >
+        <Choice
+          label={t('Select all', 'تحديد الكل')}
+          checked={sel.allSelected}
+          disabled={sel.addableIds.length === 0}
+          onChange={sel.toggleAll}
+        />
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={sel.addSelectedToCart}
+          loading={sel.isAdding}
+          disabled={sel.selectedCount === 0 || sel.isAdding}
+        >
+          {sel.selectedCount > 0
+            ? t(`Add ${sel.selectedCount} to cart`, `أضف ${sel.selectedCount} إلى السلة`)
+            : t('Add selected to cart', 'أضف المحدد إلى السلة')}
+        </Button>
+        {sel.summary && (
+          <span aria-live="polite" style={{ fontSize: 'var(--fs-sm)', color: 'var(--color-text-muted)' }}>
+            {sel.summary.failed === 0
+              ? t(`${sel.summary.added} added to cart.`, `تمت إضافة ${sel.summary.added} إلى السلة.`)
+              : t(
+                  `${sel.summary.added} added · ${sel.summary.failed} unavailable.`,
+                  `${sel.summary.added} مضافة · ${sel.summary.failed} غير متوفرة.`,
+                )}
+          </span>
+        )}
+      </div>
+
       <ul
         style={{
           listStyle: 'none',
           padding: 0,
-          margin: 'var(--space-5) 0 0',
+          margin: 'var(--space-4) 0 0',
           display: 'grid',
           gap: 'var(--space-5)',
           gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
         }}
       >
-        {favourites.map((p) => (
-          <li key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            <ProductCard product={toCardData(p)} locale={locale} />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => toggleFavourite(p.id)}
-              loading={pendingId === p.id}
-            >
-              {t('Remove', 'إزالة')}
-            </Button>
-          </li>
-        ))}
+        {favourites.map((p) => {
+          const variantId = sel.purchasable.get(p.id) ?? null;
+          const name = isAr ? p.nameAr : p.nameEn;
+          return (
+            <li key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              <Choice
+                label={<span className="visually-hidden">{t(`Select ${name}`, `تحديد ${name}`)}</span>}
+                checked={sel.isSelected(p.id)}
+                disabled={variantId == null}
+                onChange={() => sel.toggleOne(p.id)}
+              />
+              <ProductCard product={toCardData(p)} locale={locale} />
+              <FavouriteAddToCart variantId={variantId} locale={locale} block />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => toggleFavourite(p.id)}
+                loading={pendingId === p.id}
+              >
+                {t('Remove', 'إزالة')}
+              </Button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

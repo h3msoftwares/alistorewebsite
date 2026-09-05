@@ -2,7 +2,7 @@ import argon2 from 'argon2';
 import type { User } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
-import { signAccessToken, issueRefreshToken } from './auth.service';
+import { signAccessToken, issueRefreshToken, DUMMY_HASH } from './auth.service';
 
 // Admin login locks sooner-relative and longer than customer login: 5 wrong
 // tries is a clear "not a typo" signal, and a 30-minute cool-down (vs. the
@@ -16,12 +16,8 @@ import { signAccessToken, issueRefreshToken } from './auth.service';
 const ADMIN_LOCK_THRESHOLD = 5;
 const ADMIN_LOCK_MINUTES = 30;
 
-// A fixed, valid Argon2 hash to verify against when the identifier matches no
-// usable account. Verifying always (real hash or this one) keeps response time
-// for "unknown identifier" close to "wrong password", so timing can't be used
-// to enumerate which admin emails exist.
-const DUMMY_HASH =
-  '$argon2id$v=19$m=65536,t=3,p=4$94YlQu8bWedZruZ1me8oyg$n8cfI3WUrts585489wFM2zRvAfR49HamTnoM6PNPD64';
+// Timing-equaliser hash for "no usable account" is shared with customer login
+// (auth.service.ts DUMMY_HASH) so both doors pay the same Argon2 cost.
 
 export type AdminLoginOutcome = 'success' | 'invalid_credentials' | 'not_admin' | 'locked_out';
 

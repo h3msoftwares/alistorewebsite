@@ -37,7 +37,10 @@ export async function registerHandler(req: Request, res: Response) {
 
 export async function loginHandler(req: Request, res: Response) {
   const { identifier, password } = req.body;
-  const { accessToken, refreshToken, userId } = await authService.login(identifier, password);
+  const { accessToken, refreshToken, userId } = await authService.login(identifier, password, {
+    ip: req.ip ?? 'unknown',
+    userAgent: req.get('user-agent') ?? 'unknown',
+  });
   await absorbGuestCart(req, res, userId);
   res.cookie(REFRESH_COOKIE, refreshToken, cookieOptions);
   res.json({ accessToken });

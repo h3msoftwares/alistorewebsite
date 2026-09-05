@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { createWrapper, makeGuestStore } from '@/test/utils';
 import { selectCartCount } from '@/store/slices/cartSlice';
-import { useCart, useAddToCart, useClearCart } from './use-cart';
+import { useCart, useAddToCart, useAddManyToCart, useClearCart } from './use-cart';
 
 vi.mock('@/lib/api', () => ({
   cartApi: {
@@ -59,6 +59,34 @@ describe('cart mutations', () => {
     expect(mockCart.addCartItem).toHaveBeenCalledWith('v1', 4);
     await waitFor(() => expect(mockCart.getCart).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(selectCartCount(store.getState())).toBe(4));
+  });
+
+  it('useAddManyToCart attempts every line, resolves a per-line result, and re-syncs the badge once', async () => {
+    mockCart.addCartItem
+      .mockResolvedValueOnce({ id: 'a' } as never)
+      .mockRejectedValueOnce(new Error('out of stock'))
+      .mockResolvedValueOnce({ id: 'c' } as never);
+    mockCart.getCart.mockResolvedValueOnce(cartWith() as never).mockResolvedValue(cartWith(1, 1) as never);
+
+    const { Wrapper, store } = createWrapper(makeGuestStore());
+    const { result } = renderHook(() => ({ cart: useCart(), bulk: useAddManyToCart() }), {
+      wrapper: Wrapper,
+    });
+    await waitFor(() => expect(result.current.cart.isSuccess).toBe(true));
+
+    const outcome = await result.current.bulk.mutateAsync([
+      { variantId: 'v1', key: 'p1' },
+      { variantId: 'v2', key: 'p2' },
+      { variantId: 'v3', key: 'p3' },
+    ]);
+
+    expect(mockCart.addCartItem).toHaveBeenCalledTimes(3);
+    expect(outcome.map((r) => [r.key, r.ok])).toEqual([
+      ['p1', true],
+      ['p2', false],
+      ['p3', true],
+    ]);
+    await waitFor(() => expect(selectCartCount(store.getState())).toBe(2));
   });
 
   it('useClearCart calls the DELETE endpoint', async () => {

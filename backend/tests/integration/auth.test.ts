@@ -61,7 +61,7 @@ describe('Auth API', () => {
       expect(res.status).toBe(401);
     });
 
-    it('locks the account after 5 failed attempts (403 thereafter)', async () => {
+    it('locks the account after 5 failed attempts, then rejects even the right password — with the same generic 401 (no lock disclosure)', async () => {
       await register();
       for (let i = 0; i < 5; i++) {
         await request(app)
@@ -71,11 +71,92 @@ describe('Auth API', () => {
       const locked = await request(app)
         .post('/api/auth/login')
         .send({ identifier: creds.email, password: creds.password });
-      expect(locked.status).toBe(403);
+      // Generic 401 "Invalid credentials" — NOT a 403 / "account locked" that
+      // would confirm the account exists.
+      expect(locked.status).toBe(401);
+      expect(locked.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
 
       const user = await prisma.user.findUnique({ where: { email: creds.email } });
       expect(user?.failedLoginAttempts).toBeGreaterThanOrEqual(5);
       expect(user?.lockedUntil).not.toBeNull();
+    });
+
+    it('an unknown identifier and a wrong password return byte-identical responses (no enumeration)', async () => {
+      await register();
+      const unknown = await request(app)
+        .post('/api/auth/login')
+        .send({ identifier: 'nobody@nowhere.dev', password: 'whatever12' });
+      const wrongPw = await request(app)
+        .post('/api/auth/login')
+        .send({ identifier: creds.email, password: 'wrongpass12' });
+
+      expect(unknown.status).toBe(401);
+      expect(wrongPw.status).toBe(401);
+      expect(unknown.body).toEqual(wrongPw.body);
+    });
+
+    it('caps the identifier and password lengths (400, never reaches Argon2)', async () => {
+      const long = 'x'.repeat(1000);
+      const a = await request(app).post('/api/auth/login').send({ identifier: `${long}@x.dev`, password: 'p' });
+      const b = await request(app).post('/api/auth/login').send({ identifier: 'a@x.dev', password: long });
+      expect(a.status).toBe(400);
+      expect(b.status).toBe(400);
+    });
+
+    it('writes an audit-log row for each attempt with its outcome, identifier, ip and user-agent', async () => {
+      await register();
+      await request(app)
+        .post('/api/auth/login')
+        .set('User-Agent', 'jest-suite')
+        .send({ identifier: creds.email, password: 'wrong' });
+      await request(app)
+        .post('/api/auth/login')
+        .set('User-Agent', 'jest-suite')
+        .send({ identifier: creds.email, password: creds.password });
+
+      const rows = await prisma.auditLog.findMany({
+        where: { entityType: 'auth', action: { startsWith: 'customer_login.' } },
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(rows.map((r) => r.action)).toEqual([
+        'customer_login.invalid_credentials',
+        'customer_login.success',
+      ]);
+      const success = rows[1];
+      expect(success.actorID).toBeTruthy(); // set only on success
+      expect(success.metadata).toMatchObject({ identifier: creds.email, userAgent: 'jest-suite' });
+      expect((success.metadata as { ip?: string }).ip).toBeTruthy();
+      // the failure row is not attributed to an actor
+      expect(rows[0].actorID).toBeNull();
+    });
+
+    it('a lock that already stands is recorded distinctly in the audit log', async () => {
+      await register();
+      for (let i = 0; i < 5; i++) {
+        await request(app).post('/api/auth/login').send({ identifier: creds.email, password: 'wrong' });
+      }
+      await request(app).post('/api/auth/login').send({ identifier: creds.email, password: creds.password });
+
+      const actions = (
+        await prisma.auditLog.findMany({
+          where: { entityType: 'auth', action: { startsWith: 'customer_login.' } },
+        })
+      ).map((r) => r.action);
+      expect(actions).toContain('customer_login.locked_out');
+    });
+
+    it('rate-limits rapid attempts from one IP (11th request → 429)', async () => {
+      const rlApp = buildApp({ customerLoginRateLimit: true });
+      await request(rlApp).post('/api/auth/register').send({ name: 'RL', ...creds });
+
+      const statuses: number[] = [];
+      for (let i = 0; i < 11; i++) {
+        statuses.push(
+          (await request(rlApp).post('/api/auth/login').send({ identifier: creds.email, password: 'wrong' })).status
+        );
+      }
+      expect(statuses.slice(0, 10).every((s) => s === 401)).toBe(true);
+      expect(statuses[10]).toBe(429);
     });
 
     it('merges a guest cart into the user on login', async () => {

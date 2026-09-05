@@ -724,6 +724,46 @@ ul, ol {
   font-size: var(--fs-sm);
   color: var(--color-text-muted);
 }
+.search-overlay__results {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.search-overlay__result {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) 0;
+  border-block-end: 1px solid var(--color-border);
+  color: var(--color-text);
+  text-decoration: none;
+}
+.search-overlay__results li:last-child .search-overlay__result { border-block-end: 0; }
+.search-overlay__result:hover .search-overlay__result-name { text-decoration: underline; }
+.search-overlay__result-thumb {
+  position: relative;
+  flex-shrink: 0;
+  width: 48px;
+  height: 60px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+}
+.search-overlay__result-thumb img { object-fit: cover; }
+.search-overlay__result-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.search-overlay__result-name {
+  font-weight: var(--fw-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .drawer__divider {
   border: 0;
@@ -2143,6 +2183,9 @@ ul, ol {
   max-inline-size: 100%;
   block-size: 100%;
   background: var(--color-surface-raised);
+  /* The panel is always a light surface; pin its ink so content doesn't
+     inherit a light text colour from a dark page (e.g. the home hero). */
+  color: var(--color-text);
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;

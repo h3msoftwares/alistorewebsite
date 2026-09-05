@@ -153,11 +153,12 @@ export function useCategoryProducts(id: UUID | undefined, query: ProductListQuer
   });
 }
 
-export function useProducts(query: ProductListQuery = {}) {
+export function useProducts(query: ProductListQuery = {}, opts?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.products.list(query),
     queryFn: () => catalogApi.listProducts(query),
     placeholderData: (prev) => prev, // keep the old page visible while paging
+    enabled: opts?.enabled ?? true,
   });
 }
 

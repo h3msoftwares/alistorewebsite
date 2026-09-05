@@ -15,8 +15,51 @@ interface TokenPair {
 const LOCK_THRESHOLD = 5;
 const LOCK_MINUTES = 15;
 
+// A fixed, valid Argon2 hash to verify against when the identifier matches no
+// usable account. Verifying always (real hash or this one) keeps response time
+// for "unknown identifier" close to "wrong password", so timing can't be used
+// to enumerate which emails/phones have accounts. Shared with the admin-login
+// flow (admin-auth.service.ts) so both doors pay the same cost.
+export const DUMMY_HASH =
+  '$argon2id$v=19$m=65536,t=3,p=4$94YlQu8bWedZruZ1me8oyg$n8cfI3WUrts585489wFM2zRvAfR49HamTnoM6PNPD64';
+
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
+}
+
+export type CustomerLoginOutcome =
+  | 'success'
+  | 'invalid_credentials'
+  | 'locked_out'
+  | 'privileged_denied'; // correct creds, but an ADMIN/STAFF account — must use /admin-login
+
+export interface LoginContext {
+  ip: string;
+  userAgent: string;
+}
+
+/** Append-only audit row for every terminal login path. Mirrors admin-login's
+ *  `recordAttempt` (action prefix `customer_login.` vs `admin_login.`). A
+ *  write failure must never change or reveal the login result — swallowed. */
+async function recordLoginAttempt(
+  outcome: CustomerLoginOutcome,
+  identifier: string,
+  ctx: LoginContext,
+  matchedUserId: string | null
+): Promise<void> {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        entityType: 'auth',
+        entityID: matchedUserId,
+        action: `customer_login.${outcome}`,
+        actorID: outcome === 'success' ? matchedUserId : null,
+        metadata: { identifier, ip: ctx.ip, userAgent: ctx.userAgent, outcome },
+      },
+    });
+  } catch (err) {
+    console.error('[login] audit-log write failed', err);
+  }
 }
 
 const PRIVILEGED_ROLES: AuthedUser['role'][] = ['ADMIN', 'STAFF'];
@@ -82,35 +125,73 @@ export async function register(input: { name: string; email?: string; phone?: st
   return { accessToken, refreshToken, user };
 }
 
+/**
+ * Verify customer credentials. Hardened the same way as admin-login:
+ *   - an Argon2 verify runs on every call (real hash or DUMMY_HASH) so an
+ *     unknown identifier can't be told from a wrong password by timing;
+ *   - every failure — unknown identifier, wrong password, locked-out, or a
+ *     privileged account — throws the same generic `UNAUTHORIZED / "Invalid
+ *     credentials"` (the old `FORBIDDEN / "Account temporarily locked"` leaked
+ *     that the account exists);
+ *   - ADMIN/STAFF accounts are refused outright: privileged credentials have
+ *     exactly one door (POST /api/auth/admin-login — audited, tighter rate
+ *     limit, role gate). Refusing here also means this looser public endpoint
+ *     can't be used to drive a privileged account's shared `failedLoginAttempts`
+ *     up and lock it out of the admin panel;
+ *   - the per-account lockout (5 tries / 15 min) is unchanged for customers;
+ *   - every attempt is written to the audit log with its specific outcome.
+ * The guest-cart merge still happens in the controller after a success.
+ */
 export async function login(
   identifier: string,
-  password: string
+  password: string,
+  ctx: LoginContext
 ): Promise<TokenPair & { userId: string }> {
   const user = await prisma.user.findFirst({
     where: { OR: [{ email: identifier }, { phone: identifier }], deletedAt: null },
   });
-  if (!user || !user.isActive || !user.passwordHash) {
+
+  const loginable = Boolean(user?.isActive && user?.passwordHash);
+  const passwordValid = await argon2
+    .verify(loginable ? user!.passwordHash! : DUMMY_HASH, password)
+    .catch(() => false);
+
+  const now = new Date();
+
+  // 1. A privileged account has no business at the customer door — refuse
+  //    without touching its lock counters, whether or not the password was
+  //    right (the Argon2 verify above already equalised timing). Same generic
+  //    rejection, so this can't be used as an "is X an admin?" oracle.
+  if (user && PRIVILEGED_ROLES.includes(user.role)) {
+    await recordLoginAttempt('privileged_denied', identifier, ctx, user.id);
     throw new AppError('UNAUTHORIZED', 'Invalid credentials');
   }
 
-  if (user.lockedUntil && user.lockedUntil > new Date()) {
-    throw new AppError('FORBIDDEN', 'Account temporarily locked due to failed login attempts');
-  }
-
-  const valid = await argon2.verify(user.passwordHash, password);
-  if (!valid) {
-    const attempts = user.failedLoginAttempts + 1;
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        failedLoginAttempts: attempts,
-        lockedUntil:
-          attempts >= LOCK_THRESHOLD ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null,
-      },
-    });
+  // 2. A lock already stands — reject without advancing the counter.
+  if (user?.lockedUntil && user.lockedUntil > now) {
+    await recordLoginAttempt('locked_out', identifier, ctx, user.id);
     throw new AppError('UNAUTHORIZED', 'Invalid credentials');
   }
 
+  // 3. No usable account, or wrong password. Advance the failure counter (and
+  //    lock at the threshold) only for a real, active account.
+  if (!user || !loginable || !passwordValid) {
+    if (user && loginable) {
+      const attempts = user.failedLoginAttempts + 1;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: attempts,
+          lockedUntil:
+            attempts >= LOCK_THRESHOLD ? new Date(now.getTime() + LOCK_MINUTES * 60_000) : null,
+        },
+      });
+    }
+    await recordLoginAttempt('invalid_credentials', identifier, ctx, user?.id ?? null);
+    throw new AppError('UNAUTHORIZED', 'Invalid credentials');
+  }
+
+  // 4. Success — clear any stale counter, issue the token pair.
   if (user.failedLoginAttempts > 0 || user.lockedUntil) {
     await prisma.user.update({
       where: { id: user.id },
@@ -120,6 +201,7 @@ export async function login(
 
   const accessToken = signAccessToken({ id: user.id, role: user.role });
   const { token: refreshToken } = await issueRefreshToken(user.id);
+  await recordLoginAttempt('success', identifier, ctx, user.id);
   return { accessToken, refreshToken, userId: user.id };
 }
 
