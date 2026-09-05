@@ -75,6 +75,61 @@ describe('Products API', () => {
     });
   });
 
+  // Backs the header type-ahead (frontend SearchOverlay -> useProducts({ search, pageSize })).
+  describe('GET /api/products — catalogue search', () => {
+    const names = (res: { body: { items: { nameEn: string }[] } }) =>
+      res.body.items.map((p) => p.nameEn).sort();
+
+    beforeEach(async () => {
+      await makeProduct(collectionId, categoryId, {
+        over: { nameEn: 'Satin Nightgown', nameAr: 'قميص نوم ساتان' },
+      });
+      await makeProduct(collectionId, categoryId, {
+        over: { nameEn: 'Satin Robe', nameAr: 'روب ساتان' },
+      });
+      await makeProduct(collectionId, categoryId, {
+        over: { nameEn: 'Cotton Boxer 3-Pack', nameAr: 'بوكسر قطن' },
+      });
+    });
+
+    it('matches a case-insensitive substring of the English name', async () => {
+      const res = await request(app).get('/api/products?search=NIGHT');
+      expect(names(res)).toEqual(['Satin Nightgown']);
+    });
+
+    it('matches on the Arabic name too', async () => {
+      const res = await request(app).get(`/api/products?search=${encodeURIComponent('روب')}`);
+      expect(names(res)).toEqual(['Satin Robe']);
+    });
+
+    it('returns every match, with total reflecting the full count even when a page is smaller', async () => {
+      const res = await request(app).get('/api/products?search=satin&pageSize=1');
+      expect(res.body.total).toBe(2);
+      expect(res.body.items).toHaveLength(1);
+    });
+
+    it('returns an empty envelope (not an error) when nothing matches', async () => {
+      const res = await request(app).get('/api/products?search=nothinghere');
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ items: [], total: 0 });
+    });
+
+    it('never surfaces a soft-deleted product in results', async () => {
+      const gone = await makeProduct(collectionId, categoryId, { over: { nameEn: 'Satin Wrap' } });
+      await prisma.product.update({
+        where: { id: gone.id },
+        data: { isActive: false, deletedAt: new Date() },
+      });
+      const res = await request(app).get('/api/products?search=satin');
+      expect(names(res)).toEqual(['Satin Nightgown', 'Satin Robe']);
+    });
+
+    it('treats an empty search= as no filter', async () => {
+      const res = await request(app).get('/api/products?search=');
+      expect(res.body.total).toBe(3);
+    });
+  });
+
   describe('GET /api/products/:id', () => {
     it('returns a product with variants/images/category/collection', async () => {
       const p = await makeProduct(collectionId, categoryId);
