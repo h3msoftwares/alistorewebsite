@@ -308,6 +308,52 @@ export interface ProductListResult {
   pageSize: number;
 }
 
+// ---- Site settings ----
+
+export interface AnnouncementLine {
+  id: UUID;
+  textEn: string;
+  textAr: string;
+  sortOrder: number;
+}
+
+/** Owner-editable storefront chrome (`GET /api/settings`). */
+export interface SiteSettings {
+  id: number;
+  brandNameEn: string;
+  brandNameAr: string;
+  announcementActive: boolean;
+  heroEyebrowEn: string;
+  heroEyebrowAr: string;
+  heroHeadlineEn: string;
+  heroHeadlineAr: string;
+  heroLedeEn: string;
+  heroLedeAr: string;
+  heroCtaLabelEn: string;
+  heroCtaLabelAr: string;
+  heroCtaCollectionID: UUID | null;
+  homeMoreHeadingEn: string;
+  homeMoreHeadingAr: string;
+  instagramUrl: string | null;
+  facebookUrl: string | null;
+  tiktokUrl: string | null;
+  whatsappUrl: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  announcementLines: AnnouncementLine[];
+  /** Resolved collection for the hero CTA, when one is set. */
+  heroCtaCollection: Pick<Collection, 'id' | 'slug' | 'nameEn' | 'nameAr'> | null;
+}
+
+/** Partial patch — every field optional; `''` clears a nullable field;
+ *  `announcementLines` replaces the whole list. */
+export type SiteSettingsBody = Partial<
+  Omit<SiteSettings, 'id' | 'announcementLines' | 'heroCtaCollection' | 'heroCtaCollectionID'>
+> & {
+  heroCtaCollectionId?: UUID | '' | null;
+  announcementLines?: { textEn: string; textAr: string }[];
+};
+
 // ---- Request payloads (write endpoints) ----
 
 export interface RegisterBody {

@@ -583,6 +583,20 @@ async function main() {
     await prisma.productImage.createMany({ data: images });
   }
 
+  // Site settings singleton (id 1) + the default announcement lines. Idempotent:
+  // upsert the row, and only seed the lines when there are none yet so a run
+  // doesn't stomp on owner edits.
+  await prisma.siteSetting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  if ((await prisma.announcementLine.count({ where: { settingID: 1 } })) === 0) {
+    await prisma.announcementLine.createMany({
+      data: [
+        { settingID: 1, sortOrder: 0, textEn: 'Free delivery inside the city on orders over $30', textAr: 'توصيل مجاني داخل المدينة للطلبات فوق 30$' },
+        { settingID: 1, sortOrder: 1, textEn: 'Cash on delivery — pay when it arrives', textAr: 'الدفع عند الاستلام — ادفع عند وصول الطلب' },
+        { settingID: 1, sortOrder: 2, textEn: 'New season styles just landed', textAr: 'تشكيلة الموسم الجديد وصلت الآن' },
+      ],
+    });
+  }
+
   console.log(`[seed] done — ${productDefs.length} products across ${categoryDefs.length} categories.`);
 }
 

@@ -5,21 +5,40 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui';
 import { useNavCollections } from '@/hooks/use-catalog';
+import { useSettings } from '@/hooks/use-settings';
+import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 
 /** Shared footer rendered by the root [locale] layout. Multi-column layout
  *  (Saxon footer anatomy). The newsletter field is presentational only —
- *  no submit wiring here. */
+ *  no submit wiring here. Brand name + social/contact links come from the
+ *  admin's site settings; a blank link is simply omitted. */
 export function SiteFooter({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { data: navCollections, isPending: navPending } = useNavCollections();
+  const { data: settings } = useSettings();
+
+  const brandName = settings
+    ? isAr
+      ? settings.brandNameAr
+      : settings.brandNameEn
+    : isAr
+      ? DEFAULT_BRAND_NAME_AR
+      : DEFAULT_BRAND_NAME_EN;
+
+  const socials = [
+    { label: 'Instagram', href: settings?.instagramUrl },
+    { label: 'Facebook', href: settings?.facebookUrl },
+    { label: 'TikTok', href: settings?.tiktokUrl },
+    { label: 'WhatsApp', href: settings?.whatsappUrl },
+  ].filter((s): s is { label: string; href: string } => Boolean(s.href));
 
   return (
     <footer className="site-footer">
       <div className="container">
         <div className="site-footer__grid">
           <div>
-            <div className="site-footer__brand-name">Ali&apos;s Store</div>
+            <div className="site-footer__brand-name">{brandName}</div>
             <p>{t('Cash on delivery, handled by our team.', 'التوصيل نقدًا عند الاستلام، يتولاه فريقنا.')}</p>
             <form className="newsletter" onSubmit={(e) => e.preventDefault()}>
               <Input
@@ -32,17 +51,15 @@ export function SiteFooter({ locale }: { locale: string }) {
                 {t('Join', 'اشترك')}
               </Button>
             </form>
-            <div className="site-footer__social">
-              <a className="site-footer__link" href="#">
-                Instagram
-              </a>
-              <a className="site-footer__link" href="#">
-                Facebook
-              </a>
-              <a className="site-footer__link" href="#">
-                TikTok
-              </a>
-            </div>
+            {socials.length > 0 && (
+              <div className="site-footer__social">
+                {socials.map((s) => (
+                  <a key={s.label} className="site-footer__link" href={s.href} target="_blank" rel="noreferrer noopener">
+                    {s.label}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
@@ -66,9 +83,16 @@ export function SiteFooter({ locale }: { locale: string }) {
             <Link className="site-footer__link" href={`/${locale}/account`}>
               {t('My account', 'حسابي')}
             </Link>
-            <a className="site-footer__link" href="#">
-              {t('Contact us', 'اتصل بنا')}
-            </a>
+            {settings?.contactEmail && (
+              <a className="site-footer__link" href={`mailto:${settings.contactEmail}`}>
+                {settings.contactEmail}
+              </a>
+            )}
+            {settings?.contactPhone && (
+              <a className="site-footer__link" href={`tel:${settings.contactPhone.replace(/\s+/g, '')}`}>
+                {settings.contactPhone}
+              </a>
+            )}
           </div>
 
           <div>
@@ -86,7 +110,9 @@ export function SiteFooter({ locale }: { locale: string }) {
         </div>
 
         <div className="site-footer__bottom">
-          <span>© {new Date().getFullYear()} Ali&apos;s Store</span>
+          <span>
+            © {new Date().getFullYear()} {brandName}
+          </span>
           <span>{t('Prices in USD', 'الأسعار بالدولار الأمريكي')}</span>
         </div>
       </div>

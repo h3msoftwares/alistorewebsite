@@ -9,6 +9,7 @@ const SECTIONS = [
   { href: '/categories', labelEn: 'Categories', labelAr: 'الفئات' },
   { href: '/products', labelEn: 'Products', labelAr: 'المنتجات' },
   { href: '/orders', labelEn: 'Orders', labelAr: 'الطلبات' },
+  { href: '/settings', labelEn: 'Settings', labelAr: 'الإعدادات' },
 ];
 
 /** Top nav strip for the whole /admin subtree — every section page renders

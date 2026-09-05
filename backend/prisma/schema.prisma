@@ -217,9 +217,10 @@ model Collection {
   dateCreated   DateTime @default(now())
   lastEdit      DateTime @default(now()) @updatedAt
 
-  images     CollectionImage[]
-  categories Category[]
-  products   Product[]
+  images      CollectionImage[]
+  categories  Category[]
+  products    Product[]
+  siteHeroFor SiteSetting[]
 
   @@index([isActive])
   @@index([archivedAt])
@@ -511,4 +512,57 @@ model OrderItem {
 
   @@index([orderID])
   @@map("orderitem")
+}
+
+// ============ SITE SETTINGS ============
+
+// Single owner-editable row (id is always 1) that drives the storefront
+// chrome the admin couldn't otherwise change without a deploy: the brand
+// name, the announcement strip, the home hero copy, and the footer's
+// social / contact links.
+model SiteSetting {
+  id                  Int      @id @default(1)
+  brandNameEn         String   @default("Ali's Store")
+  brandNameAr         String   @default("متجر علي")
+  announcementActive  Boolean  @default(true)
+  heroEyebrowEn       String   @default("Limited stock")
+  heroEyebrowAr       String   @default("كمية محدودة")
+  heroHeadlineEn      String   @default("Buy it before someone else does.")
+  heroHeadlineAr      String   @default("خدها قبل ما حدا غيرك ياخدها.")
+  heroLedeEn          String   @default("Women, men and kids — clothing you actually wear, paid for on delivery.")
+  heroLedeAr          String   @default("نساء ورجال وأطفال — ملابس ترتديها فعلاً، وتدفع عند الاستلام.")
+  heroCtaLabelEn      String   @default("Discover")
+  heroCtaLabelAr      String   @default("اكتشف الآن")
+  // Which collection the hero's Discover button points at. null ⇒ the
+  // storefront falls back to the first nav collection.
+  heroCtaCollectionID String?  @db.Uuid
+  homeMoreHeadingEn   String   @default("More to explore")
+  homeMoreHeadingAr   String   @default("المزيد لاكتشافه")
+  // Footer links — null / "" ⇒ the link is hidden.
+  instagramUrl        String?
+  facebookUrl         String?
+  tiktokUrl           String?
+  whatsappUrl         String?
+  contactEmail        String?
+  contactPhone        String?
+  lastEdit            DateTime @updatedAt
+
+  heroCtaCollection Collection?        @relation(fields: [heroCtaCollectionID], references: [id], onDelete: SetNull)
+  announcementLines AnnouncementLine[]
+
+  @@map("sitesetting")
+}
+
+// One rotating line of the announcement strip. Replace-all on update.
+model AnnouncementLine {
+  id        String @id @default(uuid()) @db.Uuid
+  settingID Int
+  textEn    String
+  textAr    String
+  sortOrder Int    @default(0)
+
+  setting SiteSetting @relation(fields: [settingID], references: [id], onDelete: Cascade)
+
+  @@index([settingID])
+  @@map("announcementline")
 }

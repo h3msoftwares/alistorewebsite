@@ -1,6 +1,7 @@
 'use client';
 
 import { useFeaturedCategories, useFeaturedCollections, useOtherCollections } from '@/hooks/use-catalog';
+import { useSettings } from '@/hooks/use-settings';
 import { CollectionRow } from './collection-row';
 import { CategoryRow } from './category-row';
 import type { Category, Collection } from '@/lib/types';
@@ -39,6 +40,14 @@ export function HomeMiddle({ locale }: { locale: string }) {
   const featuredCollections = useFeaturedCollections();
   const featuredCategories = useFeaturedCategories();
   const otherCollections = useOtherCollections();
+  const { data: settings } = useSettings();
+  const moreHeading = settings
+    ? isAr
+      ? settings.homeMoreHeadingAr
+      : settings.homeMoreHeadingEn
+    : isAr
+      ? 'المزيد لاكتشافه'
+      : 'More to explore';
 
   const zone1Pending = featuredCollections.isPending || featuredCategories.isPending;
 
@@ -77,9 +86,7 @@ export function HomeMiddle({ locale }: { locale: string }) {
 
       {(otherPending || others.length > 0) && (
         <div className="home-zone home-zone--more">
-          <p className="home-zone__eyebrow container">
-            {isAr ? 'المزيد لاكتشافه' : 'More to explore'}
-          </p>
+          <p className="home-zone__eyebrow container">{moreHeading}</p>
           {otherPending
             ? Array.from({ length: 2 }).map((_, i) => <RowSkeleton key={i} />)
             : others.map((collection) => (

@@ -1,37 +1,63 @@
+'use client';
+
 import Link from 'next/link';
 import Image from 'next/image';
+import { useSettings } from '@/hooks/use-settings';
+import { useNavCollections } from '@/hooks/use-catalog';
 
 /**
  * Home hero: a full-bleed near-black band (== --color-secondary) filling the
  * first screenful, with the brand illustration centred in the middle and the
  * editorial copy split to either side — eyebrow + headline at the inline-start,
  * lede + Discover CTA at the inline-end. Light text on the dark field; a
- * deliberate dark band, not a dark-mode toggle. The illustration's own black
- * backdrop blends into the band so it reads as one piece.
+ * deliberate dark band, not a dark-mode toggle. The illustration is a
+ * transparent PNG so it sits directly on the band with no visible frame.
  *
- * The image is referenced by path (not a static import) so the build doesn't
- * depend on the asset being present: drop the artwork at
- * `frontend/public/home-hero-bg.png` and set width/height below to its real
- * pixel size.
- * TODO: move the copy + image to an admin-editable "home settings" source.
+ * Copy + the CTA target come from the admin's site settings
+ * (`GET /api/settings`), falling back to the shipped defaults while that
+ * loads. The image lives at `frontend/public/home-hero-bg.png` (referenced by
+ * path, not a static import, so a missing asset doesn't break the build).
  */
 export function Hero({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const { data: settings } = useSettings();
+  const { data: navCollections } = useNavCollections();
+
+  const eyebrow = settings
+    ? isAr
+      ? settings.heroEyebrowAr
+      : settings.heroEyebrowEn
+    : t('Limited stock', 'كمية محدودة');
+  const headline = settings
+    ? isAr
+      ? settings.heroHeadlineAr
+      : settings.heroHeadlineEn
+    : t('Buy it before someone else does.', 'خدها قبل ما حدا غيرك ياخدها.');
+  const lede = settings
+    ? isAr
+      ? settings.heroLedeAr
+      : settings.heroLedeEn
+    : t(
+        'Women, men and kids — clothing you actually wear, paid for on delivery.',
+        'نساء ورجال وأطفال — ملابس ترتديها فعلاً، وتدفع عند الاستلام.'
+      );
+  const ctaLabel = settings
+    ? isAr
+      ? settings.heroCtaLabelAr
+      : settings.heroCtaLabelEn
+    : t('Discover', 'اكتشف الآن');
+
+  // Admin-set CTA collection, else the first nav collection, else the seeded /women.
+  const ctaSlug = settings?.heroCtaCollection?.slug ?? navCollections?.[0]?.slug ?? 'women';
 
   return (
     <section className="hero" data-home-hero aria-labelledby="hero-title">
       <div className="hero__inner">
         <div className="hero__lead">
-          <p className="eyebrow hero__eyebrow">{t('Limited stock', 'كمية محدودة')}</p>
+          <p className="eyebrow hero__eyebrow">{eyebrow}</p>
           <h1 id="hero-title" className="hero__title">
-            {isAr ? (
-              'خدها قبل ما حدا غيرك ياخدها.'
-            ) : (
-              <>
-                Buy it before <em>someone</em> else does.
-              </>
-            )}
+            {headline}
           </h1>
         </div>
 
@@ -40,25 +66,17 @@ export function Hero({ locale }: { locale: string }) {
             src="/home-hero-bg.png"
             alt={t("Ali — Ali's Store", 'علي — متجر علي')}
             className="hero__img"
-            width={1280}
-            height={720}
+            width={549}
+            height={722}
             preload
-            sizes="(max-width: 900px) 92vw, 46vw"
+            sizes="(max-width: 900px) 80vw, 34vw"
           />
         </div>
 
         <div className="hero__aside">
-          <p className="hero__lede">
-            {t(
-              'Women, men and kids — clothing you actually wear, paid for on delivery.',
-              'نساء ورجال وأطفال — ملابس ترتديها فعلاً، وتدفع عند الاستلام.'
-            )}
-          </p>
-          {/* TODO: point at the first nav collection (or an admin-set "featured"
-              collection) once home settings are editable. `women` is seeded + in
-              the nav, and resolves through the dynamic /[collection] route. */}
-          <Link href={`/${locale}/women`} className="btn btn--primary btn--lg hero__cta">
-            {t('Discover', 'اكتشف الآن')}
+          <p className="hero__lede">{lede}</p>
+          <Link href={`/${locale}/${ctaSlug}`} className="btn btn--primary btn--lg hero__cta">
+            {ctaLabel}
           </Link>
         </div>
       </div>

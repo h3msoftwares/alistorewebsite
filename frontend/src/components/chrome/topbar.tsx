@@ -12,6 +12,8 @@ import { selectCartCount } from '@/store/slices/cartSlice';
 import { selectFavouritesCount } from '@/store/slices/favouritesSlice';
 import { useAuth } from '@/hooks/use-auth';
 import { useNavCollections } from '@/hooks/use-catalog';
+import { useSettings } from '@/hooks/use-settings';
+import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 import { SearchOverlay } from './search-overlay';
 import { CartDrawer } from './cart-drawer';
 
@@ -34,6 +36,14 @@ export function Topbar({ locale }: { locale: string }) {
   const { isAuthenticated } = useAuth();
 
   const { data: navCollections, isPending: navPending } = useNavCollections();
+  const { data: settings } = useSettings();
+  const brandName = settings
+    ? isAr
+      ? settings.brandNameAr
+      : settings.brandNameEn
+    : isAr
+      ? DEFAULT_BRAND_NAME_AR
+      : DEFAULT_BRAND_NAME_EN;
   const pathname = usePathname();
   const activeSlug = pathname?.split('/')[2];
 
@@ -76,7 +86,7 @@ export function Topbar({ locale }: { locale: string }) {
         </button>
 
         <Link href={`/${locale}`} className="site-header__logo topbar__logo">
-          Ali&apos;s Store
+          {brandName}
         </Link>
 
         <nav className="collection-switcher topbar__nav" aria-label={t('Collections', 'الأقسام')}>

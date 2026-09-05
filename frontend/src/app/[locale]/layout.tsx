@@ -6,7 +6,8 @@ import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
 import { makeQueryClient } from '@/lib/query-client';
 import { queryKeys } from '@/lib/query-keys';
-import { catalogApi } from '@/lib/api';
+import { catalogApi, settingsApi } from '@/lib/api';
+import { DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 import '@/styles/globals.css';
 
 // app/[locale]/layout.tsx doubles as the ROOT layout (it renders <html>) —
@@ -24,10 +25,24 @@ import '@/styles/globals.css';
 const dosis = Dosis({ subsets: ['latin'], variable: '--font-dosis', display: 'swap' });
 const cairo = Cairo({ subsets: ['arabic', 'latin'], variable: '--font-cairo', display: 'swap' });
 
-export const metadata: Metadata = {
-  title: "Ali's Store",
-  description: 'Ali’s Store — Women, Men & Kids clothing, cash on delivery.',
-};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  let brand = DEFAULT_BRAND_NAME_EN;
+  try {
+    const settings = await settingsApi.getSettings();
+    brand = locale === 'ar' ? settings.brandNameAr : settings.brandNameEn;
+  } catch {
+    // Backend unreachable at build/render time — the default is fine.
+  }
+  return {
+    title: brand,
+    description: `${brand} — Women, Men & Kids clothing, cash on delivery.`,
+  };
+}
 
 const LOCALES = ['en', 'ar'] as const;
 
@@ -59,10 +74,16 @@ export default async function LocaleLayout({
   // throws, and only successful queries dehydrate — a build with no backend
   // just falls back to client fetching.
   const queryClient = makeQueryClient();
-  await queryClient.prefetchQuery({
-    queryKey: queryKeys.collections.list(false),
-    queryFn: () => catalogApi.listCollections({ includeInactive: false }),
-  });
+  await Promise.all([
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.collections.list(false),
+      queryFn: () => catalogApi.listCollections({ includeInactive: false }),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: ['settings'],
+      queryFn: () => settingsApi.getSettings(),
+    }),
+  ]);
 
   return (
     <html lang={locale} dir={dir} className={`${dosis.variable} ${cairo.variable}`}>
