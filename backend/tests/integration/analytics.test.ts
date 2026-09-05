@@ -149,6 +149,21 @@ describe('GET /api/admin/analytics/overview', () => {
     });
     expect(body.kpis.averageOrderValue).toBeCloseTo(160 / 3);
     expect(Array.isArray(body.revenueSeries)).toBe(true);
+    // No GA4 service account configured in tests.
+    expect(body.funnel).toEqual({ configured: false });
+  });
+});
+
+describe('GET /api/admin/analytics/visitors + /funnel (GA4 not configured)', () => {
+  it('degrades to { configured: false } instead of erroring', async () => {
+    const visitors = await request(app)
+      .get('/api/admin/analytics/visitors')
+      .set(bearer(adminToken));
+    expect(visitors.status).toBe(200);
+    expect(visitors.body).toEqual({ configured: false });
+
+    const funnel = await request(app).get('/api/admin/analytics/funnel').set(bearer(adminToken));
+    expect(funnel.body).toEqual({ configured: false });
   });
 });
 
@@ -210,7 +225,8 @@ describe('GET /api/admin/analytics/products', () => {
       .set(bearer(adminToken));
 
     expect(body.products.map((p: { sku: string }) => p.sku)).toEqual(['BETA', 'ALPHA']);
-    expect(body.products[0]).toMatchObject({ sku: 'BETA', revenue: 100, units: 2 });
+    expect(body.products[0]).toMatchObject({ sku: 'BETA', revenue: 100, units: 2, views: null });
     expect(body.products[1]).toMatchObject({ sku: 'ALPHA', revenue: 60, units: 3 });
+    expect(body.ga).toEqual({ configured: false });
   });
 });

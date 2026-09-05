@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
+import * as ga from './ga.service';
 import type { AnalyticsRangeQuery } from './analytics.schema';
 
 /**
@@ -48,7 +49,7 @@ export async function overview(q: AnalyticsRangeQuery) {
     status: { not: 'CANCELLED' as const },
   };
 
-  const [agg, unitsAgg, newCustomers, lowStock, series, returning, delivered] =
+  const [agg, unitsAgg, newCustomers, lowStock, series, returning, delivered, funnel] =
     await Promise.all([
       prisma.order.aggregate({ where: orderWhere, _sum: { total: true }, _count: true }),
       prisma.orderItem.aggregate({
@@ -70,6 +71,7 @@ export async function overview(q: AnalyticsRangeQuery) {
         where: { dateCreated: { gte: from, lte: to }, status: 'DELIVERED' },
         _sum: { total: true },
       }),
+      ga.funnel({ from, to }),
     ]);
 
   const orders = agg._count;
@@ -90,7 +92,8 @@ export async function overview(q: AnalyticsRangeQuery) {
       lowStockVariants: lowStock,
     },
     revenueSeries: series,
-    note: 'Gross = net (no discount / shipping / tax / refund). Excludes CANCELLED orders.',
+    funnel,
+    note: 'Gross = net (no discount / shipping / tax / refund). Excludes CANCELLED orders. `funnel` is GA4-sourced.',
   };
 }
 
@@ -323,26 +326,57 @@ export async function inventory(q: AnalyticsRangeQuery) {
 export async function products(q: AnalyticsRangeQuery) {
   const { from, to } = resolveRange(q);
 
-  const rows = await prisma.$queryRaw<
-    { name: string; sku: string; units: number; revenue: number; orders: number; buyers: number }[]
-  >(Prisma.sql`
-    SELECT oi."productName" AS name, oi."productSKU" AS sku,
-      SUM(oi."quantity")::int          AS units,
-      SUM(oi."lineTotal")::float8      AS revenue,
-      COUNT(DISTINCT oi."orderID")::int AS orders,
-      COUNT(DISTINCT o."userID")::int   AS buyers
-    FROM "orderitem" oi JOIN "order" o ON o."id" = oi."orderID"
-    WHERE o."dateCreated" BETWEEN ${from} AND ${to} AND o."status" <> ${CANCELLED}
-    GROUP BY 1, 2
-    ORDER BY revenue DESC
-    LIMIT 100
-  `);
+  const [rows, views] = await Promise.all([
+    prisma.$queryRaw<
+      { name: string; sku: string; units: number; revenue: number; orders: number; buyers: number }[]
+    >(Prisma.sql`
+      SELECT oi."productName" AS name, oi."productSKU" AS sku,
+        SUM(oi."quantity")::int          AS units,
+        SUM(oi."lineTotal")::float8      AS revenue,
+        COUNT(DISTINCT oi."orderID")::int AS orders,
+        COUNT(DISTINCT o."userID")::int   AS buyers
+      FROM "orderitem" oi JOIN "order" o ON o."id" = oi."orderID"
+      WHERE o."dateCreated" BETWEEN ${from} AND ${to} AND o."status" <> ${CANCELLED}
+      GROUP BY 1, 2
+      ORDER BY revenue DESC
+      LIMIT 100
+    `),
+    ga.productViews({ from, to }),
+  ]);
+
+  // GA4 events set `item_id` to the product SKU (see frontend lib/analytics/ga.ts),
+  // so the two sides join on SKU.
+  const viewsBySku = new Map<string, number>();
+  if (views.configured) {
+    for (const r of views.rows) viewsBySku.set(String(r.itemId), Number(r.itemsViewed));
+  }
+
+  const merged = rows.map((r) => {
+    const gaViews = viewsBySku.get(r.sku) ?? null;
+    return {
+      ...r,
+      views: gaViews,
+      viewToPurchaseRate: gaViews ? r.units / gaViews : null,
+      viewToCartRate: null as number | null, // needs per-SKU add_to_cart — see /products GA rows
+    };
+  });
 
   return {
     range: { from, to },
-    products: rows,
-    note: 'Purchase side only. GA4 view / add-to-cart counts are merged in on the client to derive view→cart and view→purchase rates.',
+    products: merged,
+    ga: views.configured ? { configured: true as const, rows: views.rows } : { configured: false as const },
+    note: 'Purchase side is first-party; `views` / rates come from GA4 (null when GA4 is not configured).',
   };
+}
+
+// GA4-sourced passthroughs — range resolved here, report + cache in ga.service.
+
+export function visitors(q: AnalyticsRangeQuery) {
+  return ga.visitors(resolveRange(q));
+}
+
+export function funnelReport(q: AnalyticsRangeQuery) {
+  return ga.funnel(resolveRange(q));
 }
 
 // ------------------------------------------------------------------ helpers --

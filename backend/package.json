@@ -16,6 +16,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@google-analytics/data": "^6.1.0",
     "@prisma/client": "^6.19.3",
     "argon2": "^0.44.0",
     "cookie-parser": "^1.4.7",
@@ -27,13 +28,13 @@
     "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.4.1",
     "@types/supertest": "^7.2.1",
-    "@eslint/js": "^10.0.1",
     "eslint": "^10.9.1",
     "prisma": "^6.19.3",
     "supertest": "^7.2.2",

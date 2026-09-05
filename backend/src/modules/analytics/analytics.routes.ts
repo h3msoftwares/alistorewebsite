@@ -8,6 +8,8 @@ import {
   customersHandler,
   inventoryHandler,
   productsHandler,
+  visitorsHandler,
+  funnelHandler,
 } from './analytics.controller';
 
 // Mounted at /api/admin/analytics — the parent admin router already applies
@@ -21,5 +23,7 @@ router.get('/sales', asyncHandler(salesHandler));
 router.get('/customers', asyncHandler(customersHandler));
 router.get('/inventory', asyncHandler(inventoryHandler));
 router.get('/products', asyncHandler(productsHandler));
+router.get('/visitors', asyncHandler(visitorsHandler));
+router.get('/funnel', asyncHandler(funnelHandler));
 
 export default router;

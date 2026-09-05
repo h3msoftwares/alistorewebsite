@@ -23,3 +23,11 @@ export async function inventoryHandler(req: Request, res: Response) {
 export async function productsHandler(req: Request, res: Response) {
   res.json(await analytics.products(query(req)));
 }
+
+export async function visitorsHandler(req: Request, res: Response) {
+  res.json(await analytics.visitors(query(req)));
+}
+
+export async function funnelHandler(req: Request, res: Response) {
+  res.json(await analytics.funnelReport(query(req)));
+}

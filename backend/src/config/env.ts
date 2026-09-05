@@ -53,6 +53,16 @@ const envSchema = z.object({
   // reasoning as SMTP_HOST: the server still boots, the upload-auth endpoint
   // just 503s with a clear "not configured" message instead.
   IMAGEKIT_PRIVATE_KEY: z.string().default(''),
+
+  // Google Analytics 4 Data API — feeds the traffic / visitor / funnel widgets
+  // of the admin analytics dashboards. Same "boots without it" pattern: when
+  // any of the three is empty the GA4-backed endpoints return
+  // `{ configured: false }` and the dashboards show a connect-GA4 empty state.
+  // GA4_SA_PRIVATE_KEY is a service-account key; keep the literal "\n"s — the
+  // client unescapes them (see modules/analytics/ga.service.ts).
+  GA4_PROPERTY_ID: z.string().default(''),
+  GA4_SA_CLIENT_EMAIL: z.string().default(''),
+  GA4_SA_PRIVATE_KEY: z.string().default(''),
 });
 
 export const env = envSchema.parse(process.env);
