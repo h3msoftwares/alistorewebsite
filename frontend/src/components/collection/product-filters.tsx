@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { SlidersHorizontal } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import {
   selectUiFilters,
@@ -10,7 +12,7 @@ import {
   toggleSize,
   resetFilters,
 } from '@/store/slices/uiFiltersSlice';
-import { Input, SizeChip, Select } from '@/components/ui';
+import { Button, Drawer, Icon, Input, SizeChip, Select } from '@/components/ui';
 import type { Category, ProductSort } from '@/lib/types';
 
 /**
@@ -20,6 +22,13 @@ import type { Category, ProductSort } from '@/lib/types';
  * already scoped to one category and omits it. `sizes` / `colors` are the
  * available facet values for the current scope (see `useCollectionFacets` /
  * `useCategoryFacets`) — independent of which filters are currently applied.
+ *
+ * Below the `product-grid`'s own mobile breakpoint (599px) the panel
+ * doesn't fit inline next to the breadcrumb any more, so it becomes a
+ * "Filters" button that opens the same controls in a slide-in `<Drawer>`
+ * instead — the filter content itself (and the Redux state it reads/writes)
+ * is identical either way, just two CSS-toggled containers around one JSX
+ * fragment so the inline and drawer copies can never drift apart.
  */
 export function ProductFilters({
   locale,
@@ -33,8 +42,10 @@ export function ProductFilters({
   categories?: Category[];
 }) {
   const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
   const dispatch = useAppDispatch();
   const filters = useAppSelector(selectUiFilters);
+  const [open, setOpen] = useState(false);
 
   const hasActiveFilters =
     filters.categoryId !== null ||
@@ -43,8 +54,10 @@ export function ProductFilters({
     filters.minPrice !== null ||
     filters.maxPrice !== null;
 
-  return (
-    <div className="product-filters">
+  // Rendered twice (inline + drawer), so anything needing a document-unique
+  // id/`htmlFor` gets a per-copy suffix.
+  const renderBody = (scope: 'inline' | 'drawer') => (
+    <>
       {categories && categories.length > 0 && (
         <div className="product-filters__group">
           <span className="product-filters__label">{isAr ? 'الفئة' : 'Category'}</span>
@@ -133,11 +146,11 @@ export function ProductFilters({
       </div>
 
       <div className="product-filters__group product-filters__sort">
-        <label htmlFor="product-sort" className="product-filters__label">
+        <label htmlFor={`product-sort-${scope}`} className="product-filters__label">
           {isAr ? 'الترتيب' : 'Sort by'}
         </label>
         <Select
-          id="product-sort"
+          id={`product-sort-${scope}`}
           value={filters.sort}
           onChange={(e) => dispatch(setSort(e.target.value as ProductSort))}
         >
@@ -152,6 +165,43 @@ export function ProductFilters({
           {isAr ? 'مسح الفلاتر' : 'Clear filters'}
         </button>
       )}
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop/tablet: the panel sits inline next to the breadcrumb —
+          display:contents so this wrapper doesn't disturb .products-toolbar's
+          flex layout, the way a bare .product-filters used to. */}
+      <div className="product-filters-inline">
+        <div className="product-filters">{renderBody('inline')}</div>
+      </div>
+
+      {/* Small screens only (see globals.css's 599px breakpoint, shared with
+          .product-grid's own mobile column count): a compact trigger that
+          opens the exact same controls in a slide-in drawer instead. */}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="product-filters__trigger"
+        onClick={() => setOpen(true)}
+        aria-expanded={open}
+      >
+        <Icon as={SlidersHorizontal} size={14} style={{ marginInlineEnd: 'var(--space-2)' }} />
+        {isAr ? 'الفلاتر' : 'Filters'}
+        {hasActiveFilters && <span className="product-filters__trigger-dot" aria-hidden />}
+      </Button>
+
+      <Drawer
+        open={open}
+        onClose={() => setOpen(false)}
+        side="end"
+        title={isAr ? 'الفلاتر' : 'Filters'}
+        closeLabel={t('Close', 'إغلاق')}
+      >
+        <div className="product-filters product-filters--drawer">{renderBody('drawer')}</div>
+      </Drawer>
+    </>
   );
 }

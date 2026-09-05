@@ -1108,6 +1108,39 @@ ul, ol {
   font-size: var(--fs-sm);
 }
 
+/* The inline panel wrapper is transparent to layout (display:contents) so
+   .product-filters still behaves as a direct flex child of .products-toolbar
+   — until the mobile breakpoint hides it in favour of the drawer trigger. */
+.product-filters-inline { display: contents; }
+.product-filters__trigger { display: none; }
+.product-filters__trigger-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-inline-start: var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  vertical-align: middle;
+}
+
+@media (max-width: 599px) {
+  .product-filters-inline { display: none; }
+  .product-filters__trigger { display: inline-flex; }
+}
+
+/* Filters shown inside the mobile drawer: stack the groups vertically and
+   let the price/sort controls fill the (narrow) panel width. */
+.product-filters--drawer {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--space-5);
+}
+.product-filters--drawer .product-filters__price { width: 100%; }
+.product-filters--drawer .product-filters__price .input { flex: 1; width: auto; }
+.product-filters--drawer .product-filters__sort .select { width: 100%; }
+.product-filters--drawer .product-filters__clear { align-self: flex-start; }
+
 .product-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
