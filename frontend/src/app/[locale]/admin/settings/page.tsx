@@ -22,7 +22,24 @@ import { useAdminCollections } from '@/hooks/use-catalog';
 import { useSettings, useUpdateSettings } from '@/hooks/use-settings';
 import { CurationPanel } from './curation-panel';
 
-const urlOrEmpty = z.string().trim().url('Must be a full URL (https://…)').or(z.literal(''));
+// http(s) only — these render as `<a href>` in the storefront footer, so a
+// `javascript:` / `data:` value would be stored XSS. Mirrors the API's
+// `httpUrl` guard so the form fails fast with a clear message.
+const urlOrEmpty = z
+  .string()
+  .trim()
+  .refine(
+    (v) => {
+      try {
+        const u = new URL(v);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Must be a full URL (https://…)' }
+  )
+  .or(z.literal(''));
 
 const settingsFormSchema = z.object({
   brandNameEn: z.string().trim().min(1, 'Required'),

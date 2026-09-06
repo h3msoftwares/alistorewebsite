@@ -1,7 +1,11 @@
 import { z } from 'zod';
+import { httpUrl } from '../../lib/safe-url';
 
-// A URL field: a valid URL, or an empty string (cleared), or null/omitted.
-const urlField = z.string().trim().url().or(z.literal('')).nullish();
+// A URL field: an absolute http(s) URL, or an empty string (cleared), or
+// null/omitted. Restricted to http(s) on purpose — these values are rendered
+// as `<a href>` in the storefront footer, so `javascript:` / `data:` schemes
+// would be stored XSS.
+const urlField = httpUrl.or(z.literal('')).nullish();
 
 export const updateSettingsSchema = z.object({
   brandNameEn: z.string().trim().min(1).max(80).optional(),

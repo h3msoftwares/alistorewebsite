@@ -8,6 +8,20 @@ import { useNavCollections } from '@/hooks/use-catalog';
 import { useSettings } from '@/hooks/use-settings';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 
+/** Defence in depth for the admin-controlled social links: only ever emit an
+ *  `<a href>` for an absolute http(s) URL. Anything else (a `javascript:` /
+ *  `data:` value that slipped past the API, or is already in the DB) is
+ *  dropped rather than rendered as a clickable XSS payload. */
+function safeHttpUrl(value: string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const u = new URL(value);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Shared footer rendered by the root [locale] layout. Multi-column layout
  *  (Saxon footer anatomy). The newsletter field is presentational only —
  *  no submit wiring here. Brand name + social/contact links come from the
@@ -27,10 +41,10 @@ export function SiteFooter({ locale }: { locale: string }) {
       : DEFAULT_BRAND_NAME_EN;
 
   const socials = [
-    { label: 'Instagram', href: settings?.instagramUrl },
-    { label: 'Facebook', href: settings?.facebookUrl },
-    { label: 'TikTok', href: settings?.tiktokUrl },
-    { label: 'WhatsApp', href: settings?.whatsappUrl },
+    { label: 'Instagram', href: safeHttpUrl(settings?.instagramUrl) },
+    { label: 'Facebook', href: safeHttpUrl(settings?.facebookUrl) },
+    { label: 'TikTok', href: safeHttpUrl(settings?.tiktokUrl) },
+    { label: 'WhatsApp', href: safeHttpUrl(settings?.whatsappUrl) },
   ].filter((s): s is { label: string; href: string } => Boolean(s.href));
 
   return (

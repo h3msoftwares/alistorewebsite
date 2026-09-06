@@ -31,6 +31,24 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
   }
 
   return prisma.$transaction(async (tx) => {
+    // A saved-address reference must belong to the person checking out. Without
+    // this, an authenticated user could pass another user's Address id — it
+    // would be stored as the order's `addressID` and handed straight back by
+    // GET /api/orders/:id (which `include`s the address), leaking that user's
+    // name / phone / street. Guests have no saved addresses, so any id from a
+    // guest is rejected outright.
+    if (input.addressId) {
+      const owned = owner.userID
+        ? await tx.address.findFirst({
+            where: { id: input.addressId, userID: owner.userID },
+            select: { id: true },
+          })
+        : null;
+      if (!owned) {
+        throw new AppError('VALIDATION_ERROR', 'addressId does not match one of your saved addresses');
+      }
+    }
+
     const cart = await tx.cart.findUnique({
       where: owner.userID ? { userID: owner.userID } : { sessionID: owner.sessionID! },
     });
