@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { errorHandler } from './middleware/errorHandler.middleware';
+import { sanitizeInput } from './middleware/sanitize.middleware';
 import { env } from './config/env';
 
 import authRoutes from './modules/auth/auth.routes';
@@ -52,6 +53,13 @@ export function buildApp(
   app.use(cors({ origin: corsOrigins, credentials: true }));
   app.use(express.json());
   app.use(cookieParser());
+
+  // Global input hardening: strip control chars, reject HTML-tag / markup
+  // syntax, drop prototype-pollution keys — on every body and query string,
+  // before any route. Defence-in-depth for XSS on top of React's output
+  // encoding. (SQL injection is handled structurally by Prisma's
+  // parameterisation, not by keyword filtering here.)
+  app.use(sanitizeInput);
 
   // App-wide baseline limiter; auth routes layer a stricter bucket on top.
   // Disabled under test so suites can fire many requests without tripping it.

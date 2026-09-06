@@ -1,9 +1,12 @@
 import { z } from 'zod';
+import { httpUrl } from '../../lib/safe-url';
 
 // Shared body shapes for the image sub-resources of Collection / Category /
 // Product. All three image tables have an identical shape (see prisma schema).
 export const createImageSchema = z.object({
-  url: z.string().url(),
+  // http(s) only — never a `javascript:` / `data:` scheme, in case a URL here
+  // ever reaches an `<a href>` rather than an `<img src>`.
+  url: httpUrl,
   // ImageKit's file id for this asset (from the upload response) — lets the
   // delete endpoint remove the underlying file, not just this row. Optional:
   // a caller without one (or a pre-migration client) just won't get that

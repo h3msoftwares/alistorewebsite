@@ -73,6 +73,24 @@ describe('Site settings API', () => {
     ).toBe(400);
   });
 
+  it('rejects a non-http(s) URL scheme (stored-XSS guard)', async () => {
+    for (const bad of [
+      'javascript:alert(document.cookie)',
+      'JavaScript:alert(1)',
+      '  javascript:alert(1)  ',
+      'data:text/html,<script>alert(1)</script>',
+      'vbscript:msgbox(1)',
+    ]) {
+      const res = await request(app)
+        .patch('/api/settings')
+        .set(bearer(adminToken))
+        .send({ instagramUrl: bad });
+      expect(res.status, bad).toBe(400);
+    }
+    // and it did not persist any of them
+    expect((await request(app).get('/api/settings')).body.settings.instagramUrl).toBeNull();
+  });
+
   it('announcementLines replace the whole strip, in order', async () => {
     const res = await request(app)
       .patch('/api/settings')

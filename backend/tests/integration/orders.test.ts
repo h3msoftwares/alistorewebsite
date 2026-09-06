@@ -88,6 +88,58 @@ describe('Orders API', () => {
     expect((await request(app).get(`/api/orders/${orderId}`).set(bearer(other))).status).toBe(404);
   });
 
+  it('checkout rejects an addressId that belongs to another user (no cross-user address leak)', async () => {
+    const victim = await createCustomer();
+    const victimAddress = await prisma.address.create({
+      data: {
+        userID: victim.user.id,
+        fullName: 'Victim Name',
+        phone: '0799999999',
+        addressLine: '99 Secret Lane',
+        city: 'Amman',
+        isDefault: true,
+      },
+    });
+
+    const attacker = await createCustomer();
+    await request(app)
+      .post('/api/cart/items')
+      .set(bearer(attacker.token))
+      .send({ variantId, quantity: 1 });
+
+    const res = await request(app)
+      .post('/api/orders/checkout')
+      .set(bearer(attacker.token))
+      .send({ ...delivery, addressId: victimAddress.id });
+
+    expect(res.status).toBe(400);
+    // nothing was created, so the attacker can't read the address back
+    expect(await prisma.order.count({ where: { userID: attacker.user.id } })).toBe(0);
+  });
+
+  it('checkout accepts the buyer’s own addressId', async () => {
+    const buyer = await createCustomer();
+    const addr = await prisma.address.create({
+      data: {
+        userID: buyer.user.id,
+        fullName: 'Buyer',
+        phone: '0791111111',
+        addressLine: '1 Own Street',
+        city: 'Amman',
+        isDefault: true,
+      },
+    });
+    await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId, quantity: 1 });
+
+    const res = await request(app)
+      .post('/api/orders/checkout')
+      .set(bearer(buyer.token))
+      .send({ ...delivery, addressId: addr.id });
+
+    expect(res.status).toBe(201);
+    expect(res.body.order.addressID).toBe(addr.id);
+  });
+
   it('cancel: pending-only, restores stock and records a RETURN movement', async () => {
     const { token } = await createCustomer();
     await request(app).post('/api/cart/items').set(bearer(token)).send({ variantId, quantity: 4 });
