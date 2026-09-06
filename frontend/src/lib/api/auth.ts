@@ -1,15 +1,28 @@
 import { api } from './client';
 import type {
-  AuthResult,
   AuthUser,
   ForgotPasswordBody,
   LoginBody,
   RegisterBody,
+  ResendVerificationBody,
   ResetPasswordBody,
+  VerifyEmailBody,
 } from '../types';
 
+/** Never returns a session — the response is a generic message whether or not
+ *  the email was already in use. The user verifies via the emailed link, then
+ *  logs in. */
 export function register(body: RegisterBody) {
-  return api.post<AuthResult>('/api/auth/register', body, { auth: false });
+  return api.post<{ message: string }>('/api/auth/register', body, { auth: false });
+}
+
+export function verifyEmail(body: VerifyEmailBody) {
+  return api.post<{ message: string }>('/api/auth/verify-email', body, { auth: false });
+}
+
+/** Same generic response as `register` — never branch UI on it. */
+export function resendVerification(body: ResendVerificationBody) {
+  return api.post<{ message: string }>('/api/auth/resend-verification', body, { auth: false });
 }
 
 export function login(body: LoginBody) {

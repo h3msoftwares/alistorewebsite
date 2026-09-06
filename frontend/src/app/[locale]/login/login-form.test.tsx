@@ -17,7 +17,11 @@ const login = {
   isError: false,
   error: null as unknown,
 };
-vi.mock('@/hooks/use-auth', () => ({ useLogin: () => login }));
+const resend = { mutateAsync: vi.fn().mockResolvedValue({ message: 'ok' }), isPending: false };
+vi.mock('@/hooks/use-auth', () => ({
+  useLogin: () => login,
+  useResendVerification: () => resend,
+}));
 
 const renderForm = (props: Partial<{ locale: 'en' | 'ar'; next: string | null }> = {}) => {
   const { Wrapper } = createWrapper();
@@ -27,6 +31,7 @@ const renderForm = (props: Partial<{ locale: 'en' | 'ar'; next: string | null }>
 beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(login, { mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false, isError: false, error: null });
+  Object.assign(resend, { mutateAsync: vi.fn().mockResolvedValue({ message: 'ok' }), isPending: false });
 });
 
 describe('<LoginForm>', () => {
@@ -92,5 +97,29 @@ describe('<LoginForm>', () => {
     login.error = new ApiError(429, { code: 'RATE_LIMITED', message: 'Too many attempts. Try again later.' });
     renderForm();
     expect(screen.getByText(/Too many attempts/i)).toBeInTheDocument();
+  });
+
+  it('on a 403 "email not verified" shows the verify notice + a resend form pre-filled with the email', async () => {
+    const user = userEvent.setup();
+    const err403 = new ApiError(403, {
+      code: 'FORBIDDEN',
+      message: 'Please verify your email address before signing in.',
+    });
+    login.mutateAsync = vi.fn().mockRejectedValue(err403);
+    login.isError = true;
+    login.error = err403;
+    renderForm();
+
+    await user.type(screen.getByLabelText('Email or phone'), 'a@x.dev');
+    await user.type(screen.getByLabelText('Password'), 'secret12');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByText(/needs to be verified/i)).toBeInTheDocument();
+    // the resend email field is pre-filled from the submitted identifier
+    expect(screen.getByLabelText('Email')).toHaveValue('a@x.dev');
+
+    await user.click(screen.getByRole('button', { name: /Resend verification email/i }));
+    expect(resend.mutateAsync).toHaveBeenCalledWith({ email: 'a@x.dev', locale: 'en' });
+    expect(await screen.findByText(/sent a fresh verification link/i)).toBeInTheDocument();
   });
 });

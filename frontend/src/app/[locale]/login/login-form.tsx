@@ -1,12 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Alert, Button, Field, Input } from '@/components/ui';
-import { useLogin } from '@/hooks/use-auth';
+import { useLogin, useResendVerification } from '@/hooks/use-auth';
 import { isApiError } from '@/lib/api';
 
 type Locale = 'en' | 'ar';
@@ -34,6 +35,10 @@ export function LoginForm({ locale, next: nextRaw = null }: { locale: Locale; ne
   const router = useRouter();
   const next = safeNext(nextRaw);
   const login = useLogin();
+  const resend = useResendVerification();
+  const [resent, setResent] = useState(false);
+
+  const [resendEmail, setResendEmail] = useState('');
 
   const {
     register,
@@ -42,35 +47,85 @@ export function LoginForm({ locale, next: nextRaw = null }: { locale: Locale; ne
   } = useForm<Values>({ resolver: zodResolver(schema) });
 
   const onSubmit = handleSubmit(async (values) => {
+    setResent(false);
     try {
       await login.mutateAsync(values);
       router.replace(next ?? `/${locale}`);
     } catch {
-      // Bad credentials, locked out, rate limited — all show the same generic
-      // message below. The backend returns an identical 401 for every
-      // credential failure; the form must not try to tell them apart.
+      // Bad credentials / locked out / rate limited -> the same generic
+      // message below. "Email not verified" (403) is handled separately.
+      if (/@/.test(values.identifier)) setResendEmail(values.identifier);
     }
   });
 
   const busy = isSubmitting || login.isPending;
-  const rateLimited = login.isError && isApiError(login.error) && login.error.status === 429;
+  const err = login.isError && isApiError(login.error) ? login.error : null;
+  const rateLimited = err?.status === 429;
+  // The backend only 403s here after the password is proven correct, so
+  // telling this user their email is unverified leaks nothing.
+  const unverified = err?.status === 403;
 
   return (
     <div className="section" style={{ maxWidth: '22rem', marginInline: 'auto' }}>
       <p className="eyebrow">{t("Ali's Store", 'متجر علي')}</p>
       <h1>{t('Sign in', 'تسجيل الدخول')}</h1>
 
-      {login.isError && (
-        <div style={{ marginBlockStart: 'var(--space-3)' }}>
-          <Alert tone={rateLimited ? 'warning' : 'danger'}>
-            {rateLimited
-              ? t(
-                  'Too many attempts. Please wait a while before trying again.',
-                  'عدد كبير جدًا من المحاولات. يرجى الانتظار قليلاً قبل إعادة المحاولة.'
-                )
-              : t('Invalid email/phone or password.', 'البريد الإلكتروني/الهاتف أو كلمة المرور غير صحيحة.')}
+      {unverified ? (
+        <div className="stack" style={{ marginBlockStart: 'var(--space-3)' }}>
+          <Alert tone="warning">
+            {t(
+              'Your email address needs to be verified before you can sign in. Check your inbox for the verification link.',
+              'يجب التحقّق من بريدك الإلكتروني قبل تسجيل الدخول. تحقّق من صندوق الوارد لديك للحصول على رابط التحقّق.'
+            )}
           </Alert>
+          {resent ? (
+            <p className="prose" style={{ fontSize: 'var(--fs-sm)' }}>
+              {t("We've sent a fresh verification link.", 'أرسلنا رابط تحقّق جديدًا.')}
+            </p>
+          ) : (
+            <form
+              className="stack"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await resend.mutateAsync({ email: resendEmail, locale });
+                } finally {
+                  setResent(true);
+                }
+              }}
+            >
+              <Field label={t('Email', 'البريد الإلكتروني')}>
+                {(p) => (
+                  <Input
+                    {...p}
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={resendEmail}
+                    onChange={(ev) => setResendEmail(ev.target.value)}
+                    disabled={resend.isPending}
+                  />
+                )}
+              </Field>
+              <Button type="submit" variant="ghost" size="sm" loading={resend.isPending}>
+                {t('Resend verification email', 'إعادة إرسال بريد التحقّق')}
+              </Button>
+            </form>
+          )}
         </div>
+      ) : (
+        err && (
+          <div style={{ marginBlockStart: 'var(--space-3)' }}>
+            <Alert tone={rateLimited ? 'warning' : 'danger'}>
+              {rateLimited
+                ? t(
+                    'Too many attempts. Please wait a while before trying again.',
+                    'عدد كبير جدًا من المحاولات. يرجى الانتظار قليلاً قبل إعادة المحاولة.'
+                  )
+                : t('Invalid email/phone or password.', 'البريد الإلكتروني/الهاتف أو كلمة المرور غير صحيحة.')}
+            </Alert>
+          </div>
+        )
       )}
 
       <form onSubmit={onSubmit} noValidate className="stack" style={{ marginBlockStart: 'var(--space-5)' }}>
