@@ -56,6 +56,13 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
   const [size, setSize] = useState<string | null>(null);
   const [color, setColor] = useState<string | null>(null);
   const [activeImage, setActiveImage] = useState(0);
+  // Naturalwidth/Height of the currently-shown main photo, once decoded —
+  // drives --pdp-main-ratio (globals.css) so .pdp__main-media's box takes
+  // on the photo's own shape (full column width, height following from
+  // it) instead of cropping/letterboxing it into a guessed one. Reset
+  // whenever the shown photo changes so a previous photo's ratio never
+  // flashes on the next one before it loads.
+  const [mainRatio, setMainRatio] = useState<number | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [zoomOpen, setZoomOpen] = useState(false);
   // Bumped on every open so <ProductZoomModal> remounts with fresh zoom
@@ -111,6 +118,14 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
   }
 
   const mainImage = images[activeImage] ?? images[0];
+
+  // Same during-render-adjustment pattern as the stock clamp / gallery
+  // reset above: a new photo means its ratio isn't known yet.
+  const [lastMainImageId, setLastMainImageId] = useState(mainImage?.id);
+  if (mainImage?.id !== lastMainImageId) {
+    setLastMainImageId(mainImage?.id);
+    setMainRatio(null);
+  }
 
   if (query.isLoading) {
     return <ProductDetailSkeleton />;
@@ -220,7 +235,10 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
 
       <div className="pdp">
         <div className="pdp__gallery">
-          <div className="card pdp__main-media">
+          <div
+            className="card pdp__main-media"
+            style={mainRatio ? ({ '--pdp-main-ratio': mainRatio } as React.CSSProperties) : undefined}
+          >
             {mainImage ? (
               <CatalogImage
                 key={mainImage.id}
@@ -241,6 +259,12 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
                 // custom ImageKit loader's `?tr=...` suffix (next.config.mjs),
                 // not an actual unfixed loading issue.
                 preload
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  if (img.naturalWidth && img.naturalHeight) {
+                    setMainRatio(img.naturalWidth / img.naturalHeight);
+                  }
+                }}
               />
             ) : (
               <span className="catalog-image__fallback" aria-hidden />

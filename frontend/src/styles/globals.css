@@ -1134,7 +1134,7 @@ main > .container.section:first-child {
 .pdp {
   display: grid;
   grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
-  gap: clamp(var(--space-6), 4vw, var(--space-8));
+  gap: clamp(var(--space-4), 2vw, var(--space-6));
 }
 @media (max-width: 860px) {
   .pdp { grid-template-columns: 1fr; gap: var(--space-5); }
@@ -1144,45 +1144,54 @@ main > .container.section:first-child {
    than leading in source order, so they land at the inline-start edge in
    both LTR and RTL without a [dir='rtl'] override (flex lays lower-`order`
    items at the row's start regardless of writing direction). Collapses to
-   thumbs-below-image on narrow screens, in the shared 860px breakpoint. */
-/* Capped so the gallery (image + thumbs) always fits within one viewport
-   height, even on a short laptop screen — never taller than the space below
-   everything that sits above it: the (optional) offers strip, the sticky
-   header, this page's own top section padding, and the breadcrumb row. An
-   earlier version subtracted only the header plus a flat --space-8 guess for
-   "everything else" — that guess was ~120px short of the real total
-   (confirmed live: at 1366×768 the gallery overflowed the viewport by ~25px
-   once the page picked up an extra bit of chrome elsewhere), so this now
-   references the actual tokens that make up that space instead of
-   approximating them. 3rem + --space-2 covers the breadcrumb's own line
-   height + margin plus a small rounding safety margin — the one piece here
-   that isn't already a token, since the breadcrumb's rendered height depends
-   on content, not a fixed value.
-   Set on the row itself (not just each child) and inherited via the custom
-   property — a flex row with an `aspect-ratio` + `max-height` item as one of
-   its children can render the row taller than either child's own final
-   height (confirmed live: .pdp__main-media and .pdp__thumbs both measured
-   within their max-height, but .pdp__gallery still came out ~27px taller
-   than the taller of the two) — so the cap has to hold the container itself,
-   not rely on it being implied by capping the children. */
+   thumbs-below-image on narrow screens, in the shared 860px breakpoint.
+   Sticky and capped to the viewport: the gallery as a whole should be
+   visible without scrolling, and stay in view (rather than scroll away)
+   if `.pdp__content` next to it is taller and needs scrolling to read.
+   Offset only by the *sticky* header's height, not the offers strip
+   above it — that strip isn't sticky itself, so by the time this is
+   scrolled into its stuck position the strip has already scrolled out
+   of view, and the header's real bottom edge is just its own height.
+   (Counting the strip too, as an earlier version did, left a phantom
+   gap the size of a strip that's no longer on screen.)
+   `align-items: stretch` (rather than flex-start) is load-bearing here
+   beyond that: the photo inside `.pdp__main-media` is absolutely
+   positioned (next/image `fill`), so that box has no in-flow content to
+   size itself from. Stretch gives it a definite height (this row's,
+   fixed by the `height` below) for `aspect-ratio` to compute a width
+   from — without a definite height, both its dimensions are 'auto' and
+   the ratio has nothing to anchor to, so the box collapses to nothing. */
 .pdp__gallery {
   display: flex;
   flex-direction: row;
-  align-items: flex-start;
+  align-items: stretch;
   gap: var(--space-3);
   min-width: 0;
-  --pdp-gallery-max-h: min(70vh, calc(100svh - var(--header-height) - var(--offers-strip-h) - var(--section-gap) - 3rem - var(--space-2)));
-  max-height: var(--pdp-gallery-max-h);
+  position: sticky;
+  --pdp-gallery-top: calc(var(--header-height) + var(--space-4));
+  top: var(--pdp-gallery-top);
+  height: calc(100svh - var(--pdp-gallery-top) - var(--space-4));
 }
 
+/* Shaped to match each photo exactly — `--pdp-main-ratio` is set inline
+   from the loaded photo's own naturalWidth/naturalHeight (see
+   product-detail.tsx), so `aspect-ratio` here makes the box BE that
+   photo's shape rather than cropping (`cover`) or letterboxing
+   (`contain`) it into a guessed one. Height comes from the stretched row
+   (always the full viewport budget); width follows from it via the
+   ratio — full column width for a photo that fits the height budget at
+   that width, narrower only for a photo tall enough that full width
+   would blow past it. `max-width` is a defensive clamp for a pathological
+   panoramic photo; `cover` below only ever engages in that rare case. */
 .pdp__main-media {
   position: relative;
   order: 2;
-  flex: 1 1 auto;
   min-width: 0;
-  aspect-ratio: 4 / 5;
-  max-height: var(--pdp-gallery-max-h);
+  max-width: 100%;
+  aspect-ratio: var(--pdp-main-ratio, 3 / 4);
 }
+/* Safety net only: once --pdp-main-ratio is set the box already matches
+   the photo, so this never actually crops anything. */
 .pdp__main-media img { object-fit: cover; }
 
 /* Opens <ProductZoomModal> — same trigger placement/styling as
@@ -1199,13 +1208,16 @@ main > .container.section:first-child {
   color: var(--color-text-muted);
 }
 
+/* The sticky/height-cap is on `.pdp__gallery` itself now (both children
+   ride along with it) — this just scrolls internally if there are more
+   thumbs than fit in that shared height budget. */
 .pdp__thumbs {
   order: 1;
   display: flex;
   flex-direction: column;
   flex: 0 0 auto;
   gap: var(--space-2);
-  max-height: var(--pdp-gallery-max-h);
+  max-height: 100%;
   overflow-y: auto;
 }
 
@@ -1221,13 +1233,20 @@ main > .container.section:first-child {
 .pdp__thumb[aria-current='true'] { border-color: var(--collection-accent); border-width: 2px; }
 
 @media (max-width: 860px) {
-  /* `align-items: flex-start` (needed so the row layout doesn't stretch the
-     thumb column to the main image's height) must be reset here — carried
-     into this column layout unchanged, it shrinks .pdp__main-media to its
-     min-content width instead of letting it stretch full-width. */
-  .pdp__gallery { flex-direction: column; align-items: stretch; }
-  .pdp__main-media { order: 1; max-height: none; }
-  .pdp__thumbs { order: 2; flex-direction: row; flex-wrap: wrap; max-height: none; overflow: visible; }
+  /* No sticky/height-cap on mobile — there's no side-by-side content column
+     for the gallery to stay in view alongside, so it just scrolls with
+     everything else like any other stacked section. Column layout still
+     needs `align-items: stretch` (already the base value now) so the main
+     image stretches to the row's full inline width. */
+  .pdp__gallery { flex-direction: column; position: static; height: auto; }
+  .pdp__main-media { order: 1; }
+  .pdp__thumbs {
+    order: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+    max-height: none;
+    overflow: visible;
+  }
 }
 
 .pdp__content { min-width: 0; }
