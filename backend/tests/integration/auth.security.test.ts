@@ -137,17 +137,27 @@ describe('the customer login door is not a back way into a privileged account', 
 });
 
 describe('login / register cannot be coerced into granting a role', () => {
-  it('register ignores a role field in the body — the new account is always CUSTOMER', async () => {
+  it('register ignores role / isActive / emailVerified in the body — the new account is an unverified CUSTOMER', async () => {
     const res = await request(app).post('/api/auth/register').send({
       name: 'Sneaky',
       email: 'sneaky@sec.test',
       password: 'password123',
+      phone: '0791234567',
+      address: {
+        fullName: 'Sneaky',
+        phone: '0791234567',
+        addressLine: '1 Nowhere St',
+        city: 'Amman',
+      },
       role: 'ADMIN',
-      isActive: true,
+      isActive: false,
+      emailVerified: '2000-01-01T00:00:00.000Z',
     });
     expect(res.status).toBe(201);
     const created = await prisma.user.findUnique({ where: { email: 'sneaky@sec.test' } });
     expect(created?.role).toBe('CUSTOMER');
+    expect(created?.isActive).toBe(true);
+    expect(created?.emailVerified).toBeNull(); // the body field did nothing — still unverified
   });
 
   it('extra body fields on login do nothing and __proto__ does not pollute', async () => {

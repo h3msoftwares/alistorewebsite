@@ -44,8 +44,12 @@ const envSchema = z.object({
   SMTP_FROM: z.string().default("Ali's Store <no-reply@example.com>"),
   // Password-reset token lifetime, in minutes.
   RESET_TOKEN_TTL_MIN: z.coerce.number().default(30),
-  // Base URL the reset link is built against:
+  // Email-verification token lifetime, in minutes. Longer than the reset
+  // token — a fresh signup may not check their inbox for a while.
+  EMAIL_VERIFICATION_TTL_MIN: z.coerce.number().default(1440), // 24h
+  // Base URL the reset / verification links are built against:
   // `${FRONTEND_URL}/{locale}/reset-password?token=...`
+  // `${FRONTEND_URL}/{locale}/verify-email?token=...`
   FRONTEND_URL: z.string().default('http://localhost:3000'),
 
   // ImageKit — signs the admin image uploader's short-lived upload token

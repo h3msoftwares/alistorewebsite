@@ -1,10 +1,12 @@
 import argon2 from 'argon2';
 import jwt from 'jsonwebtoken';
+import { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
 import { AppError } from '../../lib/AppError';
 import { AuthedUser } from '../../middleware/auth.middleware';
+import { issueAndSendVerification } from './email-verification.service';
 
 interface TokenPair {
   accessToken: string;
@@ -31,7 +33,8 @@ export type CustomerLoginOutcome =
   | 'success'
   | 'invalid_credentials'
   | 'locked_out'
-  | 'privileged_denied'; // correct creds, but an ADMIN/STAFF account — must use /admin-login
+  | 'privileged_denied' // correct creds, but an ADMIN/STAFF account — must use /admin-login
+  | 'email_unverified'; // correct creds, but the email was never verified
 
 export interface LoginContext {
   ip: string;
@@ -101,28 +104,93 @@ export async function issueRefreshToken(userID: string, familyID?: string): Prom
   return { token, id: record.id };
 }
 
-export async function register(input: { name: string; email?: string; phone?: string; password: string }) {
-  const existing = await prisma.user.findFirst({
-    where: {
-      OR: [input.email ? { email: input.email } : {}, input.phone ? { phone: input.phone } : {}],
-    },
-  });
-  if (existing) throw new AppError('CONFLICT', 'An account with this email or phone already exists');
+export interface RegisterInput {
+  email: string;
+  password: string;
+  name: string;
+  phone: string;
+  address: {
+    fullName: string;
+    phone: string;
+    addressLine: string;
+    city: string;
+    area?: string;
+    notes?: string;
+  };
+  locale: string;
+}
 
+/**
+ * Enumeration-safe registration. The controller ALWAYS responds with the same
+ * generic 201 message regardless of which branch runs here — and an argon2
+ * hash of the submitted password runs on every path so timing doesn't leak
+ * which one fired. Never issues a session: the new user verifies their email,
+ * then logs in normally.
+ *
+ *  - brand-new email                -> create user (unverified) + default
+ *                                      address + token, mail the link
+ *  - existing UNVERIFIED email      -> re-issue a fresh token + mail it
+ *                                      (helps a user who lost the first email;
+ *                                      indistinguishable from the "new" case)
+ *  - existing VERIFIED email, or a phone that's already taken -> do nothing
+ */
+export async function register(input: RegisterInput): Promise<void> {
+  // Always — timing equaliser. Also the hash we store on the happy path.
   const passwordHash = await argon2.hash(input.password);
-  const user = await prisma.user.create({
-    data: {
-      name: input.name,
-      email: input.email,
-      phone: input.phone,
-      passwordHash,
-      role: 'CUSTOMER',
-    },
+
+  const existing = await prisma.user.findFirst({
+    where: { OR: [{ email: input.email }, { phone: input.phone }], deletedAt: null },
   });
 
-  const accessToken = signAccessToken({ id: user.id, role: user.role });
-  const { token: refreshToken } = await issueRefreshToken(user.id);
-  return { accessToken, refreshToken, user };
+  if (existing) {
+    // The only branch that does anything: an unverified account matched *by
+    // email* (a mere phone collision gets nothing) may get a fresh link.
+    if (
+      existing.email === input.email &&
+      !existing.emailVerified &&
+      existing.isActive &&
+      existing.passwordHash
+    ) {
+      await issueAndSendVerification(existing.id, existing.email, input.locale);
+    }
+    return;
+  }
+
+  let user;
+  try {
+    user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          name: input.name,
+          email: input.email,
+          phone: input.phone,
+          passwordHash,
+          role: 'CUSTOMER',
+          // emailVerified stays null — unverified until they click the link
+        },
+      });
+      await tx.address.create({
+        data: {
+          userID: created.id,
+          fullName: input.address.fullName,
+          phone: input.address.phone,
+          addressLine: input.address.addressLine,
+          city: input.address.city,
+          area: input.address.area ?? null,
+          notes: input.address.notes ?? null,
+          isDefault: true,
+        },
+      });
+      return created;
+    });
+  } catch (e) {
+    // Lost a race to a concurrent registration for the same email/phone —
+    // same generic response as the "already exists" path.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return;
+    throw e;
+  }
+
+  await issueAndSendVerification(user.id, user.email!, input.locale);
 }
 
 /**
@@ -189,6 +257,16 @@ export async function login(
     }
     await recordLoginAttempt('invalid_credentials', identifier, ctx, user?.id ?? null);
     throw new AppError('UNAUTHORIZED', 'Invalid credentials');
+  }
+
+  // 3b. Correct password, active CUSTOMER — but the email was never verified.
+  //     A specific message is fine here (and better UX): the caller has
+  //     already proven the password, so telling *them* "verify your email"
+  //     reveals nothing to anyone who doesn't have it. The frontend surfaces
+  //     a "resend verification" action off this.
+  if (!user.emailVerified) {
+    await recordLoginAttempt('email_unverified', identifier, ctx, user.id);
+    throw new AppError('FORBIDDEN', 'Please verify your email address before signing in.');
   }
 
   // 4. Success — clear any stale counter, issue the token pair.

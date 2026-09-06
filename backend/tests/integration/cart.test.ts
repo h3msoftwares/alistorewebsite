@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
-import { createCustomer, bearer } from '../helpers/auth';
+import { createCustomer, createUser, bearer } from '../helpers/auth';
 import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
 
 const app = buildApp();
@@ -182,20 +182,27 @@ describe('Cart API — guest session persistence', () => {
   });
 });
 
-describe('Cart API — guest→user cart merge on login/register', () => {
-  const creds = { name: 'Merge User', email: 'merge@test.dev', password: 'Password123!' };
+describe('Cart API — guest→user cart merge on login', () => {
+  // Registration no longer creates a session (email must be verified first),
+  // so the merge now only happens on login. The merge logic itself is
+  // unchanged — see absorbGuestCart in auth.controller.ts.
+  const creds = { email: 'merge@test.dev', password: 'Password123!' };
+  const makeMergeUser = () =>
+    createUser({ role: 'CUSTOMER', email: creds.email, password: creds.password, emailVerified: true });
 
-  it('hands a whole guest cart to a brand-new user and clears the guest cookie', async () => {
+  it('hands a whole guest cart to the user on login and clears the guest cookie', async () => {
+    await makeMergeUser();
     const agent = request.agent(app);
     await agent.post('/api/cart/items').send({ variantId, quantity: 2 });
     await agent.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 1 });
 
-    const reg = await agent.post('/api/auth/register').send(creds);
-    expect(reg.status).toBe(201);
-    // guest cookie is cleared on merge
-    expect(reg.headers['set-cookie'].join(';')).toMatch(/cartSession=;|cartSession=;? *Expires/i);
+    const login = await agent
+      .post('/api/auth/login')
+      .send({ identifier: creds.email, password: creds.password });
+    expect(login.status).toBe(200);
+    expect(login.headers['set-cookie'].join(';')).toMatch(/cartSession=;|cartSession=;? *Expires/i);
 
-    const get = await request(app).get('/api/cart').set(bearer(reg.body.accessToken));
+    const get = await request(app).get('/api/cart').set(bearer(login.body.accessToken));
     expect(get.body.items).toHaveLength(2);
 
     const carts = await prisma.cart.findMany();
@@ -205,8 +212,7 @@ describe('Cart API — guest→user cart merge on login/register', () => {
   });
 
   it('merges into an existing user cart, summing quantity for a variant in both carts', async () => {
-    const reg = await request(app).post('/api/auth/register').send(creds);
-    const token = reg.body.accessToken;
+    const { token } = await makeMergeUser();
     await request(app).post('/api/cart/items').set(bearer(token)).send({ variantId, quantity: 2 });
 
     const guest = request.agent(app);
@@ -221,22 +227,24 @@ describe('Cart API — guest→user cart merge on login/register', () => {
     expect(await prisma.cart.count()).toBe(1);
   });
 
-  it('an empty guest cart is a no-op and is cleaned up', async () => {
+  it('an empty guest cart is a no-op and is cleaned up on login', async () => {
+    await makeMergeUser();
     const guest = request.agent(app);
     // force an empty guest Cart row + cookie
     await guest.get('/api/cart');
     expect(await prisma.cart.count()).toBe(1);
 
-    const reg = await guest.post('/api/auth/register').send(creds);
-    expect(reg.status).toBe(201);
+    const login = await guest.post('/api/auth/login').send({ identifier: creds.email, password: creds.password });
+    expect(login.status).toBe(200);
     // empty guest cart removed, no user cart created yet
     expect(await prisma.cart.count()).toBe(0);
   });
 
-  it('a guest with no cart at all registers without error', async () => {
+  it('a user with no guest cart at all logs in without error', async () => {
+    await makeMergeUser();
     const guest = request.agent(app);
-    const reg = await guest.post('/api/auth/register').send(creds);
-    expect(reg.status).toBe(201);
+    const login = await guest.post('/api/auth/login').send({ identifier: creds.email, password: creds.password });
+    expect(login.status).toBe(200);
     expect(await prisma.cart.count()).toBe(0);
   });
 });

@@ -62,3 +62,49 @@ export async function sendPasswordResetEmail(
     return false;
   }
 }
+
+/**
+ * Sends the email-verification email for a new registration (or a resend).
+ * Same contract as `sendPasswordResetEmail`: never throws, no-op + warn when
+ * SMTP is unconfigured, returns whether it actually sent (for logging only) —
+ * delivery outcome must never be observable to the caller.
+ */
+export async function sendVerificationEmail(
+  to: string,
+  verifyUrl: string,
+  ttlMinutes: number
+): Promise<boolean> {
+  if (!transporter) {
+    console.warn('[mailer] SMTP is not configured — skipping verification email to', to);
+    return false;
+  }
+
+  const hours = Math.round(ttlMinutes / 60);
+  const validFor = hours >= 1 ? `${hours} hour${hours === 1 ? '' : 's'}` : `${ttlMinutes} minutes`;
+
+  const text =
+    `Welcome to Ali's Store! Confirm your email address to finish setting up your account.\n\n` +
+    `Verify your email: ${verifyUrl}\n\n` +
+    `This link is valid for ${validFor}. If you didn't create an account, you can ignore this email.`;
+
+  const html = `
+    <p>Welcome to Ali's Store! Confirm your email address to finish setting up your account.</p>
+    <p><a href="${verifyUrl}">Verify your email</a></p>
+    <p>This link is valid for ${validFor}. If you didn't create an account, you can ignore this email.</p>
+  `.trim();
+
+  try {
+    const info = await transporter.sendMail({
+      from: env.SMTP_FROM,
+      to,
+      subject: "Verify your Ali's Store email",
+      text,
+      html,
+    });
+    console.log('[mailer] verification email sent', info.messageId);
+    return true;
+  } catch (err) {
+    console.error('[mailer] failed to send verification email', err);
+    return false;
+  }
+}

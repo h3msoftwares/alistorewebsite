@@ -77,15 +77,16 @@ model User {
   dateCreated         DateTime  @default(now())
   deletedAt           DateTime?
 
-  addresses           Address[]
-  cart                Cart?
-  favorites           Favorite[]
-  orders              Order[]
-  refreshTokens       RefreshToken[]
-  oauthAccounts       OAuthAccount[]
-  passwordResetTokens PasswordResetToken[]
-  auditLogs           AuditLog[] // rows where this user was the actor
-  stockMovements      StockMovement[] // manual stock adjustments made by this user
+  addresses               Address[]
+  cart                    Cart?
+  favorites               Favorite[]
+  orders                  Order[]
+  refreshTokens           RefreshToken[]
+  oauthAccounts           OAuthAccount[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  auditLogs               AuditLog[] // rows where this user was the actor
+  stockMovements          StockMovement[] // manual stock adjustments made by this user
 
   @@index([role])
   @@map("user")
@@ -124,6 +125,23 @@ model PasswordResetToken {
 
   @@index([userID])
   @@map("passwordresettoken")
+}
+
+// Single-use, short-expiry token for the email-verification flow (customer
+// registration + resend-verification). Identical shape to PasswordResetToken:
+// only the SHA-256 hash of the raw token is stored, never the token itself.
+model EmailVerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userID    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userID], references: [id], onDelete: Cascade)
+
+  @@index([userID])
+  @@map("emailverificationtoken")
 }
 
 // External identity (Google today; enum leaves room for more). One row per

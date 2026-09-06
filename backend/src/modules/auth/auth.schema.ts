@@ -1,12 +1,18 @@
 import { z } from 'zod';
+import { createAddressSchema } from '../account/address.schema';
 
+// Registration now requires an email (verification is email-based), a phone,
+// and a full delivery address up front — no "skip for now". The address field
+// constraints reuse the canonical `createAddressSchema` (minus `isDefault`,
+// which is forced true server-side for the first address).
 export const registerSchema = z.object({
-  name: z.string().min(1),
-  email: z.string().email().optional(),
-  phone: z.string().min(6).optional(),
-  password: z.string().min(8),
-}).refine((data) => data.email || data.phone, {
-  message: 'Either email or phone is required',
+  email: z.string().email().max(320),
+  password: z.string().min(8).max(200),
+  name: z.string().min(1).max(120),
+  phone: z.string().min(6).max(30),
+  address: createAddressSchema.omit({ isDefault: true }),
+  // Only shapes the link in the verification email; defaults to 'en'.
+  locale: z.enum(['en', 'ar']).default('en'),
 });
 
 // Login is a hostile surface — bound both fields so a giant body can't be
