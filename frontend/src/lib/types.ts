@@ -76,6 +76,10 @@ export interface Collection {
    *  among featured rows (collections + categories, interleaved) reuses
    *  `sortOrder` as a shared ranking key. */
   showOnHome: boolean;
+  /** Owner-picked: shown on the home page as a single square image (its base
+   *  image) in a grid at the top, with no category row. Position within that
+   *  grid reuses `sortOrder`. Takes precedence over `showOnHome`. */
+  showOnHomeAsImage: boolean;
   sortOrder: number;
   /** `#rrggbb` — drives the `--collection-accent*` CSS vars (see `accentStyle`). */
   accentColor?: string | null;
@@ -480,6 +484,7 @@ export interface CollectionBody {
   // TODO(admin-collections): expose showInNav / showOnHome / sortOrder / accentColor in the admin form.
   showInNav?: boolean;
   showOnHome?: boolean;
+  showOnHomeAsImage?: boolean;
   sortOrder?: number;
   accentColor?: string | null;
   categoryIds?: UUID[];

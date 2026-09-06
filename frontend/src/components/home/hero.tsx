@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useSettings } from '@/hooks/use-settings';
 import { useNavCollections } from '@/hooks/use-catalog';
+import { useReveal } from '@/hooks/use-reveal';
 
 /**
  * Home hero: a full-bleed near-black band (== --color-secondary) filling the
@@ -30,6 +31,10 @@ export function Hero({ locale }: { locale: string }) {
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { data: settings } = useSettings();
   const { data: navCollections } = useNavCollections();
+
+  const [leadRef, leadClass, leadStyle] = useReveal(0);
+  const [mediaRef, mediaClass, mediaStyle] = useReveal(80);
+  const [asideRef, asideClass, asideStyle] = useReveal(140);
 
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -85,14 +90,14 @@ export function Hero({ locale }: { locale: string }) {
   return (
     <section ref={ref} className="hero" data-home-hero aria-labelledby="hero-title">
       <div className="hero__inner">
-        <div className="hero__lead">
+        <div ref={leadRef} className={`hero__lead ${leadClass}`} style={leadStyle}>
           <p className="eyebrow hero__eyebrow">{eyebrow}</p>
           <h1 id="hero-title" className="hero__title">
             {headline}
           </h1>
         </div>
 
-        <div className="hero__media">
+        <div ref={mediaRef} className={`hero__media ${mediaClass}`} style={mediaStyle}>
           <Image
             src="/home-hero-bg.png"
             alt={t("Ali — Ali's Store", 'علي — متجر علي')}
@@ -104,7 +109,7 @@ export function Hero({ locale }: { locale: string }) {
           />
         </div>
 
-        <div className="hero__aside">
+        <div ref={asideRef} className={`hero__aside ${asideClass}`} style={asideStyle}>
           <p className="hero__lede">{lede}</p>
           <Link href={`/${locale}/${ctaSlug}`} className="btn btn--primary btn--lg hero__cta">
             {ctaLabel}

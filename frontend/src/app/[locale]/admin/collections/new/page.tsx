@@ -25,6 +25,7 @@ export default function NewCollectionPage() {
         isActive: values.isActive,
         showInNav: values.showInNav,
         showOnHome: values.showOnHome,
+        showOnHomeAsImage: values.showOnHomeAsImage,
         sortOrder: values.sortOrder,
         accentColor: values.accentColor || undefined,
       });

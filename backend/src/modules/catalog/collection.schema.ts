@@ -72,6 +72,10 @@ export const createCollectionSchema = z.object({
   // Home curation: gets its own featured row (name + horizontal scroll of its
   // categories) on the home page. Independent of showInNav.
   showOnHome: z.boolean().default(false),
+  // Home curation: shown as a single square image (its base image) in the grid
+  // at the top of the home page, with no category row. Order within that grid
+  // reuses sortOrder. Takes precedence over showOnHome.
+  showOnHomeAsImage: z.boolean().default(false),
   sortOrder: z.number().int().nonnegative().default(0),
   accentColor: hexColor.optional().nullable(),
   // Optionally attach existing categories to the new collection on creation.

@@ -44,6 +44,7 @@ export default function EditCollectionPage() {
           isActive: values.isActive,
           showInNav: values.showInNav,
           showOnHome: values.showOnHome,
+          showOnHomeAsImage: values.showOnHomeAsImage,
           sortOrder: values.sortOrder,
           accentColor: values.accentColor ? values.accentColor : null,
         },
@@ -109,6 +110,7 @@ export default function EditCollectionPage() {
           isActive: collection.isActive,
           showInNav: collection.showInNav,
           showOnHome: collection.showOnHome,
+          showOnHomeAsImage: collection.showOnHomeAsImage,
           sortOrder: collection.sortOrder,
           accentColor: collection.accentColor ?? '',
         }}

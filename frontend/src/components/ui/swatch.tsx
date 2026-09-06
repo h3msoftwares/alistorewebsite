@@ -9,6 +9,10 @@ export interface SwatchProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   swatchColor?: string;
   selected?: boolean;
   outOfStock?: boolean;
+  /** Static label mode: renders a non-interactive `<span>` (no button, no
+   *  press/disabled semantics, no click) with the same `.swatch` visuals. Used
+   *  where colours are shown purely as labels — e.g. the home page product card. */
+  readOnly?: boolean;
 }
 
 /** Colour swatch — a product-photo thumbnail per colourway, on the .swatch class. */
@@ -18,10 +22,30 @@ export function Swatch({
   swatchColor,
   selected = false,
   outOfStock = false,
+  readOnly = false,
   className,
   style,
   ...rest
 }: SwatchProps) {
+  const swatchStyle = swatchColor && !imageUrl ? { ...style, background: swatchColor } : style;
+  const img =
+    // eslint-disable-next-line @next/next/no-img-element -- 44px decorative thumbnail; next/image fill is overkill here
+    imageUrl ? <img className="swatch__img" src={imageUrl} alt="" /> : null;
+
+  if (readOnly) {
+    return (
+      <span
+        className={['swatch', className].filter(Boolean).join(' ')}
+        aria-disabled={outOfStock || undefined}
+        title={colorName}
+        aria-label={`Colour: ${colorName}`}
+        style={swatchStyle}
+      >
+        {img}
+      </span>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -32,11 +56,10 @@ export function Swatch({
       disabled={outOfStock}
       aria-label={`Colour: ${colorName}`}
       title={colorName}
-      style={swatchColor && !imageUrl ? { ...style, background: swatchColor } : style}
+      style={swatchStyle}
       {...rest}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element -- 44px decorative thumbnail; next/image fill is overkill here */}
-      {imageUrl && <img className="swatch__img" src={imageUrl} alt="" />}
+      {img}
     </button>
   );
 }

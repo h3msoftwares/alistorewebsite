@@ -1,10 +1,11 @@
 'use client';
 
 import { useCategoryProducts } from '@/hooks/use-catalog';
+import { useReveal } from '@/hooks/use-reveal';
 import { accentStyle } from '@/lib/collections';
 import type { Category } from '@/lib/types';
 import { HorizontalScroller } from './horizontal-scroller';
-import { MediaTile } from './media-tile';
+import { HomeProductCard } from './home-card';
 
 const ROW_SIZE = 12;
 
@@ -12,16 +13,30 @@ const ROW_SIZE = 12;
  *  to its page) + a horizontal scroll of its products (image + name each,
  *  linking to the product page). Independent of whether the category's own
  *  collection is also featured (see `CollectionRow`). */
-export function CategoryRow({ locale, category }: { locale: string; category: Category }) {
+export function CategoryRow({
+  locale,
+  category,
+  delayMs = 0,
+}: {
+  locale: string;
+  category: Category;
+  delayMs?: number;
+}) {
   const isAr = locale === 'ar';
   const { data, isPending } = useCategoryProducts(category.id, { pageSize: ROW_SIZE });
   const name = isAr ? category.nameAr : category.nameEn;
   const items = data?.items ?? [];
+  const [revealRef, revealClass, revealStyle] = useReveal(delayMs);
 
   if (!isPending && items.length === 0) return null;
 
   return (
-    <div data-collection={category.collection?.slug} style={accentStyle(category.collection?.accentColor)}>
+    <div
+      ref={revealRef}
+      className={revealClass}
+      data-collection={category.collection?.slug}
+      style={{ ...accentStyle(category.collection?.accentColor), ...revealStyle }}
+    >
       <HorizontalScroller
         locale={locale}
         title={name}
@@ -33,13 +48,7 @@ export function CategoryRow({ locale, category }: { locale: string; category: Ca
               <span key={i} className="media-tile-skeleton skeleton" aria-hidden />
             ))
           : items.map((product) => (
-              <MediaTile
-                key={product.id}
-                href={`/${locale}/product/${product.id}`}
-                name={isAr ? product.nameAr : product.nameEn}
-                imageUrl={product.images[0]?.url}
-                imageAlt={(isAr ? product.images[0]?.altAr : product.images[0]?.altEn) ?? undefined}
-              />
+              <HomeProductCard key={product.id} product={product} locale={isAr ? 'ar' : 'en'} />
             ))}
       </HorizontalScroller>
     </div>

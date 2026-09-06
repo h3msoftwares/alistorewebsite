@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
-import { generateOrderNumber } from '../../lib/orderNumber';
+import { generateUniqueOrderNumber } from '../../lib/orderNumber';
+import { recordAudit } from '../../lib/audit';
 import {
   resolveDeliveryFee,
   toDeliveryConfig,
@@ -134,7 +135,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
 
     const order = await tx.order.create({
       data: {
-        orderNumber: generateOrderNumber(),
+        orderNumber: await generateUniqueOrderNumber(tx),
         userID: owner.userID,
         addressID: input.addressId,
         guestEmail: input.guestEmail,
@@ -245,19 +246,36 @@ export async function listAllOrders(status?: OrderStatus) {
   });
 }
 
-export async function updateOrderStatus(id: string, status: OrderStatus) {
+export async function updateOrderStatus(id: string, status: OrderStatus, actorId?: string) {
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
-  return prisma.order.update({ where: { id }, data: { status } });
+  const updated = await prisma.order.update({ where: { id }, data: { status } });
+  await recordAudit({
+    entityType: 'order',
+    entityID: id,
+    action: 'order.status_changed',
+    actorID: actorId,
+    metadata: { orderNumber: order.orderNumber, from: order.status, to: status },
+  });
+  return updated;
 }
 
-export async function markCodCollected(id: string, collected: boolean) {
+export async function markCodCollected(id: string, collected: boolean, actorId?: string) {
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
-  return prisma.order.update({
+  const nextPaymentStatus = collected ? 'COLLECTED' : 'PENDING';
+  const updated = await prisma.order.update({
     where: { id },
-    data: { paymentStatus: collected ? 'COLLECTED' : 'PENDING' },
+    data: { paymentStatus: nextPaymentStatus },
   });
+  await recordAudit({
+    entityType: 'order',
+    entityID: id,
+    action: collected ? 'order.payment_collected' : 'order.payment_uncollected',
+    actorID: actorId,
+    metadata: { orderNumber: order.orderNumber, from: order.paymentStatus, to: nextPaymentStatus },
+  });
+  return updated;
 }
 
 export async function salesDashboard() {

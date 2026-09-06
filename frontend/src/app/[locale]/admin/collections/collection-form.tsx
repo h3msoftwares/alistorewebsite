@@ -17,6 +17,7 @@ export const collectionFormSchema = z.object({
   isActive: z.boolean(),
   showInNav: z.boolean(),
   showOnHome: z.boolean(),
+  showOnHomeAsImage: z.boolean(),
   // Plain z.number(), not z.coerce.number() — coercion gives the schema an
   // `unknown` input type that zodResolver's generics can't reconcile with
   // useForm<Values>'s z.infer (output) type. RHF's own register(...,
@@ -39,6 +40,7 @@ export const collectionFormDefaults: CollectionFormValues = {
   isActive: true,
   showInNav: false,
   showOnHome: false,
+  showOnHomeAsImage: false,
   sortOrder: 0,
   accentColor: '',
 };
@@ -99,7 +101,11 @@ export function CollectionForm({
       </div>
 
       <div className="admin-form__row">
-        <Field label={t('Sort order', 'ترتيب العرض')} hint={t('Lower shows first', 'الأصغر يظهر أولاً')} error={errors.sortOrder?.message}>
+        <Field
+          label={t('Sort order', 'ترتيب العرض')}
+          hint={t('Lower shows first — also orders the home image grid', 'الأصغر يظهر أولاً — ويُرتّب أيضًا شبكة صور الرئيسية')}
+          error={errors.sortOrder?.message}
+        >
           {(p) => (
             <Input {...p} type="number" min={0} {...register('sortOrder', { valueAsNumber: true })} disabled={busy} />
           )}
@@ -117,6 +123,12 @@ export function CollectionForm({
         <Choice type="checkbox" label={t('Active', 'مفعّل')} {...register('isActive')} disabled={busy} />
         <Choice type="checkbox" label={t('Show in nav', 'إظهار في التنقل')} {...register('showInNav')} disabled={busy} />
         <Choice type="checkbox" label={t('Show on home', 'إظهار في الرئيسية')} {...register('showOnHome')} disabled={busy} />
+        <Choice
+          type="checkbox"
+          label={t('Show on home as image', 'إظهار في الرئيسية كصورة')}
+          {...register('showOnHomeAsImage')}
+          disabled={busy}
+        />
       </div>
 
       {submitError && <Alert tone="danger">{submitError}</Alert>}

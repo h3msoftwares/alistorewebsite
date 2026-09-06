@@ -38,12 +38,20 @@ export async function listAllOrdersHandler(req: Request, res: Response) {
 }
 
 export async function updateOrderStatusHandler(req: Request, res: Response) {
-  const order = await orderService.updateOrderStatus(paramString(req.params.id), req.body.status);
+  const order = await orderService.updateOrderStatus(
+    paramString(req.params.id),
+    req.body.status,
+    req.user!.id
+  );
   res.json({ order });
 }
 
 export async function markCodCollectedHandler(req: Request, res: Response) {
-  const order = await orderService.markCodCollected(paramString(req.params.id), req.body.collected);
+  const order = await orderService.markCodCollected(
+    paramString(req.params.id),
+    req.body.collected,
+    req.user!.id
+  );
   res.json({ order });
 }
 

@@ -40,26 +40,43 @@ export function useNavCollections() {
 
 /** Collections promoted into the home page's featured row (own row: name +
  *  a horizontal scroll of its categories), in `sortOrder`. Derived from
- *  `useCollections()` — no separate request. */
+ *  `useCollections()` — no separate request. Image-collections
+ *  (`showOnHomeAsImage`) are excluded — they render as a square in the top
+ *  grid instead, never also as a row. */
 export function useFeaturedCollections() {
   const q = useCollections();
   return {
     ...q,
     data: q.data
-      ?.filter((c) => c.showOnHome)
+      ?.filter((c) => c.showOnHome && !c.showOnHomeAsImage)
       .slice()
       .sort((a, b) => a.sortOrder - b.sortOrder),
   };
 }
 
-/** Every collection NOT promoted to the home page's featured row — the "rest
- *  of the collections" block below it, in `sortOrder`. */
+/** Every collection NOT promoted to the home page's featured row and NOT
+ *  shown as a top-grid square — the "rest of the collections" block below it,
+ *  in `sortOrder`. */
 export function useOtherCollections() {
   const q = useCollections();
   return {
     ...q,
     data: q.data
-      ?.filter((c) => !c.showOnHome)
+      ?.filter((c) => !c.showOnHome && !c.showOnHomeAsImage)
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder),
+  };
+}
+
+/** Collections the owner shows as a single square image in the grid at the
+ *  top of the home page (no category row), in `sortOrder`. Derived from
+ *  `useCollections()` — no separate request. */
+export function useHomeImageCollections() {
+  const q = useCollections();
+  return {
+    ...q,
+    data: q.data
+      ?.filter((c) => c.showOnHomeAsImage)
       .slice()
       .sort((a, b) => a.sortOrder - b.sortOrder),
   };
