@@ -72,12 +72,15 @@ async function main() {
   const adminPasswordHash = await argon2.hash(requireSeedAdminPassword());
   await prisma.user.upsert({
     where: { email: 'admin@alistore.com' },
-    update: {},
+    // Keep the admin's email marked verified (the storefront gates sign-in on
+    // it); harmless to re-affirm on every seed.
+    update: { emailVerified: new Date() },
     create: {
       email: 'admin@alistore.com',
       name: "Ali's Store Admin",
       role: 'ADMIN',
       passwordHash: adminPasswordHash,
+      emailVerified: new Date(),
     },
   });
 
