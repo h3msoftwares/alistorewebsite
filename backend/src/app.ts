@@ -8,6 +8,7 @@ import { env } from './config/env';
 import authRoutes from './modules/auth/auth.routes';
 import { adminAuthRoutes } from './modules/auth/admin-auth.routes';
 import { passwordResetRoutes } from './modules/auth/password-reset.routes';
+import { emailVerificationRoutes } from './modules/auth/email-verification.routes';
 import collectionRoutes from './modules/catalog/collection.routes';
 import categoryRoutes from './modules/catalog/category.routes';
 import productRoutes from './modules/catalog/product.routes';
@@ -22,10 +23,16 @@ import settingsRoutes from './modules/settings/settings.routes';
 
 export function buildApp(
   opts: {
+    // Gates BOTH the /login and /register limiters (they share one authRoutes
+    // switch). `customerRegisterRateLimit` is an alias for readability in the
+    // register-focused rate-limit test.
     customerLoginRateLimit?: boolean;
+    customerRegisterRateLimit?: boolean;
     adminLoginRateLimit?: boolean;
     forgotPasswordRateLimit?: boolean;
     resetPasswordRateLimit?: boolean;
+    verifyEmailRateLimit?: boolean;
+    resendVerificationRateLimit?: boolean;
   } = {}
 ) {
   const app = express();
@@ -58,7 +65,12 @@ export function buildApp(
   // one line per module.
   app.use(
     '/api/auth',
-    authRoutes({ rateLimit: opts.customerLoginRateLimit ?? env.NODE_ENV !== 'test' })
+    authRoutes({
+      rateLimit:
+        opts.customerLoginRateLimit ??
+        opts.customerRegisterRateLimit ??
+        env.NODE_ENV !== 'test',
+    })
   );
   // Separate admin-login path mounted on the same prefix. Its rate limiter is
   // on everywhere except tests, where it would throttle the suite.
@@ -72,6 +84,14 @@ export function buildApp(
     passwordResetRoutes({
       forgotPasswordRateLimit: opts.forgotPasswordRateLimit ?? env.NODE_ENV !== 'test',
       resetPasswordRateLimit: opts.resetPasswordRateLimit ?? env.NODE_ENV !== 'test',
+    })
+  );
+  // Email verification — the customer-registration companion flow.
+  app.use(
+    '/api/auth',
+    emailVerificationRoutes({
+      verifyRateLimit: opts.verifyEmailRateLimit ?? env.NODE_ENV !== 'test',
+      resendRateLimit: opts.resendVerificationRateLimit ?? env.NODE_ENV !== 'test',
     })
   );
   app.use('/api/collections', collectionRoutes);

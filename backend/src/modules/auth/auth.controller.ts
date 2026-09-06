@@ -2,6 +2,13 @@ import { Request, Response } from 'express';
 import * as authService from './auth.service';
 import { mergeGuestCartIntoUser } from '../cart/cart.service';
 
+// Exported so the email-verification controller and the test suite reference
+// the exact same string. Deliberately identical for "new email", "email
+// already in use", and "resend to an unverified account" — the caller can't
+// tell which happened.
+export const REGISTER_MESSAGE =
+  "If this email isn't already in use, we've sent a verification link.";
+
 const REFRESH_COOKIE = 'refreshToken';
 const GUEST_CART_COOKIE = 'cartSession';
 const cookieOptions = {
@@ -26,13 +33,11 @@ async function absorbGuestCart(req: Request, res: Response, userId: string) {
 }
 
 export async function registerHandler(req: Request, res: Response) {
-  const { accessToken, refreshToken, user } = await authService.register(req.body);
-  await absorbGuestCart(req, res, user.id);
-  res.cookie(REFRESH_COOKIE, refreshToken, cookieOptions);
-  res.status(201).json({
-    accessToken,
-    user: { id: user.id, name: user.name, email: user.email, phone: user.phone },
-  });
+  // No session is created — registration only ever mails a verification link.
+  // Always the same status + body regardless of which branch ran in the
+  // service (see authService.register).
+  await authService.register(req.body);
+  res.status(201).json({ message: REGISTER_MESSAGE });
 }
 
 export async function loginHandler(req: Request, res: Response) {

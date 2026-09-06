@@ -14,7 +14,14 @@ import { resetItemCount } from '@/store/slices/cartSlice';
 import { accountApi, authApi, setAccessToken } from '@/lib/api';
 import { refreshAccessToken } from '@/lib/api/client';
 import { queryKeys } from '@/lib/query-keys';
-import type { ForgotPasswordBody, LoginBody, RegisterBody, ResetPasswordBody } from '@/lib/types';
+import type {
+  ForgotPasswordBody,
+  LoginBody,
+  RegisterBody,
+  ResendVerificationBody,
+  ResetPasswordBody,
+  VerifyEmailBody,
+} from '@/lib/types';
 
 export function useAuth() {
   const user = useAppSelector(selectAuthUser);
@@ -116,19 +123,29 @@ export function useResetPassword() {
   });
 }
 
+/** Registration does NOT log the browser in — the backend only mails a
+ *  verification link and returns a generic message that's identical whether
+ *  or not the email was already in use. The form shows a "check your email"
+ *  state on success; the user verifies, then signs in. */
 export function useRegister() {
-  const dispatch = useAppDispatch();
-  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (body: RegisterBody) => {
-      const { accessToken } = await authApi.register(body);
-      setAccessToken(accessToken);
-      return accountApi.getProfile();
-    },
-    onSuccess: (profile) => {
-      dispatch(authenticated(profile));
-      qc.invalidateQueries({ queryKey: queryKeys.cart.root() });
-    },
+    mutationFn: (body: RegisterBody) => authApi.register(body),
+  });
+}
+
+/** Consumes the token from the /verify-email link. No session side-effects —
+ *  the user signs in afterwards. */
+export function useVerifyEmail() {
+  return useMutation({
+    mutationFn: (body: VerifyEmailBody) => authApi.verifyEmail(body),
+  });
+}
+
+/** Re-request the verification email. Same generic response as register —
+ *  the form must not infer anything from it beyond "request accepted". */
+export function useResendVerification() {
+  return useMutation({
+    mutationFn: (body: ResendVerificationBody) => authApi.resendVerification(body),
   });
 }
 

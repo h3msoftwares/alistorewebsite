@@ -20,6 +20,9 @@ interface CreateUserOpts {
   name?: string;
   /** When set, a real argon2 hash is stored so the login route works. */
   password?: string;
+  /** Defaults to `true` — verified, so login works out of the box. Pass
+   *  `false` to test the email-verification gate. */
+  emailVerified?: boolean;
 }
 
 export async function createUser(opts: CreateUserOpts = {}) {
@@ -31,6 +34,7 @@ export async function createUser(opts: CreateUserOpts = {}) {
       phone: opts.phone,
       role,
       passwordHash: opts.password ? await argon2.hash(opts.password) : null,
+      emailVerified: opts.emailVerified === false ? null : new Date(),
     },
   });
   return { user, token: signAccessToken(user.id, role), password: opts.password };

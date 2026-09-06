@@ -1,8 +1,12 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import type { Metadata } from 'next';
+import { RegisterForm } from './register-form';
 
-// TODO: registration form -> POST /api/auth/register. Guest checkout
-// remains available without this — see project guide.
+export const metadata: Metadata = { title: 'Create account' };
+
+// Storefront customer sign-up. Requires email + phone + a full delivery
+// address up front, and sends an email-verification link — no session is
+// created here (see useRegister). Links to /login.
 export default async function RegisterPage({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = await params;
-  return <PagePlaceholder title={locale === 'ar' ? 'إنشاء حساب' : 'Create Account'} />;
+  const { locale } = (await params) as { locale: 'en' | 'ar' };
+  return <RegisterForm locale={locale} />;
 }

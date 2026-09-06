@@ -2,10 +2,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { createWrapper } from '@/test/utils';
 import { selectAuthStatus, selectAuthUser } from '@/store/slices/authSlice';
-import { useAuth, useAuthBootstrap, useLogin, useRegister, useLogout } from './use-auth';
+import {
+  useAuth,
+  useAuthBootstrap,
+  useLogin,
+  useRegister,
+  useResendVerification,
+  useVerifyEmail,
+  useLogout,
+} from './use-auth';
 
 vi.mock('@/lib/api', () => ({
-  authApi: { login: vi.fn(), register: vi.fn(), logout: vi.fn() },
+  authApi: {
+    login: vi.fn(),
+    register: vi.fn(),
+    verifyEmail: vi.fn(),
+    resendVerification: vi.fn(),
+    logout: vi.fn(),
+  },
   accountApi: { getProfile: vi.fn() },
   setAccessToken: vi.fn(),
 }));
@@ -41,17 +55,47 @@ describe('useLogin', () => {
 });
 
 describe('useRegister', () => {
-  it('signs the new account straight in', async () => {
-    mockAuth.register.mockResolvedValue({ accessToken: 'tok-2' } as never);
-    mockAccount.getProfile.mockResolvedValue({ ...user, isActive: true, dateCreated: 'now' } as never);
+  const body = {
+    email: 'a@x.dev',
+    password: 'password1',
+    name: 'Ali',
+    address: { phone: '0791234567', addressLine: '1 St', city: 'Amman' },
+  };
+
+  it('posts the payload and does NOT create a session (email must be verified first)', async () => {
+    mockAuth.register.mockResolvedValue({ message: 'ok' } as never);
 
     const { Wrapper, store } = createWrapper();
     const { result } = renderHook(() => useRegister(), { wrapper: Wrapper });
 
-    await result.current.mutateAsync({ name: 'Ali', email: 'a@x.dev', password: 'password1' });
+    await result.current.mutateAsync(body);
 
-    expect(mockSetToken).toHaveBeenCalledWith('tok-2');
-    expect(selectAuthStatus(store.getState())).toBe('authenticated');
+    expect(mockAuth.register).toHaveBeenCalledWith(body);
+    expect(mockSetToken).not.toHaveBeenCalled();
+    expect(selectAuthStatus(store.getState())).not.toBe('authenticated');
+  });
+});
+
+describe('useVerifyEmail / useResendVerification', () => {
+  it('verifyEmail forwards the token, no session side-effects', async () => {
+    mockAuth.verifyEmail.mockResolvedValue({ message: 'verified' } as never);
+    const { Wrapper, store } = createWrapper();
+    const { result } = renderHook(() => useVerifyEmail(), { wrapper: Wrapper });
+
+    await result.current.mutateAsync({ token: 'tok' });
+
+    expect(mockAuth.verifyEmail).toHaveBeenCalledWith({ token: 'tok' });
+    expect(mockSetToken).not.toHaveBeenCalled();
+    expect(selectAuthStatus(store.getState())).not.toBe('authenticated');
+  });
+
+  it('resendVerification forwards the email + locale', async () => {
+    mockAuth.resendVerification.mockResolvedValue({ message: 'ok' } as never);
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useResendVerification(), { wrapper: Wrapper });
+
+    await result.current.mutateAsync({ email: 'a@x.dev', locale: 'en' });
+    expect(mockAuth.resendVerification).toHaveBeenCalledWith({ email: 'a@x.dev', locale: 'en' });
   });
 });
 

@@ -14,6 +14,7 @@ const TABLES = [
   'auditlog',
   'oauthaccount',
   'passwordresettoken',
+  'emailverificationtoken',
   'refreshtoken',
   'productimage',
   'productvariant',
