@@ -1,10 +1,9 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { CheckoutView } from './checkout-view';
 
-// TODO: checkout form -> POST /api/orders/checkout (COD only, no payment
-// fields). Body is the delivery snapshot: deliveryName, deliveryPhone,
-// deliveryAddress, deliveryCity, deliveryArea?, deliveryNotes?, notes?,
-// plus guestEmail? for guests / addressId? to reference a saved address.
+// COD checkout: delivery snapshot + governorate (drives the admin-set delivery
+// fee) -> POST /api/orders/checkout. Server shell only; the client component
+// owns the cart read, the live delivery-fee quote, and the mutation.
 export default async function CheckoutPage({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = await params;
-  return <PagePlaceholder title={locale === 'ar' ? 'إتمام الطلب' : 'Checkout'} />;
+  const { locale } = (await params) as { locale: 'en' | 'ar' };
+  return <CheckoutView locale={locale === 'ar' ? 'ar' : 'en'} />;
 }

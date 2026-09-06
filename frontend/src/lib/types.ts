@@ -223,10 +223,14 @@ export interface Order {
   deliveryPhone: string;
   deliveryAddress: string;
   deliveryCity: string;
+  /** Lebanese governorate (one of the DELIVERY_REGIONS values). */
+  deliveryRegion?: string | null;
   deliveryArea?: string | null;
   deliveryNotes?: string | null;
   notes?: string | null;
   subtotal: Decimalish;
+  /** Admin-configured delivery fee. `total = subtotal + deliveryFee`. */
+  deliveryFee: Decimalish;
   total: Decimalish;
   currency: string;
   paymentMethod: PaymentMethod;
@@ -245,9 +249,19 @@ export interface CheckoutBody {
   deliveryPhone: string;
   deliveryAddress: string;
   deliveryCity: string;
+  deliveryRegion: string;
   deliveryArea?: string;
   deliveryNotes?: string;
   notes?: string;
+}
+
+/** `GET /api/orders/delivery-quote?region=...` — a live fee estimate for the
+ *  caller's current cart. `freeReason` explains a zero fee. */
+export interface DeliveryQuote {
+  subtotal: number;
+  deliveryFee: number;
+  total: number;
+  freeReason: 'disabled' | 'threshold' | 'region' | null;
 }
 
 // ---- Auth / account ----
@@ -259,6 +273,8 @@ export interface Address {
   phone: string;
   addressLine: string;
   city: string;
+  /** Lebanese governorate (one of the DELIVERY_REGIONS values). */
+  region?: string | null;
   area?: string | null;
   notes?: string | null;
   isDefault: boolean;
@@ -317,6 +333,14 @@ export interface AnnouncementLine {
   sortOrder: number;
 }
 
+/** One per-governorate delivery-fee override. */
+export interface DeliveryRate {
+  id: UUID;
+  region: string;
+  fee: Decimalish;
+  sortOrder: number;
+}
+
 /** Owner-editable storefront chrome (`GET /api/settings`). */
 export interface SiteSettings {
   id: number;
@@ -343,15 +367,32 @@ export interface SiteSettings {
   announcementLines: AnnouncementLine[];
   /** Resolved collection for the hero CTA, when one is set. */
   heroCtaCollection: Pick<Collection, 'id' | 'slug' | 'nameEn' | 'nameAr'> | null;
+  // Delivery fee — off ⇒ every order ships free.
+  deliveryFeeEnabled: boolean;
+  deliveryFeeFlat: Decimalish;
+  freeDeliveryThreshold: Decimalish | null;
+  freeDeliveryRegions: string[];
+  deliveryRates: DeliveryRate[];
 }
 
 /** Partial patch — every field optional; `''` clears a nullable field;
- *  `announcementLines` replaces the whole list. */
+ *  `announcementLines` / `deliveryRates` replace the whole list. */
 export type SiteSettingsBody = Partial<
-  Omit<SiteSettings, 'id' | 'announcementLines' | 'heroCtaCollection' | 'heroCtaCollectionID'>
+  Omit<
+    SiteSettings,
+    | 'id'
+    | 'announcementLines'
+    | 'heroCtaCollection'
+    | 'heroCtaCollectionID'
+    | 'deliveryRates'
+    | 'freeDeliveryThreshold'
+  >
 > & {
   heroCtaCollectionId?: UUID | '' | null;
   announcementLines?: { textEn: string; textAr: string }[];
+  deliveryRates?: { region: string; fee: number }[];
+  /** number ⇒ set; null ⇒ clear the free-over rule. */
+  freeDeliveryThreshold?: number | null;
 };
 
 // ---- Request payloads (write endpoints) ----
@@ -368,6 +409,7 @@ export interface RegisterBody {
     phone: string;
     addressLine: string;
     city: string;
+    region?: string;
     area?: string;
     notes?: string;
   };
@@ -491,6 +533,7 @@ export interface AddressBody {
   phone: string;
   addressLine: string;
   city: string;
+  region?: string;
   area?: string;
   notes?: string;
   isDefault?: boolean;
@@ -543,6 +586,7 @@ export interface AnalyticsOverview {
   range: { from: string; to: string };
   kpis: {
     revenue: number;
+    deliveryRevenue: number;
     deliveredRevenue: number;
     orders: number;
     averageOrderValue: number;
