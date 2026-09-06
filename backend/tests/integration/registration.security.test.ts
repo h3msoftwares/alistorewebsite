@@ -185,7 +185,7 @@ describe('register — cannot be coerced into privilege / cross-user writes', ()
     expect(after.emailVerified).toEqual(before.emailVerified);
     // the admin's real password still works at the admin door
     const adminLogin = await request(app)
-      .post('/api/auth/admin-login')
+      .post('/api/auth/ali-admin-login')
       .send({ identifier: 'target@sec.test', password: 'TheRealAdminPassword1!' });
     expect(adminLogin.status).toBe(200);
   });

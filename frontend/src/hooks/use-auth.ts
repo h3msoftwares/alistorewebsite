@@ -87,7 +87,7 @@ export function useLogin() {
 }
 
 /** Admin-panel sign-in. Mirrors `useLogin` (verify → prime token → load
- *  profile → mark authenticated) but hits POST /api/auth/admin-login and does
+ *  profile → mark authenticated) but hits POST /api/auth/ali-admin-login and does
  *  no cart work — the admin flow isn't a storefront session. The backend only
  *  returns 200 for a STAFF/ADMIN account, so a resolved profile here is
  *  already an admin. */

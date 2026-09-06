@@ -5,9 +5,9 @@ export const metadata: Metadata = {
   title: 'Sign in',
 };
 
-// Storefront customer sign-in. Separate from the admin panel's /admin/login
-// (different endpoint, rate limit and redirect). On success it goes to
-// ?next= (a validated same-origin path) or the locale home.
+// Storefront customer sign-in. Separate from the admin sign-in (its own
+// unguessable path, endpoint, rate limit and redirect). On success it goes
+// to ?next= (a validated same-origin path) or the locale home.
 export default async function LoginPage({
   params,
   searchParams,

@@ -33,7 +33,7 @@ export type CustomerLoginOutcome =
   | 'success'
   | 'invalid_credentials'
   | 'locked_out'
-  | 'privileged_denied' // correct creds, but an ADMIN/STAFF account — must use /admin-login
+  | 'privileged_denied' // correct creds, but an ADMIN/STAFF account — must use the admin door
   | 'email_unverified'; // correct creds, but the email was never verified
 
 export interface LoginContext {
@@ -196,7 +196,7 @@ export async function register(input: RegisterInput): Promise<void> {
  *     credentials"` (the old `FORBIDDEN / "Account temporarily locked"` leaked
  *     that the account exists);
  *   - ADMIN/STAFF accounts are refused outright: privileged credentials have
- *     exactly one door (POST /api/auth/admin-login — audited, tighter rate
+ *     exactly one door (POST /api/auth/ali-admin-login — audited, tighter rate
  *     limit, role gate). Refusing here also means this looser public endpoint
  *     can't be used to drive a privileged account's shared `failedLoginAttempts`
  *     up and lock it out of the admin panel;

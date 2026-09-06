@@ -105,7 +105,7 @@ describe('the customer login door is not a back way into a privileged account', 
 
     // and admin-login still works
     const ok = await request(app)
-      .post('/api/auth/admin-login')
+      .post('/api/auth/ali-admin-login')
       .send({ identifier: ADMIN_EMAIL, password: PW });
     expect(ok.status).toBe(200);
   });

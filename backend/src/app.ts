@@ -104,7 +104,8 @@ export function buildApp(
         env.NODE_ENV !== 'test',
     })
   );
-  // Separate admin-login path mounted on the same prefix. Its rate limiter is
+  // Separate admin-login path (POST /api/auth/ali-admin-login) mounted on the
+  // same prefix — the path is deliberately unguessable. Its rate limiter is
   // on everywhere except tests, where it would throttle the suite.
   app.use(
     '/api/auth',

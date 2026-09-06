@@ -281,7 +281,7 @@ describe('POST /api/auth/reset-password', () => {
 
     // The new password works at the admin door...
     const adminLogin = await request(app)
-      .post('/api/auth/admin-login')
+      .post('/api/auth/ali-admin-login')
       .send({ identifier: 'admin.pw@sec.test', password: 'NewAdminPass1!' });
     expect(adminLogin.status).toBe(200);
 
