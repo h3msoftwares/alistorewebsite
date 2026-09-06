@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -9,6 +10,7 @@ import { KeyRound } from 'lucide-react';
 import { Alert, Button, EmptyState, Field, Input } from '@/components/ui';
 import { useResetPassword } from '@/hooks/use-auth';
 import { isApiError } from '@/lib/api';
+import { takeResetReturn } from '@/lib/reset-return';
 
 type Locale = 'en' | 'ar';
 type Status = 'idle' | 'success' | 'invalid' | 'error';
@@ -28,8 +30,12 @@ type Values = z.infer<typeof schema>;
 export function ResetPasswordForm({ locale, token }: { locale: Locale; token: string }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const router = useRouter();
   const resetPassword = useResetPassword();
   const [status, setStatus] = useState<Status>('idle');
+  // Set on success: a path means "flow started from the account page —
+  // redirect there"; null means the normal logged-out flow ("Go to sign in").
+  const [returnPath, setReturnPath] = useState<string | null>(null);
 
   const {
     register,
@@ -40,7 +46,12 @@ export function ResetPasswordForm({ locale, token }: { locale: Locale; token: st
   const onSubmit = handleSubmit(async (values) => {
     try {
       await resetPassword.mutateAsync({ token, newPassword: values.newPassword });
+      // If the flow started from the account page, send them back there
+      // rather than to sign-in. The hint is consumed here (one-shot).
+      const dest = takeResetReturn();
+      setReturnPath(dest);
       setStatus('success');
+      if (dest) router.replace(dest);
     } catch (err) {
       // The backend collapses "not found" / "expired" / "already used" into
       // one 401 on purpose — mirror that here instead of guessing which.
@@ -75,6 +86,27 @@ export function ResetPasswordForm({ locale, token }: { locale: Locale; token: st
   }
 
   if (status === 'success') {
+    // Flow started from the account page: confirm briefly, then redirect
+    // back there (the effect above calls router.replace).
+    if (returnPath) {
+      return wrap(
+        <>
+          <Alert tone="success">
+            {t(
+              'Your password has been changed. Taking you back to your account…',
+              'تم تغيير كلمة المرور. جارٍ إعادتك إلى حسابك…'
+            )}
+          </Alert>
+          <p className="prose" style={{ marginBlockStart: 'var(--space-5)' }}>
+            <Link className="btn btn--primary" href={returnPath}>
+              {t('Continue', 'متابعة')}
+            </Link>
+          </p>
+        </>
+      );
+    }
+
+    // Normal logged-out flow.
     return wrap(
       <>
         <Alert tone="success">

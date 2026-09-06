@@ -16,6 +16,10 @@ import { AppError } from '../lib/AppError';
  *     needs markup. "a < b" with a space still passes.
  *  3. Drops the prototype-pollution keys (__proto__, constructor,
  *     prototype) instead of copying them into the sanitized object.
+ *  4. Leaves password / passphrase fields completely untouched — they are
+ *     opaque credentials (hashed on arrival, never rendered, never in SQL),
+ *     so stripping a char or rejecting a "<" would only lock out a user
+ *     whose password legitimately contains one.
  *
  * Defence-in-depth on top of output encoding - not the primary XSS control.
  * It deliberately does NOT blocklist SQL keywords: every query in the app
@@ -43,6 +47,14 @@ function isDisallowed(codePoint: number): boolean {
 const HTML_TAG_START = /<[a-zA-Z!/?]/;
 
 const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+// Credential fields are opaque bytes — hashed on arrival, never rendered as
+// HTML, never interpolated into SQL. Stripping a character or rejecting a "<"
+// here would silently mangle or lock out a user whose password legitimately
+// contains one. Leave their string values exactly as sent. Anchored to the
+// exact credential field names in use so a future "passwordHint"-style
+// display field wouldn't accidentally opt out of sanitisation.
+const OPAQUE_KEY = /^(?:current|new|old|confirm)?password$|^passphrase$/i;
 
 const MAX_DEPTH = 20;
 
@@ -77,7 +89,10 @@ function sanitizeValue(node: unknown, path: string, depth: number): unknown {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(node)) {
       if (FORBIDDEN_KEYS.has(key)) continue;
-      out[key] = sanitizeValue(value, path ? `${path}.${key}` : key, depth + 1);
+      out[key] =
+        OPAQUE_KEY.test(key) && typeof value === 'string'
+          ? value
+          : sanitizeValue(value, path ? `${path}.${key}` : key, depth + 1);
     }
     return out;
   }

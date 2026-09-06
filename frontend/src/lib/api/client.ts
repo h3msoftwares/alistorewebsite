@@ -26,6 +26,53 @@ function buildUrl(path: string, query?: Record<string, QueryValue>): string {
   return s ? `${base}?${s}` : base;
 }
 
+// ---- CSRF (double-submit cookie) ----
+// The API sets a non-httpOnly `csrfToken` cookie; every state-changing
+// request must echo it in the `X-CSRF-Token` header. A cross-site page can
+// send the cookie but can neither read it nor set a custom header.
+
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${escaped}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+// Cached in memory so a cross-origin SPA that can't read the API's cookie
+// (different domain) still has the value — GET /api/csrf returns it in the
+// body too. The double-submit check on the server compares this against the
+// cookie it holds, which the browser sends back on same-site requests.
+let csrfToken: string | null = null;
+
+async function primeCsrfToken(): Promise<string | null> {
+  if (typeof fetch === 'undefined') return null;
+  try {
+    const res = await fetch(`${API_URL}/api/csrf`, { credentials: 'include' });
+    if (res.ok) {
+      const data = (await res.json()) as { csrfToken?: string | null };
+      csrfToken = data.csrfToken ?? readCookie('csrfToken');
+    }
+  } catch {
+    /* offline / API down — the caller's own request will surface the error */
+  }
+  return csrfToken;
+}
+
+/** The current CSRF token: the cached value, else the cookie, else primed
+ *  with one GET /api/csrf. */
+async function getCsrfToken(): Promise<string | null> {
+  if (csrfToken) return csrfToken;
+  csrfToken = readCookie('csrfToken');
+  if (csrfToken) return csrfToken;
+  return primeCsrfToken();
+}
+
+/** Test seam — drop the in-memory CSRF token so the next request re-reads
+ *  the cookie / re-primes. */
+export function resetCsrfToken(): void {
+  csrfToken = null;
+}
+
 // A single in-flight refresh shared by every 401'd request, so a burst of
 // parallel calls triggers exactly one POST /api/auth/refresh.
 let refreshInFlight: Promise<boolean> | null = null;
@@ -68,6 +115,12 @@ export async function apiRequest<T>(
   const token = getAccessToken();
   if (opts.auth !== false && token) headers.Authorization = `Bearer ${token}`;
 
+  const upper = method.toUpperCase();
+  if (upper !== 'GET' && upper !== 'HEAD' && upper !== 'OPTIONS') {
+    const csrf = await getCsrfToken();
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+  }
+
   let payload: string | undefined;
   if (opts.body !== undefined) {
     headers['Content-Type'] = 'application/json';
@@ -98,6 +151,21 @@ export async function apiRequest<T>(
     } catch {
       data = text;
     }
+  }
+
+  // Stale/absent CSRF token (e.g. the session cookie expired): re-prime once
+  // and replay. `retry` guards against a loop.
+  if (
+    res.status === 403 &&
+    retry &&
+    upper !== 'GET' &&
+    upper !== 'HEAD' &&
+    upper !== 'OPTIONS' &&
+    /csrf/i.test(text)
+  ) {
+    csrfToken = null;
+    const fresh = await primeCsrfToken();
+    if (fresh) return apiRequest<T>(method, path, opts, false);
   }
 
   if (!res.ok) {

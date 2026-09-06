@@ -27,7 +27,13 @@ export async function createAddress(userId: string, input: CreateAddressInput) {
     if (isDefault) {
       await tx.address.updateMany({ where: { userID: userId }, data: { isDefault: false } });
     }
-    return tx.address.create({ data: { ...input, isDefault, userID: userId } });
+    // The recipient defaults to the account holder — the storefront no longer
+    // asks for it separately (matches registration).
+    const fullName =
+      input.fullName ??
+      (await tx.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name ??
+      'Account holder';
+    return tx.address.create({ data: { ...input, fullName, isDefault, userID: userId } });
   });
 }
 

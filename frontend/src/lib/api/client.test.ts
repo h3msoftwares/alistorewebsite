@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { api, apiRequest, API_URL } from './client';
+import { api, apiRequest, API_URL, resetCsrfToken } from './client';
 import { ApiError } from './errors';
 import { getAccessToken, setAccessToken } from './token';
 
@@ -25,11 +25,17 @@ beforeEach(() => {
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
   setAccessToken(null);
+  resetCsrfToken();
+  // Simulate the csrfToken cookie the API sets on the first GET, so
+  // state-changing requests can read it without priming via /api/csrf.
+  document.cookie = 'csrfToken=csrf-test-value';
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   setAccessToken(null);
+  resetCsrfToken();
+  document.cookie = 'csrfToken=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
 });
 
 describe('api client', () => {
@@ -64,6 +70,47 @@ describe('api client', () => {
     expect(init.method).toBe('POST');
     expect(init.headers?.['Content-Type']).toBe('application/json');
     expect(JSON.parse(init.body as string)).toEqual({ city: 'Amman' });
+  });
+
+  it('attaches the X-CSRF-Token header from the cookie on state-changing requests', async () => {
+    fetchMock.mockResolvedValueOnce(res(201, {}));
+    await api.post('/api/addresses', { city: 'Amman' });
+    const init = fetchMock.mock.calls[0][1] as FakeInit;
+    expect(init.headers?.['X-CSRF-Token']).toBe('csrf-test-value');
+  });
+
+  it('does not attach a CSRF header on GET', async () => {
+    fetchMock.mockResolvedValueOnce(res(200, {}));
+    await api.get('/api/products');
+    const init = fetchMock.mock.calls[0][1] as FakeInit;
+    expect(init.headers?.['X-CSRF-Token']).toBeUndefined();
+  });
+
+  it('primes the CSRF token from GET /api/csrf when no cookie is readable (cross-origin)', async () => {
+    document.cookie = 'csrfToken=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    resetCsrfToken();
+    fetchMock
+      .mockResolvedValueOnce(res(200, { ok: true, csrfToken: 'primed-abc' })) // GET /api/csrf
+      .mockResolvedValueOnce(res(201, {})); // the actual POST
+
+    await api.post('/api/addresses', { city: 'Amman' });
+
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_URL}/api/csrf`);
+    const postInit = fetchMock.mock.calls[1][1] as FakeInit;
+    expect(postInit.headers?.['X-CSRF-Token']).toBe('primed-abc');
+  });
+
+  it('re-primes and replays once on a 403 CSRF failure', async () => {
+    fetchMock
+      .mockResolvedValueOnce(res(403, { error: { code: 'FORBIDDEN', message: 'Invalid or missing CSRF token' } }))
+      .mockResolvedValueOnce(res(200, { ok: true, csrfToken: 'refreshed-xyz' })) // re-prime
+      .mockResolvedValueOnce(res(201, { id: 1 })); // replay
+
+    await expect(api.post('/api/addresses', { city: 'Amman' })).resolves.toEqual({ id: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[1][0]).toBe(`${API_URL}/api/csrf`);
+    const replayInit = fetchMock.mock.calls[2][1] as FakeInit;
+    expect(replayInit.headers?.['X-CSRF-Token']).toBe('refreshed-xyz');
   });
 
   it('returns undefined for a 204', async () => {

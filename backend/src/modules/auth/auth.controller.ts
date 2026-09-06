@@ -9,9 +9,11 @@ import { mergeGuestCartIntoUser } from '../cart/cart.service';
 export const REGISTER_MESSAGE =
   "If this email isn't already in use, we've sent a verification link.";
 
-const REFRESH_COOKIE = 'refreshToken';
+// Exported so the change-password controller sets the refresh cookie exactly
+// the same way login/refresh do.
+export const REFRESH_COOKIE = 'refreshToken';
 const GUEST_CART_COOKIE = 'cartSession';
-const cookieOptions = {
+export const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'strict' as const,

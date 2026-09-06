@@ -1,6 +1,7 @@
 import { api } from './client';
 import type {
   AuthUser,
+  ChangePasswordBody,
   ForgotPasswordBody,
   LoginBody,
   RegisterBody,
@@ -44,6 +45,13 @@ export function forgotPassword(body: ForgotPasswordBody) {
 
 export function resetPassword(body: ResetPasswordBody) {
   return api.post<{ message: string }>('/api/auth/reset-password', body, { auth: false });
+}
+
+/** Signed-in change. Requires the current password; on success the server
+ *  revokes every other session and returns a fresh access token for this
+ *  browser. */
+export function changePassword(body: ChangePasswordBody) {
+  return api.post<{ accessToken: string }>('/api/auth/change-password', body);
 }
 
 export function logout() {

@@ -4,11 +4,13 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { errorHandler } from './middleware/errorHandler.middleware';
 import { sanitizeInput } from './middleware/sanitize.middleware';
+import { csrfProtection } from './middleware/csrf.middleware';
 import { env } from './config/env';
 
 import authRoutes from './modules/auth/auth.routes';
 import { adminAuthRoutes } from './modules/auth/admin-auth.routes';
 import { passwordResetRoutes } from './modules/auth/password-reset.routes';
+import { changePasswordRoutes } from './modules/auth/change-password.routes';
 import { emailVerificationRoutes } from './modules/auth/email-verification.routes';
 import collectionRoutes from './modules/catalog/collection.routes';
 import categoryRoutes from './modules/catalog/category.routes';
@@ -34,6 +36,10 @@ export function buildApp(
     resetPasswordRateLimit?: boolean;
     verifyEmailRateLimit?: boolean;
     resendVerificationRateLimit?: boolean;
+    changePasswordRateLimit?: boolean;
+    // Double-submit-cookie CSRF check. Defaults ON everywhere except tests
+    // (where the suites don't carry the header); a focused test passes `true`.
+    csrf?: boolean;
   } = {}
 ) {
   const app = express();
@@ -61,13 +67,31 @@ export function buildApp(
   // parameterisation, not by keyword filtering here.)
   app.use(sanitizeInput);
 
+  // Bare, ahead of the limiter and CSRF — uptime probes shouldn't be
+  // throttled or handed a Set-Cookie.
+  app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
   // App-wide baseline limiter; auth routes layer a stricter bucket on top.
-  // Disabled under test so suites can fire many requests without tripping it.
+  // First (before CSRF), so even a request that is about to fail the CSRF
+  // check still counts against the per-IP budget. Disabled under test so
+  // suites can fire many requests without tripping it.
   if (env.NODE_ENV !== 'test') {
     app.use(rateLimit({ windowMs: 60 * 1000, max: 300 }));
   }
 
-  app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+  // CSRF: sets/reads the `csrfToken` cookie and requires a matching
+  // `X-CSRF-Token` header on every state-changing request. Off under test.
+  const csrfOn = opts.csrf ?? env.NODE_ENV !== 'test';
+  if (csrfOn) app.use(csrfProtection(env.NODE_ENV === 'production'));
+
+  // `GET /api/csrf` primes the double-submit cookie and returns the token in
+  // the body too (for a cross-origin SPA that can't read the cookie). After
+  // the baseline limiter so it can't be hammered.
+  if (csrfOn) {
+    app.get('/api/csrf', (_req, res) =>
+      res.json({ ok: true, csrfToken: (res.locals.csrfToken as string | undefined) ?? null })
+    );
+  }
 
   // Vertical-slice module mounting, same convention as pos-backend:
   // one line per module.
@@ -93,6 +117,11 @@ export function buildApp(
       forgotPasswordRateLimit: opts.forgotPasswordRateLimit ?? env.NODE_ENV !== 'test',
       resetPasswordRateLimit: opts.resetPasswordRateLimit ?? env.NODE_ENV !== 'test',
     })
+  );
+  // Change-password — signed-in credential change (current password required).
+  app.use(
+    '/api/auth',
+    changePasswordRoutes({ rateLimit: opts.changePasswordRateLimit ?? env.NODE_ENV !== 'test' })
   );
   // Email verification — the customer-registration companion flow.
   app.use(

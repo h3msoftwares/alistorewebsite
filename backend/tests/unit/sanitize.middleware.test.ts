@@ -88,4 +88,24 @@ describe('sanitizeInput', () => {
     const { req } = run({ n: 5, b: true, z: null, arr: [1, 2, 3] });
     expect(req.body).toEqual({ n: 5, b: true, z: null, arr: [1, 2, 3] });
   });
+
+  it('passes password / passphrase fields through untouched (opaque credentials)', () => {
+    const NUL = String.fromCharCode(0);
+    const body = {
+      password: 'a<script>b',
+      currentPassword: `keep${NUL}me<tag`,
+      newPassword: '</close>',
+      confirmPassword: 'plain',
+      passphrase: 'a<b',
+      note: 'a plain note',
+    };
+    const { req, next } = run({ ...body });
+    expect(next).toHaveBeenCalledWith(); // NOT rejected despite the markup
+    expect(req.body).toEqual(body); // byte-for-byte, control char kept
+  });
+
+  it('still rejects markup in a non-credential field alongside a password', () => {
+    const { err } = run({ password: 'a<b>c', name: '<script>' });
+    expect((err as AppError)?.status).toBe(400);
+  });
 });
