@@ -356,16 +356,15 @@ export type SiteSettingsBody = Partial<
 
 // ---- Request payloads (write endpoints) ----
 
-/** Registration now requires an email (verification is email-based), a phone,
- *  and a full delivery address. The server never returns a session — it only
- *  mails a verification link; the user verifies then logs in. */
+/** Registration requires an email (verification is email-based) and a full
+ *  delivery address (the address `phone` is the account's contact number;
+ *  the recipient name defaults to `name`). The server never returns a
+ *  session — it mails a verification link; the user verifies then logs in. */
 export interface RegisterBody {
   email: string;
   password: string;
   name: string;
-  phone: string;
   address: {
-    fullName: string;
     phone: string;
     addressLine: string;
     city: string;

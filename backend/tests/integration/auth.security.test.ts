@@ -142,9 +142,7 @@ describe('login / register cannot be coerced into granting a role', () => {
       name: 'Sneaky',
       email: 'sneaky@sec.test',
       password: 'password123',
-      phone: '0791234567',
       address: {
-        fullName: 'Sneaky',
         phone: '0791234567',
         addressLine: '1 Nowhere St',
         city: 'Amman',

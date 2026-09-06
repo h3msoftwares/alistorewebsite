@@ -59,8 +59,7 @@ describe('useRegister', () => {
     email: 'a@x.dev',
     password: 'password1',
     name: 'Ali',
-    phone: '0791234567',
-    address: { fullName: 'Ali', phone: '0791234567', addressLine: '1 St', city: 'Amman' },
+    address: { phone: '0791234567', addressLine: '1 St', city: 'Amman' },
   };
 
   it('posts the payload and does NOT create a session (email must be verified first)', async () => {

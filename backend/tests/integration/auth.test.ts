@@ -23,9 +23,7 @@ function validRegisterBody(over: Record<string, unknown> = {}) {
     email: creds.email,
     password: creds.password,
     name: 'User',
-    phone: '0791234567',
     address: {
-      fullName: 'User',
       phone: '0791234567',
       addressLine: '12 Rainbow Street',
       city: 'Amman',
@@ -107,15 +105,12 @@ describe('Auth API', () => {
       expect(tokens[0].id).not.toBe(originalToken.id);
     });
 
-    it("an email that's free but a phone that's taken -> 201 SAME message, no user created", async () => {
-      await createUser({ role: 'CUSTOMER', email: 'someone@else.dev', phone: '0791234567', emailVerified: true });
-
-      const res = await request(app)
-        .post('/api/auth/register')
-        .send(validRegisterBody({ email: 'newcomer@test.dev' }));
-      expect(res.status).toBe(201);
-      expect(res.body).toEqual({ message: REGISTER_MESSAGE });
-      expect(await prisma.user.count({ where: { email: 'newcomer@test.dev' } })).toBe(0);
+    it('the recipient name on the created address defaults to the account holder name', async () => {
+      await request(app).post('/api/auth/register').send(validRegisterBody({ name: 'Dana Q' }));
+      const user = await prisma.user.findUniqueOrThrow({ where: { email: creds.email } });
+      const address = await prisma.address.findFirstOrThrow({ where: { userID: user.id } });
+      expect(address.fullName).toBe('Dana Q');
+      expect(user.phone).toBeNull(); // no top-level phone field
     });
 
     it('a new email and an existing email produce responses within a comparable time band (Argon2 runs either way)', async () => {
@@ -155,15 +150,22 @@ describe('Auth API', () => {
     it('a partial address (missing city) -> 400 before any user is created', async () => {
       const res = await request(app)
         .post('/api/auth/register')
-        .send(validRegisterBody({ address: { fullName: 'U', phone: '0791234567', addressLine: '12 St' } }));
+        .send(validRegisterBody({ address: { phone: '0791234567', addressLine: '12 St' } }));
       expect(res.status).toBe(400);
       expect(await prisma.user.count()).toBe(0);
     });
 
-    it('400s a missing email / phone / name / short password', async () => {
+    it('a missing address phone -> 400 before any user is created', async () => {
+      const res = await request(app)
+        .post('/api/auth/register')
+        .send(validRegisterBody({ address: { addressLine: '12 St', city: 'Amman' } }));
+      expect(res.status).toBe(400);
+      expect(await prisma.user.count()).toBe(0);
+    });
+
+    it('400s a missing email / name / short password', async () => {
       for (const bad of [
         validRegisterBody({ email: undefined }),
-        validRegisterBody({ phone: undefined }),
         validRegisterBody({ name: '' }),
         validRegisterBody({ password: 'short' }),
       ]) {

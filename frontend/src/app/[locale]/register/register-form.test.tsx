@@ -24,9 +24,7 @@ const renderForm = (locale: 'en' | 'ar' = 'en') => {
 async function fillValid(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Full name'), 'Ali Tester');
   await user.type(screen.getByLabelText('Email'), 'ali@test.dev');
-  await user.type(screen.getByLabelText('Phone'), '0791234567');
   await user.type(screen.getByLabelText('Password'), 'password123');
-  await user.type(screen.getByLabelText('Recipient name'), 'Ali Tester');
   await user.type(screen.getByLabelText('Contact phone'), '0791234567');
   await user.type(screen.getByLabelText('Street address'), '12 Rainbow Street');
   await user.type(screen.getByLabelText('City'), 'Amman');
@@ -56,7 +54,14 @@ describe('<RegisterForm>', () => {
     expect(registerMut.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it('submits the full payload (with locale) and shows the "check your email" state — no session', async () => {
+  it('has no top-level phone or recipient-name field', () => {
+    renderForm();
+    expect(screen.queryByLabelText('Phone')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Recipient name')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Contact phone')).toBeInTheDocument();
+  });
+
+  it('submits the payload (with locale) and shows the "check your email" state — no session', async () => {
     const user = userEvent.setup();
     renderForm();
     await fillValid(user);
@@ -66,9 +71,7 @@ describe('<RegisterForm>', () => {
       email: 'ali@test.dev',
       password: 'password123',
       name: 'Ali Tester',
-      phone: '0791234567',
       address: {
-        fullName: 'Ali Tester',
         phone: '0791234567',
         addressLine: '12 Rainbow Street',
         city: 'Amman',

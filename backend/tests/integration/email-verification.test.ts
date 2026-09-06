@@ -21,8 +21,7 @@ const registerBody = (over: Record<string, unknown> = {}) => ({
   email: 'newbie@verify.test',
   password: 'Password123!',
   name: 'Newbie',
-  phone: '0791234567',
-  address: { fullName: 'Newbie', phone: '0791234567', addressLine: '9 Elm St', city: 'Amman' },
+  address: { phone: '0791234567', addressLine: '9 Elm St', city: 'Amman' },
   ...over,
 });
 

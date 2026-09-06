@@ -108,9 +108,7 @@ export interface RegisterInput {
   email: string;
   password: string;
   name: string;
-  phone: string;
   address: {
-    fullName: string;
     phone: string;
     addressLine: string;
     city: string;
@@ -132,26 +130,21 @@ export interface RegisterInput {
  *  - existing UNVERIFIED email      -> re-issue a fresh token + mail it
  *                                      (helps a user who lost the first email;
  *                                      indistinguishable from the "new" case)
- *  - existing VERIFIED email, or a phone that's already taken -> do nothing
+ *  - existing VERIFIED email        -> do nothing
  */
 export async function register(input: RegisterInput): Promise<void> {
   // Always — timing equaliser. Also the hash we store on the happy path.
   const passwordHash = await argon2.hash(input.password);
 
   const existing = await prisma.user.findFirst({
-    where: { OR: [{ email: input.email }, { phone: input.phone }], deletedAt: null },
+    where: { email: input.email, deletedAt: null },
   });
 
   if (existing) {
-    // The only branch that does anything: an unverified account matched *by
-    // email* (a mere phone collision gets nothing) may get a fresh link.
-    if (
-      existing.email === input.email &&
-      !existing.emailVerified &&
-      existing.isActive &&
-      existing.passwordHash
-    ) {
-      await issueAndSendVerification(existing.id, existing.email, input.locale);
+    // The only branch that does anything: an unverified, usable account may
+    // get a fresh link.
+    if (!existing.emailVerified && existing.isActive && existing.passwordHash) {
+      await issueAndSendVerification(existing.id, existing.email!, input.locale);
     }
     return;
   }
@@ -163,7 +156,6 @@ export async function register(input: RegisterInput): Promise<void> {
         data: {
           name: input.name,
           email: input.email,
-          phone: input.phone,
           passwordHash,
           role: 'CUSTOMER',
           // emailVerified stays null — unverified until they click the link
@@ -172,7 +164,9 @@ export async function register(input: RegisterInput): Promise<void> {
       await tx.address.create({
         data: {
           userID: created.id,
-          fullName: input.address.fullName,
+          // The recipient defaults to the account holder; editable per-address
+          // later from /account.
+          fullName: input.name,
           phone: input.address.phone,
           addressLine: input.address.addressLine,
           city: input.address.city,
@@ -184,8 +178,8 @@ export async function register(input: RegisterInput): Promise<void> {
       return created;
     });
   } catch (e) {
-    // Lost a race to a concurrent registration for the same email/phone —
-    // same generic response as the "already exists" path.
+    // Lost a race to a concurrent registration for the same email — same
+    // generic response as the "already exists" path.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return;
     throw e;
   }

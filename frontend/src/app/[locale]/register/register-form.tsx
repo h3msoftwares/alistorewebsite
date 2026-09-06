@@ -17,9 +17,7 @@ const schema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   name: z.string().min(1).max(120),
-  phone: z.string().min(6).max(30),
   address: z.object({
-    fullName: z.string().min(1).max(120),
     phone: z.string().min(6).max(30),
     addressLine: z.string().min(3).max(300),
     city: z.string().min(1).max(120),
@@ -135,13 +133,6 @@ export function RegisterForm({ locale }: { locale: Locale }) {
         </Field>
 
         <Field
-          label={t('Phone', 'رقم الهاتف')}
-          error={errors.phone && t('Enter a valid phone number.', 'أدخل رقم هاتف صالحًا.')}
-        >
-          {(p) => <Input {...p} {...register('phone')} type="tel" autoComplete="tel" disabled={busy} />}
-        </Field>
-
-        <Field
           label={t('Password', 'كلمة المرور')}
           error={errors.password && t('Must be at least 8 characters.', 'يجب أن تتكون من 8 أحرف على الأقل.')}
         >
@@ -153,13 +144,6 @@ export function RegisterForm({ locale }: { locale: Locale }) {
         <h2 style={{ fontSize: 'var(--fs-md)', marginBlockStart: 'var(--space-4)' }}>
           {t('Delivery address', 'عنوان التوصيل')}
         </h2>
-
-        <Field
-          label={t('Recipient name', 'اسم المستلم')}
-          error={errors.address?.fullName && t('Required', 'مطلوب')}
-        >
-          {(p) => <Input {...p} {...register('address.fullName')} autoComplete="name" disabled={busy} />}
-        </Field>
 
         <Field
           label={t('Contact phone', 'هاتف التواصل')}
