@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,6 +20,14 @@ import { isApiError } from '@/lib/api';
 import type { Address, AddressBody } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
+
+// `false` on the server and on the hydration render, `true` afterwards. Auth
+// state is client-only (the boot refresh resolves in an effect), so branching
+// on `status` before this is true risks a hydration mismatch — the server
+// always renders the "loading" skeleton, but by the time this island hydrates
+// the root bootstrap may have already flipped the store to "guest".
+const subscribe = () => () => {};
+const useHydrated = () => useSyncExternalStore(subscribe, () => true, () => false);
 
 const profileSchema = z.object({
   name: z.string().min(1).max(120),
@@ -41,8 +49,9 @@ export function AccountView({ locale }: { locale: Locale }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { status } = useAuth();
+  const hydrated = useHydrated();
 
-  if (status === 'loading') {
+  if (!hydrated || status === 'loading') {
     return (
       <div className="container section">
         <Skeleton variant="text" width="12rem" />
