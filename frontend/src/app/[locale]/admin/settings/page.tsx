@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useFieldArray, useForm } from 'react-hook-form';
+import { useFieldArray, useForm, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Search, Trash2 } from 'lucide-react';
 import {
   Alert,
   Button,
@@ -99,6 +99,73 @@ type SettingsForm = z.infer<typeof settingsFormSchema>;
 const blankLine = { textEn: '', textAr: '' };
 const blankRate = { region: '', fee: 0 };
 
+// The settings page is one long form; these are its sections, surfaced as tabs
+// for navigation and as the unit the search box filters. `terms` is extra
+// searchable text (field labels, synonyms, both languages) so a query like
+// "shipping" or "واتساب" lands on the right tab.
+type TabId = 'brand' | 'announcement' | 'hero' | 'delivery' | 'curation';
+
+const SECTIONS: { id: TabId; en: string; ar: string; terms: string }[] = [
+  {
+    id: 'brand',
+    en: 'Brand & contact',
+    ar: 'العلامة والتواصل',
+    terms:
+      'brand name store title contact email phone number instagram facebook tiktok whatsapp social links footer ' +
+      'العلامة اسم المتجر بريد إلكتروني هاتف رقم تواصل انستغرام فيسبوك تيك توك واتساب روابط التواصل',
+  },
+  {
+    id: 'announcement',
+    en: 'Announcement strip',
+    ar: 'شريط الإعلانات',
+    terms:
+      'announcement strip banner top bar rotating lines message notice promo ' +
+      'شريط الإعلانات لافتة أعلى الصفحة رسالة تنبيه عرض سطور متناوبة',
+  },
+  {
+    id: 'hero',
+    en: 'Home hero',
+    ar: 'واجهة الرئيسية',
+    terms:
+      'home hero landing headline eyebrow sub-text subtext lede button label cta links to more to explore heading ' +
+      'الرئيسية واجهة عنوان رئيسي تمهيد نص فرعي زر تسمية يفتح المزيد لاكتشافه',
+  },
+  {
+    id: 'delivery',
+    en: 'Delivery fees',
+    ar: 'رسوم التوصيل',
+    terms:
+      'delivery fee shipping cost flat fee free over threshold governorate region per-governorate rate free delivery regions ' +
+      'رسوم التوصيل شحن تكلفة ثابتة مجاني فوق حد محافظة سعر لكل محافظة مناطق التوصيل المجاني',
+  },
+  {
+    id: 'curation',
+    en: 'Navigation & home',
+    ar: 'التنقل والرئيسية',
+    terms:
+      'navigation nav menu top nav home page featured collections categories sort order show on home in nav curation ' +
+      'التنقل القائمة الرئيسية المميزة المجموعات الفئات ترتيب العرض إظهار في الرئيسية في التنقل',
+  },
+];
+
+function sectionMatches(s: (typeof SECTIONS)[number], query: string): boolean {
+  const hay = `${s.en} ${s.ar} ${s.terms}`.toLowerCase();
+  return query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((tok) => hay.includes(tok));
+}
+
+// Which tab a validation error belongs to, so a failed save jumps there
+// instead of silently doing nothing when the offending field is on a hidden tab.
+function tabForErrorKey(key: string): TabId {
+  if (key.startsWith('hero') || key.startsWith('homeMore')) return 'hero';
+  if (key.startsWith('announcement')) return 'announcement';
+  if (key.startsWith('delivery') || key.startsWith('freeDelivery')) return 'delivery';
+  return 'brand';
+}
+
 export default function AdminSettingsPage() {
   const params = useParams();
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
@@ -111,6 +178,15 @@ export default function AdminSettingsPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [tab, setTab] = useState<TabId>('brand');
+  const [q, setQ] = useState('');
+
+  const searching = q.trim().length > 0;
+  const matchedIds = new Set(
+    searching ? SECTIONS.filter((s) => sectionMatches(s, q.trim())).map((s) => s.id) : []
+  );
+  const shows = (id: TabId) => (searching ? matchedIds.has(id) : tab === id);
+  const anyFormSectionVisible = (['brand', 'announcement', 'hero', 'delivery'] as const).some(shows);
 
   const values: SettingsForm | undefined = settings && {
     brandNameEn: settings.brandNameEn,
@@ -152,6 +228,13 @@ export default function AdminSettingsPage() {
   const rates = useFieldArray({ control, name: 'deliveryRates' });
 
   const busy = updateSettings.isPending;
+
+  const onInvalid = (errs: FieldErrors<SettingsForm>) => {
+    const first = Object.keys(errs)[0];
+    if (!first) return;
+    setQ('');
+    setTab(tabForErrorKey(first));
+  };
 
   const onSubmit = async (form: SettingsForm) => {
     setError(null);
@@ -197,10 +280,52 @@ export default function AdminSettingsPage() {
     <div className="section--tight">
       <div className="admin-page__head">
         <h1>{t('Settings', 'الإعدادات')}</h1>
+        <span className="admin-list-controls__search settings-search">
+          <Icon as={Search} size={16} />
+          <input
+            type="search"
+            className="input"
+            placeholder={t('Search settings…', 'ابحث في الإعدادات…')}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label={t('Search settings', 'ابحث في الإعدادات')}
+          />
+        </span>
       </div>
 
-      <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
+      <nav className="admin-nav settings-tabs" aria-label={t('Settings sections', 'أقسام الإعدادات')}>
+        {SECTIONS.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            className="admin-nav__link"
+            data-active={!searching && tab === s.id ? '' : undefined}
+            aria-pressed={!searching && tab === s.id}
+            hidden={searching && !matchedIds.has(s.id)}
+            onClick={() => {
+              setQ('');
+              setTab(s.id);
+            }}
+          >
+            {isAr ? s.ar : s.en}
+          </button>
+        ))}
+      </nav>
+
+      {searching && matchedIds.size === 0 && (
+        <p className="admin-form__hint">
+          {t('No settings match', 'لا توجد إعدادات مطابقة')} “{q.trim()}”.
+        </p>
+      )}
+
+      <form
+        onSubmit={handleSubmit(onSubmit, onInvalid)}
+        noValidate
+        className="admin-form"
+        hidden={!anyFormSectionVisible}
+      >
         {/* ---- Brand & contact ---- */}
+        <section className="admin-form__section" id="set-brand" hidden={!shows('brand')}>
         <p className="admin-form__section-title">{t('Brand & contact', 'العلامة والتواصل')}</p>
         <div className="admin-form__row">
           <Field label={t('Brand name (English)', 'اسم المتجر (إنجليزي)')} error={errors.brandNameEn?.message} required>
@@ -234,9 +359,10 @@ export default function AdminSettingsPage() {
             {(p) => <Input {...p} type="url" placeholder="https://wa.me/…" {...register('whatsappUrl')} disabled={busy} />}
           </Field>
         </div>
+        </section>
 
         {/* ---- Announcement strip ---- */}
-        <div className="admin-form__section">
+        <div className="admin-form__section" id="set-announcement" hidden={!shows('announcement')}>
           <p className="admin-form__section-title">{t('Announcement strip', 'شريط الإعلانات')}</p>
           <Choice type="checkbox" label={t('Show the announcement strip', 'إظهار شريط الإعلانات')} {...register('announcementActive')} disabled={busy} />
           <p className="admin-form__hint">
@@ -271,7 +397,7 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* ---- Home hero ---- */}
-        <div className="admin-form__section">
+        <div className="admin-form__section" id="set-hero" hidden={!shows('hero')}>
           <p className="admin-form__section-title">{t('Home hero', 'واجهة الرئيسية')}</p>
           <div className="admin-form__row">
             <Field label={t('Eyebrow (English)', 'تمهيد (إنجليزي)')}>
@@ -331,7 +457,7 @@ export default function AdminSettingsPage() {
         </div>
 
         {/* ---- Delivery fees ---- */}
-        <div className="admin-form__section">
+        <div className="admin-form__section" id="set-delivery" hidden={!shows('delivery')}>
           <p className="admin-form__section-title">{t('Delivery fees', 'رسوم التوصيل')}</p>
           <Choice
             type="checkbox"
@@ -449,7 +575,7 @@ export default function AdminSettingsPage() {
         </div>
       </form>
 
-      <div style={{ marginTop: 'var(--space-7)' }}>
+      <div id="set-curation" hidden={!shows('curation')} style={{ marginTop: 'var(--space-6)' }}>
         <CurationPanel locale={locale} />
       </div>
     </div>

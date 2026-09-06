@@ -1,8 +1,15 @@
 'use client';
 
-import { useFeaturedCategories, useFeaturedCollections, useOtherCollections } from '@/hooks/use-catalog';
+import {
+  useFeaturedCategories,
+  useFeaturedCollections,
+  useHomeImageCollections,
+  useOtherCollections,
+} from '@/hooks/use-catalog';
 import { useSettings } from '@/hooks/use-settings';
+import { useReveal } from '@/hooks/use-reveal';
 import { CollectionRow } from './collection-row';
+import { CollectionSquare } from './collection-square';
 import { CategoryRow } from './category-row';
 import type { Category, Collection } from '@/lib/types';
 
@@ -37,6 +44,8 @@ function RowSkeleton() {
  */
 export function HomeMiddle({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
+  const [moreEyebrowRef, moreEyebrowClass, moreEyebrowStyle] = useReveal();
+  const imageCollections = useHomeImageCollections();
   const featuredCollections = useFeaturedCollections();
   const featuredCategories = useFeaturedCategories();
   const otherCollections = useOtherCollections();
@@ -65,20 +74,55 @@ export function HomeMiddle({ locale }: { locale: string }) {
   const hasZone1 = zone1Pending || zone1.length > 0;
   const otherPending = otherCollections.isPending;
   const others = otherCollections.data ?? [];
+  const imagePending = imageCollections.isPending;
+  const images = imageCollections.data ?? [];
+  const hasImageGrid = imagePending || images.length > 0;
 
-  if (!zone1Pending && !otherPending && zone1.length === 0 && others.length === 0) return null;
+  if (
+    !zone1Pending &&
+    !otherPending &&
+    !imagePending &&
+    zone1.length === 0 &&
+    others.length === 0 &&
+    images.length === 0
+  )
+    return null;
 
   return (
     <div className="home-middle">
+      {hasImageGrid && (
+        <div className="home-zone home-zone--image-grid">
+          <div className="home-image-grid">
+            {imagePending
+              ? Array.from({ length: 2 }).map((_, i) => (
+                  <span key={i} className="home-square skeleton" aria-hidden />
+                ))
+              : images.map((collection, i) => (
+                  <CollectionSquare key={collection.id} locale={locale} collection={collection} delayMs={i * 80} />
+                ))}
+          </div>
+        </div>
+      )}
+
       {hasZone1 && (
         <div className="home-zone home-zone--featured">
           {zone1Pending
             ? Array.from({ length: 2 }).map((_, i) => <RowSkeleton key={i} />)
-            : zone1.map((item) =>
+            : zone1.map((item, i) =>
                 item.kind === 'collection' ? (
-                  <CollectionRow key={`col-${item.collection.id}`} locale={locale} collection={item.collection} />
+                  <CollectionRow
+                    key={`col-${item.collection.id}`}
+                    locale={locale}
+                    collection={item.collection}
+                    delayMs={Math.min(i, 3) * 80}
+                  />
                 ) : (
-                  <CategoryRow key={`cat-${item.category.id}`} locale={locale} category={item.category} />
+                  <CategoryRow
+                    key={`cat-${item.category.id}`}
+                    locale={locale}
+                    category={item.category}
+                    delayMs={Math.min(i, 3) * 80}
+                  />
                 )
               )}
         </div>
@@ -86,7 +130,13 @@ export function HomeMiddle({ locale }: { locale: string }) {
 
       {(otherPending || others.length > 0) && (
         <div className="home-zone home-zone--more">
-          <p className="home-zone__eyebrow container">{moreHeading}</p>
+          <p
+            ref={moreEyebrowRef}
+            className={`home-zone__eyebrow container ${moreEyebrowClass}`}
+            style={moreEyebrowStyle}
+          >
+            {moreHeading}
+          </p>
           {otherPending
             ? Array.from({ length: 2 }).map((_, i) => <RowSkeleton key={i} />)
             : others.map((collection) => (

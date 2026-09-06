@@ -11,6 +11,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
+    "seed:empty": "tsx prisma/seed-empty.ts",
+    "seed:large": "tsx prisma/seed-large.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src"

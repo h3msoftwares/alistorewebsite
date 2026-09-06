@@ -310,6 +310,12 @@ textarea {
   color: inherit;
 }
 
+/* The `hidden` attribute must win over component `display` rules (e.g. a
+   flex form section toggled by a tab / search filter). */
+[hidden] {
+  display: none !important;
+}
+
 ul, ol {
   margin: 0;
   padding: 0;
@@ -1534,6 +1540,132 @@ main > .container.section:first-child {
 }
 .product-preview-card__add-to-cart[data-loading] { opacity: 0.6; }
 
+/* Home-page row card — same footprint/styling as .product-preview-card, but
+   display-only: static size/colour labels, no favourite / zoom / add-to-cart.
+   Used for a category row's products (HomeProductCard) and a collection row's
+   categories (HomeCategoryCard, media + name only). See components/home/home-card.tsx. */
+.home-card { position: relative; display: flex; flex-direction: column; }
+.home-card--category { color: inherit; }
+
+.home-card__media-wrap { position: relative; }
+.home-card__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 3 / 4;
+  background: var(--color-surface);
+}
+.home-card__media img { object-fit: cover; }
+.home-card__media-placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(135deg, var(--color-surface) 0%, var(--collection-accent-soft, var(--color-accent-soft)) 120%);
+}
+.home-card__sale-badge {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+}
+
+/* Hover-scrub position dots — move the pointer across the photo to step
+   through that colour's gallery (see components/home/home-card.tsx). */
+.home-card__scrub {
+  position: absolute;
+  inset-block-end: var(--space-2);
+  inset-inline: 0;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  pointer-events: none;
+}
+.home-card__media:hover .home-card__scrub,
+.home-card__media:focus-visible .home-card__scrub { opacity: 1; }
+.home-card__scrub > span {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  opacity: 0.55;
+}
+.home-card__scrub > span[data-on] { opacity: 1; transform: scale(1.25); }
+
+.home-card__body { display: flex; flex-direction: column; gap: var(--space-2); }
+.home-card__name { font-weight: var(--fw-semibold); }
+a.home-card__name:hover { text-decoration: underline; }
+
+.home-card__chips.chip-group { gap: var(--space-1); }
+.home-card__chips .chip {
+  min-height: 28px;
+  padding-inline: var(--space-2);
+  font-size: var(--fs-2xs);
+}
+.home-card__swatches.swatch-group { gap: var(--space-1); }
+.home-card__swatches .swatch { width: 26px; height: 26px; padding: 2px; }
+
+/* Widen the row tiles to the products-list card size — scoped to the home
+   middle so the PDP "You might also like" scroller (also .home-row__track)
+   keeps its own smaller sizing. */
+.home-zone .home-row__track > * { width: clamp(11rem, 44vw, 13.5rem); }
+.home-zone .media-tile-skeleton {
+  width: clamp(11rem, 44vw, 13.5rem);
+  aspect-ratio: 3 / 4;
+}
+
+/* ---- Home image-grid zone: collections shown as a big square image
+   (showOnHomeAsImage), above the featured rows. One image per row on small
+   screens, two side-by-side on large screens, with padding around and between. ---- */
+.home-zone--image-grid { padding-block: 0; }
+.home-image-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: clamp(var(--space-3), 2vw, var(--space-5));
+  padding: clamp(var(--space-3), 2vw, var(--space-5));
+}
+@media (min-width: 900px) {
+  .home-image-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.home-square {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 34rem;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.home-square__img { position: absolute; inset: 0; display: block; }
+.home-square img { object-fit: cover; }
+.home-square__placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(135deg, var(--color-surface) 0%, var(--collection-accent-soft, var(--color-accent-soft)) 120%);
+}
+/* Name link, pinned to the top reading-start corner, on a soft scrim so it
+   stays legible over any photo. */
+.home-square__name {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 1;
+  margin: clamp(var(--space-3), 2.5vw, var(--space-5));
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-raised);
+  color: var(--collection-accent, var(--color-text));
+  font-family: var(--collection-heading-font, var(--font-serif));
+  font-size: var(--fs-lg);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+[lang='ar'] .home-square__name { font-family: var(--font-arabic); }
+.home-square__name:hover { text-decoration: underline; }
+
 /* ============================================================
    ADMIN — nav shell, image uploader/gallery
    ============================================================ */
@@ -1549,14 +1681,24 @@ main > .container.section:first-child {
 }
 .admin-nav__link {
   padding: var(--space-2) var(--space-4);
+  border: 0;
   border-radius: var(--radius-pill);
+  background: transparent;
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   color: var(--color-text-muted);
+  cursor: pointer;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 .admin-nav__link:hover { color: var(--color-text); background: var(--color-surface); }
 .admin-nav__link[data-active] { color: var(--color-on-primary); background: var(--color-primary); }
+
+/* Settings page: section tabs + the search box in the page head. */
+.settings-tabs { margin-bottom: var(--space-5); }
+.settings-search {
+  flex: 0 1 20rem;
+  align-self: center;
+}
 
 .admin-page__head {
   display: flex;
@@ -2626,6 +2768,36 @@ main > .container.section:first-child {
 [lang='ar'] h2,
 [lang='ar'] h3,
 [lang='ar'] h4 { font-family: var(--font-arabic); }
+
+/* ============================================================
+   7b. SCROLL-INTO-VIEW REVEAL (see hooks/use-reveal.ts)
+   ============================================================ */
+
+/* Hidden start state, revealed once `.is-visible` is added by hooks/use-reveal.ts
+   when the element scrolls into view (with a JS timeout failsafe there, so a
+   page whose observer never fires still ends up visible). Scoping the hidden
+   state to `:not(.is-visible)` is a second guard for that case. */
+.reveal:not(.is-visible) {
+  opacity: 0;
+  transform: translateY(18px);
+}
+.reveal {
+  transition:
+    opacity 0.6s var(--drawer-ease, ease),
+    transform 0.6s var(--drawer-ease, ease);
+  will-change: opacity, transform;
+}
+
+/* This reveal is an explicit design choice, so keep a short, plain fade even
+   when the OS asks to reduce motion — the travel is tiny — and beat the blanket
+   !important reset in §8 on specificity. */
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    transition-duration: 0.45s !important;
+    transition-delay: 0s !important;
+  }
+  .reveal:not(.is-visible) { transform: translateY(10px); }
+}
 
 /* ============================================================
    8. REDUCED MOTION

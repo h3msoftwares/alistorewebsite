@@ -54,11 +54,6 @@ interface ProductDef {
   saleType?: DiscountType;
   saleValue?: number;
   variants: VariantDef[];
-  /** Colours (matching some of this product's variant colours) that get
-   *  their own tagged photo, so the PDP's colour-swap gallery has something
-   *  to actually swap between. Omit for the default: two untagged/generic
-   *  photos, shown regardless of colour. */
-  colorImages?: string[];
 }
 
 function v(size: string | undefined, color: string | undefined, stockQuantity: number, price?: number): VariantDef {
@@ -86,12 +81,13 @@ async function main() {
 
   // ---- Collections (replace the old Department enum; owner-editable) ----
   // showOnHome demos the home page's featured row: women + men get their own
-  // "collection row" (name + horizontal scroll of categories); kids is left
-  // out to demo the "rest of the collections" zone below it.
+  // "collection row" (name + horizontal scroll of categories). kids opts into
+  // showOnHomeAsImage instead — a single square image in the grid at the top,
+  // no category row — to demo that treatment.
   const collectionDefs = [
-    { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, showInNav: true, showOnHome: true, accentColor: '#a65a7e' },
-    { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, showInNav: true, showOnHome: true, accentColor: '#38455c' },
-    { slug: 'kids', nameEn: 'Kids', nameAr: 'أطفال', sortOrder: 3, showInNav: true, showOnHome: false, accentColor: '#b4611e' },
+    { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#a65a7e' },
+    { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#38455c' },
+    { slug: 'kids', nameEn: 'Kids', nameAr: 'أطفال', sortOrder: 3, showInNav: true, showOnHome: false, showOnHomeAsImage: true, accentColor: '#b4611e' },
   ];
 
   const collections = new Map<string, { id: string }>();
@@ -104,11 +100,19 @@ async function main() {
         sortOrder: c.sortOrder,
         showInNav: c.showInNav,
         showOnHome: c.showOnHome,
+        showOnHomeAsImage: c.showOnHomeAsImage,
         accentColor: c.accentColor,
       },
       create: c,
     });
     collections.set(c.slug, { id: col.id });
+
+    // One base image per collection so the home image-grid tile (and the admin
+    // list thumbnail) has a picture. Replace-all keeps reseeding idempotent.
+    await prisma.collectionImage.deleteMany({ where: { collectionID: col.id } });
+    await prisma.collectionImage.create({
+      data: { collectionID: col.id, url: picsum(`collection-${c.slug}`), altEn: c.nameEn, altAr: c.nameAr, sortOrder: 0 },
+    });
   }
 
   // ---- Categories (bilingual, each linked to one collection) ----
@@ -168,7 +172,6 @@ async function main() {
         v('S', 'Beige', 0),
         v('M', 'Beige', 15),
       ],
-      colorImages: ['Black', 'Beige'],
     },
     {
       sku: 'WOM-LNG-002',
@@ -615,7 +618,6 @@ async function main() {
         v('M', 'Light Blue', 20),
         v('L', 'Light Blue', 0),
       ],
-      colorImages: ['White', 'Light Blue'],
     },
     {
       sku: 'MEN-SHT-002',
@@ -1059,7 +1061,6 @@ async function main() {
       price: 18.0,
       compareAtPrice: 22.0,
       variants: [v('2-3Y', 'Green', 20), v('4-5Y', 'Green', 20), v('6-7Y', 'Green', 0), v('4-5Y', 'Blue', 5)],
-      colorImages: ['Green', 'Blue'],
     },
     {
       sku: 'KID-PJM-002',
@@ -1543,33 +1544,42 @@ async function main() {
       });
     }
 
-    // Two deterministic photos per product by default (no colour tagging —
-    // the gallery-by-colour feature works fine with none tagged, it just
-    // falls back to showing every image regardless of colour). A handful of
-    // products opt into `colorImages` instead: one generic shot plus one
-    // genuinely different tagged photo per listed colour, so the PDP's
-    // colour-swap gallery has something real to swap between when testing it
-    // manually. Re-created on every seed run rather than upserted:
-    // ProductImage has no natural unique key to upsert against, and picsum
-    // URLs are stable per seed string anyway, so drop-and-recreate is
-    // harmless and keeps this idempotent.
+    // Photos: one generic (untagged) shot, then several genuinely different
+    // photos per variant colour so the card's hover-to-scrub gallery and the
+    // PDP's colour-swap gallery both have real images to move between. Products
+    // with no colour variants just get a few generic shots. Deterministic
+    // picsum seeds, re-created on every run (ProductImage has no natural key to
+    // upsert against; drop-and-recreate keeps the seed idempotent).
+    const IMAGES_PER_COLOR = 4;
+    const GENERIC_IMAGES = 3;
+    const colorSlug = (c: string) => c.toLowerCase().replace(/\s+/g, '-');
+    const productColors = [
+      ...new Set(p.variants.map((vv) => vv.color).filter((c): c is string => Boolean(c))),
+    ];
+
     await prisma.productImage.deleteMany({ where: { productID: product.id } });
-    const images = p.colorImages
-      ? [
-          { productID: product.id, url: picsum(p.sku), altEn: p.nameEn, altAr: p.nameAr, sortOrder: 0 },
-          ...p.colorImages.map((color, i) => ({
+    const images =
+      productColors.length > 0
+        ? [
+            { productID: product.id, url: picsum(p.sku), altEn: p.nameEn, altAr: p.nameAr, sortOrder: 0 },
+            ...productColors.flatMap((color, ci) =>
+              Array.from({ length: IMAGES_PER_COLOR }, (_, k) => ({
+                productID: product.id,
+                url: picsum(`${p.sku}-${colorSlug(color)}-${k + 1}`),
+                altEn: `${p.nameEn} — ${color} (${k + 1})`,
+                altAr: `${p.nameAr} — ${color} (${k + 1})`,
+                sortOrder: 1 + ci * IMAGES_PER_COLOR + k,
+                color,
+              }))
+            ),
+          ]
+        : Array.from({ length: GENERIC_IMAGES }, (_, k) => ({
             productID: product.id,
-            url: picsum(`${p.sku}-${color.toLowerCase().replace(/\s+/g, '-')}`),
-            altEn: `${p.nameEn} — ${color}`,
-            altAr: `${p.nameAr} — ${color}`,
-            sortOrder: i + 1,
-            color,
-          })),
-        ]
-      : [
-          { productID: product.id, url: picsum(p.sku), altEn: p.nameEn, altAr: p.nameAr, sortOrder: 0 },
-          { productID: product.id, url: picsum(`${p.sku}-b`), altEn: p.nameEn, altAr: p.nameAr, sortOrder: 1 },
-        ];
+            url: picsum(k === 0 ? p.sku : `${p.sku}-${k + 1}`),
+            altEn: p.nameEn,
+            altAr: p.nameAr,
+            sortOrder: k,
+          }));
     await prisma.productImage.createMany({ data: images });
   }
 
