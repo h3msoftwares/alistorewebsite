@@ -395,6 +395,12 @@ ul, ol {
 .section--tight {
   padding-block: var(--space-7);
 }
+/* Content pages whose root is `.container.section` (cart, favourites, product
+   detail, account) sit directly under the sticky topbar — drop the section's
+   top pad so there's no dead band between the header and the content. */
+main > .container.section:first-child {
+  padding-block-start: 0;
+}
 
 /* Vertical rhythm helper */
 .stack > * + * { margin-block-start: var(--space-4); }
