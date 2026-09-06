@@ -21,8 +21,9 @@ const FOCUSABLE =
 /**
  * Off-canvas panel (Saxon's slide-in pattern) for the mobile menu, cart, and
  * search. Focus-trapped, Esc to close, background scroll locked, focus
- * restored to the trigger on close. Always rendered so the CSS transition can
- * play; visibility is driven by `data-open`.
+ * restored to the trigger on close. Always rendered and painted so the CSS
+ * slide transition plays in both directions; `inert` (not `visibility`) takes
+ * the closed panel out of the tab order and the accessibility tree.
  */
 export function Drawer({ open, onClose, side = 'start', title, children, closeLabel = 'Close' }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -68,7 +69,13 @@ export function Drawer({ open, onClose, side = 'start', title, children, closeLa
   }, [open]);
 
   return (
-    <div className={`drawer drawer--${side}`} data-open={open} aria-hidden={!open} onKeyDown={handleKeyDown}>
+    <div
+      className={`drawer drawer--${side}`}
+      data-open={open}
+      aria-hidden={!open}
+      inert={!open || undefined}
+      onKeyDown={handleKeyDown}
+    >
       <div className="drawer__scrim" onClick={onClose} />
       <div
         className="drawer__panel"
