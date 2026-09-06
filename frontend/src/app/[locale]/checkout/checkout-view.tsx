@@ -2,21 +2,34 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm, useWatch, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, ShoppingBag } from 'lucide-react';
 import { Alert, Button, EmptyState, Field, Input, Select, Skeleton, Textarea } from '@/components/ui';
 import { useCart } from '@/hooks/use-cart';
 import { useAuth } from '@/hooks/use-auth';
-import { useAddresses } from '@/hooks/use-account';
+import { useAddresses, useProfile } from '@/hooks/use-account';
 import { useCheckout, useDeliveryQuote } from '@/hooks/use-orders';
-import { DELIVERY_REGIONS, REGION_VALUES, regionLabel } from '@/lib/regions';
+import { DELIVERY_REGIONS, REGION_VALUES, regionLabel, type DeliveryRegion } from '@/lib/regions';
 import { formatCurrency } from '@/lib/format';
 import { isApiError } from '@/lib/api';
 import type { CheckoutBody, Order } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
+
+// Everything the address form can hold; `deliveryName` / `guestEmail` are only
+// asked of guests (a signed-in shopper's name + email come from their profile).
+interface FormValues {
+  deliveryName?: string;
+  guestEmail?: string;
+  deliveryPhone: string;
+  deliveryAddress: string;
+  deliveryCity: string;
+  deliveryRegion: DeliveryRegion;
+  deliveryArea?: string;
+  deliveryNotes?: string;
+}
 
 export function CheckoutView({ locale }: { locale: Locale }) {
   const isAr = locale === 'ar';
@@ -25,85 +38,118 @@ export function CheckoutView({ locale }: { locale: Locale }) {
 
   const cart = useCart();
   const { isAuthenticated } = useAuth();
+  const guest = !isAuthenticated;
+  const profile = useProfile({ enabled: isAuthenticated });
   const addresses = useAddresses({ enabled: isAuthenticated });
+
   const checkout = useCheckout();
 
-  const [addressId, setAddressId] = useState<string | undefined>();
+  const savedAddresses = useMemo(() => addresses.data ?? [], [addresses.data]);
+  const hasSaved = isAuthenticated && savedAddresses.length > 0;
+
+  // Signed-in with a saved address ⇒ pick one; otherwise fill the form.
+  // "Add a new address" flips a shopper with saved addresses into the form.
+  const [addingNew, setAddingNew] = useState(false);
+  const showPicker = hasSaved && !addingNew; // otherwise the address form shows
+
+  const defaultAddressId =
+    savedAddresses.find((a) => a.isDefault)?.id ?? savedAddresses[0]?.id ?? '';
+  const [pickedId, setPickedId] = useState('');
+  const selectedId = pickedId || defaultAddressId;
+  const selectedAddress = savedAddresses.find((a) => a.id === selectedId);
+
+  // A saved address created before governorates existed has no `region`; ask
+  // for one inline so the fee can still be quoted.
+  const [pickRegion, setPickRegion] = useState('');
+  const [pickNotes, setPickNotes] = useState('');
+
   const [placed, setPlaced] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const schema = useMemo(
-    () =>
-      z
-        .object({
+  const schema = useMemo(() => {
+    const base = {
+      deliveryPhone: z.string().trim().min(6, t('Enter a valid phone', 'أدخل رقمًا صالحًا')),
+      deliveryAddress: z.string().trim().min(3, t('Enter your street address', 'أدخل عنوان الشارع')),
+      deliveryCity: z.string().trim().min(1, t('Required', 'مطلوب')),
+      deliveryRegion: z.enum(REGION_VALUES, { message: t('Pick a governorate', 'اختر محافظة') }),
+      deliveryArea: z.string().trim().max(120).optional(),
+      deliveryNotes: z.string().trim().max(500).optional(),
+    };
+    return guest
+      ? z.object({
+          ...base,
           deliveryName: z.string().trim().min(1, t('Required', 'مطلوب')),
-          deliveryPhone: z.string().trim().min(6, t('Enter a valid phone', 'أدخل رقمًا صالحًا')),
-          deliveryAddress: z.string().trim().min(5, t('Enter your street address', 'أدخل عنوان الشارع')),
-          deliveryCity: z.string().trim().min(1, t('Required', 'مطلوب')),
-          deliveryRegion: z.enum(REGION_VALUES, { message: t('Pick a governorate', 'اختر محافظة') }),
-          deliveryArea: z.string().trim().max(120).optional(),
-          deliveryNotes: z.string().trim().max(500).optional(),
-          notes: z.string().trim().max(500).optional(),
-          guestEmail: z.string().trim().email(t('Enter a valid email', 'أدخل بريدًا صالحًا')).or(z.literal('')),
+          guestEmail: z.string().trim().email(t('Enter a valid email', 'أدخل بريدًا صالحًا')),
         })
-        .superRefine((v, ctx) => {
-          if (!isAuthenticated && !v.guestEmail) {
-            ctx.addIssue({ code: 'custom', path: ['guestEmail'], message: t('Required', 'مطلوب') });
-          }
-        }),
-    [isAuthenticated, isAr] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-  type Values = z.infer<typeof schema>;
+      : z.object(base);
+  }, [guest, isAr]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     register,
     handleSubmit,
     control,
-    setValue,
     formState: { errors },
-  } = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { deliveryRegion: undefined } });
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema) as Resolver<FormValues>,
+    defaultValues: { deliveryRegion: undefined },
+  });
 
-  const region = useWatch({ control, name: 'deliveryRegion' });
-  const quote = useDeliveryQuote(region ?? null);
+  const formRegion = useWatch({ control, name: 'deliveryRegion' });
+  const region: string | null = showPicker
+    ? selectedAddress?.region || pickRegion || null
+    : formRegion ?? null;
 
+  const quote = useDeliveryQuote(region);
   const subtotal = cart.data?.subtotal ?? 0;
   const deliveryFee = quote.data?.deliveryFee ?? null;
   const total = quote.data?.total ?? subtotal;
+  const busy = checkout.isPending;
 
-  const applySavedAddress = (id: string) => {
-    setAddressId(id || undefined);
-    const a = addresses.data?.find((x) => x.id === id);
-    if (!a) return;
-    setValue('deliveryName', a.fullName);
-    setValue('deliveryPhone', a.phone);
-    setValue('deliveryAddress', a.addressLine);
-    setValue('deliveryCity', a.city);
-    if (a.region && (REGION_VALUES as string[]).includes(a.region)) {
-      setValue('deliveryRegion', a.region as Values['deliveryRegion']);
+  const place = async (body: CheckoutBody) => {
+    setError(null);
+    try {
+      setPlaced(await checkout.mutateAsync(body));
+    } catch (e) {
+      if (isApiError(e)) {
+        const detail = e.issues.map((i) => i.message).join(' · ');
+        setError(detail || e.message);
+      } else {
+        setError(t('Something went wrong. Please try again.', 'حدث خطأ ما. حاول مرة أخرى.'));
+      }
     }
-    setValue('deliveryArea', a.area ?? '');
   };
 
-  const onSubmit = async (v: Values) => {
-    setError(null);
-    const body: CheckoutBody = {
-      deliveryName: v.deliveryName,
+  const submitForm = handleSubmit((v) =>
+    place({
+      deliveryName: guest ? v.deliveryName!.trim() : (profile.data?.name ?? '').trim(),
       deliveryPhone: v.deliveryPhone,
       deliveryAddress: v.deliveryAddress,
       deliveryCity: v.deliveryCity,
       deliveryRegion: v.deliveryRegion,
       deliveryArea: v.deliveryArea || undefined,
       deliveryNotes: v.deliveryNotes || undefined,
-      notes: v.notes || undefined,
-      ...(isAuthenticated ? {} : { guestEmail: v.guestEmail || undefined }),
-      ...(addressId ? { addressId } : {}),
-    };
-    try {
-      const order = await checkout.mutateAsync(body);
-      setPlaced(order);
-    } catch (e) {
-      setError(isApiError(e) ? e.message : t('Something went wrong. Please try again.', 'حدث خطأ ما. حاول مرة أخرى.'));
-    }
+      ...(guest
+        ? { guestEmail: v.guestEmail || undefined }
+        : { saveAddress: true, guestEmail: profile.data?.email || undefined }),
+    })
+  );
+
+  const submitPicked = () => {
+    const a = selectedAddress;
+    if (!a) return setError(t('Choose a delivery address.', 'اختر عنوان التوصيل.'));
+    const r = a.region || pickRegion;
+    if (!r) return setError(t('Choose a governorate for this address.', 'اختر محافظة لهذا العنوان.'));
+    return place({
+      addressId: a.id,
+      deliveryName: (profile.data?.name ?? a.fullName).trim(),
+      deliveryPhone: a.phone,
+      deliveryAddress: a.addressLine,
+      deliveryCity: a.city,
+      deliveryRegion: r,
+      deliveryArea: a.area || undefined,
+      deliveryNotes: pickNotes.trim() || a.notes || undefined,
+      guestEmail: profile.data?.email || undefined,
+    });
   };
 
   // ---- confirmation ----
@@ -127,7 +173,8 @@ export function CheckoutView({ locale }: { locale: Locale }) {
     );
   }
 
-  if (cart.isPending) {
+  const settingUp = cart.isPending || (isAuthenticated && (profile.isPending || addresses.isPending));
+  if (settingUp) {
     return (
       <div className="container section--tight stack">
         <Skeleton variant="title" width="40%" />
@@ -153,86 +200,176 @@ export function CheckoutView({ locale }: { locale: Locale }) {
     );
   }
 
-  const busy = checkout.isPending;
-
   return (
     <div className="container section--tight checkout">
       <h1 style={{ marginBlockStart: 0 }}>{t('Checkout', 'إتمام الطلب')}</h1>
 
       <div className="checkout__grid">
-        <form className="admin-form" noValidate onSubmit={handleSubmit(onSubmit)}>
-          {isAuthenticated && (addresses.data?.length ?? 0) > 0 && (
-            <Field label={t('Use a saved address', 'استخدام عنوان محفوظ')}>
-              {(p) => (
-                <Select {...p} value={addressId ?? ''} onChange={(e) => applySavedAddress(e.target.value)} disabled={busy}>
-                  <option value="">{t('New address', 'عنوان جديد')}</option>
-                  {addresses.data!.map((a) => (
-                    <option key={a.id} value={a.id}>
+        {showPicker ? (
+          <div className="admin-form">
+            <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0 }}>
+              <legend style={{ fontWeight: 600, marginBlockEnd: 'var(--space-2)' }}>
+                {t('Delivery address', 'عنوان التوصيل')}
+              </legend>
+              {savedAddresses.map((a) => (
+                <label
+                  key={a.id}
+                  className="checkout__addr"
+                  style={{
+                    display: 'flex',
+                    gap: 'var(--space-3)',
+                    alignItems: 'flex-start',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: 'var(--space-3)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="checkout-address"
+                    value={a.id}
+                    checked={selectedId === a.id}
+                    onChange={() => setPickedId(a.id)}
+                    disabled={busy}
+                  />
+                  <span>
+                    <strong>
                       {a.addressLine}, {a.city}
+                      {a.area ? `, ${a.area}` : ''}
+                    </strong>
+                    <br />
+                    <span className="prose" style={{ fontSize: 'var(--fs-sm)' }}>
+                      {a.region ? `${regionLabel(a.region, locale)} · ` : ''}
+                      {a.phone}
+                      {a.isDefault ? ` · ${t('Default', 'افتراضي')}` : ''}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+
+            {selectedAddress && !selectedAddress.region && (
+              <Field label={t('Governorate', 'المحافظة')} required>
+                {(p) => (
+                  <Select
+                    {...p}
+                    value={pickRegion}
+                    onChange={(e) => setPickRegion(e.target.value)}
+                    disabled={busy}
+                  >
+                    <option value="" disabled>
+                      {t('Select a governorate', 'اختر محافظة')}
                     </option>
-                  ))}
-                </Select>
+                    {DELIVERY_REGIONS.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {isAr ? r.ar : r.en}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            )}
+
+            <Field label={t('Delivery notes (optional)', 'ملاحظات التوصيل (اختياري)')}>
+              {(p) => (
+                <Textarea
+                  {...p}
+                  rows={2}
+                  value={pickNotes}
+                  onChange={(e) => setPickNotes(e.target.value)}
+                  disabled={busy}
+                />
               )}
             </Field>
-          )}
 
-          <div className="admin-form__row">
-            <Field label={t('Full name', 'الاسم الكامل')} error={errors.deliveryName?.message} required>
-              {(p) => <Input {...p} {...register('deliveryName')} autoComplete="name" disabled={busy} />}
-            </Field>
+            <p className="admin-form__hint">{t('Payment: cash on delivery.', 'الدفع: نقدًا عند الاستلام.')}</p>
+            {error && <Alert tone="danger">{error}</Alert>}
+
+            <div className="admin-form__actions" style={{ gap: 'var(--space-3)' }}>
+              <Button type="button" loading={busy} onClick={submitPicked}>
+                {t('Place order', 'تأكيد الطلب')}
+              </Button>
+              <Button type="button" variant="ghost" disabled={busy} onClick={() => setAddingNew(true)}>
+                {t('Add a new address', 'إضافة عنوان جديد')}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form className="admin-form" noValidate onSubmit={submitForm}>
+            {!guest && (
+              <p className="admin-form__hint">
+                {hasSaved ? (
+                  <button
+                    type="button"
+                    onClick={() => setAddingNew(false)}
+                    style={{ background: 'none', border: 0, padding: 0, font: 'inherit', color: 'var(--color-link)', cursor: 'pointer' }}
+                  >
+                    {t('← Use a saved address', '← استخدام عنوان محفوظ')}
+                  </button>
+                ) : (
+                  t('This address will be saved to your account for next time.', 'سيتم حفظ هذا العنوان في حسابك للمرة القادمة.')
+                )}
+              </p>
+            )}
+
+            {guest && (
+              <div className="admin-form__row">
+                <Field label={t('Full name', 'الاسم الكامل')} error={errors.deliveryName?.message} required>
+                  {(p) => <Input {...p} {...register('deliveryName')} autoComplete="name" disabled={busy} />}
+                </Field>
+                <Field label={t('Email', 'البريد الإلكتروني')} error={errors.guestEmail?.message} required>
+                  {(p) => <Input {...p} type="email" {...register('guestEmail')} autoComplete="email" disabled={busy} />}
+                </Field>
+              </div>
+            )}
+
             <Field label={t('Phone', 'الهاتف')} error={errors.deliveryPhone?.message} required>
               {(p) => <Input {...p} type="tel" {...register('deliveryPhone')} autoComplete="tel" disabled={busy} />}
             </Field>
-          </div>
 
-          {!isAuthenticated && (
-            <Field label={t('Email', 'البريد الإلكتروني')} error={errors.guestEmail?.message} required>
-              {(p) => <Input {...p} type="email" {...register('guestEmail')} autoComplete="email" disabled={busy} />}
+            <Field label={t('Street address', 'عنوان الشارع')} error={errors.deliveryAddress?.message} required>
+              {(p) => <Input {...p} {...register('deliveryAddress')} autoComplete="street-address" disabled={busy} />}
             </Field>
-          )}
 
-          <Field label={t('Street address', 'عنوان الشارع')} error={errors.deliveryAddress?.message} required>
-            {(p) => <Input {...p} {...register('deliveryAddress')} autoComplete="street-address" disabled={busy} />}
-          </Field>
-
-          <div className="admin-form__row">
-            <Field label={t('City', 'المدينة')} error={errors.deliveryCity?.message} required>
-              {(p) => <Input {...p} {...register('deliveryCity')} autoComplete="address-level2" disabled={busy} />}
-            </Field>
-            <Field label={t('Governorate', 'المحافظة')} error={errors.deliveryRegion?.message} required>
-              {(p) => (
-                <Select {...p} {...register('deliveryRegion')} defaultValue="" disabled={busy}>
-                  <option value="" disabled>
-                    {t('Select a governorate', 'اختر محافظة')}
-                  </option>
-                  {DELIVERY_REGIONS.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {isAr ? r.ar : r.en}
+            <div className="admin-form__row">
+              <Field label={t('City', 'المدينة')} error={errors.deliveryCity?.message} required>
+                {(p) => <Input {...p} {...register('deliveryCity')} autoComplete="address-level2" disabled={busy} />}
+              </Field>
+              <Field label={t('Governorate', 'المحافظة')} error={errors.deliveryRegion?.message} required>
+                {(p) => (
+                  <Select {...p} {...register('deliveryRegion')} defaultValue="" disabled={busy}>
+                    <option value="" disabled>
+                      {t('Select a governorate', 'اختر محافظة')}
                     </option>
-                  ))}
-                </Select>
-              )}
+                    {DELIVERY_REGIONS.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {isAr ? r.ar : r.en}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+            </div>
+
+            <Field label={t('Area (optional)', 'المنطقة (اختياري)')} error={errors.deliveryArea?.message}>
+              {(p) => <Input {...p} {...register('deliveryArea')} disabled={busy} />}
             </Field>
-          </div>
 
-          <Field label={t('Area (optional)', 'المنطقة (اختياري)')} error={errors.deliveryArea?.message}>
-            {(p) => <Input {...p} {...register('deliveryArea')} disabled={busy} />}
-          </Field>
+            <Field label={t('Delivery notes (optional)', 'ملاحظات التوصيل (اختياري)')} error={errors.deliveryNotes?.message}>
+              {(p) => <Textarea {...p} rows={2} {...register('deliveryNotes')} disabled={busy} />}
+            </Field>
 
-          <Field label={t('Delivery notes (optional)', 'ملاحظات التوصيل (اختياري)')} error={errors.deliveryNotes?.message}>
-            {(p) => <Textarea {...p} rows={2} {...register('deliveryNotes')} disabled={busy} />}
-          </Field>
+            <p className="admin-form__hint">{t('Payment: cash on delivery.', 'الدفع: نقدًا عند الاستلام.')}</p>
+            {error && <Alert tone="danger">{error}</Alert>}
 
-          <p className="admin-form__hint">{t('Payment: cash on delivery.', 'الدفع: نقدًا عند الاستلام.')}</p>
-
-          {error && <Alert tone="danger">{error}</Alert>}
-
-          <div className="admin-form__actions">
-            <Button type="submit" loading={busy}>
-              {t('Place order', 'تأكيد الطلب')}
-            </Button>
-          </div>
-        </form>
+            <div className="admin-form__actions">
+              <Button type="submit" loading={busy}>
+                {t('Place order', 'تأكيد الطلب')}
+              </Button>
+            </div>
+          </form>
+        )}
 
         <aside className="checkout__summary card">
           <div className="card__body stack">

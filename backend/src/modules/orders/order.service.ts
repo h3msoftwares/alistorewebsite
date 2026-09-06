@@ -16,6 +16,7 @@ interface CheckoutOwner {
 
 interface CheckoutInput {
   addressId?: string;
+  saveAddress?: boolean;
   guestEmail?: string;
   deliveryName: string;
   deliveryPhone: string;
@@ -133,13 +134,22 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     const { fee: deliveryFee } = resolveDeliveryFee(cfg, subtotal, input.deliveryRegion);
     const total = Math.round((subtotal + deliveryFee) * 100) / 100;
 
+    // For a signed-in order the contact name + email are authoritative from
+    // the account — never whatever the client put in the body — so the admin
+    // panel always sees the real customer identity. Guests supply their own.
+    const account = owner.userID
+      ? await tx.user.findUnique({ where: { id: owner.userID }, select: { name: true, email: true } })
+      : null;
+    const deliveryName = account?.name ?? input.deliveryName;
+    const contactEmail = account?.email ?? input.guestEmail ?? null;
+
     const order = await tx.order.create({
       data: {
         orderNumber: await generateUniqueOrderNumber(tx),
         userID: owner.userID,
         addressID: input.addressId,
-        guestEmail: input.guestEmail,
-        deliveryName: input.deliveryName,
+        guestEmail: contactEmail,
+        deliveryName,
         deliveryPhone: input.deliveryPhone,
         deliveryAddress: input.deliveryAddress,
         deliveryCity: input.deliveryCity,
@@ -186,6 +196,25 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     }
 
     if (cart) await tx.cartItem.deleteMany({ where: { cartID: cart.id } });
+
+    // A signed-in shopper who typed a fresh address (no saved-address ref):
+    // keep it in their address book for next time. First one becomes default.
+    if (owner.userID && input.saveAddress && !input.addressId) {
+      const existingCount = await tx.address.count({ where: { userID: owner.userID } });
+      await tx.address.create({
+        data: {
+          userID: owner.userID,
+          fullName: deliveryName,
+          phone: input.deliveryPhone,
+          addressLine: input.deliveryAddress,
+          city: input.deliveryCity,
+          region: input.deliveryRegion,
+          area: input.deliveryArea ?? null,
+          notes: input.deliveryNotes ?? null,
+          isDefault: existingCount === 0,
+        },
+      });
+    }
 
     return order;
   });

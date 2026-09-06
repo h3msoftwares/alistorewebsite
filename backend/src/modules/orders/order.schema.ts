@@ -6,10 +6,18 @@ export const checkoutSchema = z.object({
   // snapshot actually stored on the order (captured now so a later edit of the
   // saved address never rewrites order history).
   addressId: z.string().uuid().optional(),
-  guestEmail: z.string().email().optional(), // contact email for a guest order
+  // When a signed-in shopper types a fresh address at checkout (no addressId),
+  // persist it to their address book for next time. Ignored for guests and
+  // when addressId is set.
+  saveAddress: z.boolean().optional(),
+  // Contact email: entered by a guest, or the account email for a signed-in
+  // order (snapshotted so it survives the account being deleted).
+  guestEmail: z.string().email().optional(),
   deliveryName: z.string().min(1),
+  // Kept in step with account/address.schema.ts (phone min 6, addressLine
+  // min 3) so any saved address can be checked out with.
   deliveryPhone: z.string().min(6),
-  deliveryAddress: z.string().min(5),
+  deliveryAddress: z.string().min(3),
   deliveryCity: z.string().min(1),
   // Lebanese governorate — drives the delivery-fee calculation.
   deliveryRegion: z.enum(REGION_VALUES),

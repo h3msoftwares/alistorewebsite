@@ -157,6 +157,86 @@ describe('Orders API', () => {
     expect(res.body.order.addressID).toBe(addr.id);
   });
 
+  it('a saved address with a short street line (min 3, as the address book allows) still checks out', async () => {
+    const buyer = await createCustomer();
+    const addr = await prisma.address.create({
+      data: {
+        userID: buyer.user.id,
+        fullName: 'B',
+        phone: '0791111111',
+        addressLine: 'Maf', // 3 chars — valid per address.schema, was rejected by checkout's old min(5)
+        city: 'Beirut',
+        region: 'BEIRUT',
+        isDefault: true,
+      },
+    });
+    await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId, quantity: 1 });
+
+    const res = await request(app)
+      .post('/api/orders/checkout')
+      .set(bearer(buyer.token))
+      .send({
+        addressId: addr.id,
+        deliveryName: 'B',
+        deliveryPhone: addr.phone,
+        deliveryAddress: addr.addressLine,
+        deliveryCity: addr.city,
+        deliveryRegion: 'BEIRUT',
+      });
+    expect(res.status).toBe(201);
+  });
+
+  it('saveAddress: a signed-in shopper who types a fresh address gets it kept in their address book', async () => {
+    const buyer = await createCustomer();
+    await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId, quantity: 1 });
+
+    const res = await request(app)
+      .post('/api/orders/checkout')
+      .set(bearer(buyer.token))
+      .send({
+        ...delivery,
+        deliveryPhone: '0795555555',
+        deliveryAddress: '5 Cedar Ave',
+        deliveryCity: 'Zahle',
+        deliveryRegion: 'BEQAA',
+        deliveryArea: 'Ksara',
+        saveAddress: true,
+      });
+    expect(res.status).toBe(201);
+
+    const saved = await prisma.address.findMany({ where: { userID: buyer.user.id } });
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({
+      phone: '0795555555',
+      addressLine: '5 Cedar Ave',
+      city: 'Zahle',
+      region: 'BEQAA',
+      area: 'Ksara',
+      isDefault: true, // first address
+    });
+  });
+
+  it('saveAddress is ignored for a guest and when an addressId is supplied', async () => {
+    const guestAgent = request.agent(app);
+    await addToCart(guestAgent, 1);
+    expect(
+      (await guestAgent.post('/api/orders/checkout').send({ ...delivery, guestEmail: 'g@test.dev', saveAddress: true }))
+        .status
+    ).toBe(201);
+
+    const buyer = await createCustomer();
+    const addr = await prisma.address.create({
+      data: { userID: buyer.user.id, fullName: 'B', phone: '0791111111', addressLine: '1 St', city: 'Amman', isDefault: true },
+    });
+    await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId, quantity: 1 });
+    await request(app)
+      .post('/api/orders/checkout')
+      .set(bearer(buyer.token))
+      .send({ ...delivery, addressId: addr.id, saveAddress: true });
+
+    expect(await prisma.address.count({ where: { userID: buyer.user.id } })).toBe(1);
+  });
+
   it('cancel: pending-only, restores stock and records a RETURN movement', async () => {
     const { token } = await createCustomer();
     await request(app).post('/api/cart/items').set(bearer(token)).send({ variantId, quantity: 4 });
