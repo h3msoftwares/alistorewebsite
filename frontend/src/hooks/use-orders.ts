@@ -74,6 +74,8 @@ export function useCheckout() {
       qc.invalidateQueries({ queryKey: queryKeys.cart.root() });
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
       qc.invalidateQueries({ queryKey: queryKeys.products.all() });
+      // A new address may have been saved to the book during checkout.
+      qc.invalidateQueries({ queryKey: queryKeys.addresses.all() });
       dispatch(resetItemCount());
     },
   });

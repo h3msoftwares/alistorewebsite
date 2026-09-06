@@ -248,6 +248,9 @@ export interface Order {
  *  the snapshot; `addressId` optionally references a saved Address. */
 export interface CheckoutBody {
   addressId?: UUID;
+  /** Signed-in shoppers only: persist a freshly-typed address to the
+   *  address book. Ignored with `addressId` or for guests. */
+  saveAddress?: boolean;
   guestEmail?: string;
   deliveryName: string;
   deliveryPhone: string;
