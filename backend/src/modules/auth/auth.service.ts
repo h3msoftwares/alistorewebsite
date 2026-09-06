@@ -323,6 +323,47 @@ export async function refresh(refreshToken: string): Promise<TokenPair> {
   return { accessToken, refreshToken: newRefreshToken };
 }
 
+/**
+ * Change the password for a signed-in user.
+ *   - the current password is verified with Argon2 — a valid session alone
+ *     is not enough (defends a hijacked/borrowed session);
+ *   - on success every existing refresh token for the account is revoked
+ *     (same as a reset — a credential change ends all other sessions), then
+ *     a fresh pair is issued for the calling browser;
+ *   - any stale lockout counter is cleared.
+ */
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<TokenPair> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.isActive || !user.passwordHash || user.deletedAt) {
+    throw new AppError('UNAUTHORIZED', 'Invalid credentials');
+  }
+
+  const ok = await argon2.verify(user.passwordHash, currentPassword).catch(() => false);
+  if (!ok) {
+    throw new AppError('VALIDATION_ERROR', 'Current password is incorrect');
+  }
+
+  const passwordHash = await argon2.hash(newPassword);
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, failedLoginAttempts: 0, lockedUntil: null },
+    }),
+    prisma.refreshToken.updateMany({
+      where: { userID: user.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    }),
+  ]);
+
+  const accessToken = signAccessToken({ id: user.id, role: user.role });
+  const { token: refreshToken } = await issueRefreshToken(user.id);
+  return { accessToken, refreshToken };
+}
+
 export async function logout(refreshToken: string): Promise<void> {
   const stored = await prisma.refreshToken.findUnique({ where: { tokenHash: hashToken(refreshToken) } });
   if (stored) {

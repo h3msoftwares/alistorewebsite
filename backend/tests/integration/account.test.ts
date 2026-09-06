@@ -19,6 +19,16 @@ describe('Addresses API', () => {
     expect((await request(app).post('/api/addresses').send(addr)).status).toBe(401);
   });
 
+  it('defaults the recipient name to the account holder when fullName is omitted', async () => {
+    const { token, user } = await createCustomer();
+    const res = await request(app)
+      .post('/api/addresses')
+      .set(bearer(token))
+      .send({ phone: '0791234567', addressLine: '9 Cedar St', city: 'Amman' }); // no fullName
+    expect(res.status).toBe(201);
+    expect(res.body.address.fullName).toBe(user.name);
+  });
+
   it('first address is default; a new default clears the previous one', async () => {
     const { token } = await createCustomer();
 

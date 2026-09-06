@@ -15,6 +15,7 @@ import { accountApi, authApi, setAccessToken } from '@/lib/api';
 import { refreshAccessToken } from '@/lib/api/client';
 import { queryKeys } from '@/lib/query-keys';
 import type {
+  ChangePasswordBody,
   ForgotPasswordBody,
   LoginBody,
   RegisterBody,
@@ -146,6 +147,18 @@ export function useVerifyEmail() {
 export function useResendVerification() {
   return useMutation({
     mutationFn: (body: ResendVerificationBody) => authApi.resendVerification(body),
+  });
+}
+
+/** Signed-in password change. Verifies the current password server-side,
+ *  revokes every other session, and hands back a fresh access token for this
+ *  browser — swap it in so the current tab stays logged in. */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: async (body: ChangePasswordBody) => {
+      const { accessToken } = await authApi.changePassword(body);
+      setAccessToken(accessToken);
+    },
   });
 }
 

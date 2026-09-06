@@ -10,6 +10,12 @@ vi.mock('next/link', () => ({
 const routerReplace = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: routerReplace }) }));
 const logout = { mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false };
+const changePassword = {
+  mutateAsync: vi.fn().mockResolvedValue(undefined),
+  isPending: false,
+  isError: false,
+  error: null as unknown,
+};
 
 const auth = { status: 'authenticated' as 'authenticated' | 'loading' | 'guest' };
 const profile = {
@@ -27,7 +33,11 @@ const createAddress = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: f
 const updateAddress = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, isError: false };
 const deleteAddress = { mutate: vi.fn(), isPending: false };
 
-vi.mock('@/hooks/use-auth', () => ({ useAuth: () => auth, useLogout: () => logout }));
+vi.mock('@/hooks/use-auth', () => ({
+  useAuth: () => auth,
+  useLogout: () => logout,
+  useChangePassword: () => changePassword,
+}));
 vi.mock('@/hooks/use-account', () => ({
   useProfile: () => profile,
   useUpdateProfile: () => updateProfile,
@@ -46,6 +56,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   auth.status = 'authenticated';
   Object.assign(logout, { mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false });
+  Object.assign(changePassword, {
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    isPending: false,
+    isError: false,
+    error: null,
+  });
   Object.assign(updateProfile, { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, isError: false });
   Object.assign(createAddress, { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, isError: false });
   Object.assign(deleteAddress, { mutate: vi.fn(), isPending: false });
@@ -66,22 +82,24 @@ describe('<AccountView>', () => {
     expect(screen.getByText(/12 Rainbow St, Amman/)).toBeInTheDocument();
   });
 
-  it('saves a profile edit', async () => {
+  it('saves a profile edit (name only — no phone field)', async () => {
     const user = userEvent.setup();
     renderView();
+    expect(screen.queryByLabelText('Phone')).not.toBeInTheDocument();
     const name = screen.getByLabelText('Name');
     await user.clear(name);
     await user.type(name, 'Ali Updated');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
-    expect(updateProfile.mutateAsync).toHaveBeenCalledWith({ name: 'Ali Updated', phone: '0790000000' });
+    expect(updateProfile.mutateAsync).toHaveBeenCalledWith({ name: 'Ali Updated' });
   });
 
-  it('adds a new address', async () => {
+  it('adds a new address (no recipient-name field — it defaults to the account holder)', async () => {
     const user = userEvent.setup();
     renderView();
     await user.click(screen.getByRole('button', { name: 'Add an address' }));
 
-    await user.type(screen.getByLabelText('Recipient name'), 'Sara');
+    expect(screen.queryByLabelText('Recipient name')).not.toBeInTheDocument();
+
     await user.type(screen.getByLabelText('Contact phone'), '0791111111');
     await user.type(screen.getByLabelText('Street address'), '5 Cedar Ave');
     await user.type(screen.getByLabelText('City'), 'Zarqa');
@@ -89,8 +107,47 @@ describe('<AccountView>', () => {
 
     await waitFor(() =>
       expect(createAddress.mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ fullName: 'Sara', city: 'Zarqa', addressLine: '5 Cedar Ave' })
+        expect.objectContaining({ city: 'Zarqa', addressLine: '5 Cedar Ave', phone: '0791111111' })
       )
+    );
+    expect(createAddress.mutateAsync.mock.calls[0][0]).not.toHaveProperty('fullName');
+  });
+
+  it('changes the password: sends current + new, not the confirm field', async () => {
+    const user = userEvent.setup();
+    renderView();
+
+    await user.type(screen.getByLabelText('Current password'), 'OldPass123!');
+    await user.type(screen.getByLabelText('New password'), 'NewPass456!');
+    await user.type(screen.getByLabelText('Confirm new password'), 'NewPass456!');
+    await user.click(screen.getByRole('button', { name: 'Change password' }));
+
+    await waitFor(() =>
+      expect(changePassword.mutateAsync).toHaveBeenCalledWith({
+        currentPassword: 'OldPass123!',
+        newPassword: 'NewPass456!',
+      })
+    );
+  });
+
+  it('blocks the password change when the confirmation does not match', async () => {
+    const user = userEvent.setup();
+    renderView();
+
+    await user.type(screen.getByLabelText('Current password'), 'OldPass123!');
+    await user.type(screen.getByLabelText('New password'), 'NewPass456!');
+    await user.type(screen.getByLabelText('Confirm new password'), 'different!');
+    await user.click(screen.getByRole('button', { name: 'Change password' }));
+
+    expect(await screen.findByText('Passwords do not match')).toBeInTheDocument();
+    expect(changePassword.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('links to the forgot-password flow, tagged so the reset returns to /account', () => {
+    renderView();
+    expect(screen.getByRole('link', { name: /Forgot your current password/i })).toHaveAttribute(
+      'href',
+      '/en/forgot-password?return=account'
     );
   });
 

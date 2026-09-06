@@ -401,6 +401,13 @@ export interface ResetPasswordBody {
   newPassword: string;
 }
 
+/** Signed-in credential change — the current password is required and
+ *  verified server-side; a valid session alone is not enough. */
+export interface ChangePasswordBody {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export interface AuthResult {
   accessToken: string;
   user?: AuthUser;
@@ -478,7 +485,9 @@ export interface ProductBody {
 }
 
 export interface AddressBody {
-  fullName: string;
+  /** Optional — the storefront defaults the recipient to the account holder's
+   *  name server-side; only an admin/API client sets a distinct one. */
+  fullName?: string;
   phone: string;
   addressLine: string;
   city: string;

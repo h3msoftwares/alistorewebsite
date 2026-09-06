@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
 export const createAddressSchema = z.object({
-  fullName: z.string().min(1).max(120),
+  // Optional: the storefront no longer collects a separate recipient name —
+  // it defaults to the account holder's name (see address.service). Kept in
+  // the schema so an admin/API client can still set a distinct recipient.
+  fullName: z.string().min(1).max(120).optional(),
   phone: z.string().min(6).max(30),
   addressLine: z.string().min(3).max(300),
   city: z.string().min(1).max(120),
