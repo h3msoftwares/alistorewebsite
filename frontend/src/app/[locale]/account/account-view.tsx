@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Alert, Badge, Button, Field, Input, Skeleton, Textarea } from '@/components/ui';
+import { LogoutButton } from '@/components/chrome/logout-button';
 import { useAuth } from '@/hooks/use-auth';
 import {
   useAddresses,
@@ -72,7 +73,10 @@ export function AccountView({ locale }: { locale: Locale }) {
 
   return (
     <div className="container section" style={{ maxWidth: '38rem' }}>
-      <h1>{t('My account', 'حسابي')}</h1>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+        <h1>{t('My account', 'حسابي')}</h1>
+        <LogoutButton locale={locale} />
+      </div>
       <ProfileSection locale={locale} />
       <AddressesSection locale={locale} />
     </div>
