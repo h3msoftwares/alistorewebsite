@@ -9,7 +9,10 @@ import { createAddressSchema } from '../account/address.schema';
 // `phone` is the account's contact number — there is no separate top-level
 // phone field.
 export const registerSchema = z.object({
-  email: z.string().email().max(320),
+  // Lower-cased so `Foo@X.com` and `foo@x.com` can't become two accounts, and
+  // so login / forgot-password / resend all resolve regardless of the casing
+  // the user types.
+  email: z.string().email().max(320).toLowerCase(),
   password: z.string().min(8).max(200),
   name: z.string().min(1).max(120),
   address: createAddressSchema.omit({ isDefault: true, fullName: true }),

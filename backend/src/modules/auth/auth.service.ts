@@ -209,8 +209,12 @@ export async function login(
   password: string,
   ctx: LoginContext
 ): Promise<TokenPair & { userId: string }> {
+  // Emails are stored lower-cased (auth.schema.ts); match case-insensitively
+  // so a shopper can type "Foo@X.com". Lower-casing a phone number is a no-op.
+  // The raw `identifier` is still what gets written to the audit log.
+  const lookup = identifier.toLowerCase();
   const user = await prisma.user.findFirst({
-    where: { OR: [{ email: identifier }, { phone: identifier }], deletedAt: null },
+    where: { OR: [{ email: lookup }, { phone: lookup }], deletedAt: null },
   });
 
   const loginable = Boolean(user?.isActive && user?.passwordHash);

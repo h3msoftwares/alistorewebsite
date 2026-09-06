@@ -7,7 +7,7 @@ export const verifyEmailSchema = z.object({
 });
 
 export const resendVerificationSchema = z.object({
-  email: z.string().email().max(320),
+  email: z.string().email().max(320).toLowerCase(),
   // Only shapes the link in the email; defaults to 'en'.
   locale: z.enum(['en', 'ar']).default('en'),
 });
