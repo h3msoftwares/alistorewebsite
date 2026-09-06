@@ -140,4 +140,58 @@ describe('Site settings API', () => {
     expect(res.body.settings.brandNameAr).toBe('متجر ريما');
     expect(await prisma.siteSetting.findUnique({ where: { id: 1 } })).not.toBeNull();
   });
+
+  describe('delivery fee config', () => {
+    const patch = (body: unknown) =>
+      request(app).patch('/api/settings').set(bearer(adminToken)).send(body);
+
+    it('admin sets the flat fee, threshold and free governorates', async () => {
+      const res = await patch({
+        deliveryFeeEnabled: true,
+        deliveryFeeFlat: 4,
+        freeDeliveryThreshold: 60,
+        freeDeliveryRegions: ['BEIRUT', 'MOUNT_LEBANON'],
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.settings).toMatchObject({
+        deliveryFeeEnabled: true,
+        freeDeliveryRegions: ['BEIRUT', 'MOUNT_LEBANON'],
+      });
+      expect(Number(res.body.settings.deliveryFeeFlat)).toBe(4);
+      expect(Number(res.body.settings.freeDeliveryThreshold)).toBe(60);
+    });
+
+    it('deliveryRates is replace-all, ordered, and null threshold clears', async () => {
+      const set = await patch({
+        deliveryRates: [
+          { region: 'NORTH', fee: 6 },
+          { region: 'BEIRUT', fee: 2 },
+        ],
+      });
+      expect(set.body.settings.deliveryRates.map((r: { region: string }) => r.region)).toEqual([
+        'NORTH',
+        'BEIRUT',
+      ]);
+
+      await patch({ freeDeliveryThreshold: 30 });
+      const cleared = await patch({ deliveryRates: [], freeDeliveryThreshold: null });
+      expect(cleared.body.settings.deliveryRates).toHaveLength(0);
+      expect(cleared.body.settings.freeDeliveryThreshold).toBeNull();
+    });
+
+    it('rejects a negative fee, an unknown governorate, and duplicate rows (400)', async () => {
+      expect((await patch({ deliveryFeeFlat: -1 })).status).toBe(400);
+      expect((await patch({ deliveryRates: [{ region: 'ATLANTIS', fee: 3 }] })).status).toBe(400);
+      expect(
+        (
+          await patch({
+            deliveryRates: [
+              { region: 'BEIRUT', fee: 1 },
+              { region: 'BEIRUT', fee: 2 },
+            ],
+          })
+        ).status
+      ).toBe(400);
+    });
+  });
 });

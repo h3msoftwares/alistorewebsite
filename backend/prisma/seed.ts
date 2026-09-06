@@ -1583,6 +1583,21 @@ async function main() {
       ],
     });
   }
+  // Delivery fee: shipped OFF so the storefront behaves as before, but with a
+  // sample config (a $3 flat fee, free over $50, cheaper Beirut / Mount Lebanon)
+  // so the owner just flips the toggle. Idempotent — only when unset.
+  if ((await prisma.deliveryRate.count({ where: { settingID: 1 } })) === 0) {
+    await prisma.siteSetting.update({
+      where: { id: 1 },
+      data: { deliveryFeeFlat: 3, freeDeliveryThreshold: 50 },
+    });
+    await prisma.deliveryRate.createMany({
+      data: [
+        { settingID: 1, sortOrder: 0, region: 'BEIRUT', fee: 2 },
+        { settingID: 1, sortOrder: 1, region: 'MOUNT_LEBANON', fee: 2.5 },
+      ],
+    });
+  }
 
   console.log(`[seed] done — ${productDefs.length} products across ${categoryDefs.length} categories.`);
 }

@@ -1,7 +1,12 @@
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { generateOrderNumber } from '../../lib/orderNumber';
-import { OrderStatus } from '@prisma/client';
+import {
+  resolveDeliveryFee,
+  toDeliveryConfig,
+  type DeliveryConfig,
+} from '../../lib/delivery-fee';
+import { OrderStatus, Prisma } from '@prisma/client';
 
 interface CheckoutOwner {
   userID?: string;
@@ -15,9 +20,59 @@ interface CheckoutInput {
   deliveryPhone: string;
   deliveryAddress: string;
   deliveryCity: string;
+  deliveryRegion: string;
   deliveryArea?: string;
   deliveryNotes?: string;
   notes?: string;
+}
+
+type DbClient = Prisma.TransactionClient | typeof prisma;
+
+const DISABLED_CONFIG: DeliveryConfig = {
+  deliveryFeeEnabled: false,
+  deliveryFeeFlat: 0,
+  freeDeliveryThreshold: null,
+  freeDeliveryRegions: [],
+  deliveryRates: [],
+};
+
+async function loadDeliveryConfig(db: DbClient): Promise<DeliveryConfig> {
+  const setting = await db.siteSetting.findUnique({
+    where: { id: 1 },
+    include: { deliveryRates: true },
+  });
+  return setting ? toDeliveryConfig(setting) : DISABLED_CONFIG;
+}
+
+async function loadCartSubtotal(db: DbClient, owner: CheckoutOwner): Promise<number> {
+  const cart = await db.cart.findUnique({
+    where: owner.userID ? { userID: owner.userID } : { sessionID: owner.sessionID! },
+  });
+  if (!cart) return 0;
+  const items = await db.cartItem.findMany({
+    where: { cartID: cart.id },
+    include: { variant: { include: { product: { select: { price: true } } } } },
+  });
+  return items.reduce((sum, i) => sum + Number(i.variant.product.price) * i.quantity, 0);
+}
+
+/** Live delivery-fee estimate for the caller's current cart + a chosen
+ *  governorate. Powers the checkout form's order summary. */
+export async function getDeliveryQuote(owner: CheckoutOwner, region: string) {
+  if (!owner.userID && !owner.sessionID) {
+    return { subtotal: 0, deliveryFee: 0, total: 0, freeReason: 'disabled' as const };
+  }
+  const [subtotal, cfg] = await Promise.all([
+    loadCartSubtotal(prisma, owner),
+    loadDeliveryConfig(prisma),
+  ]);
+  const { fee, freeReason } = resolveDeliveryFee(cfg, subtotal, region);
+  return {
+    subtotal,
+    deliveryFee: fee,
+    total: Math.round((subtotal + fee) * 100) / 100,
+    freeReason,
+  };
 }
 
 /** Creates a COD order from whatever is currently in the cart, snapshotting
@@ -70,7 +125,12 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     }
 
     const subtotal = cartItems.reduce((sum, i) => sum + Number(i.variant.product.price) * i.quantity, 0);
-    const total = Math.round(subtotal * 100) / 100; // no shipping-fee calculation — delivery is handled by the owner outside the app
+
+    // Admin-configured delivery fee (flat, per-governorate override, or free
+    // by threshold / free-region list — see lib/delivery-fee.ts).
+    const cfg = await loadDeliveryConfig(tx);
+    const { fee: deliveryFee } = resolveDeliveryFee(cfg, subtotal, input.deliveryRegion);
+    const total = Math.round((subtotal + deliveryFee) * 100) / 100;
 
     const order = await tx.order.create({
       data: {
@@ -82,10 +142,12 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
         deliveryPhone: input.deliveryPhone,
         deliveryAddress: input.deliveryAddress,
         deliveryCity: input.deliveryCity,
+        deliveryRegion: input.deliveryRegion,
         deliveryArea: input.deliveryArea,
         deliveryNotes: input.deliveryNotes,
         notes: input.notes,
         subtotal,
+        deliveryFee,
         total,
         paymentMethod: 'COD',
         items: {
@@ -202,11 +264,12 @@ export async function salesDashboard() {
   const [totalOrders, pendingOrders, deliveredRevenue] = await Promise.all([
     prisma.order.count(),
     prisma.order.count({ where: { status: 'PENDING' } }),
-    prisma.order.aggregate({ where: { status: 'DELIVERED' }, _sum: { total: true } }),
+    // Merchandise revenue — excludes the delivery fee (tracked separately).
+    prisma.order.aggregate({ where: { status: 'DELIVERED' }, _sum: { subtotal: true } }),
   ]);
   return {
     totalOrders,
     pendingOrders,
-    totalRevenue: Number(deliveredRevenue._sum.total ?? 0),
+    totalRevenue: Number(deliveredRevenue._sum.subtotal ?? 0),
   };
 }

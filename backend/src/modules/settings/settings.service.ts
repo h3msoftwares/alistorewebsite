@@ -7,6 +7,7 @@ const SETTINGS_ID = 1;
 
 const settingsInclude = {
   announcementLines: { orderBy: { sortOrder: 'asc' as const } },
+  deliveryRates: { orderBy: { sortOrder: 'asc' as const } },
   heroCtaCollection: { select: { id: true, slug: true, nameEn: true, nameAr: true } },
 };
 
@@ -61,6 +62,14 @@ function scalarData(input: UpdateSettingsInput): Record<string, unknown> {
   if ('heroCtaCollectionId' in input) {
     out.heroCtaCollectionID = input.heroCtaCollectionId ? input.heroCtaCollectionId : null;
   }
+
+  // Delivery fee scalars — copy when present; a null threshold clears the rule.
+  for (const key of ['deliveryFeeEnabled', 'deliveryFeeFlat', 'freeDeliveryRegions'] as const) {
+    if (input[key] !== undefined) out[key] = input[key];
+  }
+  if ('freeDeliveryThreshold' in input) {
+    out.freeDeliveryThreshold = input.freeDeliveryThreshold ?? null;
+  }
   return out;
 }
 
@@ -90,6 +99,20 @@ export async function updateSettings(input: UpdateSettingsInput) {
             settingID: SETTINGS_ID,
             textEn: l.textEn,
             textAr: l.textAr,
+            sortOrder: i,
+          })),
+        });
+      }
+    }
+
+    if (input.deliveryRates) {
+      await tx.deliveryRate.deleteMany({ where: { settingID: SETTINGS_ID } });
+      if (input.deliveryRates.length > 0) {
+        await tx.deliveryRate.createMany({
+          data: input.deliveryRates.map((r, i) => ({
+            settingID: SETTINGS_ID,
+            region: r.region,
+            fee: r.fee,
             sortOrder: i,
           })),
         });

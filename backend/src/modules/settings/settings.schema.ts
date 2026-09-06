@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import { httpUrl } from '../../lib/safe-url';
+import { REGION_VALUES } from '../../lib/regions';
+
+const money = z.number().min(0).max(100000);
 
 // A URL field: an absolute http(s) URL, or an empty string (cleared), or
 // null/omitted. Restricted to http(s) on purpose — these values are rendered
@@ -39,6 +42,32 @@ export const updateSettingsSchema = z.object({
     )
     .max(10)
     .optional(),
+
+  // ---- Delivery fee ----
+  deliveryFeeEnabled: z.boolean().optional(),
+  deliveryFeeFlat: money.optional(),
+  // null ⇒ clear (no free-over-threshold rule).
+  freeDeliveryThreshold: money.nullish(),
+  freeDeliveryRegions: z.array(z.enum(REGION_VALUES)).max(REGION_VALUES.length).optional(),
+  // Replace-all per-governorate override table. One row per governorate.
+  deliveryRates: z
+    .array(z.object({ region: z.enum(REGION_VALUES), fee: money }))
+    .max(REGION_VALUES.length)
+    .optional()
+    .superRefine((rates, ctx) => {
+      if (!rates) return;
+      const seen = new Set<string>();
+      rates.forEach((r, i) => {
+        if (seen.has(r.region)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [i, 'region'],
+            message: 'duplicate governorate',
+          });
+        }
+        seen.add(r.region);
+      });
+    }),
 });
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

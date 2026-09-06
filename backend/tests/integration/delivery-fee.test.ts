@@ -1,0 +1,136 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import request from 'supertest';
+import { buildApp } from '../../src/app';
+import { prisma } from '../../src/config/prisma';
+import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
+
+const app = buildApp();
+
+const delivery = {
+  deliveryName: 'Jane Doe',
+  deliveryPhone: '0791234567',
+  deliveryAddress: '12 Rainbow Street',
+  deliveryCity: 'Jounieh',
+  deliveryRegion: 'MOUNT_LEBANON',
+};
+
+let variantId: string;
+
+beforeEach(async () => {
+  const col = await makeCollection({ slug: 'c' });
+  const cat = await makeCategory(col.id);
+  const p = await makeProduct(col.id, cat.id, {
+    over: { price: 20 },
+    variants: [{ sku: 'v1', size: 'M', color: 'Black', stockQuantity: 10 }],
+  });
+  variantId = p.variants[0].id;
+});
+
+/** Set the delivery-fee config on the singleton row. */
+async function configure({
+  rates,
+  ...scalars
+}: {
+  deliveryFeeEnabled?: boolean;
+  deliveryFeeFlat?: number;
+  freeDeliveryThreshold?: number | null;
+  freeDeliveryRegions?: string[];
+  rates?: { region: string; fee: number }[];
+}) {
+  await prisma.siteSetting.upsert({
+    where: { id: 1 },
+    create: { id: 1, ...scalars },
+    update: scalars,
+  });
+  await prisma.deliveryRate.deleteMany({ where: { settingID: 1 } });
+  if (rates?.length) {
+    await prisma.deliveryRate.createMany({
+      data: rates.map((r, i) => ({ settingID: 1, region: r.region, fee: r.fee, sortOrder: i })),
+    });
+  }
+}
+
+async function checkout(quantity = 2, body: Record<string, unknown> = delivery) {
+  const agent = request.agent(app);
+  expect((await agent.post('/api/cart/items').send({ variantId, quantity })).status).toBe(201);
+  return { agent, res: await agent.post('/api/orders/checkout').send(body) };
+}
+
+describe('delivery fee at checkout', () => {
+  it('disabled config ⇒ fee 0, total == subtotal', async () => {
+    await configure({ deliveryFeeEnabled: false, deliveryFeeFlat: 5 });
+    const { res } = await checkout(2); // 2 × 20 = 40
+    expect(res.status).toBe(201);
+    expect(Number(res.body.order.deliveryFee)).toBe(0);
+    expect(Number(res.body.order.total)).toBe(40);
+  });
+
+  it('flat fee ⇒ total = subtotal + flat', async () => {
+    await configure({ deliveryFeeEnabled: true, deliveryFeeFlat: 5 });
+    const { res } = await checkout(2);
+    expect(Number(res.body.order.deliveryFee)).toBe(5);
+    expect(Number(res.body.order.subtotal)).toBe(40);
+    expect(Number(res.body.order.total)).toBe(45);
+  });
+
+  it('per-governorate override wins over the flat fee', async () => {
+    await configure({
+      deliveryFeeEnabled: true,
+      deliveryFeeFlat: 5,
+      rates: [{ region: 'MOUNT_LEBANON', fee: 2 }],
+    });
+    const { res } = await checkout(2);
+    expect(Number(res.body.order.deliveryFee)).toBe(2);
+    expect(Number(res.body.order.total)).toBe(42);
+  });
+
+  it('free once the subtotal reaches the threshold', async () => {
+    await configure({ deliveryFeeEnabled: true, deliveryFeeFlat: 5, freeDeliveryThreshold: 30 });
+    const { res } = await checkout(2); // 40 ≥ 30
+    expect(Number(res.body.order.deliveryFee)).toBe(0);
+    expect(Number(res.body.order.total)).toBe(40);
+  });
+
+  it('free for a governorate on the free list', async () => {
+    await configure({
+      deliveryFeeEnabled: true,
+      deliveryFeeFlat: 5,
+      freeDeliveryRegions: ['MOUNT_LEBANON'],
+    });
+    const { res } = await checkout(2);
+    expect(Number(res.body.order.deliveryFee)).toBe(0);
+  });
+});
+
+describe('GET /api/orders/delivery-quote', () => {
+  it('quotes the fee for the guest cart + chosen region', async () => {
+    await configure({
+      deliveryFeeEnabled: true,
+      deliveryFeeFlat: 5,
+      freeDeliveryThreshold: 100,
+      rates: [{ region: 'BEIRUT', fee: 2 }],
+    });
+    const agent = request.agent(app);
+    await agent.post('/api/cart/items').send({ variantId, quantity: 2 }); // subtotal 40
+
+    const beirut = await agent.get('/api/orders/delivery-quote?region=BEIRUT');
+    expect(beirut.status).toBe(200);
+    expect(beirut.body).toMatchObject({ subtotal: 40, deliveryFee: 2, total: 42, freeReason: null });
+
+    const north = await agent.get('/api/orders/delivery-quote?region=NORTH');
+    expect(north.body).toMatchObject({ deliveryFee: 5, total: 45 });
+  });
+
+  it('reports freeReason when disabled', async () => {
+    await configure({ deliveryFeeEnabled: false });
+    const agent = request.agent(app);
+    await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+    const res = await agent.get('/api/orders/delivery-quote?region=BEIRUT');
+    expect(res.body).toMatchObject({ deliveryFee: 0, freeReason: 'disabled' });
+  });
+
+  it('400s an unknown region', async () => {
+    const res = await request(app).get('/api/orders/delivery-quote?region=NOWHERE');
+    expect(res.status).toBe(400);
+  });
+});

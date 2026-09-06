@@ -140,7 +140,8 @@ describe('GET /api/admin/analytics/overview', () => {
       .set(bearer(adminToken));
 
     expect(body.kpis).toMatchObject({
-      revenue: 160, // 40 + 50 + 70 (the 60d-old order is out of range)
+      revenue: 160, // merchandise (SUM subtotal): 40 + 50 + 70
+      deliveryRevenue: 0, // no delivery fee on the seeded orders
       orders: 3,
       deliveredRevenue: 40,
       unitsSold: 5, // 2 + 1 + (1 + 1)

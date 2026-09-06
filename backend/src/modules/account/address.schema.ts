@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { REGION_VALUES } from '../../lib/regions';
 
 export const createAddressSchema = z.object({
   // Optional: the storefront no longer collects a separate recipient name —
@@ -8,6 +9,8 @@ export const createAddressSchema = z.object({
   phone: z.string().min(6).max(30),
   addressLine: z.string().min(3).max(300),
   city: z.string().min(1).max(120),
+  // Lebanese governorate — lets the checkout form prefill the delivery region.
+  region: z.enum(REGION_VALUES).optional(),
   area: z.string().max(120).optional(),
   notes: z.string().max(500).optional(),
   isDefault: z.boolean().default(false),

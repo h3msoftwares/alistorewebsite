@@ -192,6 +192,7 @@ model Address {
   addressLine String
   city        String
   area        String?
+  region      String? // Lebanese governorate — one of the DELIVERY_REGIONS values
   notes       String?
   isDefault   Boolean  @default(false)
   dateCreated DateTime @default(now())
@@ -209,22 +210,22 @@ model Address {
 // number of collections (e.g. Women, Men, Kids, Summer Sale) from the admin UI
 // and attach categories to them. Hierarchy: Collection -> Category -> Product.
 model Collection {
-  id            String   @id @default(uuid()) @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
   nameEn        String
   nameAr        String
-  slug          String   @unique
+  slug          String    @unique
   descriptionEn String?
   descriptionAr String?
-  isActive      Boolean  @default(true)
+  isActive      Boolean   @default(true)
   // Owner opts a collection into the top nav / footer; nav order reuses sortOrder.
-  showInNav     Boolean  @default(false)
+  showInNav     Boolean   @default(false)
   // Owner opts a collection into the home page's featured row (own row: name +
   // horizontal scroll of its categories). Independent of showInNav — a
   // collection can be navigable without being featured, or vice versa. Order
   // among featured rows (collections AND categories, interleaved) reuses
   // sortOrder as a shared ranking key.
-  showOnHome    Boolean  @default(false)
-  sortOrder     Int      @default(0)
+  showOnHome    Boolean   @default(false)
+  sortOrder     Int       @default(0)
   // #rrggbb — the storefront derives the --collection-accent* CSS custom
   // properties from this. null ⇒ the collection uses the default accent.
   accentColor   String?
@@ -232,8 +233,8 @@ model Collection {
   // the storefront, kept in the DB, restorable. Permanent delete is only
   // allowed once archived (and empty of products).
   archivedAt    DateTime?
-  dateCreated   DateTime @default(now())
-  lastEdit      DateTime @default(now()) @updatedAt
+  dateCreated   DateTime  @default(now())
+  lastEdit      DateTime  @default(now()) @updatedAt
 
   images      CollectionImage[]
   categories  Category[]
@@ -268,21 +269,21 @@ model CollectionImage {
 }
 
 model Category {
-  id               String  @id @default(uuid()) @db.Uuid
+  id               String    @id @default(uuid()) @db.Uuid
   // Nullable: a category may stand alone, unattached to any collection. Deleting
   // a collection detaches its categories (SET NULL) rather than removing them.
-  collectionID     String? @db.Uuid
+  collectionID     String?   @db.Uuid
   nameEn           String
   nameAr           String
-  slug             String  @unique
-  parentCategoryID String? @db.Uuid
-  isActive         Boolean @default(true)
+  slug             String    @unique
+  parentCategoryID String?   @db.Uuid
+  isActive         Boolean   @default(true)
   // Owner opts a category into the home page's featured row (own row: name +
   // horizontal scroll of its products) — independent of its parent
   // collection's own showOnHome. Shares the sortOrder ranking key with
   // Collection.showOnHome for one interleaved featured-row order.
-  showOnHome       Boolean @default(false)
-  sortOrder        Int     @default(0)
+  showOnHome       Boolean   @default(false)
+  sortOrder        Int       @default(0)
   // See Collection.archivedAt — archive is the admin's primary "remove"
   // action; permanent delete needs the category archived and empty first.
   archivedAt       DateTime?
@@ -486,11 +487,13 @@ model Order {
   deliveryAddress String
   deliveryCity    String
   deliveryArea    String?
+  deliveryRegion  String? // Lebanese governorate — set on every new checkout; null only on legacy rows
   deliveryNotes   String?
 
   notes         String? // general order notes from the customer
-  subtotal      Decimal       @db.Decimal(12, 2)
-  total         Decimal       @db.Decimal(12, 2)
+  subtotal      Decimal       @db.Decimal(12, 2) // merchandise only
+  deliveryFee   Decimal       @default(0) @db.Decimal(12, 2)
+  total         Decimal       @db.Decimal(12, 2) // subtotal + deliveryFee
   currency      String        @default("USD")
   paymentMethod PaymentMethod @default(COD)
   paymentStatus PaymentStatus @default(PENDING)
@@ -539,23 +542,23 @@ model OrderItem {
 // name, the announcement strip, the home hero copy, and the footer's
 // social / contact links.
 model SiteSetting {
-  id                  Int      @id @default(1)
-  brandNameEn         String   @default("Ali's Store")
-  brandNameAr         String   @default("متجر علي")
-  announcementActive  Boolean  @default(true)
-  heroEyebrowEn       String   @default("Limited stock")
-  heroEyebrowAr       String   @default("كمية محدودة")
-  heroHeadlineEn      String   @default("Buy it before someone else does.")
-  heroHeadlineAr      String   @default("خدها قبل ما حدا غيرك ياخدها.")
-  heroLedeEn          String   @default("Women, men and kids — clothing you actually wear, paid for on delivery.")
-  heroLedeAr          String   @default("نساء ورجال وأطفال — ملابس ترتديها فعلاً، وتدفع عند الاستلام.")
-  heroCtaLabelEn      String   @default("Discover")
-  heroCtaLabelAr      String   @default("اكتشف الآن")
+  id                  Int     @id @default(1)
+  brandNameEn         String  @default("Ali's Store")
+  brandNameAr         String  @default("متجر علي")
+  announcementActive  Boolean @default(true)
+  heroEyebrowEn       String  @default("Limited stock")
+  heroEyebrowAr       String  @default("كمية محدودة")
+  heroHeadlineEn      String  @default("Buy it before someone else does.")
+  heroHeadlineAr      String  @default("خدها قبل ما حدا غيرك ياخدها.")
+  heroLedeEn          String  @default("Women, men and kids — clothing you actually wear, paid for on delivery.")
+  heroLedeAr          String  @default("نساء ورجال وأطفال — ملابس ترتديها فعلاً، وتدفع عند الاستلام.")
+  heroCtaLabelEn      String  @default("Discover")
+  heroCtaLabelAr      String  @default("اكتشف الآن")
   // Which collection the hero's Discover button points at. null ⇒ the
   // storefront falls back to the first nav collection.
-  heroCtaCollectionID String?  @db.Uuid
-  homeMoreHeadingEn   String   @default("More to explore")
-  homeMoreHeadingAr   String   @default("المزيد لاكتشافه")
+  heroCtaCollectionID String? @db.Uuid
+  homeMoreHeadingEn   String  @default("More to explore")
+  homeMoreHeadingAr   String  @default("المزيد لاكتشافه")
   // Footer links — null / "" ⇒ the link is hidden.
   instagramUrl        String?
   facebookUrl         String?
@@ -563,12 +566,39 @@ model SiteSetting {
   whatsappUrl         String?
   contactEmail        String?
   contactPhone        String?
-  lastEdit            DateTime @updatedAt
+
+  // Delivery fee. `deliveryFeeEnabled` off ⇒ every order ships free.
+  // `deliveryFeeFlat` applies to any governorate without a `DeliveryRate`
+  // override. `freeDeliveryThreshold` (null ⇒ off) waives the fee once the
+  // subtotal reaches it; `freeDeliveryRegions` waives it for those governorates.
+  deliveryFeeEnabled    Boolean  @default(false)
+  deliveryFeeFlat       Decimal  @default(0) @db.Decimal(12, 2)
+  freeDeliveryThreshold Decimal? @db.Decimal(12, 2)
+  freeDeliveryRegions   String[] @default([])
+
+  lastEdit DateTime @updatedAt
 
   heroCtaCollection Collection?        @relation(fields: [heroCtaCollectionID], references: [id], onDelete: SetNull)
   announcementLines AnnouncementLine[]
+  deliveryRates     DeliveryRate[]
 
   @@map("sitesetting")
+}
+
+// Per-governorate delivery-fee override. Replace-all on update, like
+// AnnouncementLine. A governorate with no row here pays SiteSetting.deliveryFeeFlat.
+model DeliveryRate {
+  id        String  @id @default(uuid()) @db.Uuid
+  settingID Int
+  region    String // one of the DELIVERY_REGIONS values (see src/lib/regions.ts)
+  fee       Decimal @db.Decimal(12, 2)
+  sortOrder Int     @default(0)
+
+  setting SiteSetting @relation(fields: [settingID], references: [id], onDelete: Cascade)
+
+  @@unique([settingID, region])
+  @@index([settingID])
+  @@map("deliveryrate")
 }
 
 // One rotating line of the announcement strip. Replace-all on update.

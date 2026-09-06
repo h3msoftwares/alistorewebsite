@@ -4,6 +4,7 @@ import { prisma } from '../../src/config/prisma';
 // clears them regardless of FK order; RESTART IDENTITY resets any sequences.
 const TABLES = [
   'announcementline',
+  'deliveryrate',
   'sitesetting',
   'stockmovement',
   'orderitem',
