@@ -186,6 +186,10 @@
   /* ---- Motion ---- */
   --transition-fast: 150ms ease;
   --transition-base: 250ms ease;
+  /* Off-canvas panels (menu / cart / favourites / filters). Slightly longer
+     with an iOS-sheet ease-out so the slide settles smoothly. */
+  --drawer-ease-duration: 280ms;
+  --drawer-ease: cubic-bezier(0.32, 0.72, 0, 1);
 
   /* ---- z-index scale ---- */
   --z-header: 40;
@@ -2302,19 +2306,24 @@ ul, ol {
   inset: 0;
   z-index: var(--z-drawer);
   display: flex;
-  visibility: hidden;
+  /* Stays in the DOM and painted at all times so the menu / cart / favourites
+     / filters panels animate both in AND out. `pointer-events` keeps the
+     closed overlay click-through; `inert` (set by the Drawer component when
+     closed) handles focus + screen-reader hiding, which `visibility: hidden`
+     used to do — but that also suppressed the slide transition. */
   pointer-events: none;
 }
-.drawer[data-open='true'] { visibility: visible; pointer-events: auto; }
+.drawer[data-open='true'] { pointer-events: auto; }
 
 .drawer__scrim {
   position: absolute;
   inset: 0;
   background: var(--scrim);
   opacity: 0;
-  transition: opacity var(--transition-base);
+  pointer-events: none;
+  transition: opacity var(--drawer-ease-duration) ease;
 }
-.drawer[data-open='true'] .drawer__scrim { opacity: 1; }
+.drawer[data-open='true'] .drawer__scrim { opacity: 1; pointer-events: auto; }
 
 .drawer__panel {
   position: relative;
@@ -2329,7 +2338,7 @@ ul, ol {
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
-  transition: transform var(--transition-base);
+  transition: transform var(--drawer-ease-duration) var(--drawer-ease);
   overflow-y: auto;
 }
 .drawer__header {
@@ -2582,7 +2591,17 @@ ul, ol {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
   .skeleton::after { display: none; }
+
+  /* A drawer / off-canvas panel sliding in and out is essential wayfinding —
+     it shows where the menu / cart / favourites / filters panel came from and
+     went. Keep a short, plain slide (no parallax / scale / spin) rather than
+     snapping. More specific than `*`, so it wins the !important tie. */
+  .drawer__panel,
+  .drawer__scrim {
+    transition-duration: 160ms !important;
+  }
 }
