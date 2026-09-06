@@ -82,14 +82,15 @@ describe('<AccountView>', () => {
     expect(screen.getByText(/12 Rainbow St, Amman/)).toBeInTheDocument();
   });
 
-  it('saves a profile edit', async () => {
+  it('saves a profile edit (name only — no phone field)', async () => {
     const user = userEvent.setup();
     renderView();
+    expect(screen.queryByLabelText('Phone')).not.toBeInTheDocument();
     const name = screen.getByLabelText('Name');
     await user.clear(name);
     await user.type(name, 'Ali Updated');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
-    expect(updateProfile.mutateAsync).toHaveBeenCalledWith({ name: 'Ali Updated', phone: '0790000000' });
+    expect(updateProfile.mutateAsync).toHaveBeenCalledWith({ name: 'Ali Updated' });
   });
 
   it('adds a new address (no recipient-name field — it defaults to the account holder)', async () => {

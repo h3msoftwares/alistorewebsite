@@ -31,7 +31,6 @@ const useHydrated = () => useSyncExternalStore(subscribe, () => true, () => fals
 
 const profileSchema = z.object({
   name: z.string().min(1).max(120),
-  phone: z.string().min(6).max(30),
 });
 type ProfileValues = z.infer<typeof profileSchema>;
 
@@ -238,7 +237,7 @@ function ProfileSection({ locale }: { locale: Locale }) {
     formState: { errors, isDirty, isSubmitting },
   } = useForm<ProfileValues>({
     resolver: zodResolver(profileSchema),
-    values: profile ? { name: profile.name, phone: profile.phone ?? '' } : undefined,
+    values: profile ? { name: profile.name } : undefined,
   });
 
   if (isPending || !profile) {
@@ -260,7 +259,6 @@ function ProfileSection({ locale }: { locale: Locale }) {
     }
   });
 
-  const conflict = update.isError && isApiError(update.error) && update.error.status === 409;
   const busy = isSubmitting || update.isPending;
 
   return (
@@ -283,20 +281,13 @@ function ProfileSection({ locale }: { locale: Locale }) {
       )}
       {update.isError && (
         <div style={{ marginBlock: 'var(--space-2)' }}>
-          <Alert tone="danger">
-            {conflict
-              ? t('That phone number is already in use.', 'رقم الهاتف هذا مستخدم بالفعل.')
-              : t('Could not save. Try again.', 'تعذّر الحفظ. حاول مرة أخرى.')}
-          </Alert>
+          <Alert tone="danger">{t('Could not save. Try again.', 'تعذّر الحفظ. حاول مرة أخرى.')}</Alert>
         </div>
       )}
 
       <form onSubmit={onSubmit} noValidate className="stack" style={{ marginBlockStart: 'var(--space-3)' }}>
         <Field label={t('Name', 'الاسم')} error={errors.name && t('Required', 'مطلوب')}>
           {(p) => <Input {...p} {...register('name')} autoComplete="name" disabled={busy} />}
-        </Field>
-        <Field label={t('Phone', 'رقم الهاتف')} error={errors.phone && t('Enter a valid phone number.', 'أدخل رقم هاتف صالحًا.')}>
-          {(p) => <Input {...p} {...register('phone')} type="tel" autoComplete="tel" disabled={busy} />}
         </Field>
         <Button type="submit" loading={busy} disabled={!isDirty}>
           {t('Save changes', 'حفظ التغييرات')}
