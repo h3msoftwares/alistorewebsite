@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Alert, Badge, Button, Field, Input, Skeleton, Textarea } from '@/components/ui';
 import { LogoutButton } from '@/components/chrome/logout-button';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth, useChangePassword } from '@/hooks/use-auth';
 import {
   useAddresses,
   useCreateAddress,
@@ -36,7 +36,6 @@ const profileSchema = z.object({
 type ProfileValues = z.infer<typeof profileSchema>;
 
 const addressSchema = z.object({
-  fullName: z.string().min(1).max(120),
   phone: z.string().min(6).max(30),
   addressLine: z.string().min(3).max(300),
   city: z.string().min(1).max(120),
@@ -44,6 +43,22 @@ const addressSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 type AddressValues = z.infer<typeof addressSchema>;
+
+const passwordSchema = z
+  .object({
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(8, { message: 'At least 8 characters' }).max(200),
+    confirmPassword: z.string().min(1),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'Passwords do not match',
+  })
+  .refine((d) => d.currentPassword !== d.newPassword, {
+    path: ['newPassword'],
+    message: 'Choose a password different from your current one',
+  });
+type PasswordValues = z.infer<typeof passwordSchema>;
 
 export function AccountView({ locale }: { locale: Locale }) {
   const isAr = locale === 'ar';
@@ -87,8 +102,125 @@ export function AccountView({ locale }: { locale: Locale }) {
         <LogoutButton locale={locale} />
       </div>
       <ProfileSection locale={locale} />
+      <SecuritySection locale={locale} />
       <AddressesSection locale={locale} />
     </div>
+  );
+}
+
+function SecuritySection({ locale }: { locale: Locale }) {
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
+  const change = useChangePassword();
+  const [saved, setSaved] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<PasswordValues>({ resolver: zodResolver(passwordSchema) });
+
+  const onSubmit = handleSubmit(async (values) => {
+    setSaved(false);
+    try {
+      await change.mutateAsync({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+      });
+      reset({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setSaved(true);
+    } catch {
+      /* surfaced below */
+    }
+  });
+
+  // The API returns 400 only when the current password is wrong (and 429 when
+  // rate-limited) — everything else is a generic failure.
+  const wrongCurrent = change.isError && isApiError(change.error) && change.error.status === 400;
+  const rateLimited = change.isError && isApiError(change.error) && change.error.status === 429;
+  const busy = isSubmitting || change.isPending;
+
+  return (
+    <section style={{ marginBlockStart: 'var(--space-6)' }}>
+      <h2 style={{ fontSize: 'var(--fs-md)' }}>{t('Password', 'كلمة المرور')}</h2>
+
+      {saved && (
+        <div style={{ marginBlock: 'var(--space-2)' }}>
+          <Alert tone="success">
+            {t(
+              'Password changed. Other devices have been signed out.',
+              'تم تغيير كلمة المرور. تم تسجيل الخروج من الأجهزة الأخرى.'
+            )}
+          </Alert>
+        </div>
+      )}
+      {change.isError && (
+        <div style={{ marginBlock: 'var(--space-2)' }}>
+          <Alert tone="danger">
+            {wrongCurrent
+              ? t('Your current password is incorrect.', 'كلمة المرور الحالية غير صحيحة.')
+              : rateLimited
+                ? t('Too many attempts. Try again later.', 'محاولات كثيرة. حاول لاحقًا.')
+                : t('Could not change your password. Try again.', 'تعذّر تغيير كلمة المرور. حاول مرة أخرى.')}
+          </Alert>
+        </div>
+      )}
+
+      <form onSubmit={onSubmit} noValidate className="stack" style={{ marginBlockStart: 'var(--space-3)' }}>
+        <Field
+          label={t('Current password', 'كلمة المرور الحالية')}
+          error={errors.currentPassword && t('Required', 'مطلوب')}
+        >
+          {(p) => (
+            <Input
+              {...p}
+              {...register('currentPassword')}
+              type="password"
+              autoComplete="current-password"
+              disabled={busy}
+            />
+          )}
+        </Field>
+        <Field
+          label={t('New password', 'كلمة المرور الجديدة')}
+          error={errors.newPassword?.message && t(errors.newPassword.message, 'كلمة المرور غير صالحة')}
+        >
+          {(p) => (
+            <Input
+              {...p}
+              {...register('newPassword')}
+              type="password"
+              autoComplete="new-password"
+              disabled={busy}
+            />
+          )}
+        </Field>
+        <Field
+          label={t('Confirm new password', 'تأكيد كلمة المرور الجديدة')}
+          error={errors.confirmPassword?.message && t('Passwords do not match', 'كلمتا المرور غير متطابقتين')}
+        >
+          {(p) => (
+            <Input
+              {...p}
+              {...register('confirmPassword')}
+              type="password"
+              autoComplete="new-password"
+              disabled={busy}
+            />
+          )}
+        </Field>
+        <Button type="submit" loading={busy}>
+          {t('Change password', 'تغيير كلمة المرور')}
+        </Button>
+      </form>
+
+      <p className="prose" style={{ marginBlockStart: 'var(--space-3)', fontSize: 'var(--fs-sm)' }}>
+        <Link href={`/${locale}/forgot-password`}>
+          {t('Forgot your current password?', 'نسيت كلمة المرور الحالية؟')}
+        </Link>
+      </p>
+    </section>
   );
 }
 
@@ -207,11 +339,13 @@ function AddressesSection({ locale }: { locale: Locale }) {
               ) : (
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
                   <div>
-                    <strong>{a.fullName}</strong>{' '}
+                    <strong>
+                      {a.addressLine}, {a.city}
+                      {a.area ? `, ${a.area}` : ''}
+                    </strong>{' '}
                     {a.isDefault && <Badge variant="save">{t('Default', 'افتراضي')}</Badge>}
                     <div className="prose" style={{ fontSize: 'var(--fs-sm)' }}>
-                      {a.addressLine}, {a.city}
-                      {a.area ? `, ${a.area}` : ''} · {a.phone}
+                      {a.phone}
                     </div>
                   </div>
                   <div className="stack" style={{ alignItems: 'flex-end' }}>
@@ -293,7 +427,6 @@ function AddressForm({
     resolver: zodResolver(addressSchema),
     defaultValues: address
       ? {
-          fullName: address.fullName,
           phone: address.phone,
           addressLine: address.addressLine,
           city: address.city,
@@ -319,9 +452,6 @@ function AddressForm({
   return (
     <form onSubmit={onSubmit} noValidate className="stack">
       {busyMut.isError && <Alert tone="danger">{t('Could not save. Try again.', 'تعذّر الحفظ. حاول مرة أخرى.')}</Alert>}
-      <Field label={t('Recipient name', 'اسم المستلم')} error={errors.fullName && t('Required', 'مطلوب')}>
-        {(p) => <Input {...p} {...register('fullName')} disabled={busy} />}
-      </Field>
       <Field label={t('Contact phone', 'هاتف التواصل')} error={errors.phone && t('Enter a valid phone number.', 'أدخل رقم هاتف صالحًا.')}>
         {(p) => <Input {...p} {...register('phone')} type="tel" disabled={busy} />}
       </Field>

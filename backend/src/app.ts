@@ -4,11 +4,13 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { errorHandler } from './middleware/errorHandler.middleware';
 import { sanitizeInput } from './middleware/sanitize.middleware';
+import { csrfProtection } from './middleware/csrf.middleware';
 import { env } from './config/env';
 
 import authRoutes from './modules/auth/auth.routes';
 import { adminAuthRoutes } from './modules/auth/admin-auth.routes';
 import { passwordResetRoutes } from './modules/auth/password-reset.routes';
+import { changePasswordRoutes } from './modules/auth/change-password.routes';
 import { emailVerificationRoutes } from './modules/auth/email-verification.routes';
 import collectionRoutes from './modules/catalog/collection.routes';
 import categoryRoutes from './modules/catalog/category.routes';
@@ -34,6 +36,10 @@ export function buildApp(
     resetPasswordRateLimit?: boolean;
     verifyEmailRateLimit?: boolean;
     resendVerificationRateLimit?: boolean;
+    changePasswordRateLimit?: boolean;
+    // Double-submit-cookie CSRF check. Defaults ON everywhere except tests
+    // (where the suites don't carry the header); a focused test passes `true`.
+    csrf?: boolean;
   } = {}
 ) {
   const app = express();
@@ -60,6 +66,17 @@ export function buildApp(
   // encoding. (SQL injection is handled structurally by Prisma's
   // parameterisation, not by keyword filtering here.)
   app.use(sanitizeInput);
+
+  // CSRF: sets/reads the `csrfToken` cookie and requires a matching
+  // `X-CSRF-Token` header on every state-changing request. Off under test.
+  // `GET /api/csrf` also returns the token in the body so a cross-origin SPA
+  // that can't read the cookie still has it.
+  if (opts.csrf ?? env.NODE_ENV !== 'test') {
+    app.use(csrfProtection(env.NODE_ENV === 'production'));
+    app.get('/api/csrf', (_req, res) =>
+      res.json({ ok: true, csrfToken: (res.locals.csrfToken as string | undefined) ?? null })
+    );
+  }
 
   // App-wide baseline limiter; auth routes layer a stricter bucket on top.
   // Disabled under test so suites can fire many requests without tripping it.
@@ -93,6 +110,11 @@ export function buildApp(
       forgotPasswordRateLimit: opts.forgotPasswordRateLimit ?? env.NODE_ENV !== 'test',
       resetPasswordRateLimit: opts.resetPasswordRateLimit ?? env.NODE_ENV !== 'test',
     })
+  );
+  // Change-password — signed-in credential change (current password required).
+  app.use(
+    '/api/auth',
+    changePasswordRoutes({ rateLimit: opts.changePasswordRateLimit ?? env.NODE_ENV !== 'test' })
   );
   // Email verification — the customer-registration companion flow.
   app.use(
