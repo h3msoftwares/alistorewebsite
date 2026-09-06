@@ -143,11 +143,11 @@ describe('<AccountView>', () => {
     expect(changePassword.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it('links to the forgot-password flow for a user who does not know their current password', () => {
+  it('links to the forgot-password flow, tagged so the reset returns to /account', () => {
     renderView();
     expect(screen.getByRole('link', { name: /Forgot your current password/i })).toHaveAttribute(
       'href',
-      '/en/forgot-password'
+      '/en/forgot-password?return=account'
     );
   });
 

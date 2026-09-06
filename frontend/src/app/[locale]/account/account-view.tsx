@@ -215,7 +215,7 @@ function SecuritySection({ locale }: { locale: Locale }) {
       </form>
 
       <p className="prose" style={{ marginBlockStart: 'var(--space-3)', fontSize: 'var(--fs-sm)' }}>
-        <Link href={`/${locale}/forgot-password`}>
+        <Link href={`/${locale}/forgot-password?return=account`}>
           {t('Forgot your current password?', 'نسيت كلمة المرور الحالية؟')}
         </Link>
       </p>

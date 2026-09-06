@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { Alert, Button, Field, Input } from '@/components/ui';
 import { useForgotPassword } from '@/hooks/use-auth';
 import { isApiError } from '@/lib/api';
+import { clearResetReturn, rememberResetReturn } from '@/lib/reset-return';
 
 type Locale = 'en' | 'ar';
 type Status = 'idle' | 'success' | 'rate-limited' | 'error';
@@ -17,11 +18,27 @@ const schema = z.object({
 });
 type Values = z.infer<typeof schema>;
 
-export function ForgotPasswordForm({ locale }: { locale: Locale }) {
+export function ForgotPasswordForm({
+  locale,
+  returnTo = null,
+}: {
+  locale: Locale;
+  /** Set when the flow was started from the signed-in account page — the
+   *  reset-password success screen redirects here instead of showing
+   *  "Go to sign in". Null for the normal logged-out flow. */
+  returnTo?: string | null;
+}) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const forgotPassword = useForgotPassword();
   const [status, setStatus] = useState<Status>('idle');
+
+  // Wipe any stale hint the moment a normal (no-return) flow opens, so a
+  // logged-out user never gets bounced to /account from an old account-page
+  // attempt.
+  useEffect(() => {
+    if (!returnTo) clearResetReturn();
+  }, [returnTo]);
 
   const {
     register,
@@ -32,6 +49,9 @@ export function ForgotPasswordForm({ locale }: { locale: Locale }) {
   const onSubmit = handleSubmit(async (values) => {
     try {
       await forgotPassword.mutateAsync({ email: values.email, locale });
+      // Persist the return hint only now — a request was actually made, so
+      // a reset link (if the account exists) is on its way.
+      if (returnTo) rememberResetReturn(returnTo);
       // Always this branch on a 200 — the backend's response is identical
       // whether or not the email matched an account, so the form has no way
       // (and must make no attempt) to tell those two cases apart.
