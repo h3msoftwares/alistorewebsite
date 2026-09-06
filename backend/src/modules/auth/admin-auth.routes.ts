@@ -8,8 +8,12 @@ import { adminLoginHandler } from './admin-auth.controller';
 const passThrough: RequestHandler = (_req, _res, next) => next();
 
 /**
- * POST /api/auth/admin-login — separate from the customer POST /api/auth/login
- * on purpose:
+ * POST /api/auth/ali-admin-login — separate from the customer POST
+ * /api/auth/login on purpose. The path is deliberately non-obvious (not
+ * `/admin-login`) so blanket admin-endpoint scanners / credential-stuffing
+ * bots don't find it by guessing; the real defences below still stand on
+ * their own.
+ *   - stricter per-IP rate limit: 5 attempts / 15 min (the customer auth
  *   - stricter per-IP rate limit: 5 attempts / 15 min (the customer auth
  *     bucket is 20 / 15 min). Legitimate admin logins are rare, and this is
  *     the highest-value credential surface in the app, so a tight cap costs a
@@ -42,7 +46,7 @@ export function adminAuthRoutes(opts: { rateLimit?: boolean } = {}): Router {
         });
 
   router.post(
-    '/admin-login',
+    '/ali-admin-login',
     limiter,
     validate({ body: adminLoginSchema }),
     asyncHandler(adminLoginHandler)

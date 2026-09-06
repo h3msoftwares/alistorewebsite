@@ -1,12 +1,13 @@
 'use client';
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Alert, Button, Field, Input } from '@/components/ui';
-import { useAdminLogin } from '@/hooks/use-auth';
+import { useAdminLogin, useAuth } from '@/hooks/use-auth';
 
 type Locale = 'en' | 'ar';
 
@@ -21,6 +22,13 @@ export function AdminLoginForm({ locale }: { locale: Locale }) {
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const router = useRouter();
   const adminLogin = useAdminLogin();
+  const { isAdmin } = useAuth();
+
+  // This page sits outside the /admin subtree (and its layout guard), so it
+  // handles the "already signed in" bounce itself.
+  useEffect(() => {
+    if (isAdmin) router.replace(`/${locale}/admin`);
+  }, [isAdmin, locale, router]);
 
   const {
     register,

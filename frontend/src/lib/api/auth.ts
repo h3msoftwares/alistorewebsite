@@ -30,10 +30,11 @@ export function login(body: LoginBody) {
   return api.post<{ accessToken: string }>('/api/auth/login', body, { auth: false });
 }
 
-/** Admin-panel login. Separate endpoint with a stricter rate limit + a
- *  server-side STAFF/ADMIN gate; identical response shape to `login`. */
+/** Admin-panel login. Separate endpoint on a deliberately unguessable path,
+ *  with a stricter rate limit + a server-side STAFF/ADMIN gate; identical
+ *  response shape to `login`. */
 export function adminLogin(body: LoginBody) {
-  return api.post<{ accessToken: string }>('/api/auth/admin-login', body, { auth: false });
+  return api.post<{ accessToken: string }>('/api/auth/ali-admin-login', body, { auth: false });
 }
 
 /** Always resolves with the same generic message whether or not the email

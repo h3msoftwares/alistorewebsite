@@ -21,7 +21,7 @@ beforeEach(async () => {
 });
 
 const adminLogin = (body: Record<string, unknown>) =>
-  request(app).post('/api/auth/admin-login').send(body);
+  request(app).post('/api/auth/ali-admin-login').send(body);
 
 /** The Set-Cookie flags, minus the token value, for comparison. */
 const cookieFlags = (setCookie: string[] | undefined) => {
@@ -40,7 +40,14 @@ const adminLogEntries = () =>
     orderBy: { createdAt: 'asc' },
   });
 
-describe('POST /api/auth/admin-login', () => {
+describe('POST /api/auth/ali-admin-login', () => {
+  it('the old predictable path /api/auth/admin-login no longer exists (404)', async () => {
+    const res = await request(app)
+      .post('/api/auth/admin-login')
+      .send({ identifier: ADMIN_EMAIL, password: PASSWORD });
+    expect(res.status).toBe(404);
+  });
+
   it('valid ADMIN credentials → 200 with an access token + refresh cookie', async () => {
     const res = await adminLogin({ identifier: ADMIN_EMAIL, password: PASSWORD });
     expect(res.status).toBe(200);
@@ -145,7 +152,7 @@ describe('POST /api/auth/admin-login', () => {
     const throttledApp = buildApp({ adminLoginRateLimit: true });
     const hit = () =>
       request(throttledApp)
-        .post('/api/auth/admin-login')
+        .post('/api/auth/ali-admin-login')
         .send({ identifier: 'ghost@nowhere.test', password: 'whatever' });
 
     const statuses: number[] = [];
@@ -244,7 +251,7 @@ describe('POST /api/auth/admin-login', () => {
 
     it('a STAFF login (via admin-login) also gets the short admin TTL', async () => {
       const staff = await request(app)
-        .post('/api/auth/admin-login')
+        .post('/api/auth/ali-admin-login')
         .send({ identifier: STAFF_EMAIL, password: PASSWORD });
       expect(staff.status).toBe(200);
       expect(ttl(staff.body.accessToken)).toBe(5 * 60);

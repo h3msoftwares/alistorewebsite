@@ -9,7 +9,7 @@ import { createUser, createAdmin, createCustomer, bearer } from '../helpers/auth
 
 const app = buildApp();
 const DASH = '/api/admin/dashboard'; // requireAuth + requireRole(STAFF, ADMIN)
-const adminLogin = (body: unknown) => request(app).post('/api/auth/admin-login').send(body);
+const adminLogin = (body: unknown) => request(app).post('/api/auth/ali-admin-login').send(body);
 
 const EMAIL = 'sec.admin@alistore.test';
 const PW = 'C0rrectHorseBatteryStaple!';
@@ -141,7 +141,7 @@ describe('admin auth — input hardening', () => {
 
   it('a malformed JSON body is a clean 400, not a 500', async () => {
     const res = await request(app)
-      .post('/api/auth/admin-login')
+      .post('/api/auth/ali-admin-login')
       .set('content-type', 'application/json')
       .send('{"identifier": "a", "password":');
     expect(res.status).toBe(400);
@@ -159,7 +159,7 @@ describe('admin auth — input hardening', () => {
   });
 
   it('extra body fields cannot escalate and do not pollute Object.prototype', async () => {
-    const escalate = await request(app).post('/api/auth/admin-login').send({
+    const escalate = await request(app).post('/api/auth/ali-admin-login').send({
       identifier: 'cust2@sec.test',
       password: PW,
       role: 'ADMIN',
@@ -170,7 +170,7 @@ describe('admin auth — input hardening', () => {
     expect(escalate.status).toBe(401); // still no such user; the extra fields did nothing
 
     const pollute = await request(app)
-      .post('/api/auth/admin-login')
+      .post('/api/auth/ali-admin-login')
       .set('content-type', 'application/json')
       .send(
         `{"identifier":"${EMAIL}","password":"wrong","__proto__":{"polluted":true},"constructor":{"prototype":{"polluted":true}}}`
@@ -186,7 +186,7 @@ describe('admin auth — rate limit cannot be spoofed away', () => {
     const statuses: number[] = [];
     for (let i = 0; i < 6; i++) {
       const r = await request(throttled)
-        .post('/api/auth/admin-login')
+        .post('/api/auth/ali-admin-login')
         .set('X-Forwarded-For', `10.20.30.${i}`)
         .send({ identifier: 'ghost@sec.test', password: 'nope' });
       statuses.push(r.status);
