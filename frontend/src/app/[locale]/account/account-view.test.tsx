@@ -7,6 +7,9 @@ import { AccountView } from './account-view';
 vi.mock('next/link', () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
+const routerReplace = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: routerReplace }) }));
+const logout = { mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false };
 
 const auth = { status: 'authenticated' as 'authenticated' | 'loading' | 'guest' };
 const profile = {
@@ -24,7 +27,7 @@ const createAddress = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: f
 const updateAddress = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, isError: false };
 const deleteAddress = { mutate: vi.fn(), isPending: false };
 
-vi.mock('@/hooks/use-auth', () => ({ useAuth: () => auth }));
+vi.mock('@/hooks/use-auth', () => ({ useAuth: () => auth, useLogout: () => logout }));
 vi.mock('@/hooks/use-account', () => ({
   useProfile: () => profile,
   useUpdateProfile: () => updateProfile,
@@ -42,6 +45,7 @@ const renderView = () => {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.status = 'authenticated';
+  Object.assign(logout, { mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false });
   Object.assign(updateProfile, { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, isError: false });
   Object.assign(createAddress, { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, isError: false });
   Object.assign(deleteAddress, { mutate: vi.fn(), isPending: false });
@@ -95,5 +99,13 @@ describe('<AccountView>', () => {
     renderView();
     await user.click(screen.getByRole('button', { name: 'Delete' }));
     expect(deleteAddress.mutate).toHaveBeenCalledWith('a1');
+  });
+
+  it('has a log-out control that signs the user out and sends them home', async () => {
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: 'Log out' }));
+    expect(logout.mutateAsync).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith('/en'));
   });
 });

@@ -17,6 +17,7 @@ import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 import { SearchOverlay } from './search-overlay';
 import { CartDrawer } from './cart-drawer';
 import { FavouritesDrawer } from './favourites-drawer';
+import { LogoutButton } from './logout-button';
 
 /**
  * The sticky topbar: hamburger (mobile) · logo · collection switcher · actions.
@@ -198,6 +199,7 @@ export function Topbar({ locale }: { locale: string }) {
           <Link href={accountHref} className="drawer__nav-link" onClick={() => setMenuOpen(false)}>
             {isAuthenticated ? t('Account', 'الحساب') : t('Log in', 'تسجيل الدخول')}
           </Link>
+          {isAuthenticated && <LogoutButton locale={locale} variant="nav" onDone={() => setMenuOpen(false)} />}
           <Link
             href={isAr ? '/en' : '/ar'}
             className="drawer__nav-link"
