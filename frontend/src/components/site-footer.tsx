@@ -1,9 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui';
+import { useAuth } from '@/hooks/use-auth';
 import { useNavCollections } from '@/hooks/use-catalog';
 import { useSettings } from '@/hooks/use-settings';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
@@ -29,8 +32,18 @@ function safeHttpUrl(value: string | null | undefined): string | undefined {
 export function SiteFooter({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const router = useRouter();
+  const { isAuthenticated } = useAuth();
   const { data: navCollections, isPending: navPending } = useNavCollections();
   const { data: settings } = useSettings();
+
+  // The "newsletter" field is really an account sign-up teaser — Join carries
+  // the typed email to the register page. Hidden once you're signed in.
+  const [joinEmail, setJoinEmail] = useState('');
+  const goToRegister = () => {
+    const q = joinEmail.trim() ? `?email=${encodeURIComponent(joinEmail.trim())}` : '';
+    router.push(`/${locale}/register${q}`);
+  };
 
   const brandName = settings
     ? isAr
@@ -54,17 +67,27 @@ export function SiteFooter({ locale }: { locale: string }) {
           <div>
             <div className="site-footer__brand-name">{brandName}</div>
             <p>{t('Cash on delivery, handled by our team.', 'التوصيل نقدًا عند الاستلام، يتولاه فريقنا.')}</p>
-            <form className="newsletter" onSubmit={(e) => e.preventDefault()}>
-              <Input
-                type="email"
-                name="email"
-                placeholder={t('Email address', 'البريد الإلكتروني')}
-                aria-label={t('Email address for newsletter', 'البريد الإلكتروني للنشرة')}
-              />
-              <Button type="submit" size="sm">
-                {t('Join', 'اشترك')}
-              </Button>
-            </form>
+            {!isAuthenticated && (
+              <form
+                className="newsletter"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  goToRegister();
+                }}
+              >
+                <Input
+                  type="email"
+                  name="email"
+                  value={joinEmail}
+                  onChange={(e) => setJoinEmail(e.target.value)}
+                  placeholder={t('Email address', 'البريد الإلكتروني')}
+                  aria-label={t('Email address to create an account', 'البريد الإلكتروني لإنشاء حساب')}
+                />
+                <Button type="submit" size="sm">
+                  {t('Join', 'اشترك')}
+                </Button>
+              </form>
+            )}
             {socials.length > 0 && (
               <div className="site-footer__social">
                 {socials.map((s) => (

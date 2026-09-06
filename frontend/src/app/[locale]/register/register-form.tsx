@@ -29,7 +29,7 @@ const schema = z.object({
 });
 type Values = z.infer<typeof schema>;
 
-export function RegisterForm({ locale }: { locale: Locale }) {
+export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; defaultEmail?: string }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
@@ -43,7 +43,10 @@ export function RegisterForm({ locale }: { locale: Locale }) {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<Values>({ resolver: zodResolver(schema) });
+  } = useForm<Values>({
+    resolver: zodResolver(schema),
+    defaultValues: defaultEmail ? { email: defaultEmail } : undefined,
+  });
 
   const onSubmit = handleSubmit(async (values) => {
     setError('none');
