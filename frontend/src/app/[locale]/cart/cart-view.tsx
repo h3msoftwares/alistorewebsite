@@ -20,6 +20,7 @@ import {
   useRemoveCartItem,
   useUpdateCartItem,
 } from '@/hooks/use-cart';
+import { useSettings } from '@/hooks/use-settings';
 import { isApiError } from '@/lib/api';
 import { cartItemToGaItem, trackRemoveFromCart } from '@/lib/analytics/ga';
 import type { CartItem } from '@/lib/types';
@@ -38,6 +39,11 @@ export function CartView({ locale }: { locale: Locale }) {
 
   const { data, isPending, isError, refetch } = useCart();
   const clearCart = useClearCart();
+  const { data: settings } = useSettings();
+  const freeOver =
+    settings?.deliveryFeeEnabled && settings.freeDeliveryThreshold != null
+      ? Number(settings.freeDeliveryThreshold)
+      : null;
 
   const heading = <h1>{t('Cart', 'سلة التسوق')}</h1>;
 
@@ -135,6 +141,15 @@ export function CartView({ locale }: { locale: Locale }) {
         </div>
         <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
           {t('Delivery is calculated at checkout.', 'تُحتسب رسوم التوصيل عند الدفع.')}
+          {freeOver != null && (
+            <>
+              {' '}
+              {t(
+                `Free delivery on orders over ${money(freeOver, locale)}.`,
+                `توصيل مجاني للطلبات فوق ${money(freeOver, locale)}.`
+              )}
+            </>
+          )}
         </p>
         <Link className="btn btn--primary btn--block btn--lg" href={`/${locale}/checkout`}>
           {t('Proceed to checkout', 'متابعة الدفع')}

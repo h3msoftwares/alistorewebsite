@@ -8,6 +8,12 @@ export async function checkoutHandler(req: Request, res: Response) {
   res.status(201).json({ order });
 }
 
+export async function deliveryQuoteHandler(req: Request, res: Response) {
+  const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.cartSession };
+  const { region } = (req.validatedQuery ?? {}) as { region: string };
+  res.json(await orderService.getDeliveryQuote(owner, region));
+}
+
 export async function listMyOrdersHandler(req: Request, res: Response) {
   const orders = await orderService.listMyOrders(req.user!.id);
   res.json({ orders });

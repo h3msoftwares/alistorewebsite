@@ -8,12 +8,14 @@ import {
   useOrder,
   useCheckout,
   useCancelOrder,
+  useDeliveryQuote,
   useUpdateOrderStatus,
 } from './use-orders';
 
 vi.mock('@/lib/api', () => ({
   ordersApi: {
     checkout: vi.fn(),
+    getDeliveryQuote: vi.fn(),
     listMyOrders: vi.fn(),
     getOrder: vi.fn(),
     cancelOrder: vi.fn(),
@@ -64,6 +66,7 @@ describe('useCheckout', () => {
       deliveryPhone: '079',
       deliveryAddress: 'street',
       deliveryCity: 'Amman',
+      deliveryRegion: 'BEIRUT',
     });
 
     expect(mockOrders.checkout).toHaveBeenCalled();
@@ -84,6 +87,28 @@ describe('useCancelOrder', () => {
     expect(queryClient.getQueryData(queryKeys.orders.detail('o7'))).toMatchObject({
       status: 'CANCELLED',
     });
+  });
+});
+
+describe('useDeliveryQuote', () => {
+  it('stays idle until a region is given, then fetches the quote', async () => {
+    mockOrders.getDeliveryQuote.mockResolvedValue({
+      subtotal: 40,
+      deliveryFee: 3,
+      total: 43,
+      freeReason: null,
+    } as never);
+    const { Wrapper } = createWrapper();
+
+    const { result, rerender } = renderHook(({ region }) => useDeliveryQuote(region), {
+      wrapper: Wrapper,
+      initialProps: { region: null as string | null },
+    });
+    expect(mockOrders.getDeliveryQuote).not.toHaveBeenCalled();
+
+    rerender({ region: 'BEIRUT' });
+    await waitFor(() => expect(result.current.data?.total).toBe(43));
+    expect(mockOrders.getDeliveryQuote).toHaveBeenCalledWith('BEIRUT');
   });
 });
 

@@ -6,9 +6,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { MailCheck } from 'lucide-react';
-import { Alert, Button, EmptyState, Field, Input, Textarea } from '@/components/ui';
+import { Alert, Button, EmptyState, Field, Input, Select, Textarea } from '@/components/ui';
 import { useRegister, useResendVerification } from '@/hooks/use-auth';
 import { isApiError } from '@/lib/api';
+import { DELIVERY_REGIONS, REGION_VALUES } from '@/lib/regions';
 
 type Locale = 'en' | 'ar';
 
@@ -21,6 +22,7 @@ const schema = z.object({
     phone: z.string().min(6).max(30),
     addressLine: z.string().min(3).max(300),
     city: z.string().min(1).max(120),
+    region: z.enum(REGION_VALUES),
     area: z.string().max(120).optional(),
     notes: z.string().max(500).optional(),
   }),
@@ -163,6 +165,21 @@ export function RegisterForm({ locale }: { locale: Locale }) {
 
         <Field label={t('City', 'المدينة')} error={errors.address?.city && t('Required', 'مطلوب')}>
           {(p) => <Input {...p} {...register('address.city')} autoComplete="address-level2" disabled={busy} />}
+        </Field>
+
+        <Field label={t('Governorate', 'المحافظة')} error={errors.address?.region && t('Required', 'مطلوب')}>
+          {(p) => (
+            <Select {...p} {...register('address.region')} defaultValue="" disabled={busy}>
+              <option value="" disabled>
+                {t('Select a governorate', 'اختر محافظة')}
+              </option>
+              {DELIVERY_REGIONS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {isAr ? r.ar : r.en}
+                </option>
+              ))}
+            </Select>
+          )}
         </Field>
 
         <Field label={t('Area (optional)', 'المنطقة (اختياري)')} error={errors.address?.area && t('Too long', 'طويل جدًا')}>

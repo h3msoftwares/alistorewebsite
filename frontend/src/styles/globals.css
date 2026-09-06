@@ -395,6 +395,12 @@ ul, ol {
 .section--tight {
   padding-block: var(--space-7);
 }
+/* Content pages whose root is `.container.section` (cart, favourites, product
+   detail, account) sit directly under the sticky topbar — drop the section's
+   top pad so there's no dead band between the header and the content. */
+main > .container.section:first-child {
+  padding-block-start: 0;
+}
 
 /* Vertical rhythm helper */
 .stack > * + * { margin-block-start: var(--space-4); }
@@ -1735,6 +1741,47 @@ ul, ol {
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: var(--space-4);
 }
+.admin-form__checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--space-1) var(--space-4);
+}
+
+/* ---- Checkout ---- */
+.checkout__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+@media (max-width: 767px) {
+  .checkout__grid { grid-template-columns: 1fr; }
+}
+.checkout__summary { position: sticky; top: var(--space-4); }
+.checkout__lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+.checkout__lines li,
+.checkout__row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.checkout__row { font-weight: var(--fw-medium); }
+.checkout__row--total {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-2);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+.checkout .is-numeric { font-variant-numeric: tabular-nums; }
 .admin-form__section-title {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);

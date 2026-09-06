@@ -14,6 +14,7 @@ const delivery = {
   deliveryPhone: '0791234567',
   deliveryAddress: '12 Rainbow Street',
   deliveryCity: 'Amman',
+  deliveryRegion: 'MOUNT_LEBANON',
 };
 
 beforeEach(async () => {
@@ -41,6 +42,10 @@ describe('Orders API', () => {
     expect(res.body.order.status).toBe('PENDING');
     expect(res.body.order.paymentMethod).toBe('COD');
     expect(Number(res.body.order.total)).toBe(60);
+    // No SiteSetting row in a fresh test DB ⇒ delivery fee engine is disabled.
+    expect(Number(res.body.order.deliveryFee)).toBe(0);
+    expect(Number(res.body.order.subtotal)).toBe(60);
+    expect(res.body.order.deliveryRegion).toBe('MOUNT_LEBANON');
     expect(res.body.order.items[0]).toMatchObject({ quantity: 3, productName: 'Test Product' });
 
     const variant = await prisma.productVariant.findUnique({ where: { id: variantId } });
@@ -62,6 +67,18 @@ describe('Orders API', () => {
     await addToCart(agent);
     const res = await agent.post('/api/orders/checkout').send({ deliveryName: 'x' });
     expect(res.status).toBe(400);
+  });
+
+  it('rejects checkout with no / unknown deliveryRegion (400)', async () => {
+    const agent = request.agent(app);
+    await addToCart(agent);
+    const { deliveryRegion, ...noRegion } = delivery;
+    void deliveryRegion;
+    expect((await agent.post('/api/orders/checkout').send(noRegion)).status).toBe(400);
+    expect(
+      (await agent.post('/api/orders/checkout').send({ ...delivery, deliveryRegion: 'ATLANTIS' }))
+        .status
+    ).toBe(400);
   });
 
   it('logged-in user: checkout, then list + fetch own orders', async () => {

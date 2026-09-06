@@ -40,6 +40,17 @@ export function useAdminDashboard() {
   });
 }
 
+/** Live delivery-fee estimate for the current cart + a chosen governorate;
+ *  idle until a region is picked. */
+export function useDeliveryQuote(region: string | null) {
+  return useQuery({
+    queryKey: ['orders', 'delivery-quote', region],
+    queryFn: () => ordersApi.getDeliveryQuote(region!),
+    enabled: Boolean(region),
+    staleTime: 60_000,
+  });
+}
+
 // -------------------------------------------------------------- mutations ----
 
 export function useCheckout() {

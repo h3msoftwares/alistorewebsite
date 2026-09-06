@@ -28,6 +28,7 @@ async function fillValid(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Contact phone'), '0791234567');
   await user.type(screen.getByLabelText('Street address'), '12 Rainbow Street');
   await user.type(screen.getByLabelText('City'), 'Amman');
+  await user.selectOptions(screen.getByLabelText('Governorate'), 'MOUNT_LEBANON');
 }
 
 beforeEach(() => {
@@ -75,6 +76,7 @@ describe('<RegisterForm>', () => {
         phone: '0791234567',
         addressLine: '12 Rainbow Street',
         city: 'Amman',
+        region: 'MOUNT_LEBANON',
         area: '',
         notes: '',
       },

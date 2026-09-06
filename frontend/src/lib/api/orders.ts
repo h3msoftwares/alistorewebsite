@@ -2,6 +2,7 @@ import { api } from './client';
 import type {
   AdminDashboard,
   CheckoutBody,
+  DeliveryQuote,
   Order,
   OrderStatus,
   ProductVariant,
@@ -12,6 +13,11 @@ import type {
 
 export function checkout(body: CheckoutBody) {
   return api.post<{ order: Order }>('/api/orders/checkout', body).then((r) => r.order);
+}
+
+/** Live delivery-fee estimate for the caller's cart + chosen governorate. */
+export function getDeliveryQuote(region: string) {
+  return api.get<DeliveryQuote>('/api/orders/delivery-quote', { query: { region } });
 }
 
 export function listMyOrders() {

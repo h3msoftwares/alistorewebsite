@@ -8,8 +8,10 @@ import type { AnalyticsRangeQuery } from './analytics.schema';
  * existing Order / OrderItem / User / ProductVariant / StockMovement tables.
  *
  * Money notes that hold across every endpoint:
- *  - Orders carry no discount, shipping fee, tax or refund, so gross == net and
- *    `Order.subtotal == Order.total`.
+ *  - "Revenue" means merchandise = `SUM(Order.subtotal)`; the admin-set delivery
+ *    fee (`Order.deliveryFee`, and `total = subtotal + deliveryFee`) is reported
+ *    separately as `deliveryRevenue` and never counted as sales. Orders still
+ *    carry no discount, tax or refund.
  *  - "Sales" figures exclude CANCELLED orders; a few also expose a DELIVERED-only
  *    ("collected") number.
  *  - Guest orders (`userID IS NULL`) are excluded from customer analytics and
@@ -51,7 +53,11 @@ export async function overview(q: AnalyticsRangeQuery) {
 
   const [agg, unitsAgg, newCustomers, lowStock, series, returning, delivered, funnel] =
     await Promise.all([
-      prisma.order.aggregate({ where: orderWhere, _sum: { total: true }, _count: true }),
+      prisma.order.aggregate({
+        where: orderWhere,
+        _sum: { subtotal: true, deliveryFee: true },
+        _count: true,
+      }),
       prisma.orderItem.aggregate({
         where: { order: orderWhere },
         _sum: { quantity: true },
@@ -69,20 +75,21 @@ export async function overview(q: AnalyticsRangeQuery) {
       returningCustomerCount(from, to),
       prisma.order.aggregate({
         where: { dateCreated: { gte: from, lte: to }, status: 'DELIVERED' },
-        _sum: { total: true },
+        _sum: { subtotal: true },
       }),
       ga.funnel({ from, to }),
     ]);
 
   const orders = agg._count;
-  const revenue = num(agg._sum.total);
+  const revenue = num(agg._sum.subtotal);
   const units = num(unitsAgg._sum.quantity);
 
   return {
     range: { from, to },
     kpis: {
       revenue,
-      deliveredRevenue: num(delivered._sum.total),
+      deliveryRevenue: num(agg._sum.deliveryFee),
+      deliveredRevenue: num(delivered._sum.subtotal),
       orders,
       averageOrderValue: orders ? revenue / orders : 0,
       itemsPerOrder: orders ? units / orders : 0,
@@ -93,7 +100,7 @@ export async function overview(q: AnalyticsRangeQuery) {
     },
     revenueSeries: series,
     funnel,
-    note: 'Gross = net (no discount / shipping / tax / refund). Excludes CANCELLED orders. `funnel` is GA4-sourced.',
+    note: 'Revenue is merchandise (SUM subtotal); delivery fee is `deliveryRevenue`, not sales. Excludes CANCELLED orders. `funnel` is GA4-sourced.',
   };
 }
 
@@ -137,7 +144,7 @@ export async function customers(q: AnalyticsRangeQuery) {
         COUNT(*) FILTER (WHERE cnt >= 2)::int AS repeat_customers,
         COALESCE(AVG(spend), 0)::float8       AS avg_ltv
       FROM (
-        SELECT o."userID", COUNT(*)::int AS cnt, SUM(o."total")::float8 AS spend
+        SELECT o."userID", COUNT(*)::int AS cnt, SUM(o."subtotal")::float8 AS spend
         FROM "order" o
         WHERE o."userID" IS NOT NULL AND o."status" <> ${CANCELLED}
         GROUP BY o."userID"
@@ -196,7 +203,7 @@ export async function customers(q: AnalyticsRangeQuery) {
     >(Prisma.sql`
       SELECT u."id", u."name", u."email",
         COUNT(o.*)::int AS orders,
-        SUM(o."total")::float8 AS revenue
+        SUM(o."subtotal")::float8 AS revenue
       FROM "order" o JOIN "user" u ON u."id" = o."userID"
       WHERE o."status" <> ${CANCELLED}
         AND o."dateCreated" BETWEEN ${from} AND ${to}
@@ -384,8 +391,8 @@ export function funnelReport(q: AnalyticsRangeQuery) {
 function revenueSeries(from: Date, to: Date, g: Granularity) {
   return prisma.$queryRaw<{ bucket: Date; revenue: number; orders: number }[]>(Prisma.sql`
     SELECT ${bucket(g, Prisma.sql`"dateCreated"`)} AS bucket,
-           SUM("total")::float8 AS revenue,
-           COUNT(*)::int        AS orders
+           SUM("subtotal")::float8 AS revenue,
+           COUNT(*)::int           AS orders
     FROM "order"
     WHERE "dateCreated" BETWEEN ${from} AND ${to} AND "status" <> ${CANCELLED}
     GROUP BY 1 ORDER BY 1

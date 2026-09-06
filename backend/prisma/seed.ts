@@ -72,12 +72,15 @@ async function main() {
   const adminPasswordHash = await argon2.hash(requireSeedAdminPassword());
   await prisma.user.upsert({
     where: { email: 'admin@alistore.com' },
-    update: {},
+    // Keep the admin's email marked verified (the storefront gates sign-in on
+    // it); harmless to re-affirm on every seed.
+    update: { emailVerified: new Date() },
     create: {
       email: 'admin@alistore.com',
       name: "Ali's Store Admin",
       role: 'ADMIN',
       passwordHash: adminPasswordHash,
+      emailVerified: new Date(),
     },
   });
 
@@ -1580,6 +1583,21 @@ async function main() {
         { settingID: 1, sortOrder: 0, textEn: 'Free delivery inside the city on orders over $30', textAr: 'توصيل مجاني داخل المدينة للطلبات فوق 30$' },
         { settingID: 1, sortOrder: 1, textEn: 'Cash on delivery — pay when it arrives', textAr: 'الدفع عند الاستلام — ادفع عند وصول الطلب' },
         { settingID: 1, sortOrder: 2, textEn: 'New season styles just landed', textAr: 'تشكيلة الموسم الجديد وصلت الآن' },
+      ],
+    });
+  }
+  // Delivery fee: shipped OFF so the storefront behaves as before, but with a
+  // sample config (a $3 flat fee, free over $50, cheaper Beirut / Mount Lebanon)
+  // so the owner just flips the toggle. Idempotent — only when unset.
+  if ((await prisma.deliveryRate.count({ where: { settingID: 1 } })) === 0) {
+    await prisma.siteSetting.update({
+      where: { id: 1 },
+      data: { deliveryFeeFlat: 3, freeDeliveryThreshold: 50 },
+    });
+    await prisma.deliveryRate.createMany({
+      data: [
+        { settingID: 1, sortOrder: 0, region: 'BEIRUT', fee: 2 },
+        { settingID: 1, sortOrder: 1, region: 'MOUNT_LEBANON', fee: 2.5 },
       ],
     });
   }

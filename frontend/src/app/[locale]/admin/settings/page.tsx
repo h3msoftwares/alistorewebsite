@@ -20,6 +20,8 @@ import {
 } from '@/components/ui';
 import { useAdminCollections } from '@/hooks/use-catalog';
 import { useSettings, useUpdateSettings } from '@/hooks/use-settings';
+import { DELIVERY_REGIONS } from '@/lib/regions';
+import type { SiteSettingsBody } from '@/lib/types';
 import { CurationPanel } from './curation-panel';
 
 // http(s) only — these render as `<a href>` in the storefront footer, so a
@@ -65,10 +67,37 @@ const settingsFormSchema = z.object({
   heroCtaCollectionId: z.string(),
   homeMoreHeadingEn: z.string(),
   homeMoreHeadingAr: z.string(),
+  // ---- Delivery fees ----
+  deliveryFeeEnabled: z.boolean(),
+  deliveryFeeFlat: z.number({ message: 'Enter a number' }).min(0, 'Must be 0 or more'),
+  // Blank ⇒ no free-over-threshold rule.
+  freeDeliveryThreshold: z
+    .string()
+    .trim()
+    .refine((v) => v === '' || Number(v) >= 0, 'Must be 0 or more'),
+  freeDeliveryRegions: z.array(z.string()),
+  deliveryRates: z
+    .array(
+      z.object({
+        region: z.string().min(1, 'Pick a governorate'),
+        fee: z.number({ message: 'Enter a number' }).min(0, 'Must be 0 or more'),
+      })
+    )
+    .max(DELIVERY_REGIONS.length)
+    .superRefine((rates, ctx) => {
+      const seen = new Set<string>();
+      rates.forEach((r, i) => {
+        if (r.region && seen.has(r.region)) {
+          ctx.addIssue({ code: 'custom', path: [i, 'region'], message: 'Already listed' });
+        }
+        seen.add(r.region);
+      });
+    }),
 });
 type SettingsForm = z.infer<typeof settingsFormSchema>;
 
 const blankLine = { textEn: '', textAr: '' };
+const blankRate = { region: '', fee: 0 };
 
 export default function AdminSettingsPage() {
   const params = useParams();
@@ -105,6 +134,12 @@ export default function AdminSettingsPage() {
     heroCtaCollectionId: settings.heroCtaCollectionID ?? '',
     homeMoreHeadingEn: settings.homeMoreHeadingEn,
     homeMoreHeadingAr: settings.homeMoreHeadingAr,
+    deliveryFeeEnabled: settings.deliveryFeeEnabled,
+    deliveryFeeFlat: Number(settings.deliveryFeeFlat ?? 0),
+    freeDeliveryThreshold:
+      settings.freeDeliveryThreshold == null ? '' : String(Number(settings.freeDeliveryThreshold)),
+    freeDeliveryRegions: settings.freeDeliveryRegions ?? [],
+    deliveryRates: settings.deliveryRates.map((r) => ({ region: r.region, fee: Number(r.fee) })),
   };
 
   const {
@@ -114,6 +149,7 @@ export default function AdminSettingsPage() {
     formState: { errors },
   } = useForm<SettingsForm>({ resolver: zodResolver(settingsFormSchema), values });
   const { fields, append, remove } = useFieldArray({ control, name: 'announcementLines' });
+  const rates = useFieldArray({ control, name: 'deliveryRates' });
 
   const busy = updateSettings.isPending;
 
@@ -121,7 +157,13 @@ export default function AdminSettingsPage() {
     setError(null);
     setSaved(false);
     try {
-      await updateSettings.mutateAsync(form);
+      const { freeDeliveryThreshold, ...rest } = form;
+      const payload: SiteSettingsBody = {
+        ...rest,
+        freeDeliveryThreshold:
+          freeDeliveryThreshold.trim() === '' ? null : Number(freeDeliveryThreshold),
+      };
+      await updateSettings.mutateAsync(payload);
       setSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Save failed', 'فشل الحفظ'));
@@ -285,6 +327,115 @@ export default function AdminSettingsPage() {
             <Field label={t('"More to explore" heading (Arabic)', 'عنوان "المزيد لاكتشافه" (عربي)')}>
               {(p) => <Input {...p} {...register('homeMoreHeadingAr')} dir="rtl" disabled={busy} />}
             </Field>
+          </div>
+        </div>
+
+        {/* ---- Delivery fees ---- */}
+        <div className="admin-form__section">
+          <p className="admin-form__section-title">{t('Delivery fees', 'رسوم التوصيل')}</p>
+          <Choice
+            type="checkbox"
+            label={t('Charge a delivery fee', 'فرض رسوم توصيل')}
+            {...register('deliveryFeeEnabled')}
+            disabled={busy}
+          />
+          <p className="admin-form__hint">
+            {t(
+              'Off ⇒ every order ships free. The flat fee applies to any governorate without its own rate below.',
+              'إيقاف ⇒ التوصيل مجاني لكل الطلبات. تُطبَّق الرسوم الثابتة على أي محافظة ليس لها سعر خاص أدناه.'
+            )}
+          </p>
+          <div className="admin-form__row">
+            <Field label={t('Flat fee ($)', 'الرسوم الثابتة ($)')} error={errors.deliveryFeeFlat?.message}>
+              {(p) => (
+                <Input
+                  {...p}
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  {...register('deliveryFeeFlat', { valueAsNumber: true })}
+                  disabled={busy}
+                />
+              )}
+            </Field>
+            <Field
+              label={t('Free over ($)', 'مجاني فوق ($)')}
+              hint={t('Blank ⇒ no free-delivery threshold', 'فارغ ⇒ لا يوجد حد للتوصيل المجاني')}
+              error={errors.freeDeliveryThreshold?.message}
+            >
+              {(p) => (
+                <Input
+                  {...p}
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder={t('e.g. 50', 'مثال: 50')}
+                  {...register('freeDeliveryThreshold')}
+                  disabled={busy}
+                />
+              )}
+            </Field>
+          </div>
+
+          <p className="admin-form__hint">{t('Per-governorate rate (overrides the flat fee)', 'سعر لكل محافظة (يتجاوز الرسوم الثابتة)')}</p>
+          {rates.fields.map((field, i) => (
+            <div key={field.id} className="admin-variant-row">
+              <Field label={t('Governorate', 'المحافظة')} error={errors.deliveryRates?.[i]?.region?.message}>
+                {(p) => (
+                  <Select {...p} {...register(`deliveryRates.${i}.region` as const)} disabled={busy}>
+                    <option value="">{t('Pick one', 'اختر')}</option>
+                    {DELIVERY_REGIONS.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {isAr ? r.ar : r.en}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </Field>
+              <Field label={t('Fee ($)', 'الرسوم ($)')} error={errors.deliveryRates?.[i]?.fee?.message}>
+                {(p) => (
+                  <Input
+                    {...p}
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    {...register(`deliveryRates.${i}.fee` as const, { valueAsNumber: true })}
+                    disabled={busy}
+                  />
+                )}
+              </Field>
+              <button
+                type="button"
+                className="icon-btn icon-btn--bordered admin-variant-row__remove"
+                onClick={() => rates.remove(i)}
+                disabled={busy}
+                aria-label={t('Remove rate', 'حذف السعر')}
+              >
+                <Icon as={Trash2} size={16} />
+              </button>
+            </div>
+          ))}
+          {rates.fields.length < DELIVERY_REGIONS.length && (
+            <Button type="button" variant="outline" onClick={() => rates.append(blankRate)} disabled={busy}>
+              <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+              {t('Add governorate rate', 'إضافة سعر محافظة')}
+            </Button>
+          )}
+
+          <p className="admin-form__hint" style={{ marginBlockStart: 'var(--space-4)' }}>
+            {t('Free delivery to these governorates', 'توصيل مجاني إلى هذه المحافظات')}
+          </p>
+          <div className="admin-form__checks">
+            {DELIVERY_REGIONS.map((r) => (
+              <Choice
+                key={r.value}
+                type="checkbox"
+                value={r.value}
+                label={isAr ? r.ar : r.en}
+                {...register('freeDeliveryRegions')}
+                disabled={busy}
+              />
+            ))}
           </div>
         </div>
 
