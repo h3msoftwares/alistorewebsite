@@ -67,24 +67,31 @@ export function buildApp(
   // parameterisation, not by keyword filtering here.)
   app.use(sanitizeInput);
 
-  // CSRF: sets/reads the `csrfToken` cookie and requires a matching
-  // `X-CSRF-Token` header on every state-changing request. Off under test.
-  // `GET /api/csrf` also returns the token in the body so a cross-origin SPA
-  // that can't read the cookie still has it.
-  if (opts.csrf ?? env.NODE_ENV !== 'test') {
-    app.use(csrfProtection(env.NODE_ENV === 'production'));
-    app.get('/api/csrf', (_req, res) =>
-      res.json({ ok: true, csrfToken: (res.locals.csrfToken as string | undefined) ?? null })
-    );
-  }
+  // Bare, ahead of the limiter and CSRF — uptime probes shouldn't be
+  // throttled or handed a Set-Cookie.
+  app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
   // App-wide baseline limiter; auth routes layer a stricter bucket on top.
-  // Disabled under test so suites can fire many requests without tripping it.
+  // First (before CSRF), so even a request that is about to fail the CSRF
+  // check still counts against the per-IP budget. Disabled under test so
+  // suites can fire many requests without tripping it.
   if (env.NODE_ENV !== 'test') {
     app.use(rateLimit({ windowMs: 60 * 1000, max: 300 }));
   }
 
-  app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+  // CSRF: sets/reads the `csrfToken` cookie and requires a matching
+  // `X-CSRF-Token` header on every state-changing request. Off under test.
+  const csrfOn = opts.csrf ?? env.NODE_ENV !== 'test';
+  if (csrfOn) app.use(csrfProtection(env.NODE_ENV === 'production'));
+
+  // `GET /api/csrf` primes the double-submit cookie and returns the token in
+  // the body too (for a cross-origin SPA that can't read the cookie). After
+  // the baseline limiter so it can't be hammered.
+  if (csrfOn) {
+    app.get('/api/csrf', (_req, res) =>
+      res.json({ ok: true, csrfToken: (res.locals.csrfToken as string | undefined) ?? null })
+    );
+  }
 
   // Vertical-slice module mounting, same convention as pos-backend:
   // one line per module.

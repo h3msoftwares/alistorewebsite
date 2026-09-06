@@ -56,6 +56,21 @@ describe('global input hardening (XSS defence-in-depth)', () => {
     expect(res.body.address.addressLine).toBe('5 Cedar Ave');
   });
 
+  it('does not mangle or reject a password that contains "<" (credential fields are opaque)', async () => {
+    const email = 'anglebracket@hard.test';
+    const password = 'my<Pass>word1!'; // contains what looks like a tag
+
+    const reg = await request(app)
+      .post('/api/auth/register')
+      .send({ email, password, name: 'Angle', address: { phone: '0791234567', addressLine: '1 St', city: 'Amman' } });
+    expect(reg.status).toBe(201);
+
+    // verify + log in with the exact same password → it was stored byte-for-byte
+    await prisma.user.update({ where: { email }, data: { emailVerified: new Date() } });
+    const login = await request(app).post('/api/auth/login').send({ identifier: email, password });
+    expect(login.status).toBe(200);
+  });
+
   it('stores a SQL-injection-looking string verbatim and does not execute it', async () => {
     const { token, user } = await createCustomer();
     const evil = "Robert'); DROP TABLE \"address\";-- and 1=1 UNION SELECT";
