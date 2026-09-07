@@ -179,9 +179,17 @@ describe('Site settings API', () => {
       expect(cleared.body.settings.freeDeliveryThreshold).toBeNull();
     });
 
-    it('rejects a negative fee, an unknown governorate, and duplicate rows (400)', async () => {
+    it('accepts custom region names; rejects a negative fee and duplicates (400)', async () => {
       expect((await patch({ deliveryFeeFlat: -1 })).status).toBe(400);
-      expect((await patch({ deliveryRates: [{ region: 'ATLANTIS', fee: 3 }] })).status).toBe(400);
+
+      const custom = await patch({
+        deliveryRates: [{ region: 'Zahle Special', fee: 3 }],
+        freeDeliveryRegions: ['Beirut Suburb'],
+      });
+      expect(custom.status).toBe(200);
+      expect(custom.body.settings.deliveryRates[0].region).toBe('Zahle Special');
+      expect(custom.body.settings.freeDeliveryRegions).toContain('Beirut Suburb');
+
       expect(
         (
           await patch({

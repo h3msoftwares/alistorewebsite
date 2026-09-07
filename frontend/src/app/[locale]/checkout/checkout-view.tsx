@@ -13,7 +13,8 @@ import { useAuth } from '@/hooks/use-auth';
 import { useAddresses, useProfile } from '@/hooks/use-account';
 import { useCheckout, useDeliveryQuote } from '@/hooks/use-orders';
 import { useRequestCheckoutOtp, useVerifyCheckoutOtp } from '@/hooks/use-checkout-otp';
-import { DELIVERY_REGIONS, REGION_VALUES, regionLabel, type DeliveryRegion } from '@/lib/regions';
+import { useSettings } from '@/hooks/use-settings';
+import { DELIVERY_REGIONS, regionLabel } from '@/lib/regions';
 import { formatCurrency } from '@/lib/format';
 import { isApiError } from '@/lib/api';
 import type { CheckoutBody, Order } from '@/lib/types';
@@ -150,7 +151,7 @@ interface FormValues {
   deliveryPhone: string;
   deliveryAddress: string;
   deliveryCity: string;
-  deliveryRegion: DeliveryRegion;
+  deliveryRegion: string;
   deliveryArea?: string;
   deliveryNotes?: string;
 }
@@ -165,8 +166,23 @@ export function CheckoutView({ locale }: { locale: Locale }) {
   const guest = !isAuthenticated;
   const profile = useProfile({ enabled: isAuthenticated });
   const addresses = useAddresses({ enabled: isAuthenticated });
+  const { data: settings } = useSettings();
 
   const checkout = useCheckout();
+
+  // Region options for the delivery-region <select>: the built-in governorates
+  // plus any custom zone the admin has priced (see Settings → Delivery fees).
+  const regionOptions = useMemo(() => {
+    const builtin = new Set<string>(DELIVERY_REGIONS.map((r) => r.value));
+    const custom = (settings?.deliveryRates ?? [])
+      .map((r) => r.region)
+      .filter((v) => v && !builtin.has(v))
+      .filter((v, i, a) => a.indexOf(v) === i);
+    return [
+      ...DELIVERY_REGIONS.map((r) => ({ value: r.value, label: isAr ? r.ar : r.en })),
+      ...custom.map((v) => ({ value: v, label: v })),
+    ];
+  }, [settings?.deliveryRates, isAr]);
 
   const savedAddresses = useMemo(() => addresses.data ?? [], [addresses.data]);
   const hasSaved = isAuthenticated && savedAddresses.length > 0;
@@ -204,7 +220,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
       deliveryPhone: z.string().trim().min(6, t('Enter a valid phone', 'أدخل رقمًا صالحًا')),
       deliveryAddress: z.string().trim().min(3, t('Enter your street address', 'أدخل عنوان الشارع')),
       deliveryCity: z.string().trim().min(1, t('Required', 'مطلوب')),
-      deliveryRegion: z.enum(REGION_VALUES, { message: t('Pick a governorate', 'اختر محافظة') }),
+      deliveryRegion: z.string().trim().min(1, t('Pick a delivery region', 'اختر منطقة التوصيل')),
       deliveryArea: z.string().trim().max(120).optional(),
       deliveryNotes: z.string().trim().max(500).optional(),
     };
@@ -402,9 +418,9 @@ export function CheckoutView({ locale }: { locale: Locale }) {
                     <option value="" disabled>
                       {t('Select a governorate', 'اختر محافظة')}
                     </option>
-                    {DELIVERY_REGIONS.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {isAr ? r.ar : r.en}
+                    {regionOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
                       </option>
                     ))}
                   </Select>
@@ -496,9 +512,9 @@ export function CheckoutView({ locale }: { locale: Locale }) {
                     <option value="" disabled>
                       {t('Select a governorate', 'اختر محافظة')}
                     </option>
-                    {DELIVERY_REGIONS.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {isAr ? r.ar : r.en}
+                    {regionOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
                       </option>
                     ))}
                   </Select>

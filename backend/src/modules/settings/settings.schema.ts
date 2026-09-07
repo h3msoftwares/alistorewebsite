@@ -1,8 +1,14 @@
 import { z } from 'zod';
 import { httpUrl } from '../../lib/safe-url';
-import { REGION_VALUES } from '../../lib/regions';
 
 const money = z.number().min(0).max(100000);
+
+// A delivery region: either one of the built-in Lebanese governorate codes
+// (see lib/regions.ts) or an admin-defined custom zone name (e.g. a remote
+// town, or "Outside Lebanon"). Free-text so the owner can add zones without a
+// deploy — the checkout <select> is populated from these rows.
+const regionName = z.string().trim().min(1).max(60);
+const MAX_REGIONS = 40;
 
 // A URL field: an absolute http(s) URL, or an empty string (cleared), or
 // null/omitted. Restricted to http(s) on purpose — these values are rendered
@@ -48,11 +54,12 @@ export const updateSettingsSchema = z.object({
   deliveryFeeFlat: money.optional(),
   // null ⇒ clear (no free-over-threshold rule).
   freeDeliveryThreshold: money.nullish(),
-  freeDeliveryRegions: z.array(z.enum(REGION_VALUES)).max(REGION_VALUES.length).optional(),
-  // Replace-all per-governorate override table. One row per governorate.
+  freeDeliveryRegions: z.array(regionName).max(MAX_REGIONS).optional(),
+  // Replace-all per-region override table — one row per governorate or custom
+  // zone. A region with no row here pays deliveryFeeFlat.
   deliveryRates: z
-    .array(z.object({ region: z.enum(REGION_VALUES), fee: money }))
-    .max(REGION_VALUES.length)
+    .array(z.object({ region: regionName, fee: money }))
+    .max(MAX_REGIONS)
     .optional()
     .superRefine((rates, ctx) => {
       if (!rates) return;
@@ -62,7 +69,7 @@ export const updateSettingsSchema = z.object({
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: [i, 'region'],
-            message: 'duplicate governorate',
+            message: 'duplicate region',
           });
         }
         seen.add(r.region);

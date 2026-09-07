@@ -10,7 +10,18 @@ import {
   toDeliveryConfig,
   type DeliveryConfig,
 } from '../../lib/delivery-fee';
+import { REGION_VALUES } from '../../lib/regions';
 import { OrderStatus, Prisma } from '@prisma/client';
+
+/** The set of delivery regions a checkout may name: the built-in governorates
+ *  plus any custom zone the admin has given a rate or a free-delivery flag. */
+function knownRegions(cfg: DeliveryConfig): Set<string> {
+  return new Set<string>([
+    ...REGION_VALUES,
+    ...cfg.deliveryRates.map((r) => r.region),
+    ...cfg.freeDeliveryRegions,
+  ]);
+}
 
 interface CheckoutOwner {
   userID?: string;
@@ -206,9 +217,12 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
 
     const subtotal = cartItems.reduce((sum, i) => sum + Number(i.variant.product.price) * i.quantity, 0);
 
-    // Admin-configured delivery fee (flat, per-governorate override, or free
-    // by threshold / free-region list — see lib/delivery-fee.ts).
+    // Admin-configured delivery fee (flat, per-region override, or free by
+    // threshold / free-region list — see lib/delivery-fee.ts).
     const cfg = await loadDeliveryConfig(tx);
+    if (!knownRegions(cfg).has(input.deliveryRegion)) {
+      throw new AppError('VALIDATION_ERROR', `Unknown delivery region: ${input.deliveryRegion}`);
+    }
     const { fee: deliveryFee } = resolveDeliveryFee(cfg, subtotal, input.deliveryRegion);
     const total = Math.round((subtotal + deliveryFee) * 100) / 100;
 
