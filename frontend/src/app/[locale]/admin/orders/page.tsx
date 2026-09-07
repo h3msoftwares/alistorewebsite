@@ -14,6 +14,7 @@ import {
 } from '@/components/ui';
 import { AdminPager } from '@/components/admin/admin-pager';
 import { useAdminOrders, useMarkOrderCollected, useReviewOrder, useUpdateOrderStatus } from '@/hooks/use-orders';
+import { DELIVERY_REGIONS } from '@/lib/regions';
 import type { Order, OrderStatus } from '@/lib/types';
 
 const PAGE_SIZE = 20;
@@ -78,6 +79,10 @@ export default function AdminOrdersPage() {
   };
 
   const itemCount = (o: Order) => o.items.reduce((n, i) => n + i.quantity, 0);
+  const regionLabel = (value?: string | null) => {
+    const r = DELIVERY_REGIONS.find((x) => x.value === value);
+    return r ? (isAr ? r.ar : r.en) : (value ?? '');
+  };
 
   return (
     <div className="section--tight">
@@ -151,6 +156,7 @@ export default function AdminOrdersPage() {
                 <th>{t('Order', 'الطلب')}</th>
                 <th>{t('Date', 'التاريخ')}</th>
                 <th>{t('Customer', 'الزبون')}</th>
+                <th>{t('Delivery address', 'عنوان التوصيل')}</th>
                 <th className="is-numeric">{t('Items', 'القطع')}</th>
                 <th className="is-numeric">{t('Total', 'الإجمالي')}</th>
                 <th>{t('Payment', 'الدفع')}</th>
@@ -172,6 +178,23 @@ export default function AdminOrdersPage() {
                         {o.deliveryPhone}
                         {o.guestEmail ? ` · ${o.guestEmail}` : ''}
                       </span>
+                    </td>
+                    <td data-label={t('Delivery address', 'عنوان التوصيل')}>
+                      {o.deliveryAddress}
+                      <br />
+                      <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--fs-xs)' }}>
+                        {[o.deliveryArea, o.deliveryCity, regionLabel(o.deliveryRegion)]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </span>
+                      {o.deliveryNotes && (
+                        <>
+                          <br />
+                          <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--fs-xs)', fontStyle: 'italic' }}>
+                            {o.deliveryNotes}
+                          </span>
+                        </>
+                      )}
                     </td>
                     <td className="is-numeric" data-label={t('Items', 'القطع')}>
                       {itemCount(o)}
