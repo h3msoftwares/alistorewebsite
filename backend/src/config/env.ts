@@ -17,6 +17,12 @@ try {
   // no .env file present — assume the environment already has these vars
 }
 
+// hCaptcha's official, publicly documented test secret — pairs only with the
+// dummy passcode `10000000-aaaa-bbbb-cccc-000000000001`; any other token
+// genuinely fails verification. Safe to default to in dev/test; refused in
+// production (see assertRealCaptchaSecret).
+export const HCAPTCHA_TEST_SECRET = '0x0000000000000000000000000000000000000000';
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
@@ -67,6 +73,19 @@ const envSchema = z.object({
   GA4_PROPERTY_ID: z.string().default(''),
   GA4_SA_CLIENT_EMAIL: z.string().default(''),
   GA4_SA_PRIVATE_KEY: z.string().default(''),
+
+  // Order notifications — who the store owner is alerted at when a new order
+  // comes in. Same "boots without it" pattern as SMTP_HOST: empty ⇒
+  // notification.service.ts skips it (logs and no-ops) instead of failing
+  // checkout.
+  OWNER_NOTIFICATION_EMAIL: z.string().default(''),
+
+  // hCaptcha — gates POST /api/checkout/otp/request so a bot can't spam OTP
+  // emails at addresses it doesn't own. Defaults to hCaptcha's own
+  // documented "always fails unless the exact dummy passcode is sent" test
+  // secret, so dev/CI work out of the box without a registered site; a real
+  // production secret is enforced below (see assertRealCaptchaSecret).
+  HCAPTCHA_SECRET: z.string().default(HCAPTCHA_TEST_SECRET),
 });
 
 export const env = envSchema.parse(process.env);
@@ -109,6 +128,18 @@ export function assertStrongSecrets(e: Pick<typeof env, 'JWT_ACCESS_SECRET' | 'J
   }
 }
 
+/** Throws if HCAPTCHA_SECRET is still hCaptcha's public test secret — real
+ *  anti-bot protection requires a secret from a real registered site.
+ *  Enforced at boot in production; exported so it can be unit-tested. */
+export function assertRealCaptchaSecret(secret: string): void {
+  if (secret === HCAPTCHA_TEST_SECRET) {
+    throw new Error(
+      'HCAPTCHA_SECRET is still the hCaptcha test secret. Register a real site at hCaptcha and set its secret.'
+    );
+  }
+}
+
 if (env.NODE_ENV === 'production') {
   assertStrongSecrets(env);
+  assertRealCaptchaSecret(env.HCAPTCHA_SECRET);
 }

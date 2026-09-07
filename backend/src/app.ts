@@ -12,6 +12,7 @@ import { adminAuthRoutes } from './modules/auth/admin-auth.routes';
 import { passwordResetRoutes } from './modules/auth/password-reset.routes';
 import { changePasswordRoutes } from './modules/auth/change-password.routes';
 import { emailVerificationRoutes } from './modules/auth/email-verification.routes';
+import { checkoutOtpRoutes } from './modules/checkout-otp/checkout-otp.routes';
 import collectionRoutes from './modules/catalog/collection.routes';
 import categoryRoutes from './modules/catalog/category.routes';
 import productRoutes from './modules/catalog/product.routes';
@@ -37,6 +38,7 @@ export function buildApp(
     verifyEmailRateLimit?: boolean;
     resendVerificationRateLimit?: boolean;
     changePasswordRateLimit?: boolean;
+    checkoutOtpVerifyRateLimit?: boolean;
     // Double-submit-cookie CSRF check. Defaults ON everywhere except tests
     // (where the suites don't carry the header); a focused test passes `true`.
     csrf?: boolean;
@@ -131,6 +133,13 @@ export function buildApp(
       verifyRateLimit: opts.verifyEmailRateLimit ?? env.NODE_ENV !== 'test',
       resendRateLimit: opts.resendVerificationRateLimit ?? env.NODE_ENV !== 'test',
     })
+  );
+  // Checkout email-OTP — request is DB-backed rate-limited internally (see
+  // checkout-otp.service.ts), so only /verify's in-memory defense-in-depth
+  // limiter is gated here.
+  app.use(
+    '/api/checkout/otp',
+    checkoutOtpRoutes({ verifyRateLimit: opts.checkoutOtpVerifyRateLimit ?? env.NODE_ENV !== 'test' })
   );
   app.use('/api/collections', collectionRoutes);
   app.use('/api/categories', categoryRoutes);

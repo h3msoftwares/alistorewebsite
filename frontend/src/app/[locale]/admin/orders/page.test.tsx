@@ -10,6 +10,7 @@ vi.mock('@/lib/api', () => ({
     adminListOrders: vi.fn(),
     adminUpdateOrderStatus: vi.fn(),
     adminMarkCollected: vi.fn(),
+    adminReviewOrder: vi.fn(),
   },
 }));
 
@@ -44,6 +45,7 @@ beforeEach(() => {
   mock.adminListOrders.mockResolvedValue([order] as never);
   mock.adminUpdateOrderStatus.mockResolvedValue({ ...order, status: 'CONFIRMED' } as never);
   mock.adminMarkCollected.mockResolvedValue({ ...order, paymentStatus: 'COLLECTED' } as never);
+  mock.adminReviewOrder.mockResolvedValue({ ...order, flaggedForReview: false } as never);
 });
 
 describe('AdminOrdersPage', () => {
@@ -84,7 +86,27 @@ describe('AdminOrdersPage', () => {
     await screen.findByText('AS-20260906-ABC123');
 
     await user.selectOptions(screen.getByRole('combobox', { name: /filter by status/i }), 'DELIVERED');
-    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith('DELIVERED'));
+    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith('DELIVERED', undefined));
+  });
+
+  it('"Flagged only" checkbox refetches with flagged=true', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('AS-20260906-ABC123');
+
+    await user.click(screen.getByRole('checkbox', { name: /flagged only/i }));
+    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, true));
+  });
+
+  it('shows a Flagged badge and a "Mark reviewed" button for a flagged order, which clears the flag', async () => {
+    mock.adminListOrders.mockResolvedValue([{ ...order, flaggedForReview: true }] as never);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('AS-20260906-ABC123');
+
+    expect(screen.getByText('Flagged')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Mark reviewed' }));
+    await waitFor(() => expect(mock.adminReviewOrder).toHaveBeenCalledWith('o1'));
   });
 
   it('shows an empty state when there are no orders', async () => {

@@ -1,8 +1,18 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
 import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
+
+// See orders.test.ts — same mock, same reason (guest checkout now requires a
+// real email-OTP round trip).
+vi.mock('../../src/lib/mailer', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/lib/mailer')>();
+  return { ...actual, sendCheckoutOtpEmail: vi.fn().mockResolvedValue(true) };
+});
+import { sendCheckoutOtpEmail } from '../../src/lib/mailer';
+const mockSendOtp = vi.mocked(sendCheckoutOtpEmail);
+const HCAPTCHA_DUMMY_TOKEN = '10000000-aaaa-bbbb-cccc-000000000001';
 
 const app = buildApp();
 
@@ -53,7 +63,23 @@ async function configure({
 async function checkout(quantity = 2, body: Record<string, unknown> = delivery) {
   const agent = request.agent(app);
   expect((await agent.post('/api/cart/items').send({ variantId, quantity })).status).toBe(201);
-  return { agent, res: await agent.post('/api/orders/checkout').send(body) };
+
+  const guestEmail = (body.guestEmail as string | undefined) ?? 'df@test.dev';
+  mockSendOtp.mockClear();
+  expect(
+    (await agent.post('/api/checkout/otp/request').send({ email: guestEmail, captchaToken: HCAPTCHA_DUMMY_TOKEN }))
+      .status
+  ).toBe(204);
+  const code = mockSendOtp.mock.calls.at(-1)?.[1] as string;
+  const verify = await agent.post('/api/checkout/otp/verify').send({ email: guestEmail, code });
+  expect(verify.status).toBe(200);
+
+  return {
+    agent,
+    res: await agent
+      .post('/api/orders/checkout')
+      .send({ ...body, guestEmail, emailVerifyToken: verify.body.verifyToken }),
+  };
 }
 
 describe('delivery fee at checkout', () => {

@@ -24,6 +24,10 @@ export const checkoutSchema = z.object({
   deliveryArea: z.string().optional(),
   deliveryNotes: z.string().optional(),
   notes: z.string().optional(),
+  // The "verified" ticket from POST /api/checkout/otp/verify. Required
+  // unless the caller is logged in with a verified account email — enforced
+  // in order.service.ts (needs the account lookup, not expressible here).
+  emailVerifyToken: z.string().optional(),
 });
 
 // GET /api/orders/delivery-quote?region=... — a live fee estimate for the
@@ -45,6 +49,7 @@ export const updateOrderStatusSchema = z.object({ status: orderStatus });
 
 export const adminListOrdersQuerySchema = z.object({
   status: orderStatus.optional(),
+  flagged: z.coerce.boolean().optional(),
 });
 
 export const markCollectedSchema = z.object({
