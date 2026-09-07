@@ -25,7 +25,7 @@ const profile = {
 const updateProfile = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, isError: false, error: null as unknown };
 const addresses = {
   data: [
-    { id: 'a1', userID: 'u1', fullName: 'Ali', phone: '0790000000', addressLine: '12 Rainbow St', city: 'Amman', area: null, notes: null, isDefault: true },
+    { id: 'a1', userID: 'u1', fullName: 'Ali', phone: '0790000000', addressLine: '12 Rainbow St', city: 'Amman', region: 'MOUNT_LEBANON', area: null, notes: null, isDefault: true },
   ],
   isPending: false,
 };
@@ -46,6 +46,12 @@ vi.mock('@/hooks/use-account', () => ({
   useUpdateAddress: () => updateAddress,
   useDeleteAddress: () => deleteAddress,
 }));
+vi.mock('@/lib/use-delivery-region-options', async () => {
+  const { DELIVERY_REGIONS } = await vi.importActual<typeof import('@/lib/regions')>('@/lib/regions');
+  return {
+    useDeliveryRegionOptions: () => DELIVERY_REGIONS.map((r) => ({ value: r.value, label: r.en })),
+  };
+});
 
 const renderView = () => {
   const { Wrapper } = createWrapper();
@@ -80,6 +86,14 @@ describe('<AccountView>', () => {
     expect(screen.getByText('ali@test.dev')).toBeInTheDocument();
     expect(screen.getByText('Verified')).toBeInTheDocument();
     expect(screen.getByText(/12 Rainbow St, Amman/)).toBeInTheDocument();
+    expect(screen.getByText(/Mount Lebanon ·/)).toBeInTheDocument();
+  });
+
+  it('prefills the governorate when editing a saved address', async () => {
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByLabelText('Governorate')).toHaveValue('MOUNT_LEBANON');
   });
 
   it('saves a profile edit (name only — no phone field)', async () => {
@@ -103,11 +117,17 @@ describe('<AccountView>', () => {
     await user.type(screen.getByLabelText('Contact phone'), '0791111111');
     await user.type(screen.getByLabelText('Street address'), '5 Cedar Ave');
     await user.type(screen.getByLabelText('City'), 'Zarqa');
+    await user.selectOptions(screen.getByLabelText('Governorate'), 'BEIRUT');
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
       expect(createAddress.mutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ city: 'Zarqa', addressLine: '5 Cedar Ave', phone: '0791111111' })
+        expect.objectContaining({
+          city: 'Zarqa',
+          addressLine: '5 Cedar Ave',
+          phone: '0791111111',
+          region: 'BEIRUT',
+        })
       )
     );
     expect(createAddress.mutateAsync.mock.calls[0][0]).not.toHaveProperty('fullName');

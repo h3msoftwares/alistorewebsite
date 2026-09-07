@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { REGION_VALUES } from '../../lib/regions';
+
+// A built-in Lebanese governorate code or an admin-defined custom zone name
+// (see settings). Validated for shape here; that it's a *known* region is
+// checked in order.service.ts against the live delivery config.
+const regionName = z.string().trim().min(1).max(60);
 
 export const checkoutSchema = z.object({
   // Optional reference to a saved Address; the delivery-* fields below are the
@@ -20,7 +24,7 @@ export const checkoutSchema = z.object({
   deliveryAddress: z.string().min(3),
   deliveryCity: z.string().min(1),
   // Lebanese governorate — drives the delivery-fee calculation.
-  deliveryRegion: z.enum(REGION_VALUES),
+  deliveryRegion: regionName,
   deliveryArea: z.string().optional(),
   deliveryNotes: z.string().optional(),
   notes: z.string().optional(),
@@ -33,7 +37,7 @@ export const checkoutSchema = z.object({
 // GET /api/orders/delivery-quote?region=... — a live fee estimate for the
 // caller's current cart.
 export const deliveryQuoteQuerySchema = z.object({
-  region: z.enum(REGION_VALUES),
+  region: regionName,
 });
 
 const orderStatus = z.enum([

@@ -27,6 +27,7 @@ function validRegisterBody(over: Record<string, unknown> = {}) {
       phone: '0791234567',
       addressLine: '12 Rainbow Street',
       city: 'Amman',
+      region: 'MOUNT_LEBANON',
     },
     ...over,
   };
@@ -63,7 +64,8 @@ describe('Auth API', () => {
 
       const addresses = await prisma.address.findMany({ where: { userID: user!.id } });
       expect(addresses).toHaveLength(1);
-      expect(addresses[0]).toMatchObject({ city: 'Amman', isDefault: true });
+      // The governorate picked at sign-up is persisted so checkout can prefill it.
+      expect(addresses[0]).toMatchObject({ city: 'Amman', region: 'MOUNT_LEBANON', isDefault: true });
 
       const tokens = await prisma.emailVerificationToken.findMany({ where: { userID: user!.id } });
       expect(tokens).toHaveLength(1);

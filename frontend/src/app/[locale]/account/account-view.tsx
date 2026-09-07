@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Alert, Badge, Button, Field, Input, Skeleton, Textarea } from '@/components/ui';
+import { Alert, Badge, Button, Field, Input, Select, Skeleton, Textarea } from '@/components/ui';
 import { LogoutButton } from '@/components/chrome/logout-button';
+import { useDeliveryRegionOptions } from '@/lib/use-delivery-region-options';
+import { regionLabel } from '@/lib/regions';
 import { useAuth, useChangePassword } from '@/hooks/use-auth';
 import {
   useAddresses,
@@ -38,6 +40,9 @@ const addressSchema = z.object({
   phone: z.string().min(6).max(30),
   addressLine: z.string().min(3).max(300),
   city: z.string().min(1).max(120),
+  // The governorate that prefills the checkout delivery region — this is the
+  // only place a shopper can change it after sign-up.
+  region: z.string().trim().min(1).max(60),
   area: z.string().max(120).optional(),
   notes: z.string().max(500).optional(),
 });
@@ -336,6 +341,7 @@ function AddressesSection({ locale }: { locale: Locale }) {
                     </strong>{' '}
                     {a.isDefault && <Badge variant="save">{t('Default', 'افتراضي')}</Badge>}
                     <div className="prose" style={{ fontSize: 'var(--fs-sm)' }}>
+                      {a.region ? `${regionLabel(a.region, locale)} · ` : ''}
                       {a.phone}
                     </div>
                   </div>
@@ -409,6 +415,7 @@ function AddressForm({
   const create = useCreateAddress();
   const update = useUpdateAddress();
   const busyMut = address ? update : create;
+  const regionOptions = useDeliveryRegionOptions(locale);
 
   const {
     register,
@@ -421,6 +428,7 @@ function AddressForm({
           phone: address.phone,
           addressLine: address.addressLine,
           city: address.city,
+          region: address.region ?? undefined,
           area: address.area ?? undefined,
           notes: address.notes ?? undefined,
         }
@@ -451,6 +459,20 @@ function AddressForm({
       </Field>
       <Field label={t('City', 'المدينة')} error={errors.city && t('Required', 'مطلوب')}>
         {(p) => <Input {...p} {...register('city')} disabled={busy} />}
+      </Field>
+      <Field label={t('Governorate', 'المحافظة')} error={errors.region && t('Required', 'مطلوب')}>
+        {(p) => (
+          <Select {...p} {...register('region')} defaultValue="" disabled={busy}>
+            <option value="" disabled>
+              {t('Select a governorate', 'اختر محافظة')}
+            </option>
+            {regionOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+        )}
       </Field>
       <Field label={t('Area (optional)', 'المنطقة (اختياري)')}>
         {(p) => <Input {...p} {...register('area')} disabled={busy} />}

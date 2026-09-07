@@ -15,6 +15,9 @@ export const registerSchema = z.object({
   email: z.string().email().max(320).toLowerCase(),
   password: z.string().min(8).max(200),
   name: z.string().min(1).max(120),
+  // `region` (the governorate) rides along on the address so it prefills the
+  // checkout delivery region — see auth.service.register(). Optional here, as
+  // on the generic address schema; the sign-up form makes it a required field.
   address: createAddressSchema.omit({ isDefault: true, fullName: true }),
   // Only shapes the link in the verification email; defaults to 'en'.
   locale: z.enum(['en', 'ar']).default('en'),

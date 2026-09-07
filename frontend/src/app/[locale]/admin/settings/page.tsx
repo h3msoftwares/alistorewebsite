@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useFieldArray, useForm, type FieldErrors } from 'react-hook-form';
+import { useFieldArray, useForm, useWatch, type FieldErrors } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus, Search, Trash2 } from 'lucide-react';
@@ -79,11 +79,11 @@ const settingsFormSchema = z.object({
   deliveryRates: z
     .array(
       z.object({
-        region: z.string().min(1, 'Pick a governorate'),
+        region: z.string().trim().min(1, 'Name this region').max(60),
         fee: z.number({ message: 'Enter a number' }).min(0, 'Must be 0 or more'),
       })
     )
-    .max(DELIVERY_REGIONS.length)
+    .max(40)
     .superRefine((rates, ctx) => {
       const seen = new Set<string>();
       rates.forEach((r, i) => {
@@ -222,10 +222,34 @@ export default function AdminSettingsPage() {
     register,
     control,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<SettingsForm>({ resolver: zodResolver(settingsFormSchema), values });
   const { fields, append, remove } = useFieldArray({ control, name: 'announcementLines' });
   const rates = useFieldArray({ control, name: 'deliveryRates' });
+
+  // Free-delivery checkboxes: the built-in governorates plus any custom zone
+  // the admin has added a rate row for.
+  const watchedRates = useWatch({ control, name: 'deliveryRates' }) ?? [];
+  const builtinValues = new Set<string>(DELIVERY_REGIONS.map((r) => r.value));
+  const freeRegionOptions = [
+    ...DELIVERY_REGIONS.map((r) => ({ value: r.value, label: isAr ? r.ar : r.en })),
+    ...watchedRates
+      .map((r) => r?.region?.trim())
+      .filter((v): v is string => Boolean(v) && !builtinValues.has(v))
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .map((v) => ({ value: v, label: v })),
+  ];
+
+  // Controlled checkbox group: RHF's uncontrolled array-of-checkboxes pattern
+  // doesn't round-trip cleanly through `useForm({ values })`, so drive it by hand.
+  const freeRegions = useWatch({ control, name: 'freeDeliveryRegions' }) ?? [];
+  const toggleFreeRegion = (value: string, checked: boolean) => {
+    const next = checked
+      ? [...new Set([...freeRegions, value])]
+      : freeRegions.filter((v) => v !== value);
+    setValue('freeDeliveryRegions', next, { shouldDirty: true });
+  };
 
   const busy = updateSettings.isPending;
 
@@ -503,19 +527,30 @@ export default function AdminSettingsPage() {
             </Field>
           </div>
 
-          <p className="admin-form__hint">{t('Per-governorate rate (overrides the flat fee)', 'سعر لكل محافظة (يتجاوز الرسوم الثابتة)')}</p>
+          <p className="admin-form__hint">
+            {t(
+              'Per-region rate (overrides the flat fee). Pick a governorate or type a custom zone name (e.g. a remote town, or "Outside Lebanon").',
+              'سعر لكل منطقة (يتجاوز الرسوم الثابتة). اختر محافظة أو اكتب اسم منطقة خاصة (مثل بلدة نائية أو "خارج لبنان").'
+            )}
+          </p>
+          <datalist id="delivery-region-suggestions">
+            {DELIVERY_REGIONS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {isAr ? r.ar : r.en}
+              </option>
+            ))}
+          </datalist>
           {rates.fields.map((field, i) => (
             <div key={field.id} className="admin-variant-row">
-              <Field label={t('Governorate', 'المحافظة')} error={errors.deliveryRates?.[i]?.region?.message}>
+              <Field label={t('Region', 'المنطقة')} error={errors.deliveryRates?.[i]?.region?.message}>
                 {(p) => (
-                  <Select {...p} {...register(`deliveryRates.${i}.region` as const)} disabled={busy}>
-                    <option value="">{t('Pick one', 'اختر')}</option>
-                    {DELIVERY_REGIONS.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {isAr ? r.ar : r.en}
-                      </option>
-                    ))}
-                  </Select>
+                  <Input
+                    {...p}
+                    list="delivery-region-suggestions"
+                    placeholder={t('Governorate or custom zone', 'محافظة أو منطقة خاصة')}
+                    {...register(`deliveryRates.${i}.region` as const)}
+                    disabled={busy}
+                  />
                 )}
               </Field>
               <Field label={t('Fee ($)', 'الرسوم ($)')} error={errors.deliveryRates?.[i]?.fee?.message}>
@@ -541,24 +576,24 @@ export default function AdminSettingsPage() {
               </button>
             </div>
           ))}
-          {rates.fields.length < DELIVERY_REGIONS.length && (
+          {rates.fields.length < 40 && (
             <Button type="button" variant="outline" onClick={() => rates.append(blankRate)} disabled={busy}>
               <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
-              {t('Add governorate rate', 'إضافة سعر محافظة')}
+              {t('Add region rate', 'إضافة سعر منطقة')}
             </Button>
           )}
 
           <p className="admin-form__hint" style={{ marginBlockStart: 'var(--space-4)' }}>
-            {t('Free delivery to these governorates', 'توصيل مجاني إلى هذه المحافظات')}
+            {t('Free delivery to these regions', 'توصيل مجاني إلى هذه المناطق')}
           </p>
           <div className="admin-form__checks">
-            {DELIVERY_REGIONS.map((r) => (
+            {freeRegionOptions.map((r) => (
               <Choice
                 key={r.value}
                 type="checkbox"
-                value={r.value}
-                label={isAr ? r.ar : r.en}
-                {...register('freeDeliveryRegions')}
+                label={r.label}
+                checked={freeRegions.includes(r.value)}
+                onChange={(e) => toggleFreeRegion(r.value, e.target.checked)}
                 disabled={busy}
               />
             ))}

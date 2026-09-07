@@ -13,7 +13,8 @@ import { useAuth } from '@/hooks/use-auth';
 import { useAddresses, useProfile } from '@/hooks/use-account';
 import { useCheckout, useDeliveryQuote } from '@/hooks/use-orders';
 import { useRequestCheckoutOtp, useVerifyCheckoutOtp } from '@/hooks/use-checkout-otp';
-import { DELIVERY_REGIONS, REGION_VALUES, regionLabel, type DeliveryRegion } from '@/lib/regions';
+import { useDeliveryRegionOptions } from '@/lib/use-delivery-region-options';
+import { regionLabel } from '@/lib/regions';
 import { formatCurrency } from '@/lib/format';
 import { isApiError } from '@/lib/api';
 import type { CheckoutBody, Order } from '@/lib/types';
@@ -150,7 +151,7 @@ interface FormValues {
   deliveryPhone: string;
   deliveryAddress: string;
   deliveryCity: string;
-  deliveryRegion: DeliveryRegion;
+  deliveryRegion: string;
   deliveryArea?: string;
   deliveryNotes?: string;
 }
@@ -167,6 +168,9 @@ export function CheckoutView({ locale }: { locale: Locale }) {
   const addresses = useAddresses({ enabled: isAuthenticated });
 
   const checkout = useCheckout();
+
+  // The built-in governorates plus any custom zone the admin has priced.
+  const regionOptions = useDeliveryRegionOptions(locale);
 
   const savedAddresses = useMemo(() => addresses.data ?? [], [addresses.data]);
   const hasSaved = isAuthenticated && savedAddresses.length > 0;
@@ -204,7 +208,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
       deliveryPhone: z.string().trim().min(6, t('Enter a valid phone', 'أدخل رقمًا صالحًا')),
       deliveryAddress: z.string().trim().min(3, t('Enter your street address', 'أدخل عنوان الشارع')),
       deliveryCity: z.string().trim().min(1, t('Required', 'مطلوب')),
-      deliveryRegion: z.enum(REGION_VALUES, { message: t('Pick a governorate', 'اختر محافظة') }),
+      deliveryRegion: z.string().trim().min(1, t('Pick a delivery region', 'اختر منطقة التوصيل')),
       deliveryArea: z.string().trim().max(120).optional(),
       deliveryNotes: z.string().trim().max(500).optional(),
     };
@@ -402,9 +406,9 @@ export function CheckoutView({ locale }: { locale: Locale }) {
                     <option value="" disabled>
                       {t('Select a governorate', 'اختر محافظة')}
                     </option>
-                    {DELIVERY_REGIONS.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {isAr ? r.ar : r.en}
+                    {regionOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
                       </option>
                     ))}
                   </Select>
@@ -496,9 +500,9 @@ export function CheckoutView({ locale }: { locale: Locale }) {
                     <option value="" disabled>
                       {t('Select a governorate', 'اختر محافظة')}
                     </option>
-                    {DELIVERY_REGIONS.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {isAr ? r.ar : r.en}
+                    {regionOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
                       </option>
                     ))}
                   </Select>

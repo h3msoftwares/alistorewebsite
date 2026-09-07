@@ -1,11 +1,10 @@
 /**
- * Lebanese governorates — the delivery-region taxonomy used by the
- * delivery-fee engine, checkout, and the admin fee table.
- *
- * Stored on `Order.deliveryRegion` / `Address.region` as the `value` string and
- * validated with `z.enum(REGION_VALUES)`. Kept as a plain list (not a Prisma
- * enum) so the bilingual labels live in one place and adding a region is not a
- * migration. `frontend/src/lib/regions.ts` mirrors this — keep the two in sync.
+ * Built-in Lebanese governorates — the default delivery regions offered at
+ * checkout and pre-listed in the admin fee table. The admin can also add
+ * custom zone names (stored the same way, as a free string on
+ * `Order.deliveryRegion` / `Address.region` / `DeliveryRate.region`); those
+ * live only in `SiteSetting`, not here. `frontend/src/lib/regions.ts` mirrors
+ * this list — keep the two in sync.
  */
 export const DELIVERY_REGIONS = [
   { value: 'BEIRUT', en: 'Beirut', ar: 'بيروت' },

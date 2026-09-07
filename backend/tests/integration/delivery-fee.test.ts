@@ -126,6 +126,24 @@ describe('delivery fee at checkout', () => {
     const { res } = await checkout(2);
     expect(Number(res.body.order.deliveryFee)).toBe(0);
   });
+
+  it('applies a custom (non-governorate) region rate', async () => {
+    await configure({
+      deliveryFeeEnabled: true,
+      deliveryFeeFlat: 5,
+      rates: [{ region: 'Outside Lebanon', fee: 12 }],
+    });
+    const { res } = await checkout(2, { ...delivery, deliveryRegion: 'Outside Lebanon' });
+    expect(res.status).toBe(201);
+    expect(Number(res.body.order.deliveryFee)).toBe(12);
+    expect(res.body.order.deliveryRegion).toBe('Outside Lebanon');
+  });
+
+  it('rejects a checkout naming a region with no built-in or configured match', async () => {
+    await configure({ deliveryFeeEnabled: true, deliveryFeeFlat: 5 });
+    const { res } = await checkout(2, { ...delivery, deliveryRegion: 'Nowhere Zone' });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('GET /api/orders/delivery-quote', () => {
@@ -155,8 +173,15 @@ describe('GET /api/orders/delivery-quote', () => {
     expect(res.body).toMatchObject({ deliveryFee: 0, freeReason: 'disabled' });
   });
 
-  it('400s an unknown region', async () => {
-    const res = await request(app).get('/api/orders/delivery-quote?region=NOWHERE');
-    expect(res.status).toBe(400);
+  it('quotes a well-formed unknown region at the flat fee, but 400s a blank one', async () => {
+    await configure({ deliveryFeeEnabled: true, deliveryFeeFlat: 5 });
+    const agent = request.agent(app);
+    await agent.post('/api/cart/items').send({ variantId, quantity: 2 });
+
+    const ok = await agent.get('/api/orders/delivery-quote?region=Some%20New%20Zone');
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ deliveryFee: 5 });
+
+    expect((await agent.get('/api/orders/delivery-quote?region=')).status).toBe(400);
   });
 });

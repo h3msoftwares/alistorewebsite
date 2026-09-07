@@ -15,6 +15,15 @@ vi.mock('@/hooks/use-auth', () => ({
   useRegister: () => registerMut,
   useResendVerification: () => resend,
 }));
+vi.mock('@/lib/use-delivery-region-options', async () => {
+  const { DELIVERY_REGIONS } = await vi.importActual<typeof import('@/lib/regions')>('@/lib/regions');
+  return {
+    useDeliveryRegionOptions: () => [
+      ...DELIVERY_REGIONS.map((r) => ({ value: r.value, label: r.en })),
+      { value: 'Outside Lebanon', label: 'Outside Lebanon' },
+    ],
+  };
+});
 
 const renderForm = (locale: 'en' | 'ar' = 'en') => {
   const { Wrapper } = createWrapper();
