@@ -1,7 +1,10 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { OrderDetailView } from './order-detail-view';
 
-// TODO: order detail + status timeline + cancel button (only while PENDING).
-export default async function OrderDetailPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
-  const { id } = await params;
-  return <PagePlaceholder title="Order" note={`id: ${id}`} />;
+export default async function OrderDetailPage({
+  params,
+}: {
+  params: Promise<{ locale: string; id: string }>;
+}) {
+  const { locale, id } = (await params) as { locale: 'en' | 'ar'; id: string };
+  return <OrderDetailView locale={locale} id={id} />;
 }

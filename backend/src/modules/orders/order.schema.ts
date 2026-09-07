@@ -63,3 +63,15 @@ export const markCollectedSchema = z.object({
 export const orderIdParamSchema = z.object({
   id: z.string().uuid(),
 });
+
+export const orderTrackTokenParamSchema = z.object({
+  token: z.string().trim().min(1).max(200),
+});
+
+// POST /api/orders/lookup — the guest manual-lookup fallback. `contact` is
+// whichever of email/phone was used at checkout; order.service.ts checks
+// both without the caller needing to say which.
+export const orderLookupSchema = z.object({
+  orderNumber: z.string().trim().min(1).max(40),
+  contact: z.string().trim().min(1).max(320),
+});

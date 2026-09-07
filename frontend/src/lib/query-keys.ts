@@ -43,6 +43,7 @@ export const queryKeys = {
     all: () => ['orders'] as const,
     mine: () => ['orders', 'mine'] as const,
     detail: (id: UUID) => ['orders', 'detail', id] as const,
+    track: (token: string) => ['orders', 'track', token] as const,
     admin: (status?: string, flagged?: boolean) => ['orders', 'admin', status ?? null, flagged ?? false] as const,
     dashboard: () => ['orders', 'dashboard'] as const,
   },

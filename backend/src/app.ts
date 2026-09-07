@@ -18,7 +18,7 @@ import categoryRoutes from './modules/catalog/category.routes';
 import productRoutes from './modules/catalog/product.routes';
 import cartRoutes from './modules/cart/cart.routes';
 import favouriteRoutes from './modules/favourites/favourites.routes';
-import orderRoutes from './modules/orders/order.routes';
+import { orderRoutes } from './modules/orders/order.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import addressRoutes from './modules/account/address.routes';
 import userRoutes from './modules/account/user.routes';
@@ -39,6 +39,8 @@ export function buildApp(
     resendVerificationRateLimit?: boolean;
     changePasswordRateLimit?: boolean;
     checkoutOtpVerifyRateLimit?: boolean;
+    orderTrackRateLimit?: boolean;
+    orderLookupRateLimit?: boolean;
     // Double-submit-cookie CSRF check. Defaults ON everywhere except tests
     // (where the suites don't carry the header); a focused test passes `true`.
     csrf?: boolean;
@@ -146,7 +148,13 @@ export function buildApp(
   app.use('/api/products', productRoutes);
   app.use('/api/cart', cartRoutes);
   app.use('/api/favourites', favouriteRoutes);
-  app.use('/api/orders', orderRoutes);
+  app.use(
+    '/api/orders',
+    orderRoutes({
+      trackRateLimit: opts.orderTrackRateLimit ?? env.NODE_ENV !== 'test',
+      lookupRateLimit: opts.orderLookupRateLimit ?? env.NODE_ENV !== 'test',
+    })
+  );
   app.use('/api/addresses', addressRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/admin', adminRoutes);

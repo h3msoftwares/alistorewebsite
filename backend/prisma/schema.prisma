@@ -521,10 +521,11 @@ model Order {
   dateCreated   DateTime      @default(now())
   lastEdit      DateTime      @default(now()) @updatedAt
 
-  user           User?           @relation(fields: [userID], references: [id], onDelete: SetNull)
-  address        Address?        @relation(fields: [addressID], references: [id], onDelete: SetNull)
+  user           User?              @relation(fields: [userID], references: [id], onDelete: SetNull)
+  address        Address?           @relation(fields: [addressID], references: [id], onDelete: SetNull)
   items          OrderItem[]
   stockMovements StockMovement[]
+  accessTokens   OrderAccessToken[]
 
   @@index([userID])
   @@index([status])
@@ -606,6 +607,27 @@ model PushSubscription {
 
   @@index([userID])
   @@map("pushsubscription")
+}
+
+// A guest's (or anyone's) proof of access to one order without a login
+// session — the checkout confirmation email links to
+// /orders/track/<raw token>; POST /api/orders/lookup mints an additional one
+// on a successful order-number + contact match. A table rather than a single
+// hashed column on Order: the hash is one-way, so if the guest loses the
+// original email a fresh row is minted without touching (or invalidating)
+// the one already sitting in that email. Every token — however it was
+// issued — carries the same flat expiry (see order.schema.ts).
+model OrderAccessToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  orderID   String   @db.Uuid
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  order Order @relation(fields: [orderID], references: [id], onDelete: Cascade)
+
+  @@index([orderID])
+  @@map("orderaccesstoken")
 }
 
 model OrderItem {
