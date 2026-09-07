@@ -343,8 +343,18 @@ describe('Orders API', () => {
       expect(collected.body.order.paymentStatus).toBe('COLLECTED');
 
       const dash = await request(app).get('/api/admin/dashboard').set(bearer(token));
-      expect(dash.body).toMatchObject({ totalOrders: 1, pendingOrders: 0 });
+      expect(dash.body).toMatchObject({
+        totalOrders: 1,
+        pendingOrders: 0,
+        flaggedOrders: 0,
+        // order is DELIVERED and COD was marked collected above
+        awaitingCodCollection: 0,
+        lowStockVariants: expect.any(Number),
+        outOfStockVariants: expect.any(Number),
+      });
       expect(dash.body.totalRevenue).toBe(40);
+      expect(dash.body.recentOrders).toHaveLength(1);
+      expect(dash.body.recentOrders[0]).toMatchObject({ id: orderId, status: 'DELIVERED' });
     });
 
     it('admin routes reject anon (401) and customer (403)', async () => {

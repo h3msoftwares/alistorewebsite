@@ -562,10 +562,31 @@ export interface ProfileBody {
   phone?: string | null;
 }
 
+export interface AdminDashboardRecentOrder {
+  id: UUID;
+  orderNumber: string;
+  deliveryName: string;
+  total: Decimalish;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  flaggedForReview: boolean;
+  dateCreated: string;
+}
+
 export interface AdminDashboard {
   totalOrders: number;
   pendingOrders: number;
   totalRevenue: number;
+  /** Orders an anti-abuse velocity check flagged, not yet cleared by an admin. */
+  flaggedOrders: number;
+  /** Delivered COD orders whose cash hasn't been marked collected. */
+  awaitingCodCollection: number;
+  /** Active variants with 1–5 units left. */
+  lowStockVariants: number;
+  /** Active variants at 0 or fewer units. */
+  outOfStockVariants: number;
+  /** The 8 most recent orders, newest first. */
+  recentOrders: AdminDashboardRecentOrder[];
 }
 
 // ---- Analytics ----
