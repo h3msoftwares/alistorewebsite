@@ -140,15 +140,15 @@ export async function sendVerificationEmail(
  * `order.guestEmail` — populated for guests with what they typed at checkout,
  * and for signed-in orders with the account's own email (see
  * order.service.ts's checkout()), so this one function covers both.
- * `trackingUrl` points at the guest-accessible tracking page (built from a
- * fresh OrderAccessToken — see order.service.ts) — included for every order,
- * not just guest ones, since it works from any device without logging in.
- * Same never-throws contract as the other mailer functions.
+ * `orderUrl` is either the guest tracking page (a fresh OrderAccessToken) or,
+ * for a logged-in customer, a direct link to their /orders/[id] — a logged-in
+ * customer already has a real session, so no bearer-token credential is
+ * minted for them. Same never-throws contract as the other mailer functions.
  */
 export async function sendOrderConfirmationEmail(
   to: string,
   order: OrderWithItems,
-  trackingUrl: string
+  orderUrl: string
 ): Promise<boolean> {
   if (!transporter) {
     console.warn('[mailer] SMTP is not configured — skipping order-confirmation email to', to);
@@ -173,7 +173,7 @@ export async function sendOrderConfirmationEmail(
     `Phone: ${order.deliveryPhone}` +
     (order.deliveryNotes ? `\nDelivery notes: ${order.deliveryNotes}` : '') +
     `\n\nWe'll call ${order.deliveryPhone} to confirm delivery. Thanks for shopping with Ali's Store!\n\n` +
-    `Track this order or cancel it any time before it ships: ${trackingUrl}`;
+    `Track this order or cancel it any time before it ships: ${orderUrl}`;
 
   const itemRows = order.items
     .map((i) => `<tr><td>${itemLabel(i)}</td><td>${money(Number(i.lineTotal))}</td></tr>`)
@@ -197,7 +197,7 @@ export async function sendOrderConfirmationEmail(
       ${order.deliveryNotes ? `<br>Delivery notes: ${order.deliveryNotes}` : ''}
     </p>
     <p>We'll call ${order.deliveryPhone} to confirm delivery. Thanks for shopping with Ali's Store!</p>
-    <p><a href="${trackingUrl}">Track this order or cancel it</a> any time before it ships.</p>
+    <p><a href="${orderUrl}">Track this order or cancel it</a> any time before it ships.</p>
   `.trim();
 
   try {

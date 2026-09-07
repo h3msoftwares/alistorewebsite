@@ -2,17 +2,27 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
-import { createUser, bearer } from '../helpers/auth';
+import { createCustomer, bearer } from '../helpers/auth';
 import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
 
 vi.mock('../../src/lib/mailer', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/lib/mailer')>();
-  return { ...actual, sendOrderConfirmationEmail: vi.fn().mockResolvedValue(true) };
+  return {
+    ...actual,
+    sendOrderConfirmationEmail: vi.fn().mockResolvedValue(true),
+    sendCheckoutOtpEmail: vi.fn().mockResolvedValue(true),
+  };
 });
-import { sendOrderConfirmationEmail } from '../../src/lib/mailer';
+import { sendOrderConfirmationEmail, sendCheckoutOtpEmail } from '../../src/lib/mailer';
 const mockConfirmEmail = vi.mocked(sendOrderConfirmationEmail);
+const mockSendOtp = vi.mocked(sendCheckoutOtpEmail);
 
 const app = buildApp(); // rate limiters off by default under test
+
+// hCaptcha's own documented test secret (the app's default under test) only
+// accepts this exact dummy passcode as "success: true" — a real network call
+// to hCaptcha's public siteverify API, same convention as checkout-otp.test.ts.
+const HCAPTCHA_DUMMY_TOKEN = '10000000-aaaa-bbbb-cccc-000000000001';
 
 let variantId: string;
 
@@ -26,6 +36,7 @@ const delivery = {
 
 beforeEach(async () => {
   mockConfirmEmail.mockClear();
+  mockSendOtp.mockClear();
   const col = await makeCollection({ slug: 'c' });
   const cat = await makeCategory(col.id);
   const p = await makeProduct(col.id, cat.id, {
@@ -39,24 +50,65 @@ function tokenFromUrl(url: string): string {
   return url.split('/').pop()!;
 }
 
-/** Places a real order as a verified logged-in customer with a known email
- *  (so /orders/lookup has something to match on) and returns the order plus
- *  the raw tracking token minted at checkout — captured from the mocked
- *  confirmation email's `trackingUrl` argument, the same value a guest would
- *  get by clicking the link in their real inbox. */
+/** Requests + verifies a checkout email-OTP for `email` on `agent` (so the
+ *  resulting ticket is scoped to the same guest cart session) and returns
+ *  the verify token. */
+async function getEmailVerifyToken(agent: ReturnType<typeof request.agent>, email: string): Promise<string> {
+  mockSendOtp.mockClear();
+  const reqRes = await agent.post('/api/checkout/otp/request').send({ email, captchaToken: HCAPTCHA_DUMMY_TOKEN });
+  expect(reqRes.status).toBe(204);
+  const code = mockSendOtp.mock.calls.at(-1)?.[1] as string;
+  const verifyRes = await agent.post('/api/checkout/otp/verify').send({ email, code });
+  expect(verifyRes.status).toBe(200);
+  return verifyRes.body.verifyToken as string;
+}
+
+/** Places a real order as a guest (only guest orders mint an OrderAccessToken
+ *  — see order.service.ts's checkout()) and returns it plus the raw tracking
+ *  token minted at checkout — captured from the mocked confirmation email's
+ *  `orderUrl` argument, the same value a guest would get by clicking the
+ *  link in their real inbox. */
 async function placeOrder(email: string, phone = delivery.deliveryPhone) {
-  const { token: authToken } = await createUser({ role: 'CUSTOMER', email });
-  await request(app).post('/api/cart/items').set(bearer(authToken)).send({ variantId, quantity: 1 });
-  const res = await request(app)
+  const agent = request.agent(app);
+  await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+  const emailVerifyToken = await getEmailVerifyToken(agent, email);
+
+  mockConfirmEmail.mockClear();
+  const res = await agent
     .post('/api/orders/checkout')
-    .set(bearer(authToken))
-    .send({ ...delivery, deliveryPhone: phone });
+    .send({ ...delivery, deliveryPhone: phone, guestEmail: email, emailVerifyToken });
   expect(res.status).toBe(201);
 
   const call = mockConfirmEmail.mock.calls.at(-1)!;
   const trackingToken = tokenFromUrl(call[2] as string);
   return { orderId: res.body.order.id as string, orderNumber: res.body.order.orderNumber as string, trackingToken };
 }
+
+describe('OrderAccessToken is minted for guest orders only', () => {
+  it('a guest checkout mints exactly one token and the confirmation email links to /orders/track/:token', async () => {
+    const { orderId } = await placeOrder('scoped-guest@test.dev');
+
+    expect(await prisma.orderAccessToken.count({ where: { orderID: orderId } })).toBe(1);
+    const call = mockConfirmEmail.mock.calls.at(-1)!;
+    expect(call[2] as string).toContain('/orders/track/');
+  });
+
+  it('a logged-in checkout mints no token — the confirmation email links directly to /orders/[id]', async () => {
+    const { token: authToken } = await createCustomer(); // emailVerified defaults true — skips OTP
+    await request(app).post('/api/cart/items').set(bearer(authToken)).send({ variantId, quantity: 1 });
+
+    mockConfirmEmail.mockClear();
+    const res = await request(app).post('/api/orders/checkout').set(bearer(authToken)).send(delivery);
+    expect(res.status).toBe(201);
+    const orderId = res.body.order.id as string;
+
+    expect(await prisma.orderAccessToken.count({ where: { orderID: orderId } })).toBe(0);
+    const call = mockConfirmEmail.mock.calls.at(-1)!;
+    const orderUrl = call[2] as string;
+    expect(orderUrl).not.toContain('/orders/track/');
+    expect(orderUrl).toContain(`/orders/${orderId}`);
+  });
+});
 
 describe('GET /api/orders/track/:token', () => {
   it('returns the order for a valid token', async () => {

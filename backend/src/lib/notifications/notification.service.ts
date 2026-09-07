@@ -62,12 +62,14 @@ export async function sendOwnerCancellationNotification(
  * Fires every order-placed notification (customer email, owner email + push)
  * for a freshly created order. Intended to be called fire-and-forget, after
  * the order's transaction has committed — never throws, so a notification
- * failure can never affect the checkout response. `trackingUrl` is built
- * from a fresh OrderAccessToken (see order.service.ts's checkout()).
+ * failure can never affect the checkout response. `orderUrl` is either a
+ * guest tracking link (a fresh OrderAccessToken) or, for a logged-in
+ * customer, a direct link to /orders/[id] — see order.service.ts's
+ * checkout().
  */
-export async function sendOrderPlacedNotifications(order: OrderWithItems, trackingUrl: string): Promise<void> {
+export async function sendOrderPlacedNotifications(order: OrderWithItems, orderUrl: string): Promise<void> {
   await Promise.all([
-    order.guestEmail ? sendOrderConfirmationEmail(order.guestEmail, order, trackingUrl) : Promise.resolve(false),
+    order.guestEmail ? sendOrderConfirmationEmail(order.guestEmail, order, orderUrl) : Promise.resolve(false),
     sendOwnerNotification(order),
   ]);
 }
