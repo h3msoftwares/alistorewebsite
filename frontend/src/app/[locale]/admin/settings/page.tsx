@@ -222,6 +222,7 @@ export default function AdminSettingsPage() {
     register,
     control,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<SettingsForm>({ resolver: zodResolver(settingsFormSchema), values });
   const { fields, append, remove } = useFieldArray({ control, name: 'announcementLines' });
@@ -239,6 +240,16 @@ export default function AdminSettingsPage() {
       .filter((v, i, a) => a.indexOf(v) === i)
       .map((v) => ({ value: v, label: v })),
   ];
+
+  // Controlled checkbox group: RHF's uncontrolled array-of-checkboxes pattern
+  // doesn't round-trip cleanly through `useForm({ values })`, so drive it by hand.
+  const freeRegions = useWatch({ control, name: 'freeDeliveryRegions' }) ?? [];
+  const toggleFreeRegion = (value: string, checked: boolean) => {
+    const next = checked
+      ? [...new Set([...freeRegions, value])]
+      : freeRegions.filter((v) => v !== value);
+    setValue('freeDeliveryRegions', next, { shouldDirty: true });
+  };
 
   const busy = updateSettings.isPending;
 
@@ -580,9 +591,9 @@ export default function AdminSettingsPage() {
               <Choice
                 key={r.value}
                 type="checkbox"
-                value={r.value}
                 label={r.label}
-                {...register('freeDeliveryRegions')}
+                checked={freeRegions.includes(r.value)}
+                onChange={(e) => toggleFreeRegion(r.value, e.target.checked)}
                 disabled={busy}
               />
             ))}
