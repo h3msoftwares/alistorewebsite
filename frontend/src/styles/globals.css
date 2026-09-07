@@ -881,6 +881,24 @@ main > .container.section:first-child {
 }
 [lang='ar'] .hero__aside { align-items: flex-start; text-align: start; }
 
+.hero__welcome {
+  /* Same scale as .hero__title — a proper top-of-page greeting, not a caption. */
+  margin: 0 0 var(--space-5);
+  font-size: clamp(1.9rem, 1.1rem + 4.5vw, 3.5rem);
+  line-height: 1.08;
+  font-weight: 700;
+  text-wrap: balance;
+  color: var(--color-text-on-dark);
+}
+/* Desktop band is tall and the lead column is vertically centred, leaving a
+   lot of dead space above the copy. With the greeting present, pin the column
+   to the top so it reads from just under the nav. */
+@media (min-width: 901px) {
+  .hero__lead--greeted {
+    align-self: start;
+    padding-block-start: clamp(1rem, 6vh, 4rem);
+  }
+}
 .hero__eyebrow { color: var(--bright-gold); }
 .hero__title {
   /* own clamp with a smaller floor than --fs-4xl so it doesn't dominate a phone */
