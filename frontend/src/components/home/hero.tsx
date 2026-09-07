@@ -1,19 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useAuth } from '@/hooks/use-auth';
 import { useSettings } from '@/hooks/use-settings';
 import { useNavCollections } from '@/hooks/use-catalog';
 import { useReveal } from '@/hooks/use-reveal';
-
-// `false` on the server and on the hydration render, `true` afterwards — so
-// the auth-dependent greeting is never part of the markup React diffs at
-// hydration (the root auth bootstrap can resolve before this island
-// hydrates, which would otherwise be a text mismatch).
-const subscribe = () => () => {};
-const useHydrated = () => useSyncExternalStore(subscribe, () => true, () => false);
 
 /**
  * Home hero: a full-bleed near-black band (== --color-secondary) filling the
@@ -37,8 +29,6 @@ const useHydrated = () => useSyncExternalStore(subscribe, () => true, () => fals
 export function Hero({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
-  const { user, isAuthenticated } = useAuth();
-  const greetName = useHydrated() && isAuthenticated ? user?.name : undefined;
   const { data: settings } = useSettings();
   const { data: navCollections } = useNavCollections();
 
@@ -100,14 +90,7 @@ export function Hero({ locale }: { locale: string }) {
   return (
     <section ref={ref} className="hero" data-home-hero aria-labelledby="hero-title">
       <div className="hero__inner">
-        <div
-          ref={leadRef}
-          className={`hero__lead ${greetName ? 'hero__lead--greeted' : ''} ${leadClass}`}
-          style={leadStyle}
-        >
-          {greetName && (
-            <p className="hero__welcome">{t(`Welcome, ${greetName}`, `أهلاً، ${greetName}`)}</p>
-          )}
+        <div ref={leadRef} className={`hero__lead ${leadClass}`} style={leadStyle}>
           <p className="eyebrow hero__eyebrow">{eyebrow}</p>
           <h1 id="hero-title" className="hero__title">
             {headline}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Heart, Menu, Search, ShoppingBag, User } from 'lucide-react';
@@ -19,10 +19,25 @@ import { CartDrawer } from './cart-drawer';
 import { FavouritesDrawer } from './favourites-drawer';
 import { LogoutButton } from './logout-button';
 
+// `false` on the server + the hydration render, `true` afterwards — the root
+// auth bootstrap can flip the store to "authenticated" before this island
+// hydrates, so gate any authed-only markup on this to avoid a mismatch.
+const subscribe = () => () => {};
+const useHydrated = () => useSyncExternalStore(subscribe, () => true, () => false);
+
+/** "Mohammad Ali" → "MA"; one word → its first two letters. */
+export function initialsOf(name: string | null | undefined): string {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 /**
  * The sticky topbar: hamburger (mobile) · logo · collection switcher · actions.
  * The switcher is the owner-curated set of collections (`showInNav`, ordered by
- * `sortOrder`). Actions: search, favourites, cart, and account-or-login.
+ * `sortOrder`). Actions: search, favourites, cart, and account-or-login — the
+ * account action becomes an initials avatar once the shopper is signed in.
  */
 export function Topbar({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
@@ -36,7 +51,8 @@ export function Topbar({ locale }: { locale: string }) {
 
   const cartCount = useAppSelector(selectCartCount);
   const favCount = useAppSelector(selectFavouritesCount);
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
+  const signedIn = useHydrated() && isAuthenticated;
 
   const { data: navCollections, isPending: navPending } = useNavCollections();
   const { data: settings } = useSettings();
@@ -73,7 +89,7 @@ export function Topbar({ locale }: { locale: string }) {
     };
   }, [pathname]);
 
-  const accountHref = isAuthenticated ? `/${locale}/account` : `/${locale}/login`;
+  const accountHref = signedIn ? `/${locale}/account` : `/${locale}/login`;
 
   return (
     <header className="site-header topbar" data-scrolled={scrolled} data-on-dark={onDark}>
@@ -156,16 +172,26 @@ export function Topbar({ locale }: { locale: string }) {
             )}
           </span>
 
-          <Link
-            href={accountHref}
-            className="icon-btn topbar__account"
-            aria-label={isAuthenticated ? t('Account', 'الحساب') : t('Log in', 'تسجيل الدخول')}
-          >
-            <Icon as={User} />
-            <span className="topbar__account-label">
-              {isAuthenticated ? t('Account', 'الحساب') : t('Log in', 'دخول')}
-            </span>
-          </Link>
+          {signedIn ? (
+            <Link
+              href={`/${locale}/account`}
+              className="icon-btn topbar__account topbar__account--avatar"
+              aria-label={t('Account', 'الحساب')}
+            >
+              <span className="topbar__avatar" aria-hidden="true">
+                {initialsOf(user?.name)}
+              </span>
+            </Link>
+          ) : (
+            <Link
+              href={`/${locale}/login`}
+              className="icon-btn topbar__account"
+              aria-label={t('Log in', 'تسجيل الدخول')}
+            >
+              <Icon as={User} />
+              <span className="topbar__account-label">{t('Log in', 'دخول')}</span>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -197,7 +223,7 @@ export function Topbar({ locale }: { locale: string }) {
             {t('Favourites', 'المفضّلة')}
           </Link>
           <Link href={accountHref} className="drawer__nav-link" onClick={() => setMenuOpen(false)}>
-            {isAuthenticated ? t('Account', 'الحساب') : t('Log in', 'تسجيل الدخول')}
+            {signedIn ? t('Account', 'الحساب') : t('Log in', 'تسجيل الدخول')}
           </Link>
           <Link
             href={isAr ? '/en' : '/ar'}
@@ -206,7 +232,7 @@ export function Topbar({ locale }: { locale: string }) {
           >
             {isAr ? 'English' : 'العربية'}
           </Link>
-          {isAuthenticated && <LogoutButton locale={locale} variant="nav" onDone={() => setMenuOpen(false)} />}
+          {signedIn && <LogoutButton locale={locale} variant="nav" onDone={() => setMenuOpen(false)} />}
         </nav>
       </Drawer>
     </header>
