@@ -23,6 +23,7 @@ import { useSettings, useUpdateSettings } from '@/hooks/use-settings';
 import { DELIVERY_REGIONS } from '@/lib/regions';
 import type { SiteSettingsBody } from '@/lib/types';
 import { CurationPanel } from './curation-panel';
+import { NotificationsPanel } from './notifications-panel';
 
 // http(s) only — these render as `<a href>` in the storefront footer, so a
 // `javascript:` / `data:` value would be stored XSS. Mirrors the API's
@@ -103,7 +104,7 @@ const blankRate = { region: '', fee: 0 };
 // for navigation and as the unit the search box filters. `terms` is extra
 // searchable text (field labels, synonyms, both languages) so a query like
 // "shipping" or "واتساب" lands on the right tab.
-type TabId = 'brand' | 'announcement' | 'hero' | 'delivery' | 'curation';
+type TabId = 'brand' | 'announcement' | 'hero' | 'delivery' | 'curation' | 'notifications';
 
 const SECTIONS: { id: TabId; en: string; ar: string; terms: string }[] = [
   {
@@ -145,6 +146,14 @@ const SECTIONS: { id: TabId; en: string; ar: string; terms: string }[] = [
     terms:
       'navigation nav menu top nav home page featured collections categories sort order show on home in nav curation ' +
       'التنقل القائمة الرئيسية المميزة المجموعات الفئات ترتيب العرض إظهار في الرئيسية في التنقل',
+  },
+  {
+    id: 'notifications',
+    en: 'Notifications',
+    ar: 'الإشعارات',
+    terms:
+      'notifications push order alert alerts enable device browser web push ' +
+      'إشعارات فورية تنبيه طلب تفعيل جهاز متصفح',
   },
 ];
 
@@ -577,6 +586,10 @@ export default function AdminSettingsPage() {
 
       <div id="set-curation" hidden={!shows('curation')} style={{ marginTop: 'var(--space-6)' }}>
         <CurationPanel locale={locale} />
+      </div>
+
+      <div id="set-notifications" hidden={!shows('notifications')} style={{ marginTop: 'var(--space-6)' }}>
+        <NotificationsPanel locale={locale} />
       </div>
     </div>
   );

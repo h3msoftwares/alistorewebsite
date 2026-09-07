@@ -8,6 +8,7 @@ export * as analyticsApi from './analytics';
 export * as accountApi from './account';
 export * as uploadsApi from './uploads';
 export * as settingsApi from './settings';
+export * as pushApi from './push';
 
 export { api, apiRequest, API_URL, refreshAccessToken } from './client';
 export { ApiError, isApiError } from './errors';
