@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useAuth } from '@/hooks/use-auth';
 import { useSettings } from '@/hooks/use-settings';
 import { useNavCollections } from '@/hooks/use-catalog';
 import { useReveal } from '@/hooks/use-reveal';
@@ -29,6 +30,7 @@ import { useReveal } from '@/hooks/use-reveal';
 export function Hero({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const { user, isAuthenticated } = useAuth();
   const { data: settings } = useSettings();
   const { data: navCollections } = useNavCollections();
 
@@ -90,7 +92,14 @@ export function Hero({ locale }: { locale: string }) {
   return (
     <section ref={ref} className="hero" data-home-hero aria-labelledby="hero-title">
       <div className="hero__inner">
-        <div ref={leadRef} className={`hero__lead ${leadClass}`} style={leadStyle}>
+        <div
+          ref={leadRef}
+          className={`hero__lead ${isAuthenticated && user?.name ? 'hero__lead--greeted' : ''} ${leadClass}`}
+          style={leadStyle}
+        >
+          {isAuthenticated && user?.name && (
+            <p className="hero__welcome">{t(`Welcome, ${user.name}`, `أهلاً، ${user.name}`)}</p>
+          )}
           <p className="eyebrow hero__eyebrow">{eyebrow}</p>
           <h1 id="hero-title" className="hero__title">
             {headline}
