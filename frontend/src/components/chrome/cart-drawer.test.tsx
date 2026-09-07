@@ -131,6 +131,36 @@ describe('<CartDrawer>', () => {
     expect(mock.updateCartItem).toHaveBeenCalledWith('item-1', { quantity: 3, variantId: undefined });
   });
 
+  const siblingVariants = [
+    { id: 'v1', size: '2-3Y', color: 'Yellow' },
+    { id: 'v2', size: '4-5Y', color: 'Yellow' },
+    { id: 'v3', size: '2-3Y', color: 'Blue' },
+  ];
+
+  it('lets the shopper change size/color in the drawer (same picker as the cart page)', async () => {
+    const user = userEvent.setup();
+    mock.getCart.mockResolvedValue(cart([makeItem({}, { variants: siblingVariants })], 24) as never);
+    mock.updateCartItem.mockResolvedValue({ id: 'item-1', variantID: 'v2' } as never);
+    renderDrawer();
+
+    await screen.findByText('Everyday Cotton T-Shirt');
+    await user.click(screen.getByRole('button', { name: 'Change' }));
+
+    expect(screen.getByLabelText('Size')).toHaveValue('2-3Y');
+    expect(screen.getByLabelText('Color')).toHaveValue('Yellow');
+
+    await user.selectOptions(screen.getByLabelText('Size'), '4-5Y');
+    expect(mock.updateCartItem).toHaveBeenCalledWith('item-1', { quantity: undefined, variantId: 'v2' });
+  });
+
+  it('shows no "Change" control when the product has a single variant', async () => {
+    mock.getCart.mockResolvedValue(cart([makeItem()], 24) as never); // variants: [] by default
+    renderDrawer();
+    await screen.findByText('Everyday Cotton T-Shirt');
+    expect(screen.queryByRole('button', { name: 'Change' })).not.toBeInTheDocument();
+    expect(screen.getByText('2-3Y · Yellow')).toBeInTheDocument();
+  });
+
   it('removing an item live-updates the drawer (row disappears, subtotal reflects the fresh fetch)', async () => {
     const user = userEvent.setup();
     const itemA = makeItem({ id: 'item-a' });

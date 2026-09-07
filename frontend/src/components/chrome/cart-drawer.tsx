@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { ShoppingBag } from 'lucide-react';
 import { Drawer } from '@/components/ui/drawer';
 import { Button, EmptyState, PriceTag, QuantityStepper, Skeleton } from '@/components/ui';
+import { CartVariantPicker } from '@/components/cart/cart-variant-picker';
 import { useCart, useRemoveCartItem, useUpdateCartItem } from '@/hooks/use-cart';
 import { cartItemToGaItem, trackRemoveFromCart } from '@/lib/analytics/ga';
 import type { CartItem } from '@/lib/types';
@@ -21,8 +22,9 @@ import type { CartItem } from '@/lib/types';
  * every page, not just /cart. That's deliberate: it's what keeps the header
  * badge correct app-wide instead of only after visiting the cart page.
  *
- * Size/color is shown as text only, not editable here — that control lives on
- * the full cart page; the drawer stays a quick glance/adjust-quantity surface.
+ * Size/color, quantity and remove are all editable here — the same
+ * <CartVariantPicker> the full /cart page uses, so the two surfaces behave
+ * identically.
  */
 export function CartDrawer({
   open,
@@ -145,7 +147,6 @@ function CartDrawerRow({
   const { product } = item.variant;
   const name = isAr ? product.nameAr : product.nameEn;
   const image = product.images[0];
-  const variantBits = [item.variant.size, item.variant.color].filter(Boolean).join(' · ');
 
   return (
     <div aria-busy={busy || undefined} style={{ display: 'flex', gap: 'var(--space-3)' }}>
@@ -178,7 +179,7 @@ function CartDrawerRow({
         >
           {name}
         </Link>
-        {variantBits && <span style={{ color: 'var(--color-text-muted)' }}>{variantBits}</span>}
+        <CartVariantPicker item={item} locale={locale as 'en' | 'ar'} disabled={busy} />
         <PriceTag
           price={product.price}
           compareAtPrice={product.compareAtPrice}
