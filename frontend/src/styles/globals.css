@@ -1848,6 +1848,30 @@ a.home-card__name:hover { text-decoration: underline; }
 .stat-tile__value { font-size: var(--fs-xl); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
 .stat-tile__hint { font-size: var(--fs-xs); color: var(--color-text-muted); }
 
+/* Admin dashboard (landing page) — clickable stat tiles + shortcut row. */
+.admin-dashboard { display: flex; flex-direction: column; gap: var(--space-6); }
+.stat-tile--link {
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.stat-tile--link:hover { border-color: var(--color-primary); box-shadow: var(--shadow-sm); }
+.admin-dashboard__quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.admin-dashboard__quick-label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+.admin-dashboard__section-title { margin: 0; font-size: var(--fs-lg); }
+.admin-dashboard__see-all { font-size: var(--fs-sm); color: var(--color-text-muted); }
+.admin-dashboard__see-all:hover { color: var(--color-text); }
+
 .chart-card {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

@@ -1,7 +1,142 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+'use client';
 
-// TODO: sales dashboard — total orders, pending orders, revenue
-// (GET /api/admin/dashboard), charted with Recharts.
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { Button, DataTable, EmptyState, ProductGridSkeleton, StatusPill } from '@/components/ui';
+import { StatGrid } from '@/components/admin/analytics';
+import { useAdminDashboard } from '@/hooks/use-orders';
+
+/** Admin landing page: an at-a-glance "what needs attention" view. The
+ *  date-ranged deep dives live under /admin/analytics — this page is the
+ *  operational hub (open work + shortcuts), not another analytics report. */
 export default function AdminDashboardPage() {
-  return <PagePlaceholder title="Admin Dashboard" />;
+  const params = useParams();
+  const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
+  const base = `/${locale}/admin`;
+
+  const money = (n: number) =>
+    new Intl.NumberFormat(isAr ? 'ar-EG' : 'en-US', {
+      style: 'currency',
+      currency: 'USD',
+      numberingSystem: 'latn',
+    }).format(n);
+  const date = (iso: string) =>
+    new Date(iso).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+
+  const { data, isPending, isError, refetch } = useAdminDashboard();
+
+  return (
+    <div className="section--tight">
+      <div className="admin-page__head">
+        <h1>{t('Dashboard', 'لوحة التحكم')}</h1>
+      </div>
+
+      {isPending ? (
+        <ProductGridSkeleton count={4} />
+      ) : isError ? (
+        <EmptyState
+          tone="alert"
+          title={t("Couldn't load the dashboard", 'تعذّر تحميل لوحة التحكم')}
+          action={
+            <Button variant="primary" onClick={() => refetch()}>
+              {t('Retry', 'إعادة المحاولة')}
+            </Button>
+          }
+        />
+      ) : (
+        <div className="admin-dashboard">
+          <StatGrid>
+            <Link className="stat-tile stat-tile--link" href={`${base}/orders`}>
+              <span className="stat-tile__label">{t('Pending orders', 'طلبات قيد الانتظار')}</span>
+              <span className="stat-tile__value">{data.pendingOrders}</span>
+              <span className="stat-tile__hint">
+                {t(`of ${data.totalOrders} total`, `من ${data.totalOrders} إجمالاً`)}
+              </span>
+            </Link>
+
+            <Link className="stat-tile stat-tile--link" href={`${base}/orders`}>
+              <span className="stat-tile__label">{t('Flagged for review', 'معلَّمة للمراجعة')}</span>
+              <span className="stat-tile__value">{data.flaggedOrders}</span>
+              <span className="stat-tile__hint">{t('anti-abuse velocity flags', 'إشارات كثرة الطلبات')}</span>
+            </Link>
+
+            <Link className="stat-tile stat-tile--link" href={`${base}/orders`}>
+              <span className="stat-tile__label">{t('Awaiting COD', 'بانتظار تحصيل الدفع')}</span>
+              <span className="stat-tile__value">{data.awaitingCodCollection}</span>
+              <span className="stat-tile__hint">{t('delivered, not collected', 'تم التسليم دون تحصيل')}</span>
+            </Link>
+
+            <Link className="stat-tile stat-tile--link" href={`${base}/analytics/inventory`}>
+              <span className="stat-tile__label">{t('Low / out of stock', 'مخزون منخفض / نافد')}</span>
+              <span className="stat-tile__value">{data.lowStockVariants + data.outOfStockVariants}</span>
+              <span className="stat-tile__hint">
+                {t(`${data.outOfStockVariants} out of stock`, `${data.outOfStockVariants} نافد`)}
+              </span>
+            </Link>
+          </StatGrid>
+
+          <div className="admin-dashboard__quick">
+            <span className="admin-dashboard__quick-label">{t('Quick actions', 'إجراءات سريعة')}</span>
+            <Link className="btn btn--outline btn--sm" href={`${base}/products/new`}>
+              {t('New product', 'منتج جديد')}
+            </Link>
+            <Link className="btn btn--outline btn--sm" href={`${base}/collections/new`}>
+              {t('New collection', 'مجموعة جديدة')}
+            </Link>
+            <Link className="btn btn--outline btn--sm" href={`${base}/settings`}>
+              {t('Settings', 'الإعدادات')}
+            </Link>
+          </div>
+
+          <section>
+            <div className="admin-page__head">
+              <h2 className="admin-dashboard__section-title">{t('Recent orders', 'أحدث الطلبات')}</h2>
+              <Link className="admin-dashboard__see-all" href={`${base}/orders`}>
+                {t('See all', 'عرض الكل')}
+              </Link>
+            </div>
+
+            {data.recentOrders.length === 0 ? (
+              <EmptyState title={t('No orders yet', 'لا توجد طلبات بعد')} />
+            ) : (
+              <DataTable responsive>
+                <thead>
+                  <tr>
+                    <th>{t('Order', 'الطلب')}</th>
+                    <th>{t('Customer', 'الزبون')}</th>
+                    <th>{t('Date', 'التاريخ')}</th>
+                    <th className="is-numeric">{t('Total', 'الإجمالي')}</th>
+                    <th>{t('Status', 'الحالة')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.recentOrders.map((o) => (
+                    <tr key={o.id}>
+                      <td data-label={t('Order', 'الطلب')}>
+                        <Link href={`${base}/orders`}>{o.orderNumber}</Link>
+                      </td>
+                      <td data-label={t('Customer', 'الزبون')}>{o.deliveryName}</td>
+                      <td data-label={t('Date', 'التاريخ')}>{date(o.dateCreated)}</td>
+                      <td className="is-numeric" data-label={t('Total', 'الإجمالي')}>
+                        {money(Number(o.total))}
+                      </td>
+                      <td data-label={t('Status', 'الحالة')}>
+                        <StatusPill status={o.status} locale={locale} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </DataTable>
+            )}
+          </section>
+        </div>
+      )}
+    </div>
+  );
 }

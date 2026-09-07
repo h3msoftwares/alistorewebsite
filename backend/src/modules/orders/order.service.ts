@@ -458,16 +458,60 @@ export async function markCodCollected(id: string, collected: boolean, actorId?:
   return updated;
 }
 
+// A variant with 1..LOW_STOCK_THRESHOLD units left counts as "low stock" on the
+// dashboard tile; matches the analytics module's default lowStockThreshold.
+const LOW_STOCK_THRESHOLD = 5;
+
 export async function salesDashboard() {
-  const [totalOrders, pendingOrders, deliveredRevenue] = await Promise.all([
+  const [
+    totalOrders,
+    pendingOrders,
+    deliveredRevenue,
+    flaggedOrders,
+    awaitingCodCollection,
+    lowStockVariants,
+    outOfStockVariants,
+    recentOrders,
+  ] = await Promise.all([
     prisma.order.count(),
     prisma.order.count({ where: { status: 'PENDING' } }),
     // Merchandise revenue — excludes the delivery fee (tracked separately).
     prisma.order.aggregate({ where: { status: 'DELIVERED' }, _sum: { subtotal: true } }),
+    // Orders an anti-abuse velocity check flagged and no admin has cleared yet.
+    prisma.order.count({ where: { flaggedForReview: true } }),
+    // Delivered COD orders where the cash hasn't been marked collected.
+    prisma.order.count({
+      where: { paymentMethod: 'COD', paymentStatus: 'PENDING', status: 'DELIVERED' },
+    }),
+    prisma.productVariant.count({
+      where: { stockQuantity: { gt: 0, lte: LOW_STOCK_THRESHOLD }, product: { deletedAt: null } },
+    }),
+    prisma.productVariant.count({
+      where: { stockQuantity: { lte: 0 }, product: { deletedAt: null } },
+    }),
+    prisma.order.findMany({
+      orderBy: { dateCreated: 'desc' },
+      take: 8,
+      select: {
+        id: true,
+        orderNumber: true,
+        deliveryName: true,
+        total: true,
+        status: true,
+        paymentStatus: true,
+        flaggedForReview: true,
+        dateCreated: true,
+      },
+    }),
   ]);
   return {
     totalOrders,
     pendingOrders,
     totalRevenue: Number(deliveredRevenue._sum.subtotal ?? 0),
+    flaggedOrders,
+    awaitingCodCollection,
+    lowStockVariants,
+    outOfStockVariants,
+    recentOrders,
   };
 }

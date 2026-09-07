@@ -113,6 +113,8 @@ export function useMarkOrderCollected() {
     onSuccess: (order) => {
       qc.setQueryData(queryKeys.orders.detail(order.id), order);
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
+      // dashboard "Awaiting COD" tile
+      qc.invalidateQueries({ queryKey: queryKeys.orders.dashboard() });
     },
   });
 }
@@ -124,6 +126,8 @@ export function useReviewOrder() {
     onSuccess: (order) => {
       qc.setQueryData(queryKeys.orders.detail(order.id), order);
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
+      // dashboard "Flagged for review" tile
+      qc.invalidateQueries({ queryKey: queryKeys.orders.dashboard() });
     },
   });
 }
@@ -135,6 +139,8 @@ export function useUpdateVariantStock() {
       ordersApi.adminUpdateVariantStock(variantId, stockQuantity),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.products.all() });
+      // dashboard "Low / out of stock" tile
+      qc.invalidateQueries({ queryKey: queryKeys.orders.dashboard() });
     },
   });
 }
