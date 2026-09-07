@@ -116,6 +116,15 @@ function trackingUrl(rawToken: string): string {
   return `${env.FRONTEND_URL.replace(/\/+$/, '')}/en/orders/track/${rawToken}`;
 }
 
+// A logged-in customer already has a real session and /orders/[id] — no
+// bearer-token credential needed, so their confirmation email links there
+// directly instead. /orders/[id] prompts an unauthenticated visitor to sign
+// in first (?next= brings them straight back), covering the case where the
+// email is opened on a different device/browser.
+function accountOrderUrl(orderId: string): string {
+  return `${env.FRONTEND_URL.replace(/\/+$/, '')}/en/orders/${orderId}`;
+}
+
 const DISABLED_CONFIG: DeliveryConfig = {
   deliveryFeeEnabled: false,
   deliveryFeeFlat: 0,
@@ -173,7 +182,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     throw new AppError('VALIDATION_ERROR', 'No cart owner (user or guest session) provided');
   }
 
-  let rawAccessToken!: string;
+  let rawAccessToken: string | undefined;
   const order = await prisma.$transaction(async (tx) => {
     // A saved-address reference must belong to the person checking out. Without
     // this, an authenticated user could pass another user's Address id — it
@@ -377,11 +386,14 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       });
     }
 
-    // Every order gets a guest-accessible tracking link — cheap for a
-    // logged-in order (they have /orders/[id] as their primary view) and the
-    // whole point for a guest one. Minted in the same transaction as the
-    // order itself, so it can never exist without a real order behind it.
-    rawAccessToken = await mintAccessToken(tx, order.id);
+    // Only a guest order needs a bearer-token tracking link — a logged-in
+    // customer already has a real session and /orders/[id]; minting one for
+    // them would just be an unnecessary extra credential. Minted in the
+    // same transaction as the order itself, so it can never exist without a
+    // real order behind it.
+    if (!owner.userID) {
+      rawAccessToken = await mintAccessToken(tx, order.id);
+    }
 
     return order;
   });
@@ -400,7 +412,8 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
   // and a slow SMTP call can never hold the DB transaction open. Never
   // throws (see notification.service.ts), so a delivery failure can't
   // affect this response either.
-  void sendOrderPlacedNotifications(order, trackingUrl(rawAccessToken)).catch((err) => {
+  const orderUrl = rawAccessToken ? trackingUrl(rawAccessToken) : accountOrderUrl(order.id);
+  void sendOrderPlacedNotifications(order, orderUrl).catch((err) => {
     console.error('[order.service] failed to send order-placed notifications', err);
   });
 
