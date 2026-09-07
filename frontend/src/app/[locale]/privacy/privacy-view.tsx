@@ -82,14 +82,16 @@ function EnglishPrivacy({ brand, contactEmail }: { brand: string; contactEmail: 
       <ul>
         <li>
           <strong>Strictly necessary cookies</strong> — an authentication cookie to keep you signed
-          in (HttpOnly), a security cookie for cross-site-request-forgery protection, a guest
-          cart-session cookie, and a language/locale preference cookie. The site cannot function
-          without these.
+          in (HttpOnly), a security cookie for cross-site-request-forgery protection, and a guest
+          cart-session cookie. The site cannot function without these, so they are not subject to
+          the choice below.
         </li>
         <li>
-          <strong>Analytics cookies (Google Analytics 4)</strong> — when analytics is enabled for
-          this store, Google Analytics sets its own cookies (e.g. <code>_ga</code>) to measure
-          aggregate, non-identifying usage. If analytics is not configured, no such cookies are set.
+          <strong>Analytics cookies (Google Analytics 4)</strong> — set only if you choose
+          &quot;Accept All&quot; in our cookie banner and analytics is configured for this store.
+          Google Analytics then sets its own cookies (e.g. <code>_ga</code>) to measure aggregate,
+          non-identifying usage. Choosing &quot;Necessary Only&quot; leaves them off, and if
+          analytics is not configured none are set regardless.
         </li>
         <li>
           <strong>hCaptcha</strong> — on the checkout email-verification step we load hCaptcha, an
@@ -98,8 +100,9 @@ function EnglishPrivacy({ brand, contactEmail }: { brand: string; contactEmail: 
         </li>
       </ul>
       <p style={{ color: 'var(--color-text-muted)' }}>
-        We do not use advertising or cross-site tracking cookies. If this store is operated for
-        visitors in the EU/UK, a cookie-consent mechanism should be added before enabling analytics.
+        We do not use advertising or cross-site tracking cookies. On your first visit a banner lets
+        you choose &quot;Accept All&quot; or &quot;Necessary Only&quot;; you can change that choice
+        at any time from &quot;Cookie preferences&quot; in the site footer.
       </p>
 
       <h2>2. How We Use Your Information</h2>
@@ -263,13 +266,14 @@ function ArabicPrivacy({ brand, contactEmail }: { brand: string; contactEmail: s
       <ul>
         <li>
           <strong>ملفات ضرورية للغاية</strong> — ملف مصادقة لإبقائك مسجّلاً للدخول (HttpOnly)، وملف
-          أمان للحماية من تزوير الطلبات عبر المواقع، وملف جلسة سلّة للضيوف، وملف تفضيل اللغة/المنطقة.
-          ولا يمكن للموقع العمل بدونها.
+          أمان للحماية من تزوير الطلبات عبر المواقع، وملف جلسة سلّة للضيوف. ولا يمكن للموقع العمل
+          بدونها، لذا فهي غير خاضعة للاختيار أدناه.
         </li>
         <li>
-          <strong>ملفات تحليلات (Google Analytics 4)</strong> — عند تفعيل التحليلات لهذا المتجر، تضع
-          Google Analytics ملفاتها الخاصة (مثل <code>_ga</code>) لقياس الاستخدام الإجمالي غير
-          المُعرِّف. وإذا لم تكن التحليلات مُهيّأة، فلا تُوضَع مثل هذه الملفات.
+          <strong>ملفات تحليلات (Google Analytics 4)</strong> — لا تُوضَع إلا إذا اخترت «قبول الكل»
+          في شريط ملفات تعريف الارتباط وكانت التحليلات مُهيّأة لهذا المتجر. عندها تضع Google Analytics
+          ملفاتها الخاصة (مثل <code>_ga</code>) لقياس الاستخدام الإجمالي غير المُعرِّف. واختيار
+          «الضرورية فقط» يُبقيها متوقّفة، وإذا لم تكن التحليلات مُهيّأة فلا تُوضَع أي منها على أي حال.
         </li>
         <li>
           <strong>hCaptcha</strong> — في خطوة تأكيد البريد الإلكتروني عند إتمام الطلب نحمّل hCaptcha،
@@ -278,9 +282,9 @@ function ArabicPrivacy({ brand, contactEmail }: { brand: string; contactEmail: s
         </li>
       </ul>
       <p style={{ color: 'var(--color-text-muted)' }}>
-        لا نستخدم ملفات تعريف ارتباط للإعلانات أو للتتبّع عبر المواقع. وإذا كان هذا المتجر يُشغَّل
-        لزوّار في الاتحاد الأوروبي/المملكة المتحدة، فينبغي إضافة آلية للموافقة على ملفات تعريف الارتباط
-        قبل تفعيل التحليلات.
+        لا نستخدم ملفات تعريف ارتباط للإعلانات أو للتتبّع عبر المواقع. وفي زيارتك الأولى يتيح لك شريط
+        الاختيار بين «قبول الكل» و«الضرورية فقط»، ويمكنك تغيير هذا الاختيار في أي وقت من «تفضيلات ملفات
+        تعريف الارتباط» في تذييل الموقع.
       </p>
 
       <h2>٢. كيف نستخدم معلوماتك</h2>

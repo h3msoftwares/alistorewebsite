@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui';
 import { useAuth } from '@/hooks/use-auth';
 import { useNavCollections } from '@/hooks/use-catalog';
 import { useSettings } from '@/hooks/use-settings';
+import { openConsentSettings } from '@/lib/consent';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 
 /** Defence in depth for the admin-controlled social links: only ever emit an
@@ -143,6 +144,13 @@ export function SiteFooter({ locale }: { locale: string }) {
             <Link className="site-footer__link" href={`/${locale}/privacy`}>
               {t('Privacy policy', 'سياسة الخصوصية')}
             </Link>
+            <button
+              type="button"
+              className="site-footer__link site-footer__link--button"
+              onClick={openConsentSettings}
+            >
+              {t('Cookie preferences', 'تفضيلات ملفات تعريف الارتباط')}
+            </button>
           </div>
         </div>
 
