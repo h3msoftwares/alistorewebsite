@@ -137,12 +137,12 @@ export function SiteFooter({ locale }: { locale: string }) {
             <a className="site-footer__link" href="#">
               {t('Our story', 'قصتنا')}
             </a>
-            <a className="site-footer__link" href="#">
+            <Link className="site-footer__link" href={`/${locale}/delivery-returns`}>
               {t('Delivery & returns', 'التوصيل والإرجاع')}
-            </a>
-            <a className="site-footer__link" href="#">
+            </Link>
+            <Link className="site-footer__link" href={`/${locale}/privacy`}>
               {t('Privacy policy', 'سياسة الخصوصية')}
-            </a>
+            </Link>
           </div>
         </div>
 
