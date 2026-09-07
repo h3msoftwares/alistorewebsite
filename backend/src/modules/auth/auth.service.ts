@@ -112,6 +112,7 @@ export interface RegisterInput {
     phone: string;
     addressLine: string;
     city: string;
+    region?: string;
     area?: string;
     notes?: string;
   };
@@ -170,6 +171,7 @@ export async function register(input: RegisterInput): Promise<void> {
           phone: input.address.phone,
           addressLine: input.address.addressLine,
           city: input.address.city,
+          region: input.address.region ?? null,
           area: input.address.area ?? null,
           notes: input.address.notes ?? null,
           isDefault: true,
