@@ -13,8 +13,8 @@ import { useAuth } from '@/hooks/use-auth';
 import { useAddresses, useProfile } from '@/hooks/use-account';
 import { useCheckout, useDeliveryQuote } from '@/hooks/use-orders';
 import { useRequestCheckoutOtp, useVerifyCheckoutOtp } from '@/hooks/use-checkout-otp';
-import { useSettings } from '@/hooks/use-settings';
-import { DELIVERY_REGIONS, regionLabel } from '@/lib/regions';
+import { useDeliveryRegionOptions } from '@/lib/use-delivery-region-options';
+import { regionLabel } from '@/lib/regions';
 import { formatCurrency } from '@/lib/format';
 import { isApiError } from '@/lib/api';
 import type { CheckoutBody, Order } from '@/lib/types';
@@ -166,23 +166,11 @@ export function CheckoutView({ locale }: { locale: Locale }) {
   const guest = !isAuthenticated;
   const profile = useProfile({ enabled: isAuthenticated });
   const addresses = useAddresses({ enabled: isAuthenticated });
-  const { data: settings } = useSettings();
 
   const checkout = useCheckout();
 
-  // Region options for the delivery-region <select>: the built-in governorates
-  // plus any custom zone the admin has priced (see Settings → Delivery fees).
-  const regionOptions = useMemo(() => {
-    const builtin = new Set<string>(DELIVERY_REGIONS.map((r) => r.value));
-    const custom = (settings?.deliveryRates ?? [])
-      .map((r) => r.region)
-      .filter((v) => v && !builtin.has(v))
-      .filter((v, i, a) => a.indexOf(v) === i);
-    return [
-      ...DELIVERY_REGIONS.map((r) => ({ value: r.value, label: isAr ? r.ar : r.en })),
-      ...custom.map((v) => ({ value: v, label: v })),
-    ];
-  }, [settings?.deliveryRates, isAr]);
+  // The built-in governorates plus any custom zone the admin has priced.
+  const regionOptions = useDeliveryRegionOptions(locale);
 
   const savedAddresses = useMemo(() => addresses.data ?? [], [addresses.data]);
   const hasSaved = isAuthenticated && savedAddresses.length > 0;

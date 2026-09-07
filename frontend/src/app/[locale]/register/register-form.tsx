@@ -8,8 +8,8 @@ import { z } from 'zod';
 import { MailCheck } from 'lucide-react';
 import { Alert, Button, EmptyState, Field, Input, Select, Textarea } from '@/components/ui';
 import { useRegister, useResendVerification } from '@/hooks/use-auth';
+import { useDeliveryRegionOptions } from '@/lib/use-delivery-region-options';
 import { isApiError } from '@/lib/api';
-import { DELIVERY_REGIONS, REGION_VALUES } from '@/lib/regions';
 
 type Locale = 'en' | 'ar';
 
@@ -22,7 +22,7 @@ const schema = z.object({
     phone: z.string().min(6).max(30),
     addressLine: z.string().min(3).max(300),
     city: z.string().min(1).max(120),
-    region: z.enum(REGION_VALUES),
+    region: z.string().trim().min(1).max(60),
     area: z.string().max(120).optional(),
     notes: z.string().max(500).optional(),
   }),
@@ -35,6 +35,7 @@ export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; de
 
   const registerMut = useRegister();
   const resend = useResendVerification();
+  const regionOptions = useDeliveryRegionOptions(locale);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
   const [resent, setResent] = useState(false);
   const [error, setError] = useState<'none' | 'rate-limited' | 'generic'>('none');
@@ -174,11 +175,11 @@ export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; de
           {(p) => (
             <Select {...p} {...register('address.region')} defaultValue="" disabled={busy}>
               <option value="" disabled>
-                {t('Select a governorate', 'اختر محافظة')}
+                {t('Select a region', 'اختر منطقة')}
               </option>
-              {DELIVERY_REGIONS.map((r) => (
-                <option key={r.value} value={r.value}>
-                  {isAr ? r.ar : r.en}
+              {regionOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
                 </option>
               ))}
             </Select>
