@@ -8,6 +8,7 @@ const TABLES = [
   'sitesetting',
   'blacklistentry',
   'checkoutotp',
+  'pushsubscription',
   'stockmovement',
   'orderitem',
   'order',
