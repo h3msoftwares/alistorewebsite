@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as orderService from './order.service';
 import { paramString } from '../../lib/params';
+import { AppError } from '../../lib/AppError';
 
 export async function checkoutHandler(req: Request, res: Response) {
   const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.cartSession };
@@ -27,6 +28,25 @@ export async function getOrderHandler(req: Request, res: Response) {
 export async function cancelOrderHandler(req: Request, res: Response) {
   const order = await orderService.cancelOrder(paramString(req.params.id), req.user!.id);
   res.json({ order });
+}
+
+export async function getOrderByTokenHandler(req: Request, res: Response) {
+  const order = await orderService.getOrderByToken(paramString(req.params.token));
+  res.json({ order });
+}
+
+export async function cancelOrderByTokenHandler(req: Request, res: Response) {
+  const order = await orderService.cancelOrderByToken(paramString(req.params.token));
+  res.json({ order });
+}
+
+export async function lookupOrderHandler(req: Request, res: Response) {
+  const { orderNumber, contact } = req.body as { orderNumber: string; contact: string };
+  const token = await orderService.lookupOrder(orderNumber, contact);
+  if (!token) {
+    throw new AppError('NOT_FOUND', "We couldn't find a matching order. Check the order number and contact info.");
+  }
+  res.json({ token });
 }
 
 // ---- Admin ----

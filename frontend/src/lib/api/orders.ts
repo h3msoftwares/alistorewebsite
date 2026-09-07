@@ -32,6 +32,24 @@ export function cancelOrder(id: UUID) {
   return api.post<{ order: Order }>(`/api/orders/${id}/cancel`).then((r) => r.order);
 }
 
+// ---- Guest tracking — the token itself is the proof of access, no login
+// session needed (the backend doesn't look at req.user for these routes). ----
+
+export function getOrderByToken(token: string) {
+  return api.get<{ order: Order }>(`/api/orders/track/${token}`).then((r) => r.order);
+}
+
+export function cancelOrderByToken(token: string) {
+  return api.post<{ order: Order }>(`/api/orders/track/${token}/cancel`).then((r) => r.order);
+}
+
+/** The manual fallback when a guest doesn't have their tracking link.
+ *  Returns the freshly minted raw token on a match — the caller navigates to
+ *  `/orders/track/${token}`. */
+export function lookupOrder(orderNumber: string, contact: string) {
+  return api.post<{ token: string }>('/api/orders/lookup', { orderNumber, contact }).then((r) => r.token);
+}
+
 // ---- Admin ----
 
 export function adminListOrders(status?: OrderStatus, flagged?: boolean) {
