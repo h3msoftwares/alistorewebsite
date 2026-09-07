@@ -14,19 +14,27 @@ import { isApiError } from '@/lib/api';
 type Locale = 'en' | 'ar';
 
 // Mirrors the backend registerSchema (auth.schema.ts) + createAddressSchema.
-const schema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-  name: z.string().min(1).max(120),
-  address: z.object({
-    phone: z.string().min(6).max(30),
-    addressLine: z.string().min(3).max(300),
-    city: z.string().min(1).max(120),
-    region: z.string().trim().min(1).max(60),
-    area: z.string().max(120).optional(),
-    notes: z.string().max(500).optional(),
-  }),
-});
+// `confirmPassword` is client-only — checked here, then dropped before the
+// request (the backend never sees it).
+const schema = z
+  .object({
+    email: z.string().email(),
+    password: z.string().min(8),
+    confirmPassword: z.string().min(1),
+    name: z.string().min(1).max(120),
+    address: z.object({
+      phone: z.string().min(6).max(30),
+      addressLine: z.string().min(3).max(300),
+      city: z.string().min(1).max(120),
+      region: z.string().trim().min(1).max(60),
+      area: z.string().max(120).optional(),
+      notes: z.string().max(500).optional(),
+    }),
+  })
+  .refine((d) => d.password === d.confirmPassword, {
+    path: ['confirmPassword'],
+    message: 'Passwords do not match',
+  });
 type Values = z.infer<typeof schema>;
 
 export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; defaultEmail?: string }) {
@@ -52,7 +60,14 @@ export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; de
   const onSubmit = handleSubmit(async (values) => {
     setError('none');
     try {
-      await registerMut.mutateAsync({ ...values, locale });
+      // `confirmPassword` is a client-only match check — never sent.
+      await registerMut.mutateAsync({
+        email: values.email,
+        password: values.password,
+        name: values.name,
+        address: values.address,
+        locale,
+      });
       // Always this branch on 201 — the backend's response is identical
       // whether the email was new or already in use. Never infer which.
       setSubmittedEmail(values.email);
@@ -144,6 +159,26 @@ export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; de
         >
           {(p) => (
             <Input {...p} {...register('password')} type="password" autoComplete="new-password" disabled={busy} />
+          )}
+        </Field>
+
+        <Field
+          label={t('Confirm password', 'تأكيد كلمة المرور')}
+          error={
+            errors.confirmPassword &&
+            (errors.confirmPassword.message === 'Passwords do not match'
+              ? t('Passwords do not match.', 'كلمتا المرور غير متطابقتين.')
+              : t('Required', 'مطلوب'))
+          }
+        >
+          {(p) => (
+            <Input
+              {...p}
+              {...register('confirmPassword')}
+              type="password"
+              autoComplete="new-password"
+              disabled={busy}
+            />
           )}
         </Field>
 
