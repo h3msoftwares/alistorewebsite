@@ -88,6 +88,7 @@ model User {
   auditLogs               AuditLog[] // rows where this user was the actor
   stockMovements          StockMovement[] // manual stock adjustments made by this user
   blacklistEntries        BlacklistEntry[] // entries this admin created
+  pushSubscriptions       PushSubscription[] // this admin's opted-in browser/device(s)
 
   @@index([role])
   @@map("user")
@@ -585,6 +586,26 @@ model BlacklistEntry {
   @@unique([type, value])
   @@index([type, value])
   @@map("blacklistentry")
+}
+
+// One row per browser/device an admin has opted into order-alert push
+// notifications on — see notification.service.ts's sendPushToAllAdmins.
+// `endpoint` (the push service URL) is naturally unique per subscription, so
+// saving is an upsert keyed on it: the same browser re-subscribing overwrites
+// its own row instead of creating a duplicate.
+model PushSubscription {
+  id        String   @id @default(uuid()) @db.Uuid
+  userID    String   @db.Uuid
+  endpoint  String   @unique
+  p256dh    String // subscription.keys.p256dh
+  auth      String // subscription.keys.auth
+  userAgent String? // context only — not used for anything functional yet
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userID], references: [id], onDelete: Cascade)
+
+  @@index([userID])
+  @@map("pushsubscription")
 }
 
 model OrderItem {

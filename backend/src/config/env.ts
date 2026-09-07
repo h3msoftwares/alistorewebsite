@@ -86,6 +86,17 @@ const envSchema = z.object({
   // secret, so dev/CI work out of the box without a registered site; a real
   // production secret is enforced below (see assertRealCaptchaSecret).
   HCAPTCHA_SECRET: z.string().default(HCAPTCHA_TEST_SECRET),
+
+  // Web Push (admin order-alert notifications). Generate once with
+  // `node -e "console.log(require('web-push').generateVAPIDKeys())"` and
+  // never rotate casually — doing so invalidates every admin's existing
+  // subscription. Same "boots without it" pattern as SMTP_HOST: empty ⇒
+  // notification.service.ts skips the push channel (logs and no-ops).
+  VAPID_PUBLIC_KEY: z.string().default(''),
+  VAPID_PRIVATE_KEY: z.string().default(''),
+  // A contact URI required by the Web Push protocol (RFC 8292) — sent to the
+  // push service so it can reach the sender if this key pair misbehaves.
+  VAPID_SUBJECT: z.string().default('mailto:admin@example.com'),
 });
 
 export const env = envSchema.parse(process.env);

@@ -20,6 +20,7 @@ import {
 import { updateStockHandler } from '../catalog/product.controller';
 import analyticsRoutes from '../analytics/analytics.routes';
 import blacklistRoutes from '../blacklist/blacklist.routes';
+import pushRoutes from '../push/push.routes';
 
 const router = Router();
 
@@ -60,5 +61,6 @@ router.patch(
 );
 
 router.use('/blacklist', blacklistRoutes);
+router.use('/push-subscriptions', pushRoutes);
 
 export default router;
