@@ -199,7 +199,6 @@ export function Topbar({ locale }: { locale: string }) {
           <Link href={accountHref} className="drawer__nav-link" onClick={() => setMenuOpen(false)}>
             {isAuthenticated ? t('Account', 'الحساب') : t('Log in', 'تسجيل الدخول')}
           </Link>
-          {isAuthenticated && <LogoutButton locale={locale} variant="nav" onDone={() => setMenuOpen(false)} />}
           <Link
             href={isAr ? '/en' : '/ar'}
             className="drawer__nav-link"
@@ -207,6 +206,7 @@ export function Topbar({ locale }: { locale: string }) {
           >
             {isAr ? 'English' : 'العربية'}
           </Link>
+          {isAuthenticated && <LogoutButton locale={locale} variant="nav" onDone={() => setMenuOpen(false)} />}
         </nav>
       </Drawer>
     </header>
