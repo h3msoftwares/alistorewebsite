@@ -1,22 +1,146 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useForm, useWatch, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { CheckCircle2, ShoppingBag } from 'lucide-react';
 import { Alert, Button, EmptyState, Field, Input, Select, Skeleton, Textarea } from '@/components/ui';
+import { HCaptchaWidget, type HCaptchaHandle } from '@/components/checkout/hcaptcha-widget';
 import { useCart } from '@/hooks/use-cart';
 import { useAuth } from '@/hooks/use-auth';
 import { useAddresses, useProfile } from '@/hooks/use-account';
 import { useCheckout, useDeliveryQuote } from '@/hooks/use-orders';
+import { useRequestCheckoutOtp, useVerifyCheckoutOtp } from '@/hooks/use-checkout-otp';
 import { DELIVERY_REGIONS, REGION_VALUES, regionLabel, type DeliveryRegion } from '@/lib/regions';
 import { formatCurrency } from '@/lib/format';
 import { isApiError } from '@/lib/api';
 import type { CheckoutBody, Order } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Gates "Place order" behind an email-OTP challenge — required for a guest,
+ * or a logged-in shopper whose account email isn't verified yet (see
+ * order.service.ts checkout(); skipped entirely for an already-verified
+ * logged-in shopper, who never renders this). Self-contained: manages its
+ * own request → code-entry → verified steps and reports the resulting
+ * ticket up via `onVerified`.
+ */
+function EmailOtpStep({
+  locale,
+  email,
+  verified,
+  onVerified,
+  disabled,
+}: {
+  locale: Locale;
+  email: string;
+  verified: boolean;
+  onVerified: (token: string) => void;
+  disabled?: boolean;
+}) {
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
+
+  const captchaRef = useRef<HCaptchaHandle>(null);
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [sent, setSent] = useState(false);
+  const [code, setCode] = useState('');
+
+  const requestOtp = useRequestCheckoutOtp();
+  const verifyOtp = useVerifyCheckoutOtp();
+
+  const validEmail = EMAIL_RE.test(email);
+
+  const handleSend = async () => {
+    if (!captchaToken || !validEmail) return;
+    try {
+      await requestOtp.mutateAsync({ email, captchaToken });
+      setSent(true);
+      setCode('');
+    } catch {
+      /* surfaced below */
+    } finally {
+      captchaRef.current?.reset();
+      setCaptchaToken('');
+    }
+  };
+
+  const handleVerify = async () => {
+    try {
+      const token = await verifyOtp.mutateAsync({ email, code });
+      onVerified(token);
+    } catch {
+      /* surfaced below */
+    }
+  };
+
+  if (verified) {
+    return (
+      <Alert tone="success">{t(`Email verified: ${email}`, `تم تأكيد البريد الإلكتروني: ${email}`)}</Alert>
+    );
+  }
+
+  return (
+    <div className="stack" style={{ border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)' }}>
+      <p className="admin-form__hint" style={{ margin: 0 }}>
+        {t('Verify your email to place this order.', 'أكّد بريدك الإلكتروني لإتمام الطلب.')}
+      </p>
+
+      {!sent ? (
+        <>
+          <HCaptchaWidget ref={captchaRef} onVerify={setCaptchaToken} onExpire={() => setCaptchaToken('')} />
+          {requestOtp.isError && (
+            <Alert tone="danger">
+              {isApiError(requestOtp.error)
+                ? requestOtp.error.message
+                : t('Could not send the code. Try again.', 'تعذّر إرسال الرمز. حاول مرة أخرى.')}
+            </Alert>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleSend}
+            loading={requestOtp.isPending}
+            disabled={!captchaToken || !validEmail || disabled}
+          >
+            {t('Send verification code', 'إرسال رمز التحقق')}
+          </Button>
+        </>
+      ) : (
+        <>
+          <Field label={t('Verification code', 'رمز التحقق')}>
+            {(p) => (
+              <Input
+                {...p}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                disabled={disabled}
+              />
+            )}
+          </Field>
+          {verifyOtp.isError && (
+            <Alert tone="danger">{t('Invalid or expired code.', 'رمز غير صالح أو منتهي الصلاحية.')}</Alert>
+          )}
+          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+            <Button type="button" size="sm" onClick={handleVerify} loading={verifyOtp.isPending} disabled={code.length !== 6 || disabled}>
+              {t('Verify', 'تحقّق')}
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setSent(false)} disabled={disabled}>
+              {t('Use a different code', 'استخدام رمز مختلف')}
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // Everything the address form can hold; `deliveryName` / `guestEmail` are only
 // asked of guests (a signed-in shopper's name + email come from their profile).
@@ -66,6 +190,15 @@ export function CheckoutView({ locale }: { locale: Locale }) {
   const [placed, setPlaced] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Email OTP — required for a guest, or a logged-in shopper whose account
+  // email isn't verified yet; skipped entirely for an already-verified
+  // logged-in shopper (order.service.ts checkout() enforces the same rule
+  // server-side, this is just the UX gate). `verifiedEmail` tracks which
+  // address the current token actually covers, so editing the email after
+  // verifying correctly un-verifies it again.
+  const [emailVerifyToken, setEmailVerifyToken] = useState<string | undefined>();
+  const [verifiedEmail, setVerifiedEmail] = useState<string | undefined>();
+
   const schema = useMemo(() => {
     const base = {
       deliveryPhone: z.string().trim().min(6, t('Enter a valid phone', 'أدخل رقمًا صالحًا')),
@@ -105,6 +238,12 @@ export function CheckoutView({ locale }: { locale: Locale }) {
   const total = quote.data?.total ?? subtotal;
   const busy = checkout.isPending;
 
+  const guestEmailWatched = useWatch({ control, name: 'guestEmail' });
+  const otpEmail = (guest ? guestEmailWatched : profile.data?.email) ?? '';
+  const otpRequired = guest || !profile.data?.emailVerified;
+  const otpVerified = !otpRequired || (Boolean(emailVerifyToken) && verifiedEmail === otpEmail);
+  const canPlaceOrder = !busy && otpVerified;
+
   const place = async (body: CheckoutBody) => {
     setError(null);
     try {
@@ -131,6 +270,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
       ...(guest
         ? { guestEmail: v.guestEmail || undefined }
         : { saveAddress: true, guestEmail: profile.data?.email || undefined }),
+      emailVerifyToken,
     })
   );
 
@@ -149,6 +289,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
       deliveryArea: a.area || undefined,
       deliveryNotes: pickNotes.trim() || a.notes || undefined,
       guestEmail: profile.data?.email || undefined,
+      emailVerifyToken,
     });
   };
 
@@ -283,11 +424,24 @@ export function CheckoutView({ locale }: { locale: Locale }) {
               )}
             </Field>
 
+            {otpRequired && (
+              <EmailOtpStep
+                locale={locale}
+                email={otpEmail}
+                verified={otpVerified}
+                disabled={busy}
+                onVerified={(token) => {
+                  setEmailVerifyToken(token);
+                  setVerifiedEmail(otpEmail);
+                }}
+              />
+            )}
+
             <p className="admin-form__hint">{t('Payment: cash on delivery.', 'الدفع: نقدًا عند الاستلام.')}</p>
             {error && <Alert tone="danger">{error}</Alert>}
 
             <div className="admin-form__actions" style={{ gap: 'var(--space-3)' }}>
-              <Button type="button" loading={busy} onClick={submitPicked}>
+              <Button type="button" loading={busy} disabled={!canPlaceOrder} onClick={submitPicked}>
                 {t('Place order', 'تأكيد الطلب')}
               </Button>
               <Button type="button" variant="ghost" disabled={busy} onClick={() => setAddingNew(true)}>
@@ -360,11 +514,24 @@ export function CheckoutView({ locale }: { locale: Locale }) {
               {(p) => <Textarea {...p} rows={2} {...register('deliveryNotes')} disabled={busy} />}
             </Field>
 
+            {otpRequired && (
+              <EmailOtpStep
+                locale={locale}
+                email={otpEmail}
+                verified={otpVerified}
+                disabled={busy}
+                onVerified={(token) => {
+                  setEmailVerifyToken(token);
+                  setVerifiedEmail(otpEmail);
+                }}
+              />
+            )}
+
             <p className="admin-form__hint">{t('Payment: cash on delivery.', 'الدفع: نقدًا عند الاستلام.')}</p>
             {error && <Alert tone="danger">{error}</Alert>}
 
             <div className="admin-form__actions">
-              <Button type="submit" loading={busy}>
+              <Button type="submit" loading={busy} disabled={!canPlaceOrder}>
                 {t('Place order', 'تأكيد الطلب')}
               </Button>
             </div>

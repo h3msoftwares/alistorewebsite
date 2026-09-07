@@ -13,7 +13,7 @@ import {
   StatusPill,
 } from '@/components/ui';
 import { AdminPager } from '@/components/admin/admin-pager';
-import { useAdminOrders, useMarkOrderCollected, useUpdateOrderStatus } from '@/hooks/use-orders';
+import { useAdminOrders, useMarkOrderCollected, useReviewOrder, useUpdateOrderStatus } from '@/hooks/use-orders';
 import type { Order, OrderStatus } from '@/lib/types';
 
 const PAGE_SIZE = 20;
@@ -47,13 +47,15 @@ export default function AdminOrdersPage() {
     });
 
   const [status, setStatus] = useState<OrderStatus | ''>('');
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const { data, isPending, isError, refetch } = useAdminOrders(status || undefined);
+  const { data, isPending, isError, refetch } = useAdminOrders(status || undefined, flaggedOnly || undefined);
   const updateStatus = useUpdateOrderStatus();
   const markCollected = useMarkOrderCollected();
+  const reviewOrder = useReviewOrder();
 
   const total = data?.length ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -81,23 +83,36 @@ export default function AdminOrdersPage() {
     <div className="section--tight">
       <div className="admin-page__head">
         <h1>{t('Orders', 'الطلبات')}</h1>
-        <label>
-          <span className="visually-hidden">{t('Filter by status', 'تصفية حسب الحالة')}</span>
-          <Select
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as OrderStatus | '');
-              setPage(1);
-            }}
-          >
-            <option value="">{t('All statuses', 'كل الحالات')}</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </Select>
-        </label>
+        <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
+          <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={flaggedOnly}
+              onChange={(e) => {
+                setFlaggedOnly(e.target.checked);
+                setPage(1);
+              }}
+            />
+            {t('Flagged only', 'المُعلَّمة فقط')}
+          </label>
+          <label>
+            <span className="visually-hidden">{t('Filter by status', 'تصفية حسب الحالة')}</span>
+            <Select
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value as OrderStatus | '');
+                setPage(1);
+              }}
+            >
+              <option value="">{t('All statuses', 'كل الحالات')}</option>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </Select>
+          </label>
+        </div>
       </div>
 
       {actionError && (
@@ -120,7 +135,13 @@ export default function AdminOrdersPage() {
         />
       ) : total === 0 ? (
         <EmptyState
-          title={status ? t('No orders with this status', 'لا طلبات بهذه الحالة') : t('No orders yet', 'لا توجد طلبات بعد')}
+          title={
+            flaggedOnly
+              ? t('No flagged orders', 'لا طلبات معلَّمة')
+              : status
+                ? t('No orders with this status', 'لا طلبات بهذه الحالة')
+                : t('No orders yet', 'لا توجد طلبات بعد')
+          }
         />
       ) : (
         <>
@@ -145,7 +166,7 @@ export default function AdminOrdersPage() {
                     <td data-label={t('Order', 'الطلب')}>{o.orderNumber}</td>
                     <td data-label={t('Date', 'التاريخ')}>{date(o.dateCreated)}</td>
                     <td data-label={t('Customer', 'الزبون')}>
-                      {o.deliveryName}
+                      {o.deliveryName} {o.flaggedForReview && <Badge variant="sale">{t('Flagged', 'معلَّم')}</Badge>}
                       <br />
                       <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--fs-xs)' }}>
                         {o.deliveryPhone}
@@ -191,6 +212,22 @@ export default function AdminOrdersPage() {
                     <td data-label={t('Status', 'الحالة')}>
                       <span className="admin-row-actions">
                         <StatusPill status={o.status} locale={locale} />
+                        {o.flaggedForReview && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() =>
+                              run(
+                                o.id,
+                                () => reviewOrder.mutateAsync(o.id),
+                                t('Update failed', 'فشل التحديث')
+                              )
+                            }
+                          >
+                            {t('Mark reviewed', 'وضع علامة كمُراجَع')}
+                          </Button>
+                        )}
                         <Select
                           aria-label={t(`Change status for ${o.orderNumber}`, `تغيير حالة ${o.orderNumber}`)}
                           value={o.status}

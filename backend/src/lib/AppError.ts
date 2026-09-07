@@ -5,6 +5,7 @@ export type AppErrorCode =
   | 'FORBIDDEN'
   | 'CONFLICT'
   | 'OUT_OF_STOCK'
+  | 'RATE_LIMITED'
   | 'INTERNAL';
 
 const STATUS_BY_CODE: Record<AppErrorCode, number> = {
@@ -14,6 +15,7 @@ const STATUS_BY_CODE: Record<AppErrorCode, number> = {
   FORBIDDEN: 403,
   CONFLICT: 409,
   OUT_OF_STOCK: 409,
+  RATE_LIMITED: 429,
   INTERNAL: 500,
 };
 

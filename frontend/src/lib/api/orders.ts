@@ -34,10 +34,14 @@ export function cancelOrder(id: UUID) {
 
 // ---- Admin ----
 
-export function adminListOrders(status?: OrderStatus) {
+export function adminListOrders(status?: OrderStatus, flagged?: boolean) {
   return api
-    .get<{ orders: Order[] }>('/api/admin/orders', { query: { status } })
+    .get<{ orders: Order[] }>('/api/admin/orders', { query: { status, flagged } })
     .then((r) => r.orders);
+}
+
+export function adminReviewOrder(id: UUID) {
+  return api.patch<{ order: Order }>(`/api/admin/orders/${id}/review`).then((r) => r.order);
 }
 
 export function adminUpdateOrderStatus(id: UUID, status: OrderStatus) {

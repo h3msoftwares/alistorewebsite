@@ -222,6 +222,13 @@ export interface Order {
   userID?: UUID | null;
   addressID?: UUID | null;
   guestEmail?: string | null;
+  /** req.ip at checkout time — admin-only context, not shown to customers. */
+  ipAddress?: string | null;
+  /** Soft anti-abuse flag: an order-velocity threshold was crossed. The
+   *  order is created normally either way — see PATCH .../review. */
+  flaggedForReview?: boolean;
+  /** e.g. "velocity:phone,velocity:ip" — which threshold(s) tripped. */
+  flaggedReason?: string | null;
   // Delivery snapshot captured at order time (see schema §2.4).
   deliveryName: string;
   deliveryPhone: string;
@@ -260,6 +267,9 @@ export interface CheckoutBody {
   deliveryArea?: string;
   deliveryNotes?: string;
   notes?: string;
+  /** The "verified" ticket from POST /api/checkout/otp/verify. Required
+   *  unless the caller is logged in with a verified account email. */
+  emailVerifyToken?: string;
 }
 
 /** `GET /api/orders/delivery-quote?region=...` — a live fee estimate for the

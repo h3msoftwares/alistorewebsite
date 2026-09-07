@@ -1,9 +1,21 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
 import { createCustomer, createAdmin, createStaff, bearer } from '../helpers/auth';
 import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
+
+// The mailer is the one real I/O boundary (SMTP) — mock just the checkout-OTP
+// send so guest-checkout tests can pull the real code out of the mock call
+// instead of needing a real inbox. Everything else in mailer.ts stays real
+// (order-confirmation/owner-alert emails fire-and-forget and are unasserted
+// here, same as before this feature existed).
+vi.mock('../../src/lib/mailer', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/lib/mailer')>();
+  return { ...actual, sendCheckoutOtpEmail: vi.fn().mockResolvedValue(true) };
+});
+import { sendCheckoutOtpEmail } from '../../src/lib/mailer';
+const mockSendOtp = vi.mocked(sendCheckoutOtpEmail);
 
 const app = buildApp();
 
@@ -16,6 +28,25 @@ const delivery = {
   deliveryCity: 'Amman',
   deliveryRegion: 'MOUNT_LEBANON',
 };
+
+// hCaptcha's own documented test secret (the app's default under test) only
+// accepts this exact dummy passcode — any other token genuinely fails a real
+// siteverify call. See backend/.env.example's HCAPTCHA_SECRET.
+const HCAPTCHA_DUMMY_TOKEN = '10000000-aaaa-bbbb-cccc-000000000001';
+
+/** Requests + verifies a checkout email-OTP for `email` and returns the
+ *  resulting verifyToken, for tests that need a real one to check out with. */
+async function getEmailVerifyToken(email: string): Promise<string> {
+  mockSendOtp.mockClear();
+  const reqRes = await request(app)
+    .post('/api/checkout/otp/request')
+    .send({ email, captchaToken: HCAPTCHA_DUMMY_TOKEN });
+  expect(reqRes.status).toBe(204);
+  const code = mockSendOtp.mock.calls.at(-1)?.[1] as string;
+  const verifyRes = await request(app).post('/api/checkout/otp/verify').send({ email, code });
+  expect(verifyRes.status).toBe(200);
+  return verifyRes.body.verifyToken as string;
+}
 
 beforeEach(async () => {
   const col = await makeCollection({ slug: 'c' });
@@ -36,8 +67,11 @@ describe('Orders API', () => {
   it('guest checkout: creates order, snapshots items, decrements stock, clears cart, writes SALE movement', async () => {
     const agent = request.agent(app);
     await addToCart(agent, 3);
+    const emailVerifyToken = await getEmailVerifyToken('j@test.dev');
 
-    const res = await agent.post('/api/orders/checkout').send({ ...delivery, guestEmail: 'j@test.dev' });
+    const res = await agent
+      .post('/api/orders/checkout')
+      .send({ ...delivery, guestEmail: 'j@test.dev', emailVerifyToken });
     expect(res.status).toBe(201);
     expect(res.body.order.status).toBe('PENDING');
     expect(res.body.order.paymentMethod).toBe('COD');
@@ -219,9 +253,13 @@ describe('Orders API', () => {
   it('saveAddress is ignored for a guest and when an addressId is supplied', async () => {
     const guestAgent = request.agent(app);
     await addToCart(guestAgent, 1);
+    const emailVerifyToken = await getEmailVerifyToken('g@test.dev');
     expect(
-      (await guestAgent.post('/api/orders/checkout').send({ ...delivery, guestEmail: 'g@test.dev', saveAddress: true }))
-        .status
+      (
+        await guestAgent
+          .post('/api/orders/checkout')
+          .send({ ...delivery, guestEmail: 'g@test.dev', saveAddress: true, emailVerifyToken })
+      ).status
     ).toBe(201);
 
     const buyer = await createCustomer();
@@ -261,9 +299,12 @@ describe('Orders API', () => {
 
   describe('admin order management', () => {
     it('lists all orders, filters by status, and rejects a bad status value', async () => {
-      const agent = request.agent(app);
-      await addToCart(agent);
-      await agent.post('/api/orders/checkout').send(delivery);
+      // A verified logged-in customer, not a guest — this test is about admin
+      // listing/filtering, not checkout mechanics, so it skips the email-OTP
+      // flow that a guest checkout would now require.
+      const buyer = await createCustomer();
+      await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId, quantity: 1 });
+      await request(app).post('/api/orders/checkout').set(bearer(buyer.token)).send(delivery);
       const { token } = await createAdmin();
 
       const all = await request(app).get('/api/admin/orders').set(bearer(token));
@@ -279,9 +320,12 @@ describe('Orders API', () => {
     });
 
     it('updates status and marks COD collected; dashboard aggregates', async () => {
-      const agent = request.agent(app);
-      await addToCart(agent, 2);
-      const checkout = await agent.post('/api/orders/checkout').send(delivery);
+      const buyer = await createCustomer();
+      await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId, quantity: 2 });
+      const checkout = await request(app)
+        .post('/api/orders/checkout')
+        .set(bearer(buyer.token))
+        .send(delivery);
       const orderId = checkout.body.order.id;
       const { token } = await createStaff();
 

@@ -6,6 +6,8 @@ const TABLES = [
   'announcementline',
   'deliveryrate',
   'sitesetting',
+  'blacklistentry',
+  'checkoutotp',
   'stockmovement',
   'orderitem',
   'order',

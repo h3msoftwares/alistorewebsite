@@ -14,10 +14,12 @@ import {
   listAllOrdersHandler,
   updateOrderStatusHandler,
   markCodCollectedHandler,
+  reviewOrderHandler,
   salesDashboardHandler,
 } from '../orders/order.controller';
 import { updateStockHandler } from '../catalog/product.controller';
 import analyticsRoutes from '../analytics/analytics.routes';
+import blacklistRoutes from '../blacklist/blacklist.routes';
 
 const router = Router();
 
@@ -45,11 +47,18 @@ router.patch(
   validate({ params: orderIdParamSchema, body: markCollectedSchema }),
   asyncHandler(markCodCollectedHandler)
 );
+router.patch(
+  '/orders/:id/review',
+  validate({ params: orderIdParamSchema }),
+  asyncHandler(reviewOrderHandler)
+);
 
 router.patch(
   '/variants/:variantId/stock',
   validate({ params: adminVariantParamSchema, body: updateStockSchema }),
   asyncHandler(updateStockHandler)
 );
+
+router.use('/blacklist', blacklistRoutes);
 
 export default router;

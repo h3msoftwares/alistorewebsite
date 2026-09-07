@@ -4,7 +4,7 @@ import { paramString } from '../../lib/params';
 
 export async function checkoutHandler(req: Request, res: Response) {
   const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.cartSession };
-  const order = await orderService.checkout(owner, req.body);
+  const order = await orderService.checkout(owner, { ...req.body, ipAddress: req.ip });
   res.status(201).json({ order });
 }
 
@@ -32,9 +32,14 @@ export async function cancelOrderHandler(req: Request, res: Response) {
 // ---- Admin ----
 
 export async function listAllOrdersHandler(req: Request, res: Response) {
-  const { status } = (req.validatedQuery ?? {}) as { status?: never };
-  const orders = await orderService.listAllOrders(status);
+  const { status, flagged } = (req.validatedQuery ?? {}) as { status?: never; flagged?: boolean };
+  const orders = await orderService.listAllOrders(status, flagged);
   res.json({ orders });
+}
+
+export async function reviewOrderHandler(req: Request, res: Response) {
+  const order = await orderService.reviewOrder(paramString(req.params.id), req.user!.id);
+  res.json({ order });
 }
 
 export async function updateOrderStatusHandler(req: Request, res: Response) {

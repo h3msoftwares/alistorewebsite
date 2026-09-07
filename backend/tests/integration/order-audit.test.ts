@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
-import { createAdmin, bearer } from '../helpers/auth';
+import { createAdmin, createCustomer, bearer } from '../helpers/auth';
 import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
 
 const app = buildApp();
@@ -31,9 +31,11 @@ beforeEach(async () => {
   adminToken = admin.token;
   adminId = admin.user.id;
 
-  const agent = request.agent(app);
-  await agent.post('/api/cart/items').send({ variantId: p.variants[0].id, quantity: 1 });
-  const res = await agent.post('/api/orders/checkout').send({ ...delivery, guestEmail: 'j@test.dev' });
+  // A verified logged-in customer, not a guest — this file is about the
+  // AuditLog rows written by admin mutations, not checkout/OTP mechanics.
+  const buyer = await createCustomer();
+  await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId: p.variants[0].id, quantity: 1 });
+  const res = await request(app).post('/api/orders/checkout').set(bearer(buyer.token)).send(delivery);
   orderId = res.body.order.id;
 });
 

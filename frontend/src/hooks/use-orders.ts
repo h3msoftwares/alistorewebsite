@@ -26,10 +26,10 @@ export function useOrder(id: UUID | undefined) {
   });
 }
 
-export function useAdminOrders(status?: OrderStatus) {
+export function useAdminOrders(status?: OrderStatus, flagged?: boolean) {
   return useQuery({
-    queryKey: queryKeys.orders.admin(status),
-    queryFn: () => ordersApi.adminListOrders(status),
+    queryKey: queryKeys.orders.admin(status, flagged),
+    queryFn: () => ordersApi.adminListOrders(status, flagged),
   });
 }
 
@@ -110,6 +110,17 @@ export function useMarkOrderCollected() {
   return useMutation({
     mutationFn: ({ id, collected }: { id: UUID; collected: boolean }) =>
       ordersApi.adminMarkCollected(id, collected),
+    onSuccess: (order) => {
+      qc.setQueryData(queryKeys.orders.detail(order.id), order);
+      qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
+    },
+  });
+}
+
+export function useReviewOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: UUID) => ordersApi.adminReviewOrder(id),
     onSuccess: (order) => {
       qc.setQueryData(queryKeys.orders.detail(order.id), order);
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });

@@ -87,6 +87,7 @@ model User {
   emailVerificationTokens EmailVerificationToken[]
   auditLogs               AuditLog[] // rows where this user was the actor
   stockMovements          StockMovement[] // manual stock adjustments made by this user
+  blacklistEntries        BlacklistEntry[] // entries this admin created
 
   @@index([role])
   @@map("user")
@@ -210,36 +211,36 @@ model Address {
 // number of collections (e.g. Women, Men, Kids, Summer Sale) from the admin UI
 // and attach categories to them. Hierarchy: Collection -> Category -> Product.
 model Collection {
-  id            String    @id @default(uuid()) @db.Uuid
-  nameEn        String
-  nameAr        String
-  slug          String    @unique
-  descriptionEn String?
-  descriptionAr String?
-  isActive      Boolean   @default(true)
+  id                String    @id @default(uuid()) @db.Uuid
+  nameEn            String
+  nameAr            String
+  slug              String    @unique
+  descriptionEn     String?
+  descriptionAr     String?
+  isActive          Boolean   @default(true)
   // Owner opts a collection into the top nav / footer; nav order reuses sortOrder.
-  showInNav     Boolean   @default(false)
+  showInNav         Boolean   @default(false)
   // Owner opts a collection into the home page's featured row (own row: name +
   // horizontal scroll of its categories). Independent of showInNav — a
   // collection can be navigable without being featured, or vice versa. Order
   // among featured rows (collections AND categories, interleaved) reuses
   // sortOrder as a shared ranking key.
-  showOnHome    Boolean   @default(false)
+  showOnHome        Boolean   @default(false)
   // Owner shows this collection on the home page as a single square image (its
   // base image) in a grid at the top, with no category row. Position within
   // that grid reuses sortOrder. Takes precedence over showOnHome — an
   // image-collection is not also given a scrolling row.
-  showOnHomeAsImage Boolean @default(false)
-  sortOrder     Int       @default(0)
+  showOnHomeAsImage Boolean   @default(false)
+  sortOrder         Int       @default(0)
   // #rrggbb — the storefront derives the --collection-accent* CSS custom
   // properties from this. null ⇒ the collection uses the default accent.
-  accentColor   String?
+  accentColor       String?
   // Set when the owner archives the collection from the admin: hidden from
   // the storefront, kept in the DB, restorable. Permanent delete is only
   // allowed once archived (and empty of products).
-  archivedAt    DateTime?
-  dateCreated   DateTime  @default(now())
-  lastEdit      DateTime  @default(now()) @updatedAt
+  archivedAt        DateTime?
+  dateCreated       DateTime  @default(now())
+  lastEdit          DateTime  @default(now()) @updatedAt
 
   images      CollectionImage[]
   categories  Category[]
@@ -485,6 +486,19 @@ model Order {
   addressID   String? @db.Uuid // reference to a saved Address, when the customer used one
   guestEmail  String? // contact email for a guest order (no saved account)
 
+  // Anti-abuse — see BlacklistEntry / CheckoutOtp. Captured from req.ip at
+  // checkout time; used for both the hard blacklist check and the soft
+  // order-velocity flag below.
+  ipAddress        String?
+  // Soft flag: an automatic order-velocity threshold was crossed (see
+  // order.service.ts checkout()). The order is still created normally —
+  // this only surfaces it for admin review, unlike a BlacklistEntry hit
+  // which hard-blocks instead.
+  flaggedForReview Boolean @default(false)
+  // Short machine string, e.g. "velocity:phone,velocity:ip" — which
+  // threshold(s) tripped, for admin context. Null when not flagged.
+  flaggedReason    String?
+
   // Delivery snapshot — captured at order time so a later edit/delete of the
   // saved Address never changes what this order shows was delivered where.
   deliveryName    String
@@ -514,7 +528,63 @@ model Order {
   @@index([userID])
   @@index([status])
   @@index([dateCreated])
+  @@index([flaggedForReview])
   @@map("order")
+}
+
+// Short-lived, single-use email OTP challenge for checkout — same
+// hashed/short-lived/single-use shape as PasswordResetToken, extended to two
+// phases: a 6-digit code sent by email (`codeHash`), then a "verified"
+// ticket minted after a correct code (`verifyTokenHash`) that checkout
+// actually redeems. Guest-compatible (no userID) since a guest has no
+// account to key this on — see checkout-otp.service.ts.
+model CheckoutOtp {
+  id    String @id @default(uuid()) @db.Uuid
+  email String // lower-cased
+
+  // Phase 1 — the code actually emailed to the customer.
+  codeHash      String
+  codeExpiresAt DateTime
+  attempts      Int      @default(0) // failed verify attempts against codeHash; capped in app code
+
+  // Phase 2 — minted only after a correct code; this is what checkout redeems.
+  verifiedAt           DateTime?
+  verifyTokenHash      String?   @unique
+  verifyTokenExpiresAt DateTime?
+  consumedAt           DateTime? // set when an order actually redeems the ticket (single-use)
+
+  requestIP String? // the IP that requested this code — drives per-IP rate limiting
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([requestIP, createdAt])
+  @@map("checkoutotp")
+}
+
+enum BlacklistType {
+  PHONE
+  EMAIL
+  IP
+}
+
+// Explicit, admin-maintained block list, checked at checkout-OTP request
+// time (don't spend an email on a blocked address) and at order-creation
+// time (hard-blocks the order outright) — see order.service.ts. Distinct
+// from the automatic order-velocity soft-flag: a BlacklistEntry hit is a
+// deliberate admin decision, not a heuristic.
+model BlacklistEntry {
+  id        String        @id @default(uuid()) @db.Uuid
+  type      BlacklistType
+  value     String // normalized phone, lower-cased email, or raw IP
+  reason    String?
+  createdBy String?       @db.Uuid
+  createdAt DateTime      @default(now())
+
+  creator User? @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([type, value])
+  @@index([type, value])
+  @@map("blacklistentry")
 }
 
 model OrderItem {
