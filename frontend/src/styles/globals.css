@@ -578,6 +578,16 @@ main > .container.section:first-child {
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
+/* "Cookie preferences" is a button (it re-opens the consent banner) but sits
+   in a list of link anchors — strip the native button chrome so it matches. */
+.site-footer__link--button {
+  width: 100%;
+  text-align: start;
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
 
 .site-footer__brand-name {
   font-family: var(--font-serif);
@@ -2789,6 +2799,53 @@ a.home-card__name:hover { text-decoration: underline; }
   background: var(--color-surface-raised);
   box-shadow: var(--shadow-md);
   border: 1px solid var(--color-border);
+}
+
+/* ---- 5.15b Cookie consent banner (see components/chrome/cookie-consent.tsx) ---- */
+.cookie-consent {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: 0;
+  z-index: var(--z-toast);
+  padding: var(--space-4) var(--gutter);
+  background: var(--color-surface-raised);
+  border-top: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+.cookie-consent__inner {
+  width: 100%;
+  max-width: var(--container-max);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.cookie-consent__text {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--color-text-secondary);
+}
+[lang='ar'] .cookie-consent__text { font-family: var(--font-arabic); }
+.cookie-consent__link {
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  white-space: nowrap;
+}
+.cookie-consent__actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .cookie-consent__inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cookie-consent__actions .btn {
+    flex: 1;
+  }
 }
 
 /* ---- 5.15 Page placeholder (empty routes until real content is built) ---- */

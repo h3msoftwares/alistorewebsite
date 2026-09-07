@@ -3,6 +3,7 @@ import { Dosis, Cairo } from 'next/font/google';
 import { dehydrate } from '@tanstack/react-query';
 import { StoreProvider } from '@/store/provider';
 import { GoogleAnalytics } from '@/components/analytics/google-analytics';
+import { CookieConsent } from '@/components/chrome/cookie-consent';
 import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
 import { makeQueryClient } from '@/lib/query-client';
@@ -97,6 +98,7 @@ export default async function LocaleLayout({
           <SiteHeader locale={locale} />
           <main id="main">{children}</main>
           <SiteFooter locale={locale} />
+          <CookieConsent locale={locale} />
         </StoreProvider>
       </body>
     </html>
