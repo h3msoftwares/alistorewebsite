@@ -5,11 +5,13 @@ import { prisma } from '../../src/config/prisma';
 const TABLES = [
   'storehours',
   'storelocation',
+  'reviewimage',
   'announcementline',
   'deliveryrate',
   'sitesetting',
   'discount',
   'coupon',
+  'role',
   'blacklistentry',
   'checkoutotp',
   'pushsubscription',

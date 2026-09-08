@@ -135,6 +135,14 @@ export function SiteFooter({ locale }: { locale: string }) {
 
           <div>
             <p className="site-footer__col-title">{t('About', 'عن المتجر')}</p>
+            {(settings?.storyBodyEn ||
+              settings?.storyBodyAr ||
+              settings?.storyTitleEn ||
+              settings?.storyTitleAr) && (
+              <Link className="site-footer__link" href={`/${locale}/our-story`}>
+                {t('Our story', 'قصتنا')}
+              </Link>
+            )}
             <Link className="site-footer__link" href={`/${locale}#visit-us`}>
               {t('Visit us', 'زورونا')}
             </Link>

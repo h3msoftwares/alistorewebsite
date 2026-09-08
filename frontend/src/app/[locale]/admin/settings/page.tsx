@@ -82,6 +82,15 @@ const settingsFormSchema = z.object({
   heroCtaCollectionId: z.string(),
   homeMoreHeadingEn: z.string(),
   homeMoreHeadingAr: z.string(),
+  // ---- Our story page ----
+  storyTitleEn: z.string().trim().max(120),
+  storyTitleAr: z.string().trim().max(120),
+  storyBodyEn: z.string().trim().max(8000),
+  storyBodyAr: z.string().trim().max(8000),
+  // ---- Customer review images ----
+  reviewImages: z
+    .array(z.object({ imageUrl: z.string().min(1, 'Upload an image'), imageFileId: z.string() }))
+    .max(30),
   // ---- Delivery fees ----
   deliveryFeeEnabled: z.boolean(),
   deliveryFeeFlat: z.number({ message: 'Enter a number' }).min(0, 'Must be 0 or more'),
@@ -166,7 +175,16 @@ const blankLocation = {
 // for navigation and as the unit the search box filters. `terms` is extra
 // searchable text (field labels, synonyms, both languages) so a query like
 // "shipping" or "واتساب" lands on the right tab.
-type TabId = 'brand' | 'announcement' | 'hero' | 'delivery' | 'storeinfo' | 'curation' | 'notifications';
+type TabId =
+  | 'brand'
+  | 'announcement'
+  | 'hero'
+  | 'delivery'
+  | 'storeinfo'
+  | 'story'
+  | 'reviews'
+  | 'curation'
+  | 'notifications';
 
 const SECTIONS: { id: TabId; en: string; ar: string; terms: string }[] = [
   {
@@ -210,6 +228,22 @@ const SECTIONS: { id: TabId; en: string; ar: string; terms: string }[] = [
       'مواقع المتاجر الفروع الموقع العنوان خريطة الاتجاهات ساعات العمل أيام الدوام المواعيد الجدول زورونا صورة الخلفية',
   },
   {
+    id: 'story',
+    en: 'Our story page',
+    ar: 'صفحة قصتنا',
+    terms:
+      'our story page about us history brand narrative mission optional content page ' +
+      'قصتنا صفحة من نحن عن المتجر تاريخ العلامة رسالة صفحة اختيارية محتوى',
+  },
+  {
+    id: 'reviews',
+    en: 'Customer reviews',
+    ar: 'آراء العملاء',
+    terms:
+      'customer reviews testimonials screenshots review images social proof home page strip ratings feedback ' +
+      'آراء العملاء شهادات لقطات شاشة صور المراجعات دليل اجتماعي شريط الصفحة الرئيسية تقييمات',
+  },
+  {
     id: 'curation',
     en: 'Navigation & home',
     ar: 'التنقل والرئيسية',
@@ -243,6 +277,8 @@ function tabForErrorKey(key: string): TabId {
   if (key.startsWith('announcement')) return 'announcement';
   if (key.startsWith('delivery') || key.startsWith('freeDelivery')) return 'delivery';
   if (key.startsWith('store')) return 'storeinfo';
+  if (key.startsWith('story')) return 'story';
+  if (key.startsWith('review')) return 'reviews';
   return 'brand';
 }
 
@@ -267,7 +303,7 @@ export default function AdminSettingsPage() {
   );
   const shows = (id: TabId) => (searching ? matchedIds.has(id) : tab === id);
   const anyFormSectionVisible = (
-    ['brand', 'announcement', 'hero', 'delivery', 'storeinfo'] as const
+    ['brand', 'announcement', 'hero', 'delivery', 'storeinfo', 'story', 'reviews'] as const
   ).some(shows);
 
   const values: SettingsForm | undefined = settings && {
@@ -292,6 +328,14 @@ export default function AdminSettingsPage() {
     heroCtaCollectionId: settings.heroCtaCollectionID ?? '',
     homeMoreHeadingEn: settings.homeMoreHeadingEn,
     homeMoreHeadingAr: settings.homeMoreHeadingAr,
+    storyTitleEn: settings.storyTitleEn ?? '',
+    storyTitleAr: settings.storyTitleAr ?? '',
+    storyBodyEn: settings.storyBodyEn ?? '',
+    storyBodyAr: settings.storyBodyAr ?? '',
+    reviewImages: (settings.reviewImages ?? []).map((r) => ({
+      imageUrl: r.imageUrl,
+      imageFileId: r.imageFileId ?? '',
+    })),
     deliveryFeeEnabled: settings.deliveryFeeEnabled,
     deliveryFeeFlat: Number(settings.deliveryFeeFlat ?? 0),
     freeDeliveryThreshold:
@@ -325,6 +369,8 @@ export default function AdminSettingsPage() {
   const { fields, append, remove } = useFieldArray({ control, name: 'announcementLines' });
   const rates = useFieldArray({ control, name: 'deliveryRates' });
   const locations = useFieldArray({ control, name: 'storeLocations' });
+  const reviews = useFieldArray({ control, name: 'reviewImages' });
+  const watchedReviews = useWatch({ control, name: 'reviewImages' }) ?? [];
 
   // Store locations: watched for the per-card image preview and per-day
   // "closed" state (which drives whether the time inputs are enabled).
@@ -370,11 +416,16 @@ export default function AdminSettingsPage() {
     setError(null);
     setSaved(false);
     try {
-      const { freeDeliveryThreshold, storeLocations, ...rest } = form;
+      const { freeDeliveryThreshold, storeLocations, reviewImages, ...rest } = form;
       const payload: SiteSettingsBody = {
         ...rest,
         freeDeliveryThreshold:
           freeDeliveryThreshold.trim() === '' ? null : Number(freeDeliveryThreshold),
+        // Replace-all: the whole review strip, in order. Rows without an image
+        // (shouldn't happen — the uploader sets it) are dropped.
+        reviewImages: reviewImages
+          .filter((r) => r.imageUrl.trim() !== '')
+          .map((r) => ({ imageUrl: r.imageUrl, imageFileId: r.imageFileId })),
         // Replace-all: the whole set of stores. Per location, only the open
         // days survive; anything else is "Closed".
         storeLocations: storeLocations.map((loc) => ({
@@ -882,6 +933,88 @@ export default function AdminSettingsPage() {
               <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
               {t('Add location', 'إضافة موقع')}
             </Button>
+          )}
+        </div>
+
+        {/* ---- Our story page ---- */}
+        <div className="admin-form__section" id="set-story" hidden={!shows('story')}>
+          <p className="admin-form__section-title">{t('Our story page', 'صفحة قصتنا')}</p>
+          <p className="admin-form__hint">
+            {t(
+              'Optional. Fill in a title and body to publish a "/our-story" page and show its link in the footer. Leave both bodies blank to hide it. Separate paragraphs with a blank line.',
+              'اختياري. أدخل عنوانًا ونصًا لنشر صفحة "/our-story" وإظهار رابطها في التذييل. اترك النصين فارغين لإخفائها. افصل الفقرات بسطر فارغ.'
+            )}
+          </p>
+          <div className="admin-form__row">
+            <Field label={t('Title (English)', 'العنوان (إنجليزي)')} error={errors.storyTitleEn?.message}>
+              {(p) => <Input {...p} {...register('storyTitleEn')} disabled={busy} />}
+            </Field>
+            <Field label={t('Title (Arabic)', 'العنوان (عربي)')} error={errors.storyTitleAr?.message}>
+              {(p) => <Input {...p} dir="rtl" {...register('storyTitleAr')} disabled={busy} />}
+            </Field>
+          </div>
+          <div className="admin-form__row">
+            <Field label={t('Body (English)', 'النص (إنجليزي)')} error={errors.storyBodyEn?.message}>
+              {(p) => <Textarea {...p} rows={8} {...register('storyBodyEn')} disabled={busy} />}
+            </Field>
+            <Field label={t('Body (Arabic)', 'النص (عربي)')} error={errors.storyBodyAr?.message}>
+              {(p) => <Textarea {...p} rows={8} dir="rtl" {...register('storyBodyAr')} disabled={busy} />}
+            </Field>
+          </div>
+        </div>
+
+        {/* ---- Customer reviews ---- */}
+        <div className="admin-form__section" id="set-reviews" hidden={!shows('reviews')}>
+          <p className="admin-form__section-title">{t('Customer reviews', 'آراء العملاء')}</p>
+          <p className="admin-form__hint">
+            {t(
+              'Upload screenshots of customer reviews. They show as a horizontal strip on the home page under "Visit us", in this order. With none added, the strip is hidden.',
+              'ارفع لقطات شاشة لآراء العملاء. تظهر كشريط أفقي في الصفحة الرئيسية تحت "زورونا"، بهذا الترتيب. إذا لم تُضف أي صورة، يُخفى الشريط.'
+            )}
+          </p>
+
+          <div className="admin-form__checks">
+            {reviews.fields.map((field, i) => {
+              const url = watchedReviews[i]?.imageUrl;
+              return (
+                <div key={field.id} className="admin-variant-row" style={{ alignItems: 'center' }}>
+                  {url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={url}
+                      alt=""
+                      style={{
+                        width: 96,
+                        height: 120,
+                        objectFit: 'cover',
+                        borderRadius: 'var(--radius-sm)',
+                        border: '1px solid var(--color-border)',
+                      }}
+                    />
+                  ) : (
+                    <span className="admin-thumb admin-thumb--empty" aria-hidden />
+                  )}
+                  <button
+                    type="button"
+                    className="icon-btn icon-btn--bordered"
+                    onClick={() => reviews.remove(i)}
+                    disabled={busy}
+                    aria-label={t('Remove review image', 'حذف صورة المراجعة')}
+                  >
+                    <Icon as={Trash2} size={16} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {reviews.fields.length < 30 && (
+            <ImageUploader
+              folder="/site/reviews"
+              locale={locale}
+              disabled={busy}
+              onUploaded={(img) => reviews.append({ imageUrl: img.url, imageFileId: img.fileId })}
+            />
           )}
         </div>
 

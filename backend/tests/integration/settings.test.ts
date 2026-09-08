@@ -225,6 +225,73 @@ describe('Site settings API', () => {
     });
   });
 
+  describe('our story page copy', () => {
+    const patch = (body: unknown) =>
+      request(app).patch('/api/settings').set(bearer(adminToken)).send(body);
+
+    it('stores title/body per language and clears them with an empty string', async () => {
+      const set = await patch({
+        storyTitleEn: 'Our story',
+        storyBodyEn: 'We started in a Beirut living room.\n\nNow we ship nationwide.',
+        storyTitleAr: 'قصتنا',
+        storyBodyAr: 'بدأنا في غرفة معيشة في بيروت.',
+      });
+      expect(set.status).toBe(200);
+      expect(set.body.settings).toMatchObject({
+        storyTitleEn: 'Our story',
+        storyTitleAr: 'قصتنا',
+        storyBodyEn: 'We started in a Beirut living room.\n\nNow we ship nationwide.',
+      });
+
+      const cleared = await patch({ storyTitleEn: '', storyBodyEn: '' });
+      expect(cleared.body.settings.storyTitleEn).toBeNull();
+      expect(cleared.body.settings.storyBodyEn).toBeNull();
+      // untouched language survives
+      expect(cleared.body.settings.storyTitleAr).toBe('قصتنا');
+    });
+
+    it('rejects a body over the length cap', async () => {
+      expect((await patch({ storyBodyEn: 'x'.repeat(8001) })).status).toBe(400);
+    });
+  });
+
+  describe('customer review images', () => {
+    const patch = (body: unknown) =>
+      request(app).patch('/api/settings').set(bearer(adminToken)).send(body);
+
+    it('replace-all, ordered; [] clears the strip', async () => {
+      const set = await patch({
+        reviewImages: [
+          { imageUrl: 'https://ik.imagekit.io/demo/r1.jpg', imageFileId: 'f1' },
+          { imageUrl: 'https://ik.imagekit.io/demo/r2.jpg' },
+        ],
+      });
+      expect(set.status).toBe(200);
+      expect(set.body.settings.reviewImages).toHaveLength(2);
+      expect(set.body.settings.reviewImages.map((r: { imageUrl: string }) => r.imageUrl)).toEqual([
+        'https://ik.imagekit.io/demo/r1.jpg',
+        'https://ik.imagekit.io/demo/r2.jpg',
+      ]);
+      expect(set.body.settings.reviewImages.map((r: { sortOrder: number }) => r.sortOrder)).toEqual([0, 1]);
+
+      const replaced = await patch({
+        reviewImages: [{ imageUrl: 'https://ik.imagekit.io/demo/r3.jpg' }],
+      });
+      expect(replaced.body.settings.reviewImages.map((r: { imageUrl: string }) => r.imageUrl)).toEqual([
+        'https://ik.imagekit.io/demo/r3.jpg',
+      ]);
+
+      const cleared = await patch({ reviewImages: [] });
+      expect(cleared.body.settings.reviewImages).toHaveLength(0);
+    });
+
+    it('rejects a non-http(s) image URL', async () => {
+      expect(
+        (await patch({ reviewImages: [{ imageUrl: 'javascript:alert(1)' }] })).status
+      ).toBe(400);
+    });
+  });
+
   describe('delivery fee config', () => {
     const patch = (body: unknown) =>
       request(app).patch('/api/settings').set(bearer(adminToken)).send(body);

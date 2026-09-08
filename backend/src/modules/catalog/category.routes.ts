@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
 import { requireAuth, optionalAuth } from '../../middleware/auth.middleware';
-import { requireRole } from '../../middleware/rbac.middleware';
+import { requireRole, requirePermission } from '../../middleware/rbac.middleware';
 import { createImageSchema, updateImageSchema } from './image.schema';
 import { listProductsQuerySchema } from './product.schema';
 import {
@@ -30,7 +30,7 @@ import {
 
 const router = Router();
 
-const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
+const admin = [requireAuth, requireRole('STAFF', 'ADMIN'), requirePermission('categories:manage')];
 
 // ---- Storefront (public) ----
 // Optional ?collectionId= filters to one collection; ?standalone=true returns

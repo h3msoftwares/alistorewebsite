@@ -392,6 +392,60 @@ export interface AuthUser {
   email?: string | null;
   phone?: string | null;
   role: UserRole;
+  /** Effective admin permission keys (`<area>:view` / `<area>:manage`),
+   *  resolved server-side from role + assigned custom role − revokes.
+   *  ADMIN holds every key unless one was explicitly revoked. */
+  permissions?: string[];
+  /** Name of the assigned custom role (STAFF), else null. */
+  roleName?: string | null;
+}
+
+// ---- RBAC (admin roles & permissions) ----
+
+export type PermissionLevel = 'view' | 'manage';
+
+export interface PermissionArea {
+  area: string;
+  label: string;
+  levels: PermissionLevel[];
+}
+
+/** Admin-managed role (`GET /api/admin/roles`). */
+export interface Role {
+  id: UUID;
+  name: string;
+  description: string | null;
+  permissions: string[];
+  isSystem: boolean;
+  dateCreated: IsoDateTime;
+  _count?: { users: number };
+}
+
+export interface RoleBody {
+  name: string;
+  description?: string | null;
+  permissions: string[];
+}
+
+/** One STAFF/ADMIN account on the Team tab. */
+export interface TeamMember {
+  id: UUID;
+  name: string;
+  email: string | null;
+  role: UserRole;
+  isActive: boolean;
+  revokedPermissions: string[];
+  customRole: { id: UUID; name: string } | null;
+  effectivePermissions: string[];
+}
+
+/** New admin-created team account (`POST /api/admin/team`). */
+export interface NewTeamMember {
+  name: string;
+  email: string;
+  password: string;
+  role: 'STAFF' | 'ADMIN';
+  roleId?: string | null;
 }
 
 // ---- Product list query (GET /api/products) ----
@@ -458,6 +512,14 @@ export interface StoreHoursDay {
   closesAt: string;
 }
 
+/** One admin-uploaded customer-review screenshot (home page review strip). */
+export interface ReviewImage {
+  id: UUID;
+  imageUrl: string;
+  imageFileId: string | null;
+  sortOrder: number;
+}
+
 /** A physical store shown in the home page's "Visit us" section. */
 export interface StoreLocation {
   id: UUID;
@@ -489,6 +551,12 @@ export interface SiteSettings {
   heroCtaCollectionID: UUID | null;
   homeMoreHeadingEn: string;
   homeMoreHeadingAr: string;
+  /** Optional "Our story" page — null in a language ⇒ fall back to the other;
+   *  all four null ⇒ the page and its footer link are hidden. */
+  storyTitleEn: string | null;
+  storyTitleAr: string | null;
+  storyBodyEn: string | null;
+  storyBodyAr: string | null;
   instagramUrl: string | null;
   facebookUrl: string | null;
   tiktokUrl: string | null;
@@ -498,6 +566,8 @@ export interface SiteSettings {
   announcementLines: AnnouncementLine[];
   /** Physical stores shown in the home page's "Visit us" section. */
   storeLocations: StoreLocation[];
+  /** Customer-review screenshots shown in the home page's review strip. */
+  reviewImages: ReviewImage[];
   /** Resolved collection for the hero CTA, when one is set. */
   heroCtaCollection: Pick<Collection, 'id' | 'slug' | 'nameEn' | 'nameAr'> | null;
   // Delivery fee — off ⇒ every order ships free.
@@ -520,11 +590,14 @@ export type SiteSettingsBody = Partial<
     | 'deliveryRates'
     | 'freeDeliveryThreshold'
     | 'storeLocations'
+    | 'reviewImages'
   >
 > & {
   heroCtaCollectionId?: UUID | '' | null;
   announcementLines?: { textEn: string; textAr: string }[];
   deliveryRates?: { region: string; fee: number }[];
+  /** Replace-all: the whole customer-review strip, in order. */
+  reviewImages?: { imageUrl: string; imageFileId?: string | null }[];
   /** number ⇒ set; null ⇒ clear the free-over rule. */
   freeDeliveryThreshold?: number | null;
   /** Replace-all: the whole set of stores, in order. Each carries its own

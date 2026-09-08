@@ -94,6 +94,15 @@ model User {
   dateCreated         DateTime  @default(now())
   deletedAt           DateTime?
 
+  // RBAC. `role` is the coarse gate (CUSTOMER = storefront only; STAFF/ADMIN
+  // may reach /admin). Granular admin access is by permission:
+  //  - STAFF: the permission list of `customRole` (none ⇒ no admin access)
+  //  - ADMIN: every permission, minus `revokedPermissions`
+  // `revokedPermissions` also subtracts from a STAFF user's role grants.
+  customRoleID       String?  @db.Uuid
+  customRole         Role?    @relation(fields: [customRoleID], references: [id], onDelete: SetNull)
+  revokedPermissions String[] @default([])
+
   addresses               Address[]
   cart                    Cart?
   favorites               Favorite[]
@@ -108,7 +117,25 @@ model User {
   pushSubscriptions       PushSubscription[] // this admin's opted-in browser/device(s)
 
   @@index([role])
+  @@index([customRoleID])
   @@map("user")
+}
+
+// A named set of admin permissions the owner defines from /admin/roles and
+// assigns to STAFF users. Permission keys are "<area>:view" / "<area>:manage"
+// (see backend/src/lib/permissions.ts). `isSystem` roles can't be deleted.
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  permissions String[] @default([])
+  isSystem    Boolean  @default(false)
+  dateCreated DateTime @default(now())
+  lastEdit    DateTime @default(now()) @updatedAt
+
+  users User[]
+
+  @@map("role")
 }
 
 model RefreshToken {
@@ -753,6 +780,14 @@ model SiteSetting {
   heroCtaCollectionID String? @db.Uuid
   homeMoreHeadingEn   String  @default("More to explore")
   homeMoreHeadingAr   String  @default("المزيد لاكتشافه")
+
+  // Optional "Our story" page. All four null / "" ⇒ the page and its footer
+  // link are hidden. Body is plain text; blank lines separate paragraphs.
+  storyTitleEn String?
+  storyTitleAr String?
+  storyBodyEn  String?
+  storyBodyAr  String?
+
   // Footer links — null / "" ⇒ the link is hidden.
   instagramUrl        String?
   facebookUrl         String?
@@ -776,8 +811,25 @@ model SiteSetting {
   announcementLines AnnouncementLine[]
   deliveryRates     DeliveryRate[]
   storeLocations    StoreLocation[]
+  reviewImages      ReviewImage[]
 
   @@map("sitesetting")
+}
+
+// Admin/staff-uploaded screenshots of customer reviews, shown as a
+// horizontally-scrolling strip on the home page under "Visit us". Replace-all
+// on save (like StoreLocation); an empty set hides the strip.
+model ReviewImage {
+  id          String  @id @default(uuid()) @db.Uuid
+  settingID   Int
+  imageUrl    String
+  imageFileId String?
+  sortOrder   Int     @default(0)
+
+  setting SiteSetting @relation(fields: [settingID], references: [id], onDelete: Cascade)
+
+  @@index([settingID])
+  @@map("reviewimage")
 }
 
 // A physical store the customer can visit — the home page's "Visit us"

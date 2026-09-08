@@ -63,6 +63,48 @@ function v(size: string | undefined, color: string | undefined, stockQuantity: n
 async function main() {
   console.log('[seed] starting…');
 
+  // ---- RBAC: a built-in "Full access" role + a couple of example roles ----
+  const allPermissions = [
+    'dashboard:view',
+    'orders:view', 'orders:manage',
+    'products:view', 'products:manage',
+    'collections:view', 'collections:manage',
+    'categories:view', 'categories:manage',
+    'discounts:view', 'discounts:manage',
+    'analytics:view',
+    'settings:view', 'settings:manage',
+    'roles:view', 'roles:manage',
+  ];
+  await prisma.role.upsert({
+    where: { name: 'Full access' },
+    update: { permissions: allPermissions, isSystem: true },
+    create: { name: 'Full access', description: 'Every admin permission.', permissions: allPermissions, isSystem: true },
+  });
+  await prisma.role.upsert({
+    where: { name: 'Order desk' },
+    update: {},
+    create: {
+      name: 'Order desk',
+      description: 'Work orders and see the dashboard; no catalog or settings access.',
+      permissions: ['dashboard:view', 'orders:view', 'orders:manage'],
+    },
+  });
+  await prisma.role.upsert({
+    where: { name: 'Catalog editor' },
+    update: {},
+    create: {
+      name: 'Catalog editor',
+      description: 'Manage products, collections, categories and discounts.',
+      permissions: [
+        'dashboard:view',
+        'products:view', 'products:manage',
+        'collections:view', 'collections:manage',
+        'categories:view', 'categories:manage',
+        'discounts:view', 'discounts:manage',
+      ],
+    },
+  });
+
   // ---- Admin user ----
   const adminPasswordHash = await argon2.hash(requireSeedAdminPassword());
   await prisma.user.upsert({
@@ -76,6 +118,23 @@ async function main() {
       role: 'ADMIN',
       passwordHash: adminPasswordHash,
       emailVerified: new Date(),
+    },
+  });
+
+  // ---- Example STAFF user (so the Team tab isn't empty in dev) ----
+  // Same seed password as the admin; signs in at /ali-admin-login. Scoped to
+  // the "Order desk" role, so a good demo of the permission gating.
+  const orderDesk = await prisma.role.findUnique({ where: { name: 'Order desk' }, select: { id: true } });
+  await prisma.user.upsert({
+    where: { email: 'staff@alistore.com' },
+    update: { emailVerified: new Date(), customRoleID: orderDesk?.id ?? null },
+    create: {
+      email: 'staff@alistore.com',
+      name: 'Order Desk Staff',
+      role: 'STAFF',
+      passwordHash: adminPasswordHash,
+      emailVerified: new Date(),
+      customRoleID: orderDesk?.id ?? null,
     },
   });
 

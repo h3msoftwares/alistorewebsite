@@ -13,6 +13,7 @@ const settingsInclude = {
     orderBy: { sortOrder: 'asc' as const },
     include: { hours: { orderBy: { dayOfWeek: 'asc' as const } } },
   },
+  reviewImages: { orderBy: { sortOrder: 'asc' as const } },
   heroCtaCollection: { select: { id: true, slug: true, nameEn: true, nameAr: true } },
 };
 
@@ -55,6 +56,10 @@ const NULLABLE_FIELDS = [
   'whatsappUrl',
   'contactEmail',
   'contactPhone',
+  'storyTitleEn',
+  'storyTitleAr',
+  'storyBodyEn',
+  'storyBodyAr',
 ] as const;
 
 function scalarData(input: UpdateSettingsInput): Record<string, unknown> {
@@ -93,10 +98,10 @@ export async function updateSettings(input: UpdateSettingsInput) {
 
   const data = scalarData(input);
 
-  // Store-location background images being replaced/removed: any ImageKit file
-  // that was referenced before and isn't in the incoming set gets cleaned up
-  // after the transaction commits.
-  let staleImageFileIds: string[] = [];
+  // Store-location background images and review images being replaced/removed:
+  // any ImageKit file that was referenced before and isn't in the incoming set
+  // gets cleaned up after the transaction commits.
+  const staleImageFileIds: string[] = [];
   if (input.storeLocations) {
     const current = await prisma.storeLocation.findMany({
       where: { settingID: SETTINGS_ID },
@@ -106,7 +111,18 @@ export async function updateSettings(input: UpdateSettingsInput) {
     const after = new Set(
       input.storeLocations.map((l) => orNull(l.imageFileId)).filter((v): v is string => !!v)
     );
-    staleImageFileIds = [...before].filter((id) => !after.has(id));
+    staleImageFileIds.push(...[...before].filter((id) => !after.has(id)));
+  }
+  if (input.reviewImages) {
+    const current = await prisma.reviewImage.findMany({
+      where: { settingID: SETTINGS_ID },
+      select: { imageFileId: true },
+    });
+    const before = new Set(current.map((r) => r.imageFileId).filter((v): v is string => !!v));
+    const after = new Set(
+      input.reviewImages.map((r) => orNull(r.imageFileId)).filter((v): v is string => !!v)
+    );
+    staleImageFileIds.push(...[...before].filter((id) => !after.has(id)));
   }
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -142,6 +158,21 @@ export async function updateSettings(input: UpdateSettingsInput) {
                   }
                 : undefined,
           },
+        });
+      }
+    }
+
+    if (input.reviewImages) {
+      // Replace-all.
+      await tx.reviewImage.deleteMany({ where: { settingID: SETTINGS_ID } });
+      if (input.reviewImages.length > 0) {
+        await tx.reviewImage.createMany({
+          data: input.reviewImages.map((r, i) => ({
+            settingID: SETTINGS_ID,
+            imageUrl: r.imageUrl,
+            imageFileId: orNull(r.imageFileId),
+            sortOrder: i,
+          })),
         });
       }
     }

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
 import { requireAuth, optionalAuth } from '../../middleware/auth.middleware';
-import { requireRole } from '../../middleware/rbac.middleware';
+import { requireRole, requirePermission } from '../../middleware/rbac.middleware';
 import {
   listProductsQuerySchema,
   productIdParamSchema,
@@ -33,7 +33,7 @@ import {
 
 const router = Router();
 
-const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
+const admin = [requireAuth, requireRole('STAFF', 'ADMIN'), requirePermission('products:manage')];
 
 // ---- Storefront (public; optionalAuth lets staff pass ?status=archived|all) ----
 router.get(

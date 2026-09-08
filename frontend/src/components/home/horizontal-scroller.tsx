@@ -31,12 +31,15 @@ export function HorizontalScroller({
   titleHref,
   ariaLabel,
   locale,
+  className,
   children,
 }: {
   title: string;
   titleHref?: string;
   ariaLabel: string;
   locale: string;
+  /** Extra class on the outer `.home-row` section (for per-use tile sizing). */
+  className?: string;
   children: ReactNode;
 }) {
   const isAr = locale === 'ar';
@@ -112,7 +115,7 @@ export function HorizontalScroller({
   };
 
   return (
-    <section className="home-row" aria-label={ariaLabel}>
+    <section className={className ? `home-row ${className}` : 'home-row'} aria-label={ariaLabel}>
       <div className="container">
         <header className="home-row__head">
           {titleHref ? (
