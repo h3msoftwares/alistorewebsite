@@ -92,6 +92,28 @@ a re-auth prompt, not a logout.
   gets a specific "verify your email" message (they've already proven the
   password, so it reveals nothing).
 
+## 5b. Role tiers — STAFF vs ADMIN (S4)
+
+Two privileged roles. The default gate on every admin / catalog-write route is
+`requireRole('STAFF', 'ADMIN')`. A second `requireRole('ADMIN')` narrows STAFF
+out of the routes where a mistake is irreversible or the data is financial:
+
+| ADMIN-only route | Why |
+| --- | --- |
+| `DELETE /api/products/:id/permanent`, `…/collections/:id/permanent`, `…/categories/:id/permanent` | Irreversible hard delete. The soft delete / archive (`DELETE /:id`) stays STAFF. |
+| `PATCH /api/settings` | Delivery-fee config, brand identity, store locations, storefront-wide social links. |
+| `POST` / `PATCH` / `DELETE` on `/api/discounts` and `/api/coupons` | Changes what the store charges. **Reads** (`GET`) stay STAFF; `POST /api/coupons/validate` stays public. |
+| `GET /api/admin/dashboard`, `GET /api/admin/analytics/sales`, `GET /api/admin/analytics/customers` | Revenue / customer-value data. The operational reports (`overview`, `inventory`, `products`, `visitors`, `funnel`) stay STAFF. |
+
+Everything else — order fulfilment (`/status` (also step-up), `/collected`,
+`/review`), order listing, catalog CRUD + archive/restore, blacklist,
+image-upload auth, push subscriptions — stays STAFF+ADMIN. A STAFF token on an
+ADMIN-only route gets `FORBIDDEN` (403). Covered by
+`tests/integration/admin-role-boundary.test.ts`.
+
+There is **no staff-account management API/UI** yet — STAFF/ADMIN users are
+created by seed or direct DB write (`security/operations.md` §4).
+
 ## 6. Rate limits (per endpoint)
 
 `express-rate-limit`, in-memory, per-IP unless noted. All windows are **15

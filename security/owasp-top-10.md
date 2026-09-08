@@ -22,15 +22,21 @@ where**, then **gaps / residual risk**. Paths are `backend/src` unless noted.
   256-bit `OrderAccessToken`, not a guessable id.
 - **Step-up (S2)**: order-status changes and stock edits additionally require a
   password re-entry within 10 min (`middleware/step-up.middleware.ts`).
+- **STAFF vs ADMIN tier (S4)**: `requireRole('ADMIN')` narrows STAFF out of the
+  irreversible / financial routes — permanent deletes (products / collections /
+  categories), `PATCH /api/settings`, every discount & coupon write, and the
+  revenue reports (`/api/admin/dashboard`, `/api/admin/analytics/{sales,customers}`).
+  Everything else stays STAFF+ADMIN. Covered by `admin-role-boundary.test.ts`
+  (STAFF→403 / ADMIN→200 on every gated route).
 - **CSRF** (an access-control failure): double-submit cookie + `X-CSRF-Token`
   header, timing-safe compare, on every non-GET (`middleware/csrf.middleware.ts`).
 - Frontend `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'` on both tiers
   (clickjacking).
 
 **Gaps / residual risk**
-- **STAFF == ADMIN** everywhere. There is no ADMIN-only tier yet (deleting
-  products, revenue data, staff management are all STAFF-reachable). Tracked as
-  **S4** — pending a decision on the boundary before it's built.
+- The S4 tier is coarse (two roles, one gate). There is still no **staff-account
+  management** surface (no invite/disable UI or API) — admins are provisioned by
+  seed or direct DB write (see `security/operations.md` §4).
 - `express-rate-limit` counters are per-instance and in-memory.
 
 ---

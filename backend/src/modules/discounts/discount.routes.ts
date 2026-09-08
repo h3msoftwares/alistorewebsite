@@ -27,39 +27,43 @@ import {
 } from './discount.controller';
 
 const router = Router();
+// Viewing discounts / coupons is STAFF-ok…
 const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
+// …but creating / editing / deleting one changes what the store charges, so
+// every mutation (POST / PATCH / DELETE) is ADMIN only (S4).
+const adminOnly = [requireAuth, requireRole('ADMIN')];
 
 // ---- Public: check a coupon code from the cart / checkout ----
 router.post('/coupons/validate', validate({ body: validateCouponSchema }), asyncHandler(validateCouponHandler));
 
-// ---- Admin: catalog discounts ----
+// ---- Discounts: read STAFF+ADMIN, write ADMIN ----
 router.get('/discounts', ...admin, asyncHandler(listDiscountsHandler));
-router.post('/discounts', ...admin, validate({ body: createDiscountSchema }), asyncHandler(createDiscountHandler));
+router.post('/discounts', ...adminOnly, validate({ body: createDiscountSchema }), asyncHandler(createDiscountHandler));
 router.patch(
   '/discounts/:id',
-  ...admin,
+  ...adminOnly,
   validate({ params: discountIdParamSchema, body: updateDiscountSchema }),
   asyncHandler(updateDiscountHandler)
 );
 router.delete(
   '/discounts/:id',
-  ...admin,
+  ...adminOnly,
   validate({ params: discountIdParamSchema }),
   asyncHandler(deleteDiscountHandler)
 );
 
-// ---- Admin: coupons ----
+// ---- Coupons: read STAFF+ADMIN, write ADMIN ----
 router.get('/coupons', ...admin, asyncHandler(listCouponsHandler));
-router.post('/coupons', ...admin, validate({ body: createCouponSchema }), asyncHandler(createCouponHandler));
+router.post('/coupons', ...adminOnly, validate({ body: createCouponSchema }), asyncHandler(createCouponHandler));
 router.patch(
   '/coupons/:id',
-  ...admin,
+  ...adminOnly,
   validate({ params: couponIdParamSchema, body: updateCouponSchema }),
   asyncHandler(updateCouponHandler)
 );
 router.delete(
   '/coupons/:id',
-  ...admin,
+  ...adminOnly,
   validate({ params: couponIdParamSchema }),
   asyncHandler(deleteCouponHandler)
 );

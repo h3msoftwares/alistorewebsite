@@ -8,7 +8,7 @@ import { prisma } from '../../src/config/prisma';
 import { createUser, createAdmin, createCustomer, bearer } from '../helpers/auth';
 
 const app = buildApp();
-const DASH = '/api/admin/dashboard'; // requireAuth + requireRole(STAFF, ADMIN)
+const DASH = '/api/admin/dashboard'; // requireAuth + requireRole(ADMIN) — probe for forged-token attacks
 const adminLogin = (body: unknown) => request(app).post('/api/auth/ali-admin-login').send(body);
 
 const EMAIL = 'sec.admin@alistore.test';

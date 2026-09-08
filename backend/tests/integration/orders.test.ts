@@ -327,6 +327,7 @@ describe('Orders API', () => {
         .set(bearer(buyer.token))
         .send(delivery);
       const orderId = checkout.body.order.id;
+      // Fulfilment work (status change, mark COD collected) is STAFF-reachable…
       const { token } = await createStaff();
 
       const status = await request(app)
@@ -342,7 +343,9 @@ describe('Orders API', () => {
         .send({ collected: true });
       expect(collected.body.order.paymentStatus).toBe('COLLECTED');
 
-      const dash = await request(app).get('/api/admin/dashboard').set(bearer(token));
+      // …but the revenue dashboard is ADMIN-only since S4.
+      const { token: adminToken } = await createAdmin();
+      const dash = await request(app).get('/api/admin/dashboard').set(bearer(adminToken));
       expect(dash.body).toMatchObject({
         totalOrders: 1,
         pendingOrders: 0,

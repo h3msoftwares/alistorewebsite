@@ -8,12 +8,14 @@ import { getSettingsHandler, updateSettingsHandler } from './settings.controller
 
 const router = Router();
 
-const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
+// S4: site settings cover delivery-fee config, brand identity, store
+// locations and the social links rendered storefront-wide — ADMIN only.
+const adminOnly = [requireAuth, requireRole('ADMIN')];
 
 // Public — the storefront chrome reads this on every page.
 router.get('/', asyncHandler(getSettingsHandler));
 
 // Admin — the /admin/settings page.
-router.patch('/', ...admin, validate({ body: updateSettingsSchema }), asyncHandler(updateSettingsHandler));
+router.patch('/', ...adminOnly, validate({ body: updateSettingsSchema }), asyncHandler(updateSettingsHandler));
 
 export default router;

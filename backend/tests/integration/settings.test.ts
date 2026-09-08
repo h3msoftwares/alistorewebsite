@@ -30,7 +30,7 @@ describe('Site settings API', () => {
     expect(Array.isArray(res.body.settings.announcementLines)).toBe(true);
   });
 
-  it('PATCH requires auth and staff role', async () => {
+  it('PATCH requires auth and (since S4) the ADMIN role', async () => {
     expect((await request(app).patch('/api/settings').send({ brandNameEn: 'X' })).status).toBe(401);
     expect(
       (await request(app).patch('/api/settings').set(bearer(customerToken)).send({ brandNameEn: 'X' })).status

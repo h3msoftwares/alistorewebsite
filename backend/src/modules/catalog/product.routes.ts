@@ -34,6 +34,9 @@ import {
 const router = Router();
 
 const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
+// S4: a permanent (hard) delete is irreversible — ADMIN only. The soft-delete
+// (`DELETE /:id`) and everything else stays STAFF-reachable.
+const adminOnly = [requireAuth, requireRole('ADMIN')];
 
 // ---- Storefront (public; optionalAuth lets staff pass ?status=archived|all) ----
 router.get(
@@ -72,7 +75,7 @@ router.post(
 );
 router.delete(
   '/:id/permanent',
-  ...admin,
+  ...adminOnly,
   validate({ params: productIdParamSchema }),
   asyncHandler(hardDeleteProductHandler)
 );

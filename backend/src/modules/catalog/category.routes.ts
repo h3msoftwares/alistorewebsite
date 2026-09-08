@@ -31,6 +31,8 @@ import {
 const router = Router();
 
 const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
+// S4: irreversible hard delete — ADMIN only (archive/restore stay STAFF).
+const adminOnly = [requireAuth, requireRole('ADMIN')];
 
 // ---- Storefront (public) ----
 // Optional ?collectionId= filters to one collection; ?standalone=true returns
@@ -78,7 +80,7 @@ router.post(
 );
 router.delete(
   '/:id/permanent',
-  ...admin,
+  ...adminOnly,
   validate({ params: categoryIdParamSchema }),
   asyncHandler(deleteCategoryHandler)
 );

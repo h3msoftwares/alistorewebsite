@@ -30,6 +30,9 @@ repository owner (see the GitHub repo's admin) — do not open a public issue.
 - **Step-up auth (S2)** — order-status changes and stock edits require a
   password re-entry within the last 10 minutes (`auth_time` claim, not reset by
   silent refresh).
+- **Role tiers (S4)** — STAFF+ADMIN by default; `requireRole('ADMIN')` narrows
+  STAFF out of permanent deletes, site settings, discount/coupon writes, and
+  the revenue reports.
 - **CSRF** — double-submit cookie + `X-CSRF-Token` header on every
   state-changing request.
 - **Abuse** — per-IP and per-identifier rate limits on every auth and

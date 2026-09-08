@@ -30,7 +30,9 @@ const router = Router();
 // at the app.ts level rather than being buried in per-route guards.
 router.use(requireAuth, requireRole('STAFF', 'ADMIN'));
 
-router.get('/dashboard', asyncHandler(salesDashboardHandler));
+// S4: the sales dashboard is revenue data — ADMIN only. (The parent guard
+// already ran, so this just narrows STAFF out.)
+router.get('/dashboard', requireRole('ADMIN'), asyncHandler(salesDashboardHandler));
 
 router.use('/analytics', analyticsRoutes);
 
