@@ -582,9 +582,12 @@ main > .container.section:first-child {
    in a list of link anchors — strip the native button chrome so it matches. */
 .site-footer__link--button {
   width: 100%;
+  margin: 0;
+  padding-inline: 0;
   text-align: start;
   background: none;
   border: 0;
+  color: inherit;
   font: inherit;
   cursor: pointer;
 }
