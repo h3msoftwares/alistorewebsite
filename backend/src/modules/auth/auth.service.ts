@@ -72,16 +72,30 @@ const PRIVILEGED_ROLES: AuthedUser['role'][] = ['ADMIN', 'STAFF'];
 // TTL is derived from the *role*, not from which endpoint minted the token, so
 // a STAFF/ADMIN always gets the shorter admin TTL — including on silent
 // refresh, where refresh() re-signs with the account's current role.
-export function signAccessToken(user: AuthedUser) {
+//
+// `authTimeSec` is the epoch-seconds moment a password was last verified for
+// this login (see the RefreshToken.authTime column). It is embedded as the
+// `auth_time` claim and is what requireFreshAuth() checks for step-up
+// -protected routes. Every caller passes it explicitly — a silent refresh
+// carries the *original* value forward, so keeping a session alive never
+// makes it look freshly authenticated.
+export function signAccessToken(user: AuthedUser, authTimeSec: number) {
   const expiresIn = PRIVILEGED_ROLES.includes(user.role)
     ? env.JWT_ADMIN_ACCESS_TTL
     : env.JWT_ACCESS_TTL;
-  return jwt.sign(user, env.JWT_ACCESS_SECRET, { expiresIn } as jwt.SignOptions);
+  return jwt.sign(
+    { id: user.id, role: user.role, auth_time: authTimeSec },
+    env.JWT_ACCESS_SECRET,
+    { expiresIn } as jwt.SignOptions
+  );
 }
 
-// Returns the raw JWT plus the stored row id (the id is needed to link a
-// rotated token back to its predecessor via `replacedByTokenID`).
-export async function issueRefreshToken(userID: string, familyID?: string): Promise<{ token: string; id: string }> {
+// Returns the raw JWT plus the stored row (id links a rotated token back to
+// its predecessor; authTime is carried forward by refresh()).
+export async function issueRefreshToken(
+  userID: string,
+  opts: { familyID?: string; authTime?: Date } = {}
+): Promise<{ token: string; id: string; authTime: Date }> {
   const jti = randomUUID();
   const token = jwt.sign({ sub: userID, jti }, env.JWT_REFRESH_SECRET, {
     expiresIn: `${env.JWT_REFRESH_TTL_DAYS}d`,
@@ -92,17 +106,21 @@ export async function issueRefreshToken(userID: string, familyID?: string): Prom
   // pos-backend used — no Redis needed at this scale.
   // `familyID` groups a rotation chain: a fresh login starts a new family, a
   // rotation carries the parent's family so a detected replay can revoke the
-  // whole chain at once.
+  // whole chain at once. `authTime` defaults to now (a fresh login / step-up)
+  // and is passed through explicitly on rotation.
   const record = await prisma.refreshToken.create({
     data: {
       userID,
-      familyID: familyID ?? randomUUID(),
+      familyID: opts.familyID ?? randomUUID(),
       tokenHash: hashToken(token),
       expiresAt: new Date(Date.now() + env.JWT_REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000),
+      ...(opts.authTime ? { authTime: opts.authTime } : {}),
     },
   });
-  return { token, id: record.id };
+  return { token, id: record.id, authTime: record.authTime };
 }
+
+const toEpochSec = (d: Date) => Math.floor(d.getTime() / 1000);
 
 export interface RegisterInput {
   email: string;
@@ -277,8 +295,10 @@ export async function login(
     });
   }
 
-  const accessToken = signAccessToken({ id: user.id, role: user.role });
-  const { token: refreshToken } = await issueRefreshToken(user.id);
+  // Fresh login → fresh auth_time (a password was just verified).
+  const authTime = new Date();
+  const { token: refreshToken } = await issueRefreshToken(user.id, { authTime });
+  const accessToken = signAccessToken({ id: user.id, role: user.role }, toEpochSec(authTime));
   await recordLoginAttempt('success', identifier, ctx, user.id);
   return { accessToken, refreshToken, userId: user.id };
 }
@@ -315,14 +335,43 @@ export async function refresh(refreshToken: string): Promise<TokenPair> {
   }
 
   // Rotate: issue the successor in the same family, then point the old row at
-  // it and revoke it.
-  const accessToken = signAccessToken({ id: user.id, role: user.role });
-  const { token: newRefreshToken, id: newTokenID } = await issueRefreshToken(user.id, stored.familyID);
+  // it and revoke it. `authTime` is carried forward UNCHANGED — a silent
+  // refresh proves the session is alive, not that a password was re-entered.
+  const { token: newRefreshToken, id: newTokenID } = await issueRefreshToken(user.id, {
+    familyID: stored.familyID,
+    authTime: stored.authTime,
+  });
+  const accessToken = signAccessToken({ id: user.id, role: user.role }, toEpochSec(stored.authTime));
   await prisma.refreshToken.update({
     where: { id: stored.id },
     data: { revokedAt: new Date(), replacedByTokenID: newTokenID },
   });
   return { accessToken, refreshToken: newRefreshToken };
+}
+
+/**
+ * Step-up re-authentication (S2). A signed-in user re-enters their password
+ * to unlock a sensitive action (see requireFreshAuth). Verifies the password
+ * with Argon2, then starts a BRAND-NEW refresh family with a fresh
+ * `authTime` — deliberately without revoking the old family, so other tabs /
+ * devices stay logged in (this is a re-auth prompt, not a logout). The
+ * browser's refresh cookie is overwritten with the new family's token, so
+ * every tab converges on the fresh authTime at its next silent refresh.
+ */
+export async function stepUp(userId: string, password: string): Promise<TokenPair> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !user.isActive || !user.passwordHash || user.deletedAt) {
+    throw new AppError('UNAUTHORIZED', 'Invalid credentials');
+  }
+  const ok = await argon2.verify(user.passwordHash, password).catch(() => false);
+  if (!ok) {
+    throw new AppError('VALIDATION_ERROR', 'Password is incorrect');
+  }
+
+  const authTime = new Date();
+  const { token: refreshToken } = await issueRefreshToken(user.id, { authTime });
+  const accessToken = signAccessToken({ id: user.id, role: user.role }, toEpochSec(authTime));
+  return { accessToken, refreshToken };
 }
 
 /**
@@ -361,8 +410,10 @@ export async function changePassword(
     }),
   ]);
 
-  const accessToken = signAccessToken({ id: user.id, role: user.role });
-  const { token: refreshToken } = await issueRefreshToken(user.id);
+  // A password was just verified → fresh auth_time.
+  const authTime = new Date();
+  const { token: refreshToken } = await issueRefreshToken(user.id, { authTime });
+  const accessToken = signAccessToken({ id: user.id, role: user.role }, toEpochSec(authTime));
   return { accessToken, refreshToken };
 }
 

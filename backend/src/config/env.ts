@@ -36,6 +36,12 @@ const envSchema = z.object({
   // signAccessToken in modules/auth/auth.service.ts.
   JWT_ADMIN_ACCESS_TTL: z.string().default('5m'),
   JWT_REFRESH_TTL_DAYS: z.coerce.number().default(30),
+  // Step-up auth (S2): how recently a password must have been entered for a
+  // sensitive admin action (order status change, stock edit). Checked against
+  // the access token's `auth_time` claim, which a silent refresh does NOT
+  // reset. 10 min ≈ one working "sitting" — long enough not to nag an admin
+  // mid-task, short enough that a walked-away / hijacked session goes stale.
+  STEP_UP_FRESHNESS_MIN: z.coerce.number().default(10),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
 
   // Email (forgot-password). Defaulted to empty rather than required — a

@@ -77,7 +77,15 @@ describe('admin auth — JWT hardening (forged-token attacks against /api/admin)
     expect(res.status).toBe(200);
     const decoded = jwt.decode(res.body.accessToken, { complete: true });
     expect(decoded?.header.alg).toBe('HS256');
-    expect(Object.keys(decoded?.payload as object).sort()).toEqual(['exp', 'iat', 'id', 'role']);
+    // `auth_time` (step-up freshness, S2) is a plain unix timestamp — no
+    // secret material, same as iat/exp.
+    expect(Object.keys(decoded?.payload as object).sort()).toEqual([
+      'auth_time',
+      'exp',
+      'iat',
+      'id',
+      'role',
+    ]);
   });
 });
 

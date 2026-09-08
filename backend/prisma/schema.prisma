@@ -120,6 +120,11 @@ model RefreshToken {
   expiresAt         DateTime
   revokedAt         DateTime?
   createdAt         DateTime  @default(now())
+  // When a password was last actually verified for this login (step-up auth).
+  // Set at login; carried UNCHANGED through every silent rotation so a kept
+  // -alive session never looks freshly authenticated. A fresh login or an
+  // explicit /api/auth/step-up starts a new family with a new authTime.
+  authTime          DateTime  @default(now())
 
   user       User          @relation(fields: [userID], references: [id], onDelete: Cascade)
   replacedBy RefreshToken? @relation("TokenRotation", fields: [replacedByTokenID], references: [id], onDelete: SetNull)

@@ -5,8 +5,18 @@ import type { UserRole } from '@prisma/client';
 import { prisma } from '../../src/config/prisma';
 import { env } from '../../src/config/env';
 
-export function signAccessToken(id: string, role: UserRole): string {
-  return jwt.sign({ id, role }, env.JWT_ACCESS_SECRET, { expiresIn: '15m' });
+/**
+ * Mints a test access token. `auth_time` defaults to "now" so a token is
+ * fresh for step-up-protected routes (requireFreshAuth); pass
+ * `authTimeSec` (e.g. a value well in the past) to simulate a session that
+ * has only been kept alive by silent refresh.
+ */
+export function signAccessToken(id: string, role: UserRole, authTimeSec?: number): string {
+  return jwt.sign(
+    { id, role, auth_time: authTimeSec ?? Math.floor(Date.now() / 1000) },
+    env.JWT_ACCESS_SECRET,
+    { expiresIn: '15m' }
+  );
 }
 
 export function bearer(token: string): { Authorization: string } {

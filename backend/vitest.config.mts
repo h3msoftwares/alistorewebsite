@@ -25,6 +25,9 @@ export default defineConfig({
       JWT_REFRESH_TTL_DAYS: '30',
       CORS_ORIGIN: 'http://localhost:3000',
       IMAGEKIT_PRIVATE_KEY: 'test-imagekit-private-key-0123456789',
+      // Set so the owner-notification path in order-cancellation.test.ts /
+      // the checkout notification tests actually fires its mailer mock.
+      OWNER_NOTIFICATION_EMAIL: 'owner@test.dev',
     },
   },
 });

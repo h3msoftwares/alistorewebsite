@@ -42,3 +42,9 @@ export const adminLoginSchema = z.object({
 export const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
+
+// Step-up re-auth: a signed-in user re-enters just their password. Same
+// bound as the login password field.
+export const stepUpSchema = z.object({
+  password: z.string().min(1).max(200),
+});

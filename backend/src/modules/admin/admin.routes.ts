@@ -3,6 +3,7 @@ import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
 import { requireAuth } from '../../middleware/auth.middleware';
 import { requireRole } from '../../middleware/rbac.middleware';
+import { requireFreshAuth } from '../../middleware/step-up.middleware';
 import {
   orderIdParamSchema,
   updateOrderStatusSchema,
@@ -38,8 +39,12 @@ router.get(
   validate({ query: adminListOrdersQuerySchema }),
   asyncHandler(listAllOrdersHandler)
 );
+// Step-up protected (S2): changing an order's fulfilment state is not
+// reversible by the customer and moves money-tracking — require a password
+// re-entry within the freshness window, not just a live session.
 router.patch(
   '/orders/:id/status',
+  requireFreshAuth(),
   validate({ params: orderIdParamSchema, body: updateOrderStatusSchema }),
   asyncHandler(updateOrderStatusHandler)
 );
@@ -54,8 +59,11 @@ router.patch(
   asyncHandler(reviewOrderHandler)
 );
 
+// Step-up protected (S2): a direct stock write bypasses the ordinary
+// stock-movement trail, so treat it like the order-status change above.
 router.patch(
   '/variants/:variantId/stock',
+  requireFreshAuth(),
   validate({ params: adminVariantParamSchema, body: updateStockSchema }),
   asyncHandler(updateStockHandler)
 );

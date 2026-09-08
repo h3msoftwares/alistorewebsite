@@ -6,6 +6,10 @@ import { AppError } from '../lib/AppError';
 export interface AuthedUser {
   id: string;
   role: 'CUSTOMER' | 'STAFF' | 'ADMIN';
+  /** Epoch seconds a password was last verified for this login (the JWT
+   *  `auth_time` claim). Undefined for a token minted before step-up auth
+   *  shipped — treated as "never" by requireFreshAuth. */
+  authTime?: number;
 }
 
 declare global {
@@ -27,8 +31,8 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   try {
     const payload = jwt.verify(token, env.JWT_ACCESS_SECRET, {
       algorithms: ['HS256'],
-    }) as AuthedUser;
-    req.user = { id: payload.id, role: payload.role };
+    }) as AuthedUser & { auth_time?: number };
+    req.user = { id: payload.id, role: payload.role, authTime: payload.auth_time };
     next();
   } catch {
     next(new AppError('UNAUTHORIZED', 'Invalid or expired access token'));
@@ -45,8 +49,8 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   try {
     const payload = jwt.verify(token, env.JWT_ACCESS_SECRET, {
       algorithms: ['HS256'],
-    }) as AuthedUser;
-    req.user = { id: payload.id, role: payload.role };
+    }) as AuthedUser & { auth_time?: number };
+    req.user = { id: payload.id, role: payload.role, authTime: payload.auth_time };
   } catch {
     // ignore invalid token on optional routes — treated as guest
   }

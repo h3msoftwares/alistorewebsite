@@ -1,6 +1,7 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { errorHandler } from './middleware/errorHandler.middleware';
 import { sanitizeInput } from './middleware/sanitize.middleware';
@@ -11,6 +12,7 @@ import authRoutes from './modules/auth/auth.routes';
 import { adminAuthRoutes } from './modules/auth/admin-auth.routes';
 import { passwordResetRoutes } from './modules/auth/password-reset.routes';
 import { changePasswordRoutes } from './modules/auth/change-password.routes';
+import { stepUpRoutes } from './modules/auth/step-up.routes';
 import { emailVerificationRoutes } from './modules/auth/email-verification.routes';
 import { checkoutOtpRoutes } from './modules/checkout-otp/checkout-otp.routes';
 import collectionRoutes from './modules/catalog/collection.routes';
@@ -39,6 +41,7 @@ export function buildApp(
     verifyEmailRateLimit?: boolean;
     resendVerificationRateLimit?: boolean;
     changePasswordRateLimit?: boolean;
+    stepUpRateLimit?: boolean;
     checkoutOtpVerifyRateLimit?: boolean;
     orderTrackRateLimit?: boolean;
     orderLookupRateLimit?: boolean;
@@ -55,6 +58,36 @@ export function buildApp(
   // address. Left off in dev/test so `req.ip` is the raw socket address and
   // a spoofed X-Forwarded-For can't be trusted.
   if (env.NODE_ENV === 'production') app.set('trust proxy', 1);
+
+  // Security headers, first — so even a rate-limited / CSRF-rejected / 404
+  // response still carries them. This is a JSON-only API: it never serves
+  // HTML, never renders a page, and is only ever read cross-origin by our
+  // own SPA. So the CSP is the most restrictive one possible ("load
+  // nothing, frame nowhere"), and the one relaxation is deliberate:
+  // Cross-Origin-Resource-Policy is set to `cross-origin` because the
+  // storefront (a different origin) must be able to read these responses —
+  // CORS above still controls *which* origin. Everything else is helmet's
+  // secure default. HSTS is production-only: it is meaningless over plain
+  // http and we don't want to pin `localhost` in a dev browser.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          'default-src': ["'none'"],
+          'base-uri': ["'none'"],
+          'form-action': ["'none'"],
+          'frame-ancestors': ["'none'"],
+        },
+      },
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      referrerPolicy: { policy: 'no-referrer' },
+      frameguard: { action: 'deny' },
+      hsts: env.NODE_ENV === 'production'
+        ? { maxAge: 63072000, includeSubDomains: true, preload: true }
+        : false,
+    })
+  );
 
   // CORS_ORIGIN may be a comma-separated list (e.g. localhost + a LAN IP for
   // testing on a phone). credentials:true still requires an exact match.
@@ -128,6 +161,12 @@ export function buildApp(
   app.use(
     '/api/auth',
     changePasswordRoutes({ rateLimit: opts.changePasswordRateLimit ?? env.NODE_ENV !== 'test' })
+  );
+  // Step-up re-auth — POST /api/auth/step-up, for unlocking sensitive admin
+  // actions without a full re-login (see requireFreshAuth).
+  app.use(
+    '/api/auth',
+    stepUpRoutes({ rateLimit: opts.stepUpRateLimit ?? env.NODE_ENV !== 'test' })
   );
   // Email verification — the customer-registration companion flow.
   app.use(
