@@ -578,6 +578,19 @@ main > .container.section:first-child {
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
+/* "Cookie preferences" is a button (it re-opens the consent banner) but sits
+   in a list of link anchors — strip the native button chrome so it matches. */
+.site-footer__link--button {
+  width: 100%;
+  margin: 0;
+  padding-inline: 0;
+  text-align: start;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
 
 .site-footer__brand-name {
   font-family: var(--font-serif);
@@ -691,6 +704,26 @@ main > .container.section:first-child {
   width: auto;
   gap: var(--space-2);
   padding-inline: var(--space-2);
+}
+.topbar__account--avatar { padding-inline: 0; }
+.topbar__avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  background: var(--navy);
+  color: #fff;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+/* On the dark home-hero header, flip to a light chip so it stays visible. */
+.site-header[data-on-dark='true'] .topbar__avatar {
+  background: #fff;
+  color: var(--navy);
 }
 .topbar__account-label {
   font-size: var(--fs-xs);
@@ -881,24 +914,6 @@ main > .container.section:first-child {
 }
 [lang='ar'] .hero__aside { align-items: flex-start; text-align: start; }
 
-.hero__welcome {
-  /* Same scale as .hero__title — a proper top-of-page greeting, not a caption. */
-  margin: 0 0 var(--space-5);
-  font-size: clamp(1.9rem, 1.1rem + 4.5vw, 3.5rem);
-  line-height: 1.08;
-  font-weight: 700;
-  text-wrap: balance;
-  color: var(--color-text-on-dark);
-}
-/* Desktop band is tall and the lead column is vertically centred, leaving a
-   lot of dead space above the copy. With the greeting present, pin the column
-   to the top so it reads from just under the nav. */
-@media (min-width: 901px) {
-  .hero__lead--greeted {
-    align-self: start;
-    padding-block-start: clamp(1rem, 6vh, 4rem);
-  }
-}
 .hero__eyebrow { color: var(--bright-gold); }
 .hero__title {
   /* own clamp with a smaller floor than --fs-4xl so it doesn't dominate a phone */
@@ -2787,6 +2802,53 @@ a.home-card__name:hover { text-decoration: underline; }
   background: var(--color-surface-raised);
   box-shadow: var(--shadow-md);
   border: 1px solid var(--color-border);
+}
+
+/* ---- 5.15b Cookie consent banner (see components/chrome/cookie-consent.tsx) ---- */
+.cookie-consent {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-end: 0;
+  z-index: var(--z-toast);
+  padding: var(--space-4) var(--gutter);
+  background: var(--color-surface-raised);
+  border-top: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+.cookie-consent__inner {
+  width: 100%;
+  max-width: var(--container-max);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.cookie-consent__text {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--color-text-secondary);
+}
+[lang='ar'] .cookie-consent__text { font-family: var(--font-arabic); }
+.cookie-consent__link {
+  color: var(--color-text);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  white-space: nowrap;
+}
+.cookie-consent__actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .cookie-consent__inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cookie-consent__actions .btn {
+    flex: 1;
+  }
 }
 
 /* ---- 5.15 Page placeholder (empty routes until real content is built) ---- */

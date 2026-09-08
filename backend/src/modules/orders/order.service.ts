@@ -1,9 +1,13 @@
-import { createHash } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { prisma } from '../../config/prisma';
+import { env } from '../../config/env';
 import { AppError } from '../../lib/AppError';
 import { generateUniqueOrderNumber } from '../../lib/orderNumber';
 import { recordAudit } from '../../lib/audit';
-import { sendOrderPlacedNotifications } from '../../lib/notifications/notification.service';
+import {
+  sendOrderPlacedNotifications,
+  sendOrderCancelledNotifications,
+} from '../../lib/notifications/notification.service';
 import { isBlacklisted } from '../blacklist/blacklist.service';
 import {
   resolveDeliveryFee,
@@ -11,7 +15,9 @@ import {
   type DeliveryConfig,
 } from '../../lib/delivery-fee';
 import { REGION_VALUES } from '../../lib/regions';
-import { OrderStatus, Prisma } from '@prisma/client';
+import { Order, OrderItem, OrderStatus, Prisma } from '@prisma/client';
+
+type OrderWithItems = Order & { items: OrderItem[] };
 
 /** The set of delivery regions a checkout may name: the built-in governorates
  *  plus any custom zone the admin has given a rate or a free-delivery flag. */
@@ -65,7 +71,59 @@ const VELOCITY_PHONE_MAX = 3;
 const VELOCITY_EMAIL_MAX = 3;
 const VELOCITY_IP_MAX = 5;
 
+// A customer (or a guest bearing a valid access token) may cancel their own
+// order up to — but not including — SHIPPED. An admin isn't bound by this;
+// see performCancellation's `enforceCancellableGate`.
+const CANCELLABLE_STATUSES: OrderStatus[] = ['PENDING', 'CONFIRMED'];
+
+// How long an OrderAccessToken stays valid, however it was issued (minted at
+// checkout for the confirmation email, or freshly minted by /orders/lookup).
+// Generous enough that "let me check on last month's order" always works;
+// bounded so a leaked link (browser history, forwarded email) doesn't stay
+// exploitable forever. Expired ⇒ the guest just uses /orders/lookup again.
+const ORDER_ACCESS_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
 type DbClient = Prisma.TransactionClient | typeof prisma;
+
+/** Mints a fresh guest access token for `orderId` and returns the raw value
+ *  — only its hash is ever stored. Called both inside checkout()'s
+ *  transaction (the token in the confirmation email) and standalone from
+ *  lookupOrder() (a freshly re-issued one) — each call always creates a new
+ *  row, never touching any token already issued for the same order. */
+async function mintAccessToken(db: DbClient, orderId: string): Promise<string> {
+  const raw = randomBytes(32).toString('base64url');
+  await db.orderAccessToken.create({
+    data: {
+      orderID: orderId,
+      tokenHash: hashToken(raw),
+      expiresAt: new Date(Date.now() + ORDER_ACCESS_TOKEN_TTL_MS),
+    },
+  });
+  return raw;
+}
+
+/** Looks up a live (unexpired) OrderAccessToken by its raw value. Used by
+ *  both the tracking view and token-based cancellation — a token is never
+ *  single-use, so no "consumed" bookkeeping here (unlike CheckoutOtp). */
+async function findValidAccessToken(rawToken: string) {
+  return prisma.orderAccessToken.findFirst({
+    where: { tokenHash: hashToken(rawToken), expiresAt: { gt: new Date() } },
+    include: { order: { include: { items: true } } },
+  });
+}
+
+function trackingUrl(rawToken: string): string {
+  return `${env.FRONTEND_URL.replace(/\/+$/, '')}/en/orders/track/${rawToken}`;
+}
+
+// A logged-in customer already has a real session and /orders/[id] — no
+// bearer-token credential needed, so their confirmation email links there
+// directly instead. /orders/[id] prompts an unauthenticated visitor to sign
+// in first (?next= brings them straight back), covering the case where the
+// email is opened on a different device/browser.
+function accountOrderUrl(orderId: string): string {
+  return `${env.FRONTEND_URL.replace(/\/+$/, '')}/en/orders/${orderId}`;
+}
 
 const DISABLED_CONFIG: DeliveryConfig = {
   deliveryFeeEnabled: false,
@@ -124,6 +182,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     throw new AppError('VALIDATION_ERROR', 'No cart owner (user or guest session) provided');
   }
 
+  let rawAccessToken: string | undefined;
   const order = await prisma.$transaction(async (tx) => {
     // A saved-address reference must belong to the person checking out. Without
     // this, an authenticated user could pass another user's Address id — it
@@ -327,6 +386,15 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       });
     }
 
+    // Only a guest order needs a bearer-token tracking link — a logged-in
+    // customer already has a real session and /orders/[id]; minting one for
+    // them would just be an unnecessary extra credential. Minted in the
+    // same transaction as the order itself, so it can never exist without a
+    // real order behind it.
+    if (!owner.userID) {
+      rawAccessToken = await mintAccessToken(tx, order.id);
+    }
+
     return order;
   });
 
@@ -344,7 +412,8 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
   // and a slow SMTP call can never hold the DB transaction open. Never
   // throws (see notification.service.ts), so a delivery failure can't
   // affect this response either.
-  void sendOrderPlacedNotifications(order).catch((err) => {
+  const orderUrl = rawAccessToken ? trackingUrl(rawAccessToken) : accountOrderUrl(order.id);
+  void sendOrderPlacedNotifications(order, orderUrl).catch((err) => {
     console.error('[order.service] failed to send order-placed notifications', err);
   });
 
@@ -368,16 +437,35 @@ export async function getOrderById(id: string, userID?: string) {
   return order;
 }
 
-export async function cancelOrder(id: string, userID: string) {
-  const order = await prisma.order.findFirst({ where: { id, userID }, include: { items: true } });
-  if (!order) throw new AppError('NOT_FOUND', 'Order not found');
-  if (order.status !== 'PENDING') {
-    throw new AppError('CONFLICT', 'Only pending orders can be cancelled');
-  }
-
-  // Put the reserved stock back and record it on the ledger.
+/**
+ * The one place that actually cancels an order: restores stock (one
+ * incremented ProductVariant + one RETURN StockMovement per line, symmetric
+ * with checkout's SALE-type decrement) and flips status to CANCELLED, all in
+ * one transaction. Every caller — the customer's own cancel button, a
+ * guest's token-based cancel, and the admin status dropdown when the target
+ * status is CANCELLED — routes through this, so there is exactly one
+ * cancellation implementation instead of several.
+ *
+ * `enforceCancellableGate` is what actually differs between them: a
+ * customer/guest can only cancel PENDING/CONFIRMED orders (before SHIPPED);
+ * an admin can force-cancel from any non-CANCELLED status (e.g. a
+ * return-to-sender after shipping), so the admin path passes `false`.
+ */
+async function performCancellation(
+  id: string,
+  opts: { enforceCancellableGate: boolean }
+): Promise<{ order: OrderWithItems; previousStatus: OrderStatus }> {
   return prisma.$transaction(async (tx) => {
-    for (const item of order.items) {
+    const existing = await tx.order.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) throw new AppError('NOT_FOUND', 'Order not found');
+    if (existing.status === 'CANCELLED') {
+      throw new AppError('CONFLICT', 'This order is already cancelled');
+    }
+    if (opts.enforceCancellableGate && !CANCELLABLE_STATUSES.includes(existing.status)) {
+      throw new AppError('CONFLICT', 'This order can no longer be cancelled');
+    }
+
+    for (const item of existing.items) {
       await tx.productVariant.update({
         where: { id: item.variantID },
         data: { stockQuantity: { increment: item.quantity } },
@@ -387,13 +475,90 @@ export async function cancelOrder(id: string, userID: string) {
           variantID: item.variantID,
           quantity: item.quantity,
           type: 'RETURN',
-          orderID: order.id,
-          reason: `Order ${order.orderNumber} cancelled`,
+          orderID: existing.id,
+          reason: `Order ${existing.orderNumber} cancelled`,
         },
       });
     }
-    return tx.order.update({ where: { id }, data: { status: 'CANCELLED' }, include: { items: true } });
+
+    const order = await tx.order.update({
+      where: { id },
+      data: { status: 'CANCELLED' },
+      include: { items: true },
+    });
+    return { order, previousStatus: existing.status };
   });
+}
+
+/** Audit + notification side effects shared by every cancellation path —
+ *  called after performCancellation's transaction has committed, same
+ *  fire-and-forget-notifications-after-commit discipline as checkout(). */
+async function finishCancellation(
+  order: OrderWithItems,
+  previousStatus: OrderStatus,
+  ctx: { actorID?: string; via: 'customer' | 'guest_token' | 'admin' }
+): Promise<void> {
+  await recordAudit({
+    entityType: 'order',
+    entityID: order.id,
+    action: 'order.cancelled',
+    actorID: ctx.actorID ?? null,
+    metadata: { orderNumber: order.orderNumber, from: previousStatus, via: ctx.via },
+  });
+  void sendOrderCancelledNotifications(order).catch((err) => {
+    console.error('[order.service] failed to send order-cancelled notifications', err);
+  });
+}
+
+/** Session-based cancellation — the logged-in customer's own cancel button. */
+export async function cancelOrder(id: string, userID: string) {
+  const owned = await prisma.order.findFirst({ where: { id, userID }, select: { id: true } });
+  if (!owned) throw new AppError('NOT_FOUND', 'Order not found');
+  const { order, previousStatus } = await performCancellation(id, { enforceCancellableGate: true });
+  await finishCancellation(order, previousStatus, { actorID: userID, via: 'customer' });
+  return order;
+}
+
+/** Token-based cancellation — a guest's tracking-page cancel button, proven
+ *  by the OrderAccessToken instead of a login session. Same generic
+ *  NOT_FOUND for "no such token" and "expired token" as getOrderByToken. */
+export async function cancelOrderByToken(rawToken: string) {
+  const record = await findValidAccessToken(rawToken);
+  if (!record) throw new AppError('NOT_FOUND', 'Order not found');
+  const { order, previousStatus } = await performCancellation(record.orderID, {
+    enforceCancellableGate: true,
+  });
+  await finishCancellation(order, previousStatus, { via: 'guest_token' });
+  return order;
+}
+
+/** GET /api/orders/track/:token — the guest tracking view. Same generic
+ *  NOT_FOUND whether the token is wrong or merely expired; never reveals
+ *  which. */
+export async function getOrderByToken(rawToken: string): Promise<OrderWithItems> {
+  const record = await findValidAccessToken(rawToken);
+  if (!record) throw new AppError('NOT_FOUND', 'Order not found');
+  return record.order;
+}
+
+/**
+ * POST /api/orders/lookup — the manual fallback when a guest doesn't have
+ * (or lost) their tracking link. `null` on any mismatch — wrong order
+ * number, right order number but wrong contact, or no such order at all all
+ * collapse to the exact same outcome here, so the caller can respond with
+ * one generic message regardless (same enumeration-resistance principle as
+ * password-reset / admin-login's uniform rejections). On a match, mints a
+ * *fresh* OrderAccessToken rather than trying to recover whichever one was
+ * emailed at checkout — that hash is one-way, so there's nothing to
+ * recover — which is also why this never disturbs the original link.
+ */
+export async function lookupOrder(orderNumber: string, contact: string): Promise<string | null> {
+  const order = await prisma.order.findFirst({
+    where: { orderNumber, OR: [{ guestEmail: contact }, { deliveryPhone: contact }] },
+    select: { id: true },
+  });
+  if (!order) return null;
+  return mintAccessToken(prisma, order.id);
 }
 
 // ---- Admin ----
@@ -427,6 +592,17 @@ export async function reviewOrder(id: string, actorId?: string) {
 }
 
 export async function updateOrderStatus(id: string, status: OrderStatus, actorId?: string) {
+  // Cancelling is not a plain field update — it has to restore stock, same
+  // as the customer-facing cancel button. Route through the shared core
+  // (unbounded by CANCELLABLE_STATUSES: an admin can force-cancel from any
+  // status, e.g. a return-to-sender after shipping) instead of the blind
+  // update below, which would otherwise silently lose stock.
+  if (status === 'CANCELLED') {
+    const { order, previousStatus } = await performCancellation(id, { enforceCancellableGate: false });
+    await finishCancellation(order, previousStatus, { actorID: actorId, via: 'admin' });
+    return order;
+  }
+
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
   const updated = await prisma.order.update({ where: { id }, data: { status } });

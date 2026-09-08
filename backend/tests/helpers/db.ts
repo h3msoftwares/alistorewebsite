@@ -10,6 +10,7 @@ const TABLES = [
   'checkoutotp',
   'pushsubscription',
   'stockmovement',
+  'orderaccesstoken',
   'orderitem',
   'order',
   'cartitem',

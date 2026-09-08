@@ -1,7 +1,6 @@
-import { PagePlaceholder } from '@/components/page-placeholder';
+import { OrdersView } from './orders-view';
 
-// TODO: order history list (GET /api/orders/mine) — requires login.
 export default async function OrdersPage({ params }: { params: Promise<{ locale: string }> }) {
-  const { locale } = await params;
-  return <PagePlaceholder title={locale === 'ar' ? 'طلباتي' : 'My Orders'} />;
+  const { locale } = (await params) as { locale: 'en' | 'ar' };
+  return <OrdersView locale={locale} />;
 }

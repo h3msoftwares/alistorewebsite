@@ -34,6 +34,7 @@ async function fillValid(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Full name'), 'Ali Tester');
   await user.type(screen.getByLabelText('Email'), 'ali@test.dev');
   await user.type(screen.getByLabelText('Password'), 'password123');
+  await user.type(screen.getByLabelText('Confirm password'), 'password123');
   await user.type(screen.getByLabelText('Contact phone'), '0791234567');
   await user.type(screen.getByLabelText('Street address'), '12 Rainbow Street');
   await user.type(screen.getByLabelText('City'), 'Amman');
@@ -69,6 +70,23 @@ describe('<RegisterForm>', () => {
     expect(screen.queryByLabelText('Phone')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Recipient name')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Contact phone')).toBeInTheDocument();
+  });
+
+  it('blocks submit and flags a mismatched password confirmation', async () => {
+    const user = userEvent.setup();
+    renderForm();
+    await user.type(screen.getByLabelText('Full name'), 'Ali Tester');
+    await user.type(screen.getByLabelText('Email'), 'ali@test.dev');
+    await user.type(screen.getByLabelText('Password'), 'password123');
+    await user.type(screen.getByLabelText('Confirm password'), 'password124');
+    await user.type(screen.getByLabelText('Contact phone'), '0791234567');
+    await user.type(screen.getByLabelText('Street address'), '12 Rainbow Street');
+    await user.type(screen.getByLabelText('City'), 'Amman');
+    await user.selectOptions(screen.getByLabelText('Governorate'), 'MOUNT_LEBANON');
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+
+    expect(await screen.findByText('Passwords do not match.')).toBeInTheDocument();
+    expect(registerMut.mutateAsync).not.toHaveBeenCalled();
   });
 
   it('submits the payload (with locale) and shows the "check your email" state — no session', async () => {

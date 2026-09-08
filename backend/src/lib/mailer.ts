@@ -139,10 +139,17 @@ export async function sendVerificationEmail(
  * Sends the order-confirmation email to the customer. `to` is
  * `order.guestEmail` — populated for guests with what they typed at checkout,
  * and for signed-in orders with the account's own email (see
- * order.service.ts's checkout()), so this one function covers both. Same
- * never-throws contract as the other mailer functions.
+ * order.service.ts's checkout()), so this one function covers both.
+ * `orderUrl` is either the guest tracking page (a fresh OrderAccessToken) or,
+ * for a logged-in customer, a direct link to their /orders/[id] — a logged-in
+ * customer already has a real session, so no bearer-token credential is
+ * minted for them. Same never-throws contract as the other mailer functions.
  */
-export async function sendOrderConfirmationEmail(to: string, order: OrderWithItems): Promise<boolean> {
+export async function sendOrderConfirmationEmail(
+  to: string,
+  order: OrderWithItems,
+  orderUrl: string
+): Promise<boolean> {
   if (!transporter) {
     console.warn('[mailer] SMTP is not configured — skipping order-confirmation email to', to);
     return false;
@@ -165,7 +172,8 @@ export async function sendOrderConfirmationEmail(to: string, order: OrderWithIte
     `${deliveryLine(order)}\n` +
     `Phone: ${order.deliveryPhone}` +
     (order.deliveryNotes ? `\nDelivery notes: ${order.deliveryNotes}` : '') +
-    `\n\nWe'll call ${order.deliveryPhone} to confirm delivery. Thanks for shopping with Ali's Store!`;
+    `\n\nWe'll call ${order.deliveryPhone} to confirm delivery. Thanks for shopping with Ali's Store!\n\n` +
+    `Track this order or cancel it any time before it ships: ${orderUrl}`;
 
   const itemRows = order.items
     .map((i) => `<tr><td>${itemLabel(i)}</td><td>${money(Number(i.lineTotal))}</td></tr>`)
@@ -189,6 +197,7 @@ export async function sendOrderConfirmationEmail(to: string, order: OrderWithIte
       ${order.deliveryNotes ? `<br>Delivery notes: ${order.deliveryNotes}` : ''}
     </p>
     <p>We'll call ${order.deliveryPhone} to confirm delivery. Thanks for shopping with Ali's Store!</p>
+    <p><a href="${orderUrl}">Track this order or cancel it</a> any time before it ships.</p>
   `.trim();
 
   try {
@@ -269,6 +278,90 @@ export async function sendOwnerOrderAlertEmail(to: string, order: OrderWithItems
     return true;
   } catch (err) {
     console.error('[mailer] failed to send owner order alert', err);
+    return false;
+  }
+}
+
+/**
+ * Sends the cancellation confirmation to the customer. Same `to` /
+ * never-throws contract as sendOrderConfirmationEmail.
+ */
+export async function sendOrderCancelledEmail(to: string, order: OrderWithItems): Promise<boolean> {
+  if (!transporter) {
+    console.warn('[mailer] SMTP is not configured — skipping order-cancelled email to', to);
+    return false;
+  }
+
+  const text =
+    `Hi ${order.deliveryName},\n\n` +
+    `Your order ${order.orderNumber} has been cancelled, and the total (${money(Number(order.total))}) ` +
+    `won't be charged since payment was cash on delivery.\n\n` +
+    `If this wasn't you, or you have any questions, get in touch and we'll sort it out.`;
+
+  const html = `
+    <p>Hi ${order.deliveryName},</p>
+    <p>
+      Your order <strong>${order.orderNumber}</strong> has been cancelled, and the total
+      (${money(Number(order.total))}) won't be charged since payment was cash on delivery.
+    </p>
+    <p>If this wasn't you, or you have any questions, get in touch and we'll sort it out.</p>
+  `.trim();
+
+  try {
+    const info = await transporter.sendMail({
+      from: env.SMTP_FROM,
+      to,
+      subject: `Order cancelled — ${order.orderNumber}`,
+      text,
+      html,
+    });
+    console.log('[mailer] order-cancelled email sent', info.messageId);
+    return true;
+  } catch (err) {
+    console.error('[mailer] failed to send order-cancelled email', err);
+    return false;
+  }
+}
+
+/**
+ * Sends the cancellation alert to the store owner (OWNER_NOTIFICATION_EMAIL).
+ * Same never-throws contract as the other mailer functions.
+ */
+export async function sendOwnerOrderCancelledAlertEmail(to: string, order: OrderWithItems): Promise<boolean> {
+  if (!transporter) {
+    console.warn('[mailer] SMTP is not configured — skipping owner cancellation alert for', order.orderNumber);
+    return false;
+  }
+
+  const text =
+    `Order cancelled.\n\n` +
+    `Order ${order.orderNumber}\n` +
+    `Total: ${money(Number(order.total))}\n` +
+    `Customer: ${order.deliveryName} — ${order.deliveryPhone}` +
+    (order.guestEmail ? `\nEmail: ${order.guestEmail}` : '');
+
+  const html = `
+    <p><strong>Order cancelled.</strong></p>
+    <p>
+      Order ${order.orderNumber}<br>
+      Total: ${money(Number(order.total))}<br>
+      Customer: ${order.deliveryName} — ${order.deliveryPhone}
+      ${order.guestEmail ? `<br>Email: ${order.guestEmail}` : ''}
+    </p>
+  `.trim();
+
+  try {
+    const info = await transporter.sendMail({
+      from: env.SMTP_FROM,
+      to,
+      subject: `Order cancelled ${order.orderNumber}`,
+      text,
+      html,
+    });
+    console.log('[mailer] owner cancellation alert sent', info.messageId);
+    return true;
+  } catch (err) {
+    console.error('[mailer] failed to send owner cancellation alert', err);
     return false;
   }
 }

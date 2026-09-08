@@ -26,6 +26,15 @@ export function useOrder(id: UUID | undefined) {
   });
 }
 
+export function useOrderByToken(token: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.orders.track(token ?? ''),
+    queryFn: () => ordersApi.getOrderByToken(token as string),
+    enabled: Boolean(token),
+    retry: false, // a bad/expired token 404s — retrying won't change that
+  });
+}
+
 export function useAdminOrders(status?: OrderStatus, flagged?: boolean) {
   return useQuery({
     queryKey: queryKeys.orders.admin(status, flagged),
@@ -89,6 +98,25 @@ export function useCancelOrder() {
       qc.setQueryData(queryKeys.orders.detail(order.id), order);
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
     },
+  });
+}
+
+export function useCancelOrderByToken() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) => ordersApi.cancelOrderByToken(token),
+    onSuccess: (order, token) => {
+      qc.setQueryData(queryKeys.orders.track(token), order);
+    },
+  });
+}
+
+/** POST /api/orders/lookup — resolves to the freshly minted tracking token
+ *  on a match; the caller navigates to /orders/track/[token]. */
+export function useLookupOrder() {
+  return useMutation({
+    mutationFn: ({ orderNumber, contact }: { orderNumber: string; contact: string }) =>
+      ordersApi.lookupOrder(orderNumber, contact),
   });
 }
 
