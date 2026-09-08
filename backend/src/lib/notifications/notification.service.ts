@@ -5,6 +5,7 @@ import {
   sendOwnerOrderAlertEmail,
   sendOrderCancelledEmail,
   sendOwnerOrderCancelledAlertEmail,
+  sendOrderShippedEmail,
 } from '../mailer';
 import { sendPushToAllAdmins } from '../push';
 
@@ -84,4 +85,15 @@ export async function sendOrderCancelledNotifications(order: OrderWithItems): Pr
     order.guestEmail ? sendOrderCancelledEmail(order.guestEmail, order) : Promise.resolve(false),
     sendOwnerCancellationNotification(order),
   ]);
+}
+
+/**
+ * Emails the customer that their order has shipped (with the admin's delivery
+ * estimate when set). `order.guestEmail` holds the contact email for BOTH
+ * guest and signed-in orders — see order.service.ts checkout(). Same
+ * fire-and-forget, never-throws, after-commit discipline as the others.
+ */
+export async function sendOrderShippedNotifications(order: OrderWithItems): Promise<void> {
+  if (!order.guestEmail) return;
+  await sendOrderShippedEmail(order.guestEmail, order, order.estimatedDeliveryDays);
 }

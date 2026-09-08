@@ -1,5 +1,8 @@
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
+import { round2 } from '../../lib/money';
+import { lineUnitPrice } from '../../lib/line-pricing';
+import { activeDiscounts } from '../discounts/discount.service';
 
 interface CartOwner {
   userID?: string;
@@ -19,16 +22,25 @@ async function getOrCreateCart(owner: CartOwner) {
 
 export async function getCart(owner: CartOwner) {
   const cart = await getOrCreateCart(owner);
-  const items = await prisma.cartItem.findMany({
-    where: { cartID: cart.id },
-    // `variants: true` lets the cart page/drawer build a size/color picker
-    // (sibling variants of the same product) without a second request per row.
-    include: { variant: { include: { product: { include: { images: true, variants: true } } } } },
-    orderBy: { dateCreated: 'asc' },
-  });
+  const [rows, discounts] = await Promise.all([
+    prisma.cartItem.findMany({
+      where: { cartID: cart.id },
+      // `variants: true` lets the cart page/drawer build a size/color picker
+      // (sibling variants of the same product) without a second request per row.
+      include: { variant: { include: { product: { include: { images: true, variants: true } } } } },
+      orderBy: { dateCreated: 'asc' },
+    }),
+    activeDiscounts(),
+  ]);
 
-  const subtotal = items.reduce((sum, i) => sum + Number(i.variant.product.price) * i.quantity, 0);
-  return { items, subtotal: Math.round(subtotal * 100) / 100 };
+  // Attach the effective unit price (variant override → product sale → catalog
+  // discount) so the cart UI and the total agree with what checkout will charge.
+  const items = rows.map((i) => ({
+    ...i,
+    effectivePrice: lineUnitPrice(i.variant, discounts),
+  }));
+  const subtotal = round2(items.reduce((sum, i) => sum + i.effectivePrice * i.quantity, 0));
+  return { items, subtotal };
 }
 
 export async function addItem(owner: CartOwner, variantId: string, quantity: number) {

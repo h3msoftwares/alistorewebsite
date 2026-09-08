@@ -147,6 +147,8 @@ function CartDrawerRow({
   const { product } = item.variant;
   const name = isAr ? product.nameAr : product.nameEn;
   const image = product.images[0];
+  const unitPrice = item.effectivePrice ?? Number(item.variant.price ?? product.price);
+  const wasReduced = unitPrice < Number(product.price);
 
   return (
     <div aria-busy={busy || undefined} style={{ display: 'flex', gap: 'var(--space-3)' }}>
@@ -181,8 +183,8 @@ function CartDrawerRow({
         </Link>
         <CartVariantPicker item={item} locale={locale as 'en' | 'ar'} disabled={busy} />
         <PriceTag
-          price={product.price}
-          compareAtPrice={product.compareAtPrice}
+          price={unitPrice}
+          compareAtPrice={wasReduced ? product.price : product.compareAtPrice}
           locale={locale as 'en' | 'ar'}
           showBadge={false}
         />

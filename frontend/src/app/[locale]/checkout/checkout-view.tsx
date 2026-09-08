@@ -16,8 +16,14 @@ import { useRequestCheckoutOtp, useVerifyCheckoutOtp } from '@/hooks/use-checkou
 import { useDeliveryRegionOptions } from '@/lib/use-delivery-region-options';
 import { regionLabel } from '@/lib/regions';
 import { formatCurrency } from '@/lib/format';
-import { isApiError } from '@/lib/api';
-import type { CheckoutBody, Order } from '@/lib/types';
+import { isApiError, discountsApi } from '@/lib/api';
+import type { CheckoutBody, Order, ResolvedCoupon } from '@/lib/types';
+
+/** Client-side mirror of the server's couponAmountOff — for the summary line. */
+function couponAmountOff(coupon: ResolvedCoupon, subtotal: number): number {
+  const off = coupon.type === 'PERCENT' ? (subtotal * coupon.value) / 100 : coupon.value;
+  return Math.round(Math.min(Math.max(0, off), subtotal) * 100) / 100;
+}
 
 type Locale = 'en' | 'ar';
 
@@ -203,6 +209,33 @@ export function CheckoutView({ locale }: { locale: Locale }) {
   const [emailVerifyToken, setEmailVerifyToken] = useState<string | undefined>();
   const [verifiedEmail, setVerifiedEmail] = useState<string | undefined>();
 
+  // Coupon: the shopper types a code and applies it; we resolve it against the
+  // API and show the reduction. The code is also sent at checkout, where the
+  // server re-validates and computes the authoritative discount.
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<ResolvedCoupon | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponBusy, setCouponBusy] = useState(false);
+  const applyCoupon = async () => {
+    const code = couponInput.trim();
+    if (!code) return;
+    setCouponBusy(true);
+    setCouponError(null);
+    try {
+      setAppliedCoupon(await discountsApi.validateCoupon(code));
+    } catch {
+      setAppliedCoupon(null);
+      setCouponError(t('That code is not valid.', 'هذا الرمز غير صالح.'));
+    } finally {
+      setCouponBusy(false);
+    }
+  };
+  const clearCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponError(null);
+  };
+
   const schema = useMemo(() => {
     const base = {
       deliveryPhone: z.string().trim().min(6, t('Enter a valid phone', 'أدخل رقمًا صالحًا')),
@@ -239,7 +272,8 @@ export function CheckoutView({ locale }: { locale: Locale }) {
   const quote = useDeliveryQuote(region);
   const subtotal = cart.data?.subtotal ?? 0;
   const deliveryFee = quote.data?.deliveryFee ?? null;
-  const total = quote.data?.total ?? subtotal;
+  const couponDiscount = appliedCoupon ? couponAmountOff(appliedCoupon, subtotal) : 0;
+  const total = Math.round(((quote.data?.total ?? subtotal) - couponDiscount) * 100) / 100;
   const busy = checkout.isPending;
 
   const guestEmailWatched = useWatch({ control, name: 'guestEmail' });
@@ -275,6 +309,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
         ? { guestEmail: v.guestEmail || undefined }
         : { saveAddress: true, guestEmail: profile.data?.email || undefined }),
       emailVerifyToken,
+      couponCode: appliedCoupon?.code,
     })
   );
 
@@ -294,6 +329,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
       deliveryNotes: pickNotes.trim() || a.notes || undefined,
       guestEmail: profile.data?.email || undefined,
       emailVerifyToken,
+      couponCode: appliedCoupon?.code,
     });
   };
 
@@ -548,22 +584,58 @@ export function CheckoutView({ locale }: { locale: Locale }) {
             <ul className="checkout__lines">
               {cart.data.items.map((i) => {
                 const p = i.variant.product;
+                const unit = i.effectivePrice ?? Number(i.variant.price ?? p.price);
                 return (
                   <li key={i.id}>
                     <span>
                       {(isAr ? p.nameAr : p.nameEn)} × {i.quantity}
                     </span>
-                    <span className="is-numeric">
-                      {money(Number(i.variant.price ?? p.price) * i.quantity)}
-                    </span>
+                    <span className="is-numeric">{money(unit * i.quantity)}</span>
                   </li>
                 );
               })}
             </ul>
+
+            <div className="checkout__row checkout__coupon">
+              <label htmlFor="checkout-coupon" className="visually-hidden">
+                {t('Coupon code', 'رمز القسيمة')}
+              </label>
+              {appliedCoupon ? (
+                <>
+                  <span>
+                    {t('Coupon', 'قسيمة')} <strong>{appliedCoupon.code}</strong>
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" onClick={clearCoupon}>
+                    {t('Remove', 'إزالة')}
+                  </Button>
+                </>
+              ) : (
+                <span className="checkout__coupon-entry">
+                  <Input
+                    id="checkout-coupon"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value)}
+                    placeholder={t('Coupon code', 'رمز القسيمة')}
+                    disabled={couponBusy}
+                  />
+                  <Button type="button" variant="outline" size="sm" onClick={applyCoupon} loading={couponBusy}>
+                    {t('Apply', 'تطبيق')}
+                  </Button>
+                </span>
+              )}
+            </div>
+            {couponError && <p className="admin-form__hint" role="alert">{couponError}</p>}
+
             <div className="checkout__row">
               <span>{t('Subtotal', 'المجموع الفرعي')}</span>
               <span className="is-numeric">{money(subtotal)}</span>
             </div>
+            {couponDiscount > 0 && (
+              <div className="checkout__row">
+                <span>{t('Discount', 'الخصم')} ({appliedCoupon?.code})</span>
+                <span className="is-numeric">−{money(couponDiscount)}</span>
+              </div>
+            )}
             <div className="checkout__row">
               <span>{t('Delivery', 'التوصيل')}</span>
               <span className="is-numeric">

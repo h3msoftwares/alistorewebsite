@@ -9,6 +9,7 @@ export * as accountApi from './account';
 export * as uploadsApi from './uploads';
 export * as settingsApi from './settings';
 export * as pushApi from './push';
+export * as discountsApi from './discounts';
 
 export { api, apiRequest, API_URL, refreshAccessToken } from './client';
 export { ApiError, isApiError } from './errors';

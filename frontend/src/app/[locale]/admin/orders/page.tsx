@@ -8,6 +8,9 @@ import {
   Button,
   DataTable,
   EmptyState,
+  Field,
+  Input,
+  Modal,
   ProductGridSkeleton,
   Select,
   StatusPill,
@@ -27,6 +30,15 @@ const STATUSES: OrderStatus[] = [
   'CANCELLED',
   'RETURNED',
 ];
+
+// Status changes that get a confirmation modal (both are effectively
+// terminal; CANCELLED also restocks + emails the customer).
+const CONFIRM_STATUSES: OrderStatus[] = ['CANCELLED', 'RETURNED'];
+
+/** What the admin is mid-way through doing — drives which modal is open. */
+type PendingAction =
+  | { kind: 'confirm'; order: Order; status: OrderStatus }
+  | { kind: 'days'; order: Order; status: OrderStatus; mode: 'ship' | 'edit' };
 
 export default function AdminOrdersPage() {
   const params = useParams();
@@ -52,6 +64,9 @@ export default function AdminOrdersPage() {
   const [page, setPage] = useState(1);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingAction | null>(null);
+  const [daysInput, setDaysInput] = useState('');
+  const [daysError, setDaysError] = useState<string | null>(null);
 
   const { data, isPending, isError, refetch } = useAdminOrders(status || undefined, flaggedOnly || undefined);
   const updateStatus = useUpdateOrderStatus();
@@ -76,6 +91,67 @@ export default function AdminOrdersPage() {
     } finally {
       setBusyId(null);
     }
+  };
+
+  const openDaysModal = (o: Order, mode: 'ship' | 'edit') => {
+    setDaysInput(o.estimatedDeliveryDays != null ? String(o.estimatedDeliveryDays) : '');
+    setDaysError(null);
+    setPending({ kind: 'days', order: o, status: mode === 'ship' ? 'SHIPPED' : o.status, mode });
+  };
+
+  // Called from the row's status <Select>. Confirmable statuses and the first
+  // move to SHIPPED open a modal; everything else applies immediately.
+  const changeStatus = (o: Order, next: OrderStatus) => {
+    if (next === o.status) return;
+    if (CONFIRM_STATUSES.includes(next)) {
+      setPending({ kind: 'confirm', order: o, status: next });
+      return;
+    }
+    if (next === 'SHIPPED') {
+      openDaysModal(o, 'ship');
+      return;
+    }
+    run(
+      o.id,
+      () => updateStatus.mutateAsync({ id: o.id, status: next }),
+      t('Status change failed', 'فشل تغيير الحالة')
+    );
+  };
+
+  const closeModal = () => setPending(null);
+
+  const confirmStatusChange = async () => {
+    if (pending?.kind !== 'confirm') return;
+    const { order, status: next } = pending;
+    closeModal();
+    await run(
+      order.id,
+      () => updateStatus.mutateAsync({ id: order.id, status: next }),
+      t('Status change failed', 'فشل تغيير الحالة')
+    );
+  };
+
+  const submitDays = async () => {
+    if (pending?.kind !== 'days') return;
+    const trimmed = daysInput.trim();
+    let estimatedDeliveryDays: number | null;
+    if (trimmed === '') {
+      estimatedDeliveryDays = null;
+    } else {
+      const n = Number(trimmed);
+      if (!Number.isInteger(n) || n < 0 || n > 90) {
+        setDaysError(t('Enter a whole number of days (0–90), or leave blank.', 'أدخل عدد أيام صحيح (0–90)، أو اتركه فارغًا.'));
+        return;
+      }
+      estimatedDeliveryDays = n;
+    }
+    const { order, status: next } = pending;
+    closeModal();
+    await run(
+      order.id,
+      () => updateStatus.mutateAsync({ id: order.id, status: next, estimatedDeliveryDays }),
+      t('Update failed', 'فشل التحديث')
+    );
   };
 
   const itemCount = (o: Order) => o.items.reduce((n, i) => n + i.quantity, 0);
@@ -208,6 +284,12 @@ export default function AdminOrdersPage() {
                       )}
                     >
                       {money(Number(o.total))}
+                      {Number(o.discountAmount ?? 0) > 0 && (
+                        <span className="admin-order-discount">
+                          −{money(Number(o.discountAmount))}
+                          {o.couponCode ? ` · ${o.couponCode}` : ''}
+                        </span>
+                      )}
                     </td>
                     <td data-label={t('Payment', 'الدفع')}>
                       <span className="admin-row-actions">
@@ -235,6 +317,20 @@ export default function AdminOrdersPage() {
                     <td data-label={t('Status', 'الحالة')}>
                       <span className="admin-row-actions">
                         <StatusPill status={o.status} locale={locale} />
+                        {o.estimatedDeliveryDays != null && (
+                          <button
+                            type="button"
+                            className="admin-order-eta"
+                            onClick={() => openDaysModal(o, 'edit')}
+                            disabled={busy}
+                            title={t('Edit the delivery estimate', 'تعديل مدة التوصيل')}
+                          >
+                            {t(
+                              `~${o.estimatedDeliveryDays}d`,
+                              `~${o.estimatedDeliveryDays} يوم`
+                            )}
+                          </button>
+                        )}
                         {o.flaggedForReview && (
                           <Button
                             variant="ghost"
@@ -255,17 +351,7 @@ export default function AdminOrdersPage() {
                           aria-label={t(`Change status for ${o.orderNumber}`, `تغيير حالة ${o.orderNumber}`)}
                           value={o.status}
                           disabled={busy}
-                          onChange={(e) =>
-                            run(
-                              o.id,
-                              () =>
-                                updateStatus.mutateAsync({
-                                  id: o.id,
-                                  status: e.target.value as OrderStatus,
-                                }),
-                              t('Status change failed', 'فشل تغيير الحالة')
-                            )
-                          }
+                          onChange={(e) => changeStatus(o, e.target.value as OrderStatus)}
                         >
                           {STATUSES.map((s) => (
                             <option key={s} value={s}>
@@ -283,6 +369,100 @@ export default function AdminOrdersPage() {
 
           <AdminPager page={safePage} totalPages={totalPages} onPageChange={setPage} locale={locale} />
         </>
+      )}
+
+      {pending?.kind === 'confirm' && (
+        <Modal
+          open
+          onClose={closeModal}
+          title={t(`Change status of ${pending.order.orderNumber}`, `تغيير حالة ${pending.order.orderNumber}`)}
+          closeLabel={t('Close', 'إغلاق')}
+        >
+          <div className="admin-modal">
+            <h2 className="admin-modal__title">
+              {pending.status === 'CANCELLED'
+                ? t('Cancel this order?', 'إلغاء هذا الطلب؟')
+                : t('Mark this order as returned?', 'وضع علامة "مُرتجَع" على هذا الطلب؟')}
+            </h2>
+            <p className="admin-modal__body">
+              {pending.status === 'CANCELLED'
+                ? t(
+                    `Order ${pending.order.orderNumber} will be cancelled — its items go back into stock and the customer is emailed.`,
+                    `سيُلغى الطلب ${pending.order.orderNumber} — تُعاد قطعه إلى المخزون ويُرسَل بريد إلى الزبون.`
+                  )
+                : t(
+                    `Order ${pending.order.orderNumber} will be marked as returned.`,
+                    `سيوضع على الطلب ${pending.order.orderNumber} علامة "مُرتجَع".`
+                  )}
+            </p>
+            <div className="admin-modal__actions">
+              <Button variant="ghost" onClick={closeModal}>
+                {t('Keep as is', 'الإبقاء كما هو')}
+              </Button>
+              <Button
+                variant={pending.status === 'CANCELLED' ? 'danger' : 'primary'}
+                onClick={confirmStatusChange}
+              >
+                {pending.status === 'CANCELLED'
+                  ? t('Cancel order', 'إلغاء الطلب')
+                  : t('Mark returned', 'وضع علامة مُرتجَع')}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {pending?.kind === 'days' && (
+        <Modal
+          open
+          onClose={closeModal}
+          title={t('Delivery estimate', 'مدة التوصيل المتوقعة')}
+          closeLabel={t('Close', 'إغلاق')}
+        >
+          <form
+            className="admin-modal"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitDays();
+            }}
+          >
+            <h2 className="admin-modal__title">
+              {pending.mode === 'ship'
+                ? t(`Ship order ${pending.order.orderNumber}`, `شحن الطلب ${pending.order.orderNumber}`)
+                : t(`Delivery estimate — ${pending.order.orderNumber}`, `مدة التوصيل — ${pending.order.orderNumber}`)}
+            </h2>
+            <Field
+              label={t('Arrives in about (days)', 'يصل خلال (أيام)')}
+              hint={t(
+                'Leave blank if unknown. Shown to the customer in the shipped email.',
+                'اتركه فارغًا إن لم يكن معروفًا. يظهر للزبون في بريد الشحن.'
+              )}
+              error={daysError ?? undefined}
+            >
+              {(p) => (
+                <Input
+                  {...p}
+                  type="number"
+                  min={0}
+                  max={90}
+                  step={1}
+                  inputMode="numeric"
+                  value={daysInput}
+                  onChange={(e) => setDaysInput(e.target.value)}
+                  placeholder={t('e.g. 3', 'مثال: 3')}
+                />
+              )}
+            </Field>
+            <div className="admin-modal__actions">
+              <Button type="button" variant="ghost" onClick={closeModal}>
+                {t('Cancel', 'إلغاء')}
+              </Button>
+              <Button type="submit" variant="primary">
+                {pending.mode === 'ship' ? t('Ship order', 'شحن الطلب') : t('Save estimate', 'حفظ المدة')}
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

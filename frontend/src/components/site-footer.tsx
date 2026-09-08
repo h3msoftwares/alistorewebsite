@@ -135,9 +135,9 @@ export function SiteFooter({ locale }: { locale: string }) {
 
           <div>
             <p className="site-footer__col-title">{t('About', 'عن المتجر')}</p>
-            <a className="site-footer__link" href="#">
-              {t('Our story', 'قصتنا')}
-            </a>
+            <Link className="site-footer__link" href={`/${locale}#visit-us`}>
+              {t('Visit us', 'زورونا')}
+            </Link>
             <Link className="site-footer__link" href={`/${locale}/delivery-returns`}>
               {t('Delivery & returns', 'التوصيل والإرجاع')}
             </Link>

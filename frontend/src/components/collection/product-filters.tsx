@@ -7,12 +7,13 @@ import {
   selectUiFilters,
   setCategory,
   setColor,
+  setOnSale,
   setPriceRange,
   setSize,
   setSort,
   resetFilters,
 } from '@/store/slices/uiFiltersSlice';
-import { Drawer, Icon, Input, Select } from '@/components/ui';
+import { Choice, Drawer, Icon, Input, Select } from '@/components/ui';
 import type { Category, ProductSort } from '@/lib/types';
 
 /**
@@ -51,7 +52,8 @@ export function ProductFilters({
     filters.size !== null ||
     filters.color !== null ||
     filters.minPrice !== null ||
-    filters.maxPrice !== null;
+    filters.maxPrice !== null ||
+    filters.onSale;
 
   // Rendered twice (inline bar + drawer), so ids get a per-copy suffix.
   const controls = (scope: 'bar' | 'drawer') => (
@@ -170,6 +172,15 @@ export function ProductFilters({
             }
           />
         </div>
+      </div>
+
+      <div className="product-filters__group product-filters__group--check">
+        <Choice
+          type="checkbox"
+          label={isAr ? 'التخفيضات فقط' : 'On sale only'}
+          checked={filters.onSale}
+          onChange={(e) => dispatch(setOnSale(e.target.checked))}
+        />
       </div>
 
       {hasActiveFilters && (

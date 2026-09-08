@@ -1,5 +1,6 @@
 import { Hero } from '@/components/home/hero';
 import { HomeMiddle } from '@/components/home/home-middle';
+import { StoreInfo } from '@/components/home/store-info';
 
 /**
  * Home page structure:
@@ -8,6 +9,8 @@ import { HomeMiddle } from '@/components/home/home-middle';
  *      (Collection.showOnHome / Category.showOnHome), interleaved by
  *      sortOrder, each its own horizontally-scrollable row
  *   3. Zone 2 (more) — every other collection, same row treatment
+ *   4. Store info — admin-controlled "Visit us" block (address + hours),
+ *      shown just above the footer when set
  *
  * See `home-middle.tsx` for the data assembly.
  */
@@ -18,6 +21,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     <>
       <Hero locale={locale} />
       <HomeMiddle locale={locale} />
+      <StoreInfo locale={locale} />
     </>
   );
 }

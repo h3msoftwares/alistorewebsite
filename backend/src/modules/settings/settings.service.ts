@@ -1,5 +1,6 @@
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
+import { deleteImageKitFile } from '../uploads/upload.service';
 import type { UpdateSettingsInput } from './settings.schema';
 
 // The settings row is a singleton — its id is always 1.
@@ -8,8 +9,16 @@ const SETTINGS_ID = 1;
 const settingsInclude = {
   announcementLines: { orderBy: { sortOrder: 'asc' as const } },
   deliveryRates: { orderBy: { sortOrder: 'asc' as const } },
+  storeLocations: {
+    orderBy: { sortOrder: 'asc' as const },
+    include: { hours: { orderBy: { dayOfWeek: 'asc' as const } } },
+  },
   heroCtaCollection: { select: { id: true, slug: true, nameEn: true, nameAr: true } },
 };
+
+// '' / null / undefined ⇒ null; otherwise the trimmed value.
+const orNull = (v: string | null | undefined): string | null =>
+  v === undefined || v === null || v === '' ? null : v;
 
 export async function getSettings() {
   const existing = await prisma.siteSetting.findUnique({
@@ -84,12 +93,58 @@ export async function updateSettings(input: UpdateSettingsInput) {
 
   const data = scalarData(input);
 
-  return prisma.$transaction(async (tx) => {
+  // Store-location background images being replaced/removed: any ImageKit file
+  // that was referenced before and isn't in the incoming set gets cleaned up
+  // after the transaction commits.
+  let staleImageFileIds: string[] = [];
+  if (input.storeLocations) {
+    const current = await prisma.storeLocation.findMany({
+      where: { settingID: SETTINGS_ID },
+      select: { imageFileId: true },
+    });
+    const before = new Set(current.map((l) => l.imageFileId).filter((v): v is string => !!v));
+    const after = new Set(
+      input.storeLocations.map((l) => orNull(l.imageFileId)).filter((v): v is string => !!v)
+    );
+    staleImageFileIds = [...before].filter((id) => !after.has(id));
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
     await tx.siteSetting.upsert({
       where: { id: SETTINGS_ID },
       create: { id: SETTINGS_ID, ...data },
       update: data,
     });
+
+    if (input.storeLocations) {
+      // Replace-all. Deleting a location cascade-removes its StoreHours rows.
+      await tx.storeLocation.deleteMany({ where: { settingID: SETTINGS_ID } });
+      for (const [i, loc] of input.storeLocations.entries()) {
+        await tx.storeLocation.create({
+          data: {
+            settingID: SETTINGS_ID,
+            sortOrder: i,
+            nameEn: orNull(loc.nameEn),
+            nameAr: orNull(loc.nameAr),
+            addressEn: orNull(loc.addressEn),
+            addressAr: orNull(loc.addressAr),
+            mapUrl: orNull(loc.mapUrl),
+            imageUrl: orNull(loc.imageUrl),
+            imageFileId: orNull(loc.imageFileId),
+            hours:
+              loc.hours && loc.hours.length > 0
+                ? {
+                    create: loc.hours.map((h) => ({
+                      dayOfWeek: h.dayOfWeek,
+                      opensAt: h.opensAt,
+                      closesAt: h.closesAt,
+                    })),
+                  }
+                : undefined,
+          },
+        });
+      }
+    }
 
     if (input.announcementLines) {
       await tx.announcementLine.deleteMany({ where: { settingID: SETTINGS_ID } });
@@ -121,4 +176,10 @@ export async function updateSettings(input: UpdateSettingsInput) {
 
     return tx.siteSetting.findUnique({ where: { id: SETTINGS_ID }, include: settingsInclude });
   });
+
+  // Best-effort — deleteImageKitFile swallows its own failures, so a dead
+  // ImageKit asset never blocks a settings save.
+  await Promise.all(staleImageFileIds.map((id) => deleteImageKitFile(id)));
+
+  return updated;
 }

@@ -66,7 +66,8 @@ export async function updateOrderStatusHandler(req: Request, res: Response) {
   const order = await orderService.updateOrderStatus(
     paramString(req.params.id),
     req.body.status,
-    req.user!.id
+    req.user!.id,
+    { estimatedDeliveryDays: req.body.estimatedDeliveryDays }
   );
   res.json({ order });
 }

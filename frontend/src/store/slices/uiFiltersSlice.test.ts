@@ -23,6 +23,7 @@ describe('uiFiltersSlice', () => {
       color: null,
       minPrice: null,
       maxPrice: null,
+      onSale: false,
       sort: 'newest',
       search: '',
       page: 1,

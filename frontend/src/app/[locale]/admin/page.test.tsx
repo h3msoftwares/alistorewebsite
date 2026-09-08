@@ -27,6 +27,8 @@ const dashboard = {
       orderNumber: 'AS-20260906-ABC123',
       deliveryName: 'Jane Doe',
       total: 43,
+      discountAmount: 7,
+      couponCode: 'SAVE7',
       status: 'PENDING',
       paymentStatus: 'PENDING',
       flaggedForReview: false,
@@ -56,6 +58,12 @@ describe('AdminDashboardPage', () => {
     expect(screen.getByText('Low / out of stock')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
     expect(screen.getByText('1 out of stock')).toBeInTheDocument();
+  });
+
+  it('marks a recent order that used a coupon', async () => {
+    renderPage();
+    await screen.findByText('AS-20260906-ABC123');
+    expect(screen.getByText(/−\$7\.00 · SAVE7/)).toBeInTheDocument();
   });
 
   it('lists the recent orders', async () => {

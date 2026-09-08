@@ -162,7 +162,11 @@ function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
   const { product } = item.variant;
   const name = isAr ? product.nameAr : product.nameEn;
   const image = product.images[0];
-  const lineTotal = Number(product.price) * item.quantity;
+  // The API's effective unit price (variant override → product sale → catalog
+  // discount); falls back to the base price for older payloads.
+  const unitPrice = item.effectivePrice ?? Number(item.variant.price ?? product.price);
+  const wasReduced = unitPrice < Number(product.price);
+  const lineTotal = unitPrice * item.quantity;
   const busy = quantityUpdate.isPending || remove.isPending;
 
   return (
@@ -203,8 +207,8 @@ function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
             <CartVariantPicker item={item} locale={locale} disabled={busy} />
 
             <PriceTag
-              price={product.price}
-              compareAtPrice={product.compareAtPrice}
+              price={unitPrice}
+              compareAtPrice={wasReduced ? product.price : product.compareAtPrice}
               locale={locale}
               showBadge={false}
             />

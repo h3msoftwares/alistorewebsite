@@ -125,6 +125,12 @@ export default function AdminDashboardPage() {
                       <td data-label={t('Date', 'التاريخ')}>{date(o.dateCreated)}</td>
                       <td className="is-numeric" data-label={t('Total', 'الإجمالي')}>
                         {money(Number(o.total))}
+                        {Number(o.discountAmount ?? 0) > 0 && (
+                          <span className="admin-order-discount">
+                            −{money(Number(o.discountAmount))}
+                            {o.couponCode ? ` · ${o.couponCode}` : ''}
+                          </span>
+                        )}
                       </td>
                       <td data-label={t('Status', 'الحالة')}>
                         <StatusPill status={o.status} locale={locale} />

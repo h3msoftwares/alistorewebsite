@@ -123,8 +123,15 @@ export function useLookupOrder() {
 export function useUpdateOrderStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: UUID; status: OrderStatus }) =>
-      ordersApi.adminUpdateOrderStatus(id, status),
+    mutationFn: ({
+      id,
+      status,
+      estimatedDeliveryDays,
+    }: {
+      id: UUID;
+      status: OrderStatus;
+      estimatedDeliveryDays?: number | null;
+    }) => ordersApi.adminUpdateOrderStatus(id, status, estimatedDeliveryDays),
     onSuccess: (order) => {
       qc.setQueryData(queryKeys.orders.detail(order.id), order);
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });

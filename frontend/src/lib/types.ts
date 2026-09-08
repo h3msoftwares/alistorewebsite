@@ -153,10 +153,14 @@ export interface Product {
   /** Active sale. Both null ⇒ no sale. */
   saleType?: DiscountType | null;
   saleValue?: Decimalish | null;
-  /** Computed by the API: what the shopper pays after the sale (>= 0), and
-   *  whether a sale is currently reducing the price. */
+  /** Computed by the API: what the shopper pays after the product's own sale
+   *  AND the best active catalog discount (>= 0), and whether that price is
+   *  below the base price. */
   effectivePrice: number;
   onSale: boolean;
+  /** The catalog discount (collection/category/all-items) currently applied
+   *  to this product, if any — for context on the storefront. */
+  discount?: AppliedDiscountInfo | null;
   isActive: boolean;
   /** Set when the product is archived (soft-deleted) from the admin. */
   deletedAt?: string | null;
@@ -168,6 +172,79 @@ export interface Product {
   collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'> | null;
 }
 
+// ---- Discounts & coupons ----
+
+/** A catalog discount as applied to one product (percentage or amount off,
+ *  and how it combines with the product's own sale). */
+export interface AppliedDiscountInfo {
+  type: DiscountType;
+  value: number;
+  stacking: 'STACK' | 'OVERRIDE';
+}
+
+export type DiscountScope = 'ALL' | 'COLLECTION' | 'CATEGORY';
+
+/** Admin-managed catalog discount (`GET /api/discounts`). */
+export interface Discount {
+  id: UUID;
+  nameEn: string;
+  nameAr: string;
+  scope: DiscountScope;
+  collectionID: UUID | null;
+  categoryID: UUID | null;
+  type: DiscountType;
+  value: Decimalish;
+  stacking: 'STACK' | 'OVERRIDE';
+  isActive: boolean;
+  startsAt: IsoDateTime | null;
+  endsAt: IsoDateTime | null;
+  dateCreated: IsoDateTime;
+  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr'> | null;
+  category?: Pick<Category, 'id' | 'nameEn' | 'nameAr'> | null;
+}
+
+export interface DiscountBody {
+  nameEn: string;
+  nameAr: string;
+  scope: DiscountScope;
+  collectionId?: UUID | null;
+  categoryId?: UUID | null;
+  type: DiscountType;
+  value: number;
+  stacking?: 'STACK' | 'OVERRIDE';
+  isActive?: boolean;
+  startsAt?: string | null;
+  endsAt?: string | null;
+}
+
+/** Admin-managed checkout coupon (`GET /api/coupons`). */
+export interface Coupon {
+  id: UUID;
+  code: string;
+  type: DiscountType;
+  value: Decimalish;
+  isActive: boolean;
+  startsAt: IsoDateTime | null;
+  endsAt: IsoDateTime | null;
+  dateCreated: IsoDateTime;
+}
+
+export interface CouponBody {
+  code: string;
+  type: DiscountType;
+  value: number;
+  isActive?: boolean;
+  startsAt?: string | null;
+  endsAt?: string | null;
+}
+
+/** `POST /api/coupons/validate` success payload. */
+export interface ResolvedCoupon {
+  code: string;
+  type: DiscountType;
+  value: number;
+}
+
 // ---- Cart ----
 
 export interface CartItem {
@@ -175,6 +252,9 @@ export interface CartItem {
   cartID: UUID;
   variantID: UUID;
   quantity: number;
+  /** Effective unit price the API computed for this line — variant override →
+   *  product sale → catalog discount. Falls back to product pricing if absent. */
+  effectivePrice?: number;
   variant: ProductVariant & { product: Product };
 }
 
@@ -239,8 +319,15 @@ export interface Order {
   deliveryArea?: string | null;
   deliveryNotes?: string | null;
   notes?: string | null;
+  /** Admin-set "arrives in about N days" estimate; set on/after shipping. */
+  estimatedDeliveryDays?: number | null;
+  /** Merchandise after per-product sales + catalog discounts, before any coupon. */
   subtotal: Decimalish;
-  /** Admin-configured delivery fee. `total = subtotal + deliveryFee`. */
+  /** The coupon applied at checkout (upper-cased), or null. */
+  couponCode?: string | null;
+  /** Amount the coupon took off the subtotal. */
+  discountAmount?: Decimalish;
+  /** Admin-configured delivery fee. `total = subtotal - discountAmount + deliveryFee`. */
   deliveryFee: Decimalish;
   total: Decimalish;
   currency: string;
@@ -270,6 +357,8 @@ export interface CheckoutBody {
   /** The "verified" ticket from POST /api/checkout/otp/verify. Required
    *  unless the caller is logged in with a verified account email. */
   emailVerifyToken?: string;
+  /** Optional coupon code; rejected at checkout if not currently valid. */
+  couponCode?: string;
 }
 
 /** `GET /api/orders/delivery-quote?region=...` — a live fee estimate for the
@@ -321,6 +410,8 @@ export interface ProductListQuery {
   color?: string;
   minPrice?: number;
   maxPrice?: number;
+  /** Only products discounted right now (own sale or an active catalog discount). */
+  onSale?: boolean;
   sort?: ProductSort;
   page?: number;
   pageSize?: number;
@@ -358,6 +449,29 @@ export interface DeliveryRate {
   sortOrder: number;
 }
 
+/** One open day of a store location's schedule. `dayOfWeek` is 0 = Monday …
+ *  6 = Sunday; a day with no entry is closed. Times are "HH:MM" (24-hour). */
+export interface StoreHoursDay {
+  id: UUID;
+  dayOfWeek: number;
+  opensAt: string;
+  closesAt: string;
+}
+
+/** A physical store shown in the home page's "Visit us" section. */
+export interface StoreLocation {
+  id: UUID;
+  nameEn: string | null;
+  nameAr: string | null;
+  addressEn: string | null;
+  addressAr: string | null;
+  mapUrl: string | null;
+  imageUrl: string | null;
+  imageFileId: string | null;
+  sortOrder: number;
+  hours: StoreHoursDay[];
+}
+
 /** Owner-editable storefront chrome (`GET /api/settings`). */
 export interface SiteSettings {
   id: number;
@@ -382,6 +496,8 @@ export interface SiteSettings {
   contactEmail: string | null;
   contactPhone: string | null;
   announcementLines: AnnouncementLine[];
+  /** Physical stores shown in the home page's "Visit us" section. */
+  storeLocations: StoreLocation[];
   /** Resolved collection for the hero CTA, when one is set. */
   heroCtaCollection: Pick<Collection, 'id' | 'slug' | 'nameEn' | 'nameAr'> | null;
   // Delivery fee — off ⇒ every order ships free.
@@ -403,6 +519,7 @@ export type SiteSettingsBody = Partial<
     | 'heroCtaCollectionID'
     | 'deliveryRates'
     | 'freeDeliveryThreshold'
+    | 'storeLocations'
   >
 > & {
   heroCtaCollectionId?: UUID | '' | null;
@@ -410,6 +527,18 @@ export type SiteSettingsBody = Partial<
   deliveryRates?: { region: string; fee: number }[];
   /** number ⇒ set; null ⇒ clear the free-over rule. */
   freeDeliveryThreshold?: number | null;
+  /** Replace-all: the whole set of stores, in order. Each carries its own
+   *  open days (a day left out is closed). */
+  storeLocations?: {
+    nameEn?: string | null;
+    nameAr?: string | null;
+    addressEn?: string | null;
+    addressAr?: string | null;
+    mapUrl?: string | null;
+    imageUrl?: string | null;
+    imageFileId?: string | null;
+    hours?: { dayOfWeek: number; opensAt: string; closesAt: string }[];
+  }[];
 };
 
 // ---- Request payloads (write endpoints) ----
@@ -567,6 +696,9 @@ export interface AdminDashboardRecentOrder {
   orderNumber: string;
   deliveryName: string;
   total: Decimalish;
+  /** Coupon reduction on this order (0 when none). */
+  discountAmount?: Decimalish;
+  couponCode?: string | null;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
   flaggedForReview: boolean;

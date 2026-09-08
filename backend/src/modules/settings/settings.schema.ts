@@ -10,6 +10,9 @@ const money = z.number().min(0).max(100000);
 const regionName = z.string().trim().min(1).max(60);
 const MAX_REGIONS = 40;
 
+// "HH:MM", 24-hour.
+const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Must be a HH:MM time');
+
 // A URL field: an absolute http(s) URL, or an empty string (cleared), or
 // null/omitted. Restricted to http(s) on purpose — these values are rendered
 // as `<a href>` in the storefront footer, so `javascript:` / `data:` schemes
@@ -38,6 +41,57 @@ export const updateSettingsSchema = z.object({
   whatsappUrl: urlField,
   contactEmail: z.string().trim().email().or(z.literal('')).nullish(),
   contactPhone: z.string().trim().max(40).or(z.literal('')).nullish(),
+
+  // ---- "Visit us" store locations ----
+  // Replace-all: the given list becomes the whole set of stores, in order.
+  // Each location carries its own opening hours (a day not listed = closed);
+  // dayOfWeek 0 = Monday … 6 = Sunday.
+  storeLocations: z
+    .array(
+      z.object({
+        nameEn: z.string().trim().max(80).or(z.literal('')).nullish(),
+        nameAr: z.string().trim().max(80).or(z.literal('')).nullish(),
+        addressEn: z.string().trim().max(300).or(z.literal('')).nullish(),
+        addressAr: z.string().trim().max(300).or(z.literal('')).nullish(),
+        // Rendered as an <a href> ("Get directions") — same http(s)-only guard
+        // as the footer links.
+        mapUrl: urlField,
+        imageUrl: urlField,
+        imageFileId: z.string().trim().max(200).or(z.literal('')).nullish(),
+        hours: z
+          .array(
+            z.object({
+              dayOfWeek: z.number().int().min(0).max(6),
+              opensAt: timeOfDay,
+              closesAt: timeOfDay,
+            })
+          )
+          .max(7)
+          .superRefine((days, ctx) => {
+            const seen = new Set<number>();
+            days.forEach((d, i) => {
+              if (seen.has(d.dayOfWeek)) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  path: [i, 'dayOfWeek'],
+                  message: 'duplicate day',
+                });
+              }
+              seen.add(d.dayOfWeek);
+              if (d.closesAt <= d.opensAt) {
+                ctx.addIssue({
+                  code: z.ZodIssueCode.custom,
+                  path: [i, 'closesAt'],
+                  message: 'closing time must be after opening time',
+                });
+              }
+            });
+          })
+          .optional(),
+      })
+    )
+    .max(20)
+    .optional(),
   // Replace-all: the given list becomes the whole announcement strip, in order.
   announcementLines: z
     .array(

@@ -55,10 +55,27 @@ enum StockMovementType {
 }
 
 // How a product's sale is expressed: a percentage off (0–100) or a flat
-// amount off the price.
+// amount off the price. Reused for catalog Discounts and Coupons.
 enum DiscountType {
   PERCENT
   AMOUNT
+}
+
+// What a catalog Discount applies to.
+enum DiscountScope {
+  ALL // every product
+  COLLECTION // products in one collection
+  CATEGORY // products in one category
+}
+
+// How a catalog Discount interacts with a product's own sale:
+//  STACK    — apply the product's sale first, then this discount off the
+//             already-reduced price (compounds).
+//  OVERRIDE — this discount comes off the original price; the product's own
+//             sale is ignored while the discount is active.
+enum DiscountStacking {
+  STACK
+  OVERRIDE
 }
 
 // ============ USERS / AUTH ============
@@ -247,6 +264,7 @@ model Collection {
   categories  Category[]
   products    Product[]
   siteHeroFor SiteSetting[]
+  discounts   Discount[]
 
   @@index([isActive])
   @@index([archivedAt])
@@ -300,6 +318,7 @@ model Category {
   children   Category[]      @relation("CategoryToSubcategory")
   images     CategoryImage[]
   products   Product[]
+  discounts  Discount[]
 
   @@index([collectionID])
   @@index([parentCategoryID])
@@ -356,6 +375,58 @@ model Product {
   @@index([categoryID])
   @@index([collectionID])
   @@map("product")
+}
+
+// A catalog-wide discount the admin runs over ALL products, one collection,
+// or one category. Resolved live at read time (product listings, cart,
+// checkout) — nothing is written onto Product. When more than one active
+// discount could apply to a product, the most specific scope wins
+// (CATEGORY > COLLECTION > ALL); within the winning scope the one giving the
+// larger reduction is used. `startsAt` / `endsAt` null ⇒ open-ended on that
+// side. See lib/pricing.ts for how `stacking` combines with a product's own
+// sale.
+model Discount {
+  id           String           @id @default(uuid()) @db.Uuid
+  nameEn       String
+  nameAr       String
+  scope        DiscountScope
+  collectionID String?          @db.Uuid // set iff scope = COLLECTION
+  categoryID   String?          @db.Uuid // set iff scope = CATEGORY
+  type         DiscountType
+  value        Decimal          @db.Decimal(12, 2) // PERCENT: 0–100; AMOUNT: currency off
+  stacking     DiscountStacking @default(STACK)
+  isActive     Boolean          @default(true)
+  startsAt     DateTime?
+  endsAt       DateTime?
+  dateCreated  DateTime         @default(now())
+  lastEdit     DateTime         @default(now()) @updatedAt
+
+  collection Collection? @relation(fields: [collectionID], references: [id], onDelete: Cascade)
+  category   Category?   @relation(fields: [categoryID], references: [id], onDelete: Cascade)
+
+  @@index([scope])
+  @@index([collectionID])
+  @@index([categoryID])
+  @@index([isActive])
+  @@map("discount")
+}
+
+// A code the shopper enters at checkout for a discount off the (already
+// per-product-sale + catalog-discount reduced) cart subtotal. Time-boxed by
+// `startsAt` / `endsAt` (null ⇒ open-ended). No usage caps or per-customer
+// limits — the code just works while active and in-window.
+model Coupon {
+  id          String       @id @default(uuid()) @db.Uuid
+  code        String       @unique // stored upper-cased; compared case-insensitively
+  type        DiscountType
+  value       Decimal      @db.Decimal(12, 2) // PERCENT: 0–100; AMOUNT: currency off
+  isActive    Boolean      @default(true)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  dateCreated DateTime     @default(now())
+  lastEdit    DateTime     @default(now()) @updatedAt
+
+  @@map("coupon")
 }
 
 model ProductImage {
@@ -511,9 +582,14 @@ model Order {
   deliveryNotes   String?
 
   notes         String? // general order notes from the customer
-  subtotal      Decimal       @db.Decimal(12, 2) // merchandise only
+  // Set by the admin when the order is shipped (or any later status change) —
+  // the "arrives in about N days" estimate; also used in the shipped email.
+  estimatedDeliveryDays Int?
+  subtotal      Decimal       @db.Decimal(12, 2) // merchandise after per-product sales + catalog discounts, before any coupon
+  couponCode    String? // the coupon applied at checkout, upper-cased; null if none
+  discountAmount Decimal      @default(0) @db.Decimal(12, 2) // amount the coupon took off the subtotal
   deliveryFee   Decimal       @default(0) @db.Decimal(12, 2)
-  total         Decimal       @db.Decimal(12, 2) // subtotal + deliveryFee
+  total         Decimal       @db.Decimal(12, 2) // subtotal - discountAmount + deliveryFee
   currency      String        @default("USD")
   paymentMethod PaymentMethod @default(COD)
   paymentStatus PaymentStatus @default(PENDING)
@@ -699,8 +775,54 @@ model SiteSetting {
   heroCtaCollection Collection?        @relation(fields: [heroCtaCollectionID], references: [id], onDelete: SetNull)
   announcementLines AnnouncementLine[]
   deliveryRates     DeliveryRate[]
+  storeLocations    StoreLocation[]
 
   @@map("sitesetting")
+}
+
+// A physical store the customer can visit — the home page's "Visit us"
+// section renders one card per location (and is hidden entirely when there
+// are none with an address or hours). Replace-all on settings update, like
+// DeliveryRate, but each location owns its own StoreHours rows. All fields
+// optional except order: a location may be just a name, just hours, etc.
+// `mapUrl` is an http(s) link rendered as a "Get directions" anchor.
+// `imageUrl` is an optional ImageKit backdrop for the card; `imageFileId` is
+// that asset's id, kept so the file can be removed from ImageKit when the
+// image is replaced or the location is deleted.
+model StoreLocation {
+  id          String  @id @default(uuid()) @db.Uuid
+  settingID   Int
+  nameEn      String?
+  nameAr      String?
+  addressEn   String?
+  addressAr   String?
+  mapUrl      String?
+  imageUrl    String?
+  imageFileId String?
+  sortOrder   Int     @default(0)
+
+  setting SiteSetting  @relation(fields: [settingID], references: [id], onDelete: Cascade)
+  hours   StoreHours[]
+
+  @@index([settingID])
+  @@map("storelocation")
+}
+
+// One row per day a StoreLocation is open. A day with no row is shown as
+// "Closed" on the storefront. `dayOfWeek` is 0 = Monday … 6 = Sunday and also
+// the display order. Times are "HH:MM" 24-hour strings.
+model StoreHours {
+  id         String @id @default(uuid()) @db.Uuid
+  locationID String @db.Uuid
+  dayOfWeek  Int
+  opensAt    String
+  closesAt   String
+
+  location StoreLocation @relation(fields: [locationID], references: [id], onDelete: Cascade)
+
+  @@unique([locationID, dayOfWeek])
+  @@index([locationID])
+  @@map("storehours")
 }
 
 // Per-governorate delivery-fee override. Replace-all on update, like

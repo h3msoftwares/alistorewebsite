@@ -1097,6 +1097,106 @@ main > .container.section:first-child {
   .media-tile__media { aspect-ratio: 16 / 10; }
 }
 
+/* ---- Home "Visit us" section: admin-controlled store locations (address +
+   opening hours), just above the footer. One .store-card per location; a
+   card with a background image (data-has-image) becomes a dark editorial
+   tile with a readability scrim. ---- */
+.store-info {
+  margin-block-start: clamp(var(--space-7), 8vw, var(--space-9));
+  padding-block: clamp(var(--space-7), 8vw, var(--space-9));
+  border-block-start: 1px solid var(--color-border);
+  /* Footer "Visit us" links here (/#visit-us) — clear the sticky header. */
+  scroll-margin-block-start: calc(var(--header-height, 4rem) + var(--space-4));
+}
+.store-info__eyebrow { margin-block: 0 var(--space-2); }
+.store-info__title {
+  margin: 0 0 var(--space-5);
+  font-family: var(--font-serif);
+  font-size: var(--fs-2xl);
+  line-height: var(--lh-2xl);
+}
+[lang='ar'] .store-info__title { font-family: var(--font-arabic); }
+
+.store-info__grid {
+  display: grid;
+  gap: clamp(var(--space-4), 4vw, var(--space-6));
+  grid-template-columns: 1fr;
+}
+@media (min-width: 720px) {
+  .store-info__grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); }
+  /* A lone card shouldn't stretch the full width — cap it and lay it out
+     two-up (details | hours) like the single-store design. */
+  .store-info__grid[data-count='1'] { grid-template-columns: minmax(0, 40rem); }
+  .store-info__grid[data-count='1'] .store-card { grid-template-columns: 1.1fr 0.9fr; }
+}
+
+.store-card {
+  display: grid;
+  gap: clamp(var(--space-4), 3vw, var(--space-6));
+  grid-template-columns: 1fr;
+  align-content: start;
+  padding: clamp(var(--space-4), 3vw, var(--space-6));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  background-size: cover;
+  background-position: center;
+}
+.store-card[data-has-image] {
+  position: relative;
+  isolation: isolate;
+  border-color: transparent;
+  color: var(--color-text-on-dark);
+}
+.store-card[data-has-image]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(0deg, rgba(25, 0, 102, 0.84), rgba(25, 0, 102, 0.64));
+}
+.store-card__name {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-serif);
+  font-size: var(--fs-lg);
+}
+[lang='ar'] .store-card__name { font-family: var(--font-arabic); }
+.store-card__address {
+  margin: 0 0 var(--space-3);
+  max-width: 34ch;
+  white-space: pre-line;
+  line-height: var(--lh-sm);
+}
+.store-card__directions {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-eyebrow);
+  color: inherit;
+  border-block-end: 1px solid currentColor;
+  padding-block-end: 2px;
+}
+[lang='ar'] .store-card__directions { letter-spacing: 0; }
+.store-card__directions:hover { opacity: 0.75; }
+.store-card__hours { margin: 0; display: flex; flex-direction: column; }
+.store-card__hours-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-block: var(--space-2);
+  border-block-end: 1px solid var(--color-border);
+  font-size: var(--fs-sm);
+}
+.store-card[data-has-image] .store-card__hours-row { border-block-end-color: rgba(255, 255, 255, 0.2); }
+.store-card__hours-row:last-child { border-block-end: 0; }
+.store-card__hours dt { font-weight: var(--fw-medium); }
+.store-card__hours dd { margin: 0; font-variant-numeric: tabular-nums; }
+.store-card__closed { color: var(--color-text-muted); }
+.store-card[data-has-image] .store-card__closed { color: var(--color-text-muted-on-dark); }
+
 /* ---- Media tile: image + name — a category card, a product card, in a
    scroller or in a plain grid (listing pages' .category-grid). ---- */
 .category-grid {
@@ -1412,6 +1512,8 @@ main > .container.section:first-child {
   gap: var(--space-1);
 }
 .product-filters__price-sep { color: var(--color-text-muted); }
+/* "On sale only" checkbox sits level with the other controls, not stacked. */
+.product-filters__group--check { flex-direction: row; align-items: center; align-self: end; }
 .product-filters__clear {
   align-self: center;
   font-size: var(--fs-xs);
@@ -1814,6 +1916,25 @@ a.home-card__name:hover { text-decoration: underline; }
 .admin-row-actions { display: inline-flex; gap: var(--space-2); }
 .admin-status-badge--archived { opacity: 0.7; }
 
+/* Coupon reduction shown under an order total (admin orders + dashboard). */
+.admin-order-discount {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--color-danger-text, var(--color-text-muted));
+  font-variant-numeric: tabular-nums;
+}
+/* Clickable "~Nd" delivery estimate next to a shipped order's status pill. */
+.admin-order-eta {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+.admin-order-eta:hover:not(:disabled) { color: var(--color-text); border-color: var(--color-text); }
+
 /* ===== Admin analytics dashboards =====
    Chart series colours live in components/admin/analytics/palette.ts as
    literals (SVG fill/stroke); these are the surrounding chrome only. */
@@ -1999,6 +2120,17 @@ a.home-card__name:hover { text-decoration: underline; }
   font-size: var(--fs-lg);
   font-weight: var(--fw-semibold);
 }
+/* Coupon entry row in the order summary. */
+.checkout__coupon {
+  align-items: center;
+  font-weight: 400;
+}
+.checkout__coupon-entry {
+  display: flex;
+  gap: var(--space-2);
+  width: 100%;
+}
+.checkout__coupon-entry .input { flex: 1; min-width: 0; }
 .checkout .is-numeric { font-variant-numeric: tabular-nums; }
 .admin-form__section-title {
   font-size: var(--fs-sm);
@@ -2666,6 +2798,28 @@ a.home-card__name:hover { text-decoration: underline; }
   inset-inline-end: var(--space-2);
   z-index: 1;
   background: var(--color-surface-raised);
+}
+
+/* Compact confirm / small-form modal body (admin orders status changes). */
+.admin-modal {
+  width: min(88vw, 26rem);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.admin-modal__title {
+  margin: 0;
+  padding-inline-end: var(--space-6); /* clear the close button */
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+.admin-modal__body { margin: 0; color: var(--color-text-muted); line-height: var(--lh-sm); }
+.admin-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
 @keyframes modal-fade-in {
   from { opacity: 0; }

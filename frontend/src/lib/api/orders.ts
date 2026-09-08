@@ -62,9 +62,16 @@ export function adminReviewOrder(id: UUID) {
   return api.patch<{ order: Order }>(`/api/admin/orders/${id}/review`).then((r) => r.order);
 }
 
-export function adminUpdateOrderStatus(id: UUID, status: OrderStatus) {
+export function adminUpdateOrderStatus(
+  id: UUID,
+  status: OrderStatus,
+  estimatedDeliveryDays?: number | null
+) {
   return api
-    .patch<{ order: Order }>(`/api/admin/orders/${id}/status`, { status })
+    .patch<{ order: Order }>(`/api/admin/orders/${id}/status`, {
+      status,
+      ...(estimatedDeliveryDays !== undefined ? { estimatedDeliveryDays } : {}),
+    })
     .then((r) => r.order);
 }
 

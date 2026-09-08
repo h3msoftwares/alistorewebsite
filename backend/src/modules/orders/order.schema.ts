@@ -32,6 +32,9 @@ export const checkoutSchema = z.object({
   // unless the caller is logged in with a verified account email — enforced
   // in order.service.ts (needs the account lookup, not expressible here).
   emailVerifyToken: z.string().optional(),
+  // Optional coupon code. If present it must resolve to an active, in-window
+  // coupon (checked in order.service.ts) or the checkout is rejected.
+  couponCode: z.string().trim().min(1).max(40).optional(),
 });
 
 // GET /api/orders/delivery-quote?region=... — a live fee estimate for the
@@ -49,7 +52,12 @@ const orderStatus = z.enum([
   'RETURNED',
 ]);
 
-export const updateOrderStatusSchema = z.object({ status: orderStatus });
+export const updateOrderStatusSchema = z.object({
+  status: orderStatus,
+  // Optional "arrives in about N days" estimate the admin sets — typically
+  // alongside a move to SHIPPED, but accepted on any status change. null clears it.
+  estimatedDeliveryDays: z.number().int().min(0).max(90).nullish(),
+});
 
 export const adminListOrdersQuerySchema = z.object({
   status: orderStatus.optional(),

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createWrapper } from '@/test/utils';
 
@@ -57,16 +57,94 @@ describe('AdminOrdersPage', () => {
     expect(screen.getByText('$43.00')).toBeInTheDocument();
   });
 
-  it('changing the row status select calls the update mutation', async () => {
+  const selectStatus = (user: ReturnType<typeof userEvent.setup>, value: string) =>
+    user.selectOptions(
+      screen.getByRole('combobox', { name: /change status for AS-20260906-ABC123/i }),
+      value
+    );
+
+  it('a plain status change applies immediately with no modal', async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('AS-20260906-ABC123');
 
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: /change status for AS-20260906-ABC123/i }),
-      'SHIPPED'
+    await selectStatus(user, 'CONFIRMED');
+    await waitFor(() =>
+      expect(mock.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'CONFIRMED', undefined)
     );
-    await waitFor(() => expect(mock.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'SHIPPED'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('moving an order to SHIPPED opens the estimate modal and passes the number through', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('AS-20260906-ABC123');
+
+    await selectStatus(user, 'SHIPPED');
+    const dialog = await screen.findByRole('dialog');
+    expect(mock.adminUpdateOrderStatus).not.toHaveBeenCalled();
+
+    await user.type(within(dialog).getByRole('spinbutton', { name: /arrives in about/i }), '3');
+    await user.click(within(dialog).getByRole('button', { name: 'Ship order' }));
+
+    await waitFor(() =>
+      expect(mock.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'SHIPPED', 3)
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('shipping with a blank estimate sends null and closes the modal', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('AS-20260906-ABC123');
+
+    await selectStatus(user, 'SHIPPED');
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Ship order' }));
+
+    await waitFor(() =>
+      expect(mock.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'SHIPPED', null)
+    );
+  });
+
+  it('closing the estimate modal aborts the status change', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('AS-20260906-ABC123');
+
+    await selectStatus(user, 'SHIPPED');
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    expect(mock.adminUpdateOrderStatus).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('changing status to CANCELLED asks for confirmation before applying', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('AS-20260906-ABC123');
+
+    await selectStatus(user, 'CANCELLED');
+    const dialog = await screen.findByRole('dialog');
+    expect(mock.adminUpdateOrderStatus).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel order' }));
+    await waitFor(() =>
+      expect(mock.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'CANCELLED', undefined)
+    );
+  });
+
+  it('"Keep as is" in the confirm modal leaves the order untouched', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('AS-20260906-ABC123');
+
+    await selectStatus(user, 'RETURNED');
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Keep as is' }));
+
+    expect(mock.adminUpdateOrderStatus).not.toHaveBeenCalled();
   });
 
   it('"Mark collected" toggles COD payment status', async () => {
@@ -107,6 +185,37 @@ describe('AdminOrdersPage', () => {
     expect(screen.getByText('Flagged')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Mark reviewed' }));
     await waitFor(() => expect(mock.adminReviewOrder).toHaveBeenCalledWith('o1'));
+  });
+
+  it('shows the coupon reduction under the total when the order used one', async () => {
+    mock.adminListOrders.mockResolvedValue([
+      { ...order, discountAmount: 8, couponCode: 'SAVE8' },
+    ] as never);
+    renderPage();
+    await screen.findByText('AS-20260906-ABC123');
+    expect(screen.getByText(/−\$8\.00 · SAVE8/)).toBeInTheDocument();
+  });
+
+  it('the estimate chip re-opens the modal, pre-filled, to revise the number', async () => {
+    const user = userEvent.setup();
+    mock.adminListOrders.mockResolvedValue([
+      { ...order, status: 'SHIPPED', estimatedDeliveryDays: 4 },
+    ] as never);
+    renderPage();
+    await screen.findByText('AS-20260906-ABC123');
+
+    await user.click(screen.getByRole('button', { name: '~4d' }));
+    const dialog = await screen.findByRole('dialog');
+    const field = within(dialog).getByRole('spinbutton', { name: /arrives in about/i });
+    expect(field).toHaveValue(4);
+
+    await user.clear(field);
+    await user.type(field, '5');
+    await user.click(within(dialog).getByRole('button', { name: 'Save estimate' }));
+
+    await waitFor(() =>
+      expect(mock.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'SHIPPED', 5)
+    );
   });
 
   it('shows an empty state when there are no orders', async () => {

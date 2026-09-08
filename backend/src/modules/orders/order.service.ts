@@ -7,8 +7,13 @@ import { recordAudit } from '../../lib/audit';
 import {
   sendOrderPlacedNotifications,
   sendOrderCancelledNotifications,
+  sendOrderShippedNotifications,
 } from '../../lib/notifications/notification.service';
 import { isBlacklisted } from '../blacklist/blacklist.service';
+import { activeDiscounts } from '../discounts/discount.service';
+import { resolveCoupon, couponAmountOff } from '../discounts/coupon.service';
+import { lineUnitPrice } from '../../lib/line-pricing';
+import { round2 } from '../../lib/money';
 import {
   resolveDeliveryFee,
   toDeliveryConfig,
@@ -49,6 +54,8 @@ interface CheckoutInput {
   /** The "verified" ticket from POST /api/checkout/otp/verify. Required
    *  unless the caller is logged in with a verified account email. */
   emailVerifyToken?: string;
+  /** Optional coupon code; must resolve to an active, in-window coupon. */
+  couponCode?: string;
   /** req.ip at checkout time — used for the blacklist check and the
    *  order-velocity flag below. Undefined only in tests that call the
    *  service directly without going through the HTTP layer. */
@@ -146,11 +153,29 @@ async function loadCartSubtotal(db: DbClient, owner: CheckoutOwner): Promise<num
     where: owner.userID ? { userID: owner.userID } : { sessionID: owner.sessionID! },
   });
   if (!cart) return 0;
-  const items = await db.cartItem.findMany({
-    where: { cartID: cart.id },
-    include: { variant: { include: { product: { select: { price: true } } } } },
-  });
-  return items.reduce((sum, i) => sum + Number(i.variant.product.price) * i.quantity, 0);
+  const [items, discounts] = await Promise.all([
+    db.cartItem.findMany({
+      where: { cartID: cart.id },
+      include: {
+        variant: {
+          select: {
+            price: true,
+            product: {
+              select: {
+                price: true,
+                saleType: true,
+                saleValue: true,
+                categoryID: true,
+                collectionID: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    activeDiscounts(),
+  ]);
+  return round2(items.reduce((sum, i) => sum + lineUnitPrice(i.variant, discounts) * i.quantity, 0));
 }
 
 /** Live delivery-fee estimate for the caller's current cart + a chosen
@@ -274,16 +299,36 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       }
     }
 
-    const subtotal = cartItems.reduce((sum, i) => sum + Number(i.variant.product.price) * i.quantity, 0);
+    // Effective unit price per line = variant override → product sale → best
+    // active catalog discount. Snapshotted onto each OrderItem below so the
+    // order stays correct even if a discount later ends.
+    const discounts = await activeDiscounts();
+    const unitPriceFor = (i: (typeof cartItems)[number]) => lineUnitPrice(i.variant, discounts);
+    const subtotal = round2(
+      cartItems.reduce((sum, i) => sum + unitPriceFor(i) * i.quantity, 0)
+    );
+
+    // Coupon: applied to the post-discount merchandise subtotal. A code that
+    // was supplied but isn't valid right now rejects the checkout rather than
+    // silently ignoring it (so the shopper isn't surprised by the total).
+    let couponCode: string | null = null;
+    let discountAmount = 0;
+    if (input.couponCode) {
+      const coupon = await resolveCoupon(input.couponCode);
+      if (!coupon) throw new AppError('VALIDATION_ERROR', 'That coupon code is not valid.');
+      couponCode = coupon.code;
+      discountAmount = couponAmountOff(coupon, subtotal);
+    }
 
     // Admin-configured delivery fee (flat, per-region override, or free by
-    // threshold / free-region list — see lib/delivery-fee.ts).
+    // threshold / free-region list — see lib/delivery-fee.ts). Assessed on the
+    // merchandise subtotal before the coupon.
     const cfg = await loadDeliveryConfig(tx);
     if (!knownRegions(cfg).has(input.deliveryRegion)) {
       throw new AppError('VALIDATION_ERROR', `Unknown delivery region: ${input.deliveryRegion}`);
     }
     const { fee: deliveryFee } = resolveDeliveryFee(cfg, subtotal, input.deliveryRegion);
-    const total = Math.round((subtotal + deliveryFee) * 100) / 100;
+    const total = round2(subtotal - discountAmount + deliveryFee);
 
     // Automatic order-velocity soft-flag: counts every existing order in the
     // trailing window for this phone/email/IP (regardless of status — a
@@ -328,22 +373,27 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
         deliveryNotes: input.deliveryNotes,
         notes: input.notes,
         subtotal,
+        couponCode,
+        discountAmount,
         deliveryFee,
         total,
         paymentMethod: 'COD',
         items: {
-          create: cartItems.map((i) => ({
-            variantID: i.variantID,
-            productName: i.variant.product.nameEn,
-            productSKU: i.variant.product.sku,
-            variantSKU: i.variant.sku,
-            productImageUrl: i.variant.product.images[0]?.url ?? null,
-            size: i.variant.size,
-            color: i.variant.color,
-            quantity: i.quantity,
-            unitPrice: i.variant.product.price,
-            lineTotal: Math.round(Number(i.variant.product.price) * i.quantity * 100) / 100,
-          })),
+          create: cartItems.map((i) => {
+            const unitPrice = unitPriceFor(i);
+            return {
+              variantID: i.variantID,
+              productName: i.variant.product.nameEn,
+              productSKU: i.variant.product.sku,
+              variantSKU: i.variant.sku,
+              productImageUrl: i.variant.product.images[0]?.url ?? null,
+              size: i.variant.size,
+              color: i.variant.color,
+              quantity: i.quantity,
+              unitPrice,
+              lineTotal: round2(unitPrice * i.quantity),
+            };
+          }),
         },
       },
       include: { items: true },
@@ -591,7 +641,18 @@ export async function reviewOrder(id: string, actorId?: string) {
   return updated;
 }
 
-export async function updateOrderStatus(id: string, status: OrderStatus, actorId?: string) {
+interface UpdateOrderStatusOptions {
+  /** Admin-set "arrives in about N days" estimate. undefined ⇒ leave as-is;
+   *  null ⇒ clear it. */
+  estimatedDeliveryDays?: number | null;
+}
+
+export async function updateOrderStatus(
+  id: string,
+  status: OrderStatus,
+  actorId?: string,
+  opts: UpdateOrderStatusOptions = {}
+) {
   // Cancelling is not a plain field update — it has to restore stock, same
   // as the customer-facing cancel button. Route through the shared core
   // (unbounded by CANCELLABLE_STATUSES: an admin can force-cancel from any
@@ -605,14 +666,41 @@ export async function updateOrderStatus(id: string, status: OrderStatus, actorId
 
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
-  const updated = await prisma.order.update({ where: { id }, data: { status } });
+
+  const updated = await prisma.order.update({
+    where: { id },
+    data: {
+      status,
+      ...(opts.estimatedDeliveryDays !== undefined
+        ? { estimatedDeliveryDays: opts.estimatedDeliveryDays }
+        : {}),
+    },
+    include: { items: true },
+  });
   await recordAudit({
     entityType: 'order',
     entityID: id,
     action: 'order.status_changed',
     actorID: actorId,
-    metadata: { orderNumber: order.orderNumber, from: order.status, to: status },
+    metadata: {
+      orderNumber: order.orderNumber,
+      from: order.status,
+      to: status,
+      ...(opts.estimatedDeliveryDays !== undefined
+        ? { estimatedDeliveryDays: opts.estimatedDeliveryDays }
+        : {}),
+    },
   });
+
+  // Email the customer the first time an order enters SHIPPED (not on a
+  // re-select of the same status). Fire-and-forget, after commit, never
+  // throws — same discipline as the order-placed / cancelled notifications.
+  if (status === 'SHIPPED' && order.status !== 'SHIPPED') {
+    void sendOrderShippedNotifications(updated).catch((err) => {
+      console.error('[order.service] failed to send order-shipped notification', err);
+    });
+  }
+
   return updated;
 }
 
@@ -673,6 +761,8 @@ export async function salesDashboard() {
         orderNumber: true,
         deliveryName: true,
         total: true,
+        discountAmount: true,
+        couponCode: true,
         status: true,
         paymentStatus: true,
         flaggedForReview: true,

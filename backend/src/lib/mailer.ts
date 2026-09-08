@@ -324,6 +324,62 @@ export async function sendOrderCancelledEmail(to: string, order: OrderWithItems)
 }
 
 /**
+ * Tells the customer their order has shipped, with the admin-set delivery
+ * estimate when there is one. Same `to` / never-throws contract as
+ * sendOrderConfirmationEmail.
+ */
+export async function sendOrderShippedEmail(
+  to: string,
+  order: OrderWithItems,
+  estimatedDeliveryDays?: number | null
+): Promise<boolean> {
+  if (!transporter) {
+    console.warn('[mailer] SMTP is not configured — skipping order-shipped email to', to);
+    return false;
+  }
+
+  const base = env.FRONTEND_URL.replace(/\/+$/, '');
+  const trackUrl = order.userID ? `${base}/en/orders/${order.id}` : `${base}/en/orders/lookup`;
+  const eta =
+    estimatedDeliveryDays != null
+      ? `Estimated delivery: about ${estimatedDeliveryDays} ${estimatedDeliveryDays === 1 ? 'day' : 'days'}.`
+      : `We'll be in touch about the delivery timing.`;
+
+  const text =
+    `Hi ${order.deliveryName},\n\n` +
+    `Good news — your order ${order.orderNumber} has shipped and is on its way to ${deliveryLine(order)}.\n` +
+    `${eta}\n\n` +
+    `Track your order: ${trackUrl}\n\n` +
+    `Payment is cash on delivery — please have ${money(Number(order.total))} ready.`;
+
+  const html = `
+    <p>Hi ${order.deliveryName},</p>
+    <p>
+      Good news — your order <strong>${order.orderNumber}</strong> has shipped and is on its way to
+      ${deliveryLine(order)}.
+    </p>
+    <p>${eta}</p>
+    <p><a href="${trackUrl}">Track your order</a></p>
+    <p>Payment is cash on delivery — please have ${money(Number(order.total))} ready.</p>
+  `.trim();
+
+  try {
+    const info = await transporter.sendMail({
+      from: env.SMTP_FROM,
+      to,
+      subject: `Your order has shipped — ${order.orderNumber}`,
+      text,
+      html,
+    });
+    console.log('[mailer] order-shipped email sent', info.messageId);
+    return true;
+  } catch (err) {
+    console.error('[mailer] failed to send order-shipped email', err);
+    return false;
+  }
+}
+
+/**
  * Sends the cancellation alert to the store owner (OWNER_NOTIFICATION_EMAIL).
  * Same never-throws contract as the other mailer functions.
  */

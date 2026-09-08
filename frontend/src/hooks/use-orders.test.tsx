@@ -162,7 +162,7 @@ describe('useUpdateOrderStatus (admin)', () => {
 
     await result.current.mutateAsync({ id: 'o1', status: 'DELIVERED' });
 
-    expect(mockOrders.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'DELIVERED');
+    expect(mockOrders.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'DELIVERED', undefined);
     const keys = spy.mock.calls.map((c) => c[0]?.queryKey);
     expect(keys).toContainEqual(queryKeys.orders.dashboard());
   });

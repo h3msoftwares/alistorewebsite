@@ -9,6 +9,12 @@ export const listProductsQuerySchema = z.object({
   color: z.string().optional(),
   minPrice: z.coerce.number().nonnegative().optional(),
   maxPrice: z.coerce.number().nonnegative().optional(),
+  // Only products that are on sale / discounted right now (own sale or an
+  // active catalog discount covering their category/collection).
+  onSale: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => v === 'true'),
   sort: z.enum(['newest', 'price_asc', 'price_desc']).default('newest'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(60).default(24),

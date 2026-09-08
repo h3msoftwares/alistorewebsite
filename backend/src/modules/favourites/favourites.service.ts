@@ -1,7 +1,9 @@
 import { Prisma, type DiscountType } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
-import { effectivePrice, isOnSale } from '../../lib/pricing';
+import { round2, toNumber } from '../../lib/money';
+import { pickDiscount, pricedWithDiscount, type DiscountCandidate } from '../../lib/pricing';
+import { activeDiscounts } from '../discounts/discount.service';
 
 // Same hydrated product shape the catalog endpoints return (mirrors
 // `productInclude` / `withPricing` in catalog/product.service.ts) so the
@@ -19,13 +21,18 @@ type Priced = {
   price: Prisma.Decimal;
   saleType: DiscountType | null;
   saleValue: Prisma.Decimal | null;
+  categoryID: string;
+  collectionID: string | null;
 };
 
-function withPricing<T extends Priced>(p: T) {
+function withPricing<T extends Priced>(p: T, discounts: DiscountCandidate[]) {
+  const picked = pickDiscount(p, discounts);
+  const price = pricedWithDiscount(p.price, p.saleType, p.saleValue, picked);
   return {
     ...p,
-    effectivePrice: effectivePrice(p.price, p.saleType, p.saleValue),
-    onSale: isOnSale(p.price, p.saleType, p.saleValue),
+    effectivePrice: price,
+    onSale: price < round2(toNumber(p.price)),
+    discount: picked ? { type: picked.type, value: picked.value, stacking: picked.stacking } : null,
   };
 }
 
@@ -33,15 +40,18 @@ function withPricing<T extends Priced>(p: T) {
  *  Soft-deleted products are filtered out so a product removed from the
  *  catalog after being hearted silently drops off the list. */
 export async function listFavourites(userId: string) {
-  const rows = await prisma.favorite.findMany({
-    where: { userID: userId, product: { deletedAt: null } },
-    orderBy: { dateCreated: 'desc' },
-    include: { product: { include: productInclude } },
-  });
+  const [rows, discounts] = await Promise.all([
+    prisma.favorite.findMany({
+      where: { userID: userId, product: { deletedAt: null } },
+      orderBy: { dateCreated: 'desc' },
+      include: { product: { include: productInclude } },
+    }),
+    activeDiscounts(),
+  ]);
   return rows.map((r) => ({
     id: r.id,
     dateCreated: r.dateCreated,
-    product: withPricing(r.product),
+    product: withPricing(r.product, discounts),
   }));
 }
 
@@ -55,13 +65,16 @@ export async function addFavourite(userId: string, productId: string) {
   });
   if (!product) throw new AppError('NOT_FOUND', 'Product not found');
 
-  const row = await prisma.favorite.upsert({
-    where: { userID_productID: { userID: userId, productID: productId } },
-    create: { userID: userId, productID: productId },
-    update: {},
-    include: { product: { include: productInclude } },
-  });
-  return { id: row.id, dateCreated: row.dateCreated, product: withPricing(row.product) };
+  const [row, discounts] = await Promise.all([
+    prisma.favorite.upsert({
+      where: { userID_productID: { userID: userId, productID: productId } },
+      create: { userID: userId, productID: productId },
+      update: {},
+      include: { product: { include: productInclude } },
+    }),
+    activeDiscounts(),
+  ]);
+  return { id: row.id, dateCreated: row.dateCreated, product: withPricing(row.product, discounts) };
 }
 
 /** Un-heart a product. 404s when it wasn't favourited — same as

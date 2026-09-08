@@ -37,6 +37,19 @@ describe('ProductFilters', () => {
     expect(screen.getByRole('combobox', { name: 'Size' })).toHaveValue('');
   });
 
+  it('the "On sale only" checkbox toggles and counts as an active filter', async () => {
+    const user = userEvent.setup();
+    renderFilters();
+
+    const onSale = screen.getByRole('checkbox', { name: /on sale only/i });
+    expect(onSale).not.toBeChecked();
+    expect(screen.queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
+
+    await user.click(onSale);
+    expect(onSale).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeInTheDocument();
+  });
+
   it('the pin toggle flips its pressed state and the pinned flag', async () => {
     const user = userEvent.setup();
     const { container } = renderFilters();

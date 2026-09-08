@@ -20,10 +20,24 @@ import {
 } from '@/components/ui';
 import { useAdminCollections } from '@/hooks/use-catalog';
 import { useSettings, useUpdateSettings } from '@/hooks/use-settings';
+import { ImageUploader } from '@/components/admin/image-uploader';
 import { DELIVERY_REGIONS } from '@/lib/regions';
 import type { SiteSettingsBody } from '@/lib/types';
 import { CurationPanel } from './curation-panel';
 import { NotificationsPanel } from './notifications-panel';
+
+// Admin-side day labels for the opening-hours editor. Index 0 = Monday … 6 =
+// Sunday, matching StoreHours.dayOfWeek and its storefront render order.
+const HOURS_DAYS: { en: string; ar: string }[] = [
+  { en: 'Monday', ar: 'الإثنين' },
+  { en: 'Tuesday', ar: 'الثلاثاء' },
+  { en: 'Wednesday', ar: 'الأربعاء' },
+  { en: 'Thursday', ar: 'الخميس' },
+  { en: 'Friday', ar: 'الجمعة' },
+  { en: 'Saturday', ar: 'السبت' },
+  { en: 'Sunday', ar: 'الأحد' },
+];
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // http(s) only — these render as `<a href>` in the storefront footer, so a
 // `javascript:` / `data:` value would be stored XSS. Mirrors the API's
@@ -94,17 +108,65 @@ const settingsFormSchema = z.object({
         seen.add(r.region);
       });
     }),
+  // ---- Store locations ("Visit us" section) ----
+  // Each location always carries 7 hour rows (Mon…Sun); `closed` days are
+  // dropped on submit.
+  storeLocations: z
+    .array(
+      z.object({
+        nameEn: z.string().trim().max(80),
+        nameAr: z.string().trim().max(80),
+        addressEn: z.string().trim().max(300),
+        addressAr: z.string().trim().max(300),
+        mapUrl: urlOrEmpty,
+        imageUrl: z.string(), // set by the uploader; '' = no image
+        imageFileId: z.string(),
+        hours: z
+          .array(
+            z.object({
+              dayOfWeek: z.number(),
+              closed: z.boolean(),
+              opensAt: z.string(),
+              closesAt: z.string(),
+            })
+          )
+          .length(7)
+          .superRefine((rows, ctx) => {
+            rows.forEach((r, i) => {
+              if (r.closed) return;
+              const okOpen = HHMM.test(r.opensAt);
+              const okClose = HHMM.test(r.closesAt);
+              if (!okOpen) ctx.addIssue({ code: 'custom', path: [i, 'opensAt'], message: 'Set a time' });
+              if (!okClose) ctx.addIssue({ code: 'custom', path: [i, 'closesAt'], message: 'Set a time' });
+              if (okOpen && okClose && r.closesAt <= r.opensAt) {
+                ctx.addIssue({ code: 'custom', path: [i, 'closesAt'], message: 'Must be after opening' });
+              }
+            });
+          }),
+      })
+    )
+    .max(20),
 });
 type SettingsForm = z.infer<typeof settingsFormSchema>;
 
 const blankLine = { textEn: '', textAr: '' };
 const blankRate = { region: '', fee: 0 };
+const blankLocation = {
+  nameEn: '',
+  nameAr: '',
+  addressEn: '',
+  addressAr: '',
+  mapUrl: '',
+  imageUrl: '',
+  imageFileId: '',
+  hours: HOURS_DAYS.map((_, day) => ({ dayOfWeek: day, closed: true, opensAt: '', closesAt: '' })),
+};
 
 // The settings page is one long form; these are its sections, surfaced as tabs
 // for navigation and as the unit the search box filters. `terms` is extra
 // searchable text (field labels, synonyms, both languages) so a query like
 // "shipping" or "واتساب" lands on the right tab.
-type TabId = 'brand' | 'announcement' | 'hero' | 'delivery' | 'curation' | 'notifications';
+type TabId = 'brand' | 'announcement' | 'hero' | 'delivery' | 'storeinfo' | 'curation' | 'notifications';
 
 const SECTIONS: { id: TabId; en: string; ar: string; terms: string }[] = [
   {
@@ -140,6 +202,14 @@ const SECTIONS: { id: TabId; en: string; ar: string; terms: string }[] = [
       'رسوم التوصيل شحن تكلفة ثابتة مجاني فوق حد محافظة سعر لكل محافظة مناطق التوصيل المجاني',
   },
   {
+    id: 'storeinfo',
+    en: 'Store locations',
+    ar: 'مواقع المتاجر',
+    terms:
+      'store locations branches location address map directions google maps opening hours working days times schedule visit us background image ' +
+      'مواقع المتاجر الفروع الموقع العنوان خريطة الاتجاهات ساعات العمل أيام الدوام المواعيد الجدول زورونا صورة الخلفية',
+  },
+  {
     id: 'curation',
     en: 'Navigation & home',
     ar: 'التنقل والرئيسية',
@@ -172,6 +242,7 @@ function tabForErrorKey(key: string): TabId {
   if (key.startsWith('hero') || key.startsWith('homeMore')) return 'hero';
   if (key.startsWith('announcement')) return 'announcement';
   if (key.startsWith('delivery') || key.startsWith('freeDelivery')) return 'delivery';
+  if (key.startsWith('store')) return 'storeinfo';
   return 'brand';
 }
 
@@ -195,7 +266,9 @@ export default function AdminSettingsPage() {
     searching ? SECTIONS.filter((s) => sectionMatches(s, q.trim())).map((s) => s.id) : []
   );
   const shows = (id: TabId) => (searching ? matchedIds.has(id) : tab === id);
-  const anyFormSectionVisible = (['brand', 'announcement', 'hero', 'delivery'] as const).some(shows);
+  const anyFormSectionVisible = (
+    ['brand', 'announcement', 'hero', 'delivery', 'storeinfo'] as const
+  ).some(shows);
 
   const values: SettingsForm | undefined = settings && {
     brandNameEn: settings.brandNameEn,
@@ -225,6 +298,21 @@ export default function AdminSettingsPage() {
       settings.freeDeliveryThreshold == null ? '' : String(Number(settings.freeDeliveryThreshold)),
     freeDeliveryRegions: settings.freeDeliveryRegions ?? [],
     deliveryRates: settings.deliveryRates.map((r) => ({ region: r.region, fee: Number(r.fee) })),
+    storeLocations: (settings.storeLocations ?? []).map((loc) => ({
+      nameEn: loc.nameEn ?? '',
+      nameAr: loc.nameAr ?? '',
+      addressEn: loc.addressEn ?? '',
+      addressAr: loc.addressAr ?? '',
+      mapUrl: loc.mapUrl ?? '',
+      imageUrl: loc.imageUrl ?? '',
+      imageFileId: loc.imageFileId ?? '',
+      hours: HOURS_DAYS.map((_, day) => {
+        const h = loc.hours.find((x) => x.dayOfWeek === day);
+        return h
+          ? { dayOfWeek: day, closed: false, opensAt: h.opensAt, closesAt: h.closesAt }
+          : { dayOfWeek: day, closed: true, opensAt: '', closesAt: '' };
+      }),
+    })),
   };
 
   const {
@@ -236,6 +324,15 @@ export default function AdminSettingsPage() {
   } = useForm<SettingsForm>({ resolver: zodResolver(settingsFormSchema), values });
   const { fields, append, remove } = useFieldArray({ control, name: 'announcementLines' });
   const rates = useFieldArray({ control, name: 'deliveryRates' });
+  const locations = useFieldArray({ control, name: 'storeLocations' });
+
+  // Store locations: watched for the per-card image preview and per-day
+  // "closed" state (which drives whether the time inputs are enabled).
+  const watchedLocations = useWatch({ control, name: 'storeLocations' }) ?? [];
+  const setLocationImage = (i: number, url: string, fileId: string) => {
+    setValue(`storeLocations.${i}.imageUrl`, url, { shouldDirty: true });
+    setValue(`storeLocations.${i}.imageFileId`, fileId, { shouldDirty: true });
+  };
 
   // Free-delivery checkboxes: the built-in governorates plus any custom zone
   // the admin has added a rate row for.
@@ -273,11 +370,25 @@ export default function AdminSettingsPage() {
     setError(null);
     setSaved(false);
     try {
-      const { freeDeliveryThreshold, ...rest } = form;
+      const { freeDeliveryThreshold, storeLocations, ...rest } = form;
       const payload: SiteSettingsBody = {
         ...rest,
         freeDeliveryThreshold:
           freeDeliveryThreshold.trim() === '' ? null : Number(freeDeliveryThreshold),
+        // Replace-all: the whole set of stores. Per location, only the open
+        // days survive; anything else is "Closed".
+        storeLocations: storeLocations.map((loc) => ({
+          nameEn: loc.nameEn,
+          nameAr: loc.nameAr,
+          addressEn: loc.addressEn,
+          addressAr: loc.addressAr,
+          mapUrl: loc.mapUrl,
+          imageUrl: loc.imageUrl,
+          imageFileId: loc.imageFileId,
+          hours: loc.hours
+            .filter((r) => !r.closed && HHMM.test(r.opensAt) && HHMM.test(r.closesAt))
+            .map((r) => ({ dayOfWeek: r.dayOfWeek, opensAt: r.opensAt, closesAt: r.closesAt })),
+        })),
       };
       await updateSettings.mutateAsync(payload);
       setSaved(true);
@@ -607,6 +718,171 @@ export default function AdminSettingsPage() {
               />
             ))}
           </div>
+        </div>
+
+        {/* ---- Store locations ("Visit us" section) ---- */}
+        <div className="admin-form__section" id="set-storeinfo" hidden={!shows('storeinfo')}>
+          <p className="admin-form__section-title">{t('Store locations', 'مواقع المتاجر')}</p>
+          <p className="admin-form__hint">
+            {t(
+              'Each location shows as a card in the "Visit us" section near the bottom of the home page. With no locations added, that section is hidden.',
+              'يظهر كل موقع كبطاقة في قسم "زورونا" قرب أسفل الصفحة الرئيسية. إذا لم تُضف أي موقع، يُخفى هذا القسم.'
+            )}
+          </p>
+
+          {locations.fields.map((field, i) => {
+            const loc = watchedLocations[i];
+            return (
+              <div
+                key={field.id}
+                className="admin-form__section"
+                style={{
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 'var(--space-4)',
+                }}
+              >
+                <div className="admin-page__head">
+                  <p className="admin-form__section-title" style={{ margin: 0 }}>
+                    {t('Location', 'الموقع')} {i + 1}
+                  </p>
+                  <button
+                    type="button"
+                    className="icon-btn icon-btn--bordered"
+                    onClick={() => locations.remove(i)}
+                    disabled={busy}
+                    aria-label={t('Remove location', 'حذف الموقع')}
+                  >
+                    <Icon as={Trash2} size={16} />
+                  </button>
+                </div>
+
+                <div className="admin-form__row">
+                  <Field
+                    label={t('Name (English)', 'الاسم (إنجليزي)')}
+                    hint={t('e.g. "Hamra branch" — optional', 'مثال: "فرع الحمرا" — اختياري')}
+                    error={errors.storeLocations?.[i]?.nameEn?.message}
+                  >
+                    {(p) => <Input {...p} {...register(`storeLocations.${i}.nameEn` as const)} disabled={busy} />}
+                  </Field>
+                  <Field label={t('Name (Arabic)', 'الاسم (عربي)')} error={errors.storeLocations?.[i]?.nameAr?.message}>
+                    {(p) => (
+                      <Input {...p} dir="rtl" {...register(`storeLocations.${i}.nameAr` as const)} disabled={busy} />
+                    )}
+                  </Field>
+                </div>
+
+                <div className="admin-form__row">
+                  <Field label={t('Address (English)', 'العنوان (إنجليزي)')} error={errors.storeLocations?.[i]?.addressEn?.message}>
+                    {(p) => (
+                      <Textarea {...p} rows={3} {...register(`storeLocations.${i}.addressEn` as const)} disabled={busy} />
+                    )}
+                  </Field>
+                  <Field label={t('Address (Arabic)', 'العنوان (عربي)')} error={errors.storeLocations?.[i]?.addressAr?.message}>
+                    {(p) => (
+                      <Textarea
+                        {...p}
+                        rows={3}
+                        dir="rtl"
+                        {...register(`storeLocations.${i}.addressAr` as const)}
+                        disabled={busy}
+                      />
+                    )}
+                  </Field>
+                </div>
+
+                <Field
+                  label={t('Map link', 'رابط الخريطة')}
+                  hint={t('Full URL (Google Maps, etc.), or blank to hide "Get directions"', 'رابط كامل (خرائط Google مثلًا)، أو فارغ لإخفاء "الاتجاهات"')}
+                  error={errors.storeLocations?.[i]?.mapUrl?.message}
+                >
+                  {(p) => (
+                    <Input
+                      {...p}
+                      type="url"
+                      placeholder="https://maps.google.com/…"
+                      {...register(`storeLocations.${i}.mapUrl` as const)}
+                      disabled={busy}
+                    />
+                  )}
+                </Field>
+
+                <p className="admin-form__hint" style={{ marginBlockStart: 'var(--space-4)' }}>
+                  {t('Background image (optional)', 'صورة الخلفية (اختياري)')}
+                </p>
+                {loc?.imageUrl ? (
+                  <div className="admin-variant-row" style={{ alignItems: 'center' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={loc.imageUrl}
+                      alt=""
+                      style={{ width: 120, height: 72, objectFit: 'cover', borderRadius: 'var(--radius-sm)' }}
+                    />
+                    <Button type="button" variant="outline" onClick={() => setLocationImage(i, '', '')} disabled={busy}>
+                      {t('Remove image', 'إزالة الصورة')}
+                    </Button>
+                  </div>
+                ) : (
+                  <ImageUploader
+                    folder="/site"
+                    locale={locale}
+                    disabled={busy}
+                    onUploaded={(img) => setLocationImage(i, img.url, img.fileId)}
+                  />
+                )}
+
+                <p className="admin-form__hint" style={{ marginBlockStart: 'var(--space-4)' }}>
+                  {t('Opening hours', 'ساعات العمل')}
+                </p>
+                {HOURS_DAYS.map((d, day) => {
+                  const closed = loc?.hours?.[day]?.closed ?? false;
+                  return (
+                    <div key={day} className="admin-variant-row" style={{ alignItems: 'center' }}>
+                      <span style={{ minWidth: '6rem', fontWeight: 'var(--fw-medium)' }}>{isAr ? d.ar : d.en}</span>
+                      <Choice
+                        type="checkbox"
+                        label={t('Closed', 'مغلق')}
+                        {...register(`storeLocations.${i}.hours.${day}.closed` as const)}
+                        disabled={busy}
+                      />
+                      <Field label={t('Opens', 'يفتح')} error={errors.storeLocations?.[i]?.hours?.[day]?.opensAt?.message}>
+                        {(p) => (
+                          <Input
+                            {...p}
+                            type="time"
+                            {...register(`storeLocations.${i}.hours.${day}.opensAt` as const)}
+                            disabled={busy || closed}
+                          />
+                        )}
+                      </Field>
+                      <Field label={t('Closes', 'يغلق')} error={errors.storeLocations?.[i]?.hours?.[day]?.closesAt?.message}>
+                        {(p) => (
+                          <Input
+                            {...p}
+                            type="time"
+                            {...register(`storeLocations.${i}.hours.${day}.closesAt` as const)}
+                            disabled={busy || closed}
+                          />
+                        )}
+                      </Field>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+
+          {locations.fields.length < 20 && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => locations.append(blankLocation)}
+              disabled={busy}
+            >
+              <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+              {t('Add location', 'إضافة موقع')}
+            </Button>
+          )}
         </div>
 
         {error && <Alert tone="danger">{error}</Alert>}

@@ -1,8 +1,14 @@
 import { Prisma, type DiscountType } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
-import { toNumber } from '../../lib/money';
-import { effectivePrice, isOnSale } from '../../lib/pricing';
+import { round2, toNumber } from '../../lib/money';
+import {
+  pickDiscount,
+  pricedWithDiscount,
+  type AppliedDiscount,
+  type DiscountCandidate,
+} from '../../lib/pricing';
+import { activeDiscounts, discountCoverage } from '../discounts/discount.service';
 import { z } from 'zod';
 import {
   listProductsQuerySchema,
@@ -31,23 +37,28 @@ const productInclude = {
 };
 
 // Attach the post-sale price so every product/variant read carries what a
-// shopper actually pays.
+// shopper actually pays — the product's own sale AND the best-matching active
+// catalog discount (see lib/pricing.ts).
 type Priced = {
   price: Prisma.Decimal;
   saleType: DiscountType | null;
   saleValue: Prisma.Decimal | null;
+  categoryID: string;
+  collectionID: string | null;
   variants?: { price: Prisma.Decimal | null }[];
 };
-function withPricing<T extends Priced>(p: T) {
-  // A variant with no price of its own falls back to the product's price —
-  // the sale (defined at the product level) still applies on top of whichever
-  // base price is in play.
-  const priceFor = (base: Prisma.Decimal | number) => effectivePrice(base, p.saleType, p.saleValue);
-  const onSaleFor = (base: Prisma.Decimal | number) => isOnSale(base, p.saleType, p.saleValue);
+function withPricing<T extends Priced>(p: T, discounts: DiscountCandidate[] = []) {
+  const picked: AppliedDiscount | null = pickDiscount(p, discounts);
+  // A variant with no price of its own falls back to the product's price;
+  // the same discount applies on top of whichever base price is in play.
+  const priceFor = (base: Prisma.Decimal | number) =>
+    pricedWithDiscount(base, p.saleType, p.saleValue, picked);
+  const onSaleFor = (base: Prisma.Decimal | number) => priceFor(base) < round2(toNumber(base));
   return {
     ...p,
     effectivePrice: priceFor(p.price),
     onSale: onSaleFor(p.price),
+    discount: picked ? { type: picked.type, value: picked.value, stacking: picked.stacking } : null,
     variants: p.variants?.map((v) => {
       const base = v.price ?? p.price;
       return { ...v, effectivePrice: priceFor(base), onSale: onSaleFor(base) };
@@ -98,6 +109,24 @@ export async function listProducts(query: ListProductsQuery) {
       : {}),
   };
 
+  // Load the discounts in force now — needed both for pricing every row and
+  // (when `onSale=true`) to narrow the query to discounted products.
+  const discounts = await activeDiscounts();
+  if (query.onSale) {
+    const cov = discountCoverage(discounts);
+    if (!cov.all) {
+      // A product is "on sale" if it has its own live sale, or its category /
+      // collection is covered by an active catalog discount.
+      const onSaleOr: Prisma.ProductWhereInput[] = [
+        { saleType: { not: null }, saleValue: { gt: 0 } },
+      ];
+      if (cov.categoryIds.length) onSaleOr.push({ categoryID: { in: cov.categoryIds } });
+      if (cov.collectionIds.length) onSaleOr.push({ collectionID: { in: cov.collectionIds } });
+      where.AND = [...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []), { OR: onSaleOr }];
+    }
+    // cov.all ⇒ every product is discounted; no extra restriction needed.
+  }
+
   const orderBy: Prisma.ProductOrderByWithRelationInput =
     query.sort === 'price_asc'
       ? { price: 'asc' }
@@ -116,16 +145,24 @@ export async function listProducts(query: ListProductsQuery) {
     prisma.product.count({ where }),
   ]);
 
-  return { items: items.map(withPricing), total, page: query.page, pageSize: query.pageSize };
+  return {
+    items: items.map((p) => withPricing(p, discounts)),
+    total,
+    page: query.page,
+    pageSize: query.pageSize,
+  };
 }
 
 export async function getProductById(id: string, includeInactive = false) {
-  const product = await prisma.product.findFirst({
-    where: { id, ...(includeInactive ? {} : { isActive: true, deletedAt: null }) },
-    include: productInclude,
-  });
+  const [product, discounts] = await Promise.all([
+    prisma.product.findFirst({
+      where: { id, ...(includeInactive ? {} : { isActive: true, deletedAt: null }) },
+      include: productInclude,
+    }),
+    activeDiscounts(),
+  ]);
   if (!product) throw new AppError('NOT_FOUND', 'Product not found');
-  return withPricing(product);
+  return withPricing(product, discounts);
 }
 
 // ---- Admin-side writes ----

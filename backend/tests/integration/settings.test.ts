@@ -141,6 +141,90 @@ describe('Site settings API', () => {
     expect(await prisma.siteSetting.findUnique({ where: { id: 1 } })).not.toBeNull();
   });
 
+  describe('store locations', () => {
+    const patch = (body: unknown) =>
+      request(app).patch('/api/settings').set(bearer(adminToken)).send(body);
+
+    it('creates multiple locations, each with its own name, address, map, image and hours', async () => {
+      const res = await patch({
+        storeLocations: [
+          {
+            nameEn: 'Hamra branch',
+            nameAr: 'فرع الحمرا',
+            addressEn: '12 Hamra Street, Beirut',
+            mapUrl: 'https://maps.google.com/?q=hamra',
+            imageUrl: 'https://ik.imagekit.io/demo/hamra.jpg',
+            imageFileId: 'file_hamra',
+            hours: [
+              { dayOfWeek: 0, opensAt: '10:00', closesAt: '20:00' },
+              { dayOfWeek: 4, opensAt: '10:00', closesAt: '22:00' },
+            ],
+          },
+          {
+            nameEn: 'Jounieh branch',
+            addressEn: 'Main Road, Jounieh',
+            hours: [{ dayOfWeek: 5, opensAt: '11:00', closesAt: '19:00' }],
+          },
+        ],
+      });
+      expect(res.status).toBe(200);
+      const locs = res.body.settings.storeLocations;
+      expect(locs).toHaveLength(2);
+      expect(locs.map((l: { nameEn: string }) => l.nameEn)).toEqual(['Hamra branch', 'Jounieh branch']);
+      expect(locs.map((l: { sortOrder: number }) => l.sortOrder)).toEqual([0, 1]);
+      expect(locs[0]).toMatchObject({
+        addressEn: '12 Hamra Street, Beirut',
+        mapUrl: 'https://maps.google.com/?q=hamra',
+        imageUrl: 'https://ik.imagekit.io/demo/hamra.jpg',
+        imageFileId: 'file_hamra',
+      });
+      expect(locs[0].hours.map((h: { dayOfWeek: number }) => h.dayOfWeek)).toEqual([0, 4]);
+      expect(locs[1].hours).toHaveLength(1);
+    });
+
+    it('storeLocations is replace-all; [] clears every location (and its hours)', async () => {
+      await patch({
+        storeLocations: [
+          { nameEn: 'A', hours: [{ dayOfWeek: 1, opensAt: '09:00', closesAt: '17:00' }] },
+          { nameEn: 'B' },
+        ],
+      });
+      const replaced = await patch({ storeLocations: [{ nameEn: 'C' }] });
+      expect(replaced.body.settings.storeLocations.map((l: { nameEn: string }) => l.nameEn)).toEqual(['C']);
+
+      const cleared = await patch({ storeLocations: [] });
+      expect(cleared.body.settings.storeLocations).toHaveLength(0);
+    });
+
+    it('rejects a bad time, an inverted range, and a non-http(s) map link', async () => {
+      expect(
+        (await patch({ storeLocations: [{ hours: [{ dayOfWeek: 0, opensAt: '9am', closesAt: '17:00' }] }] })).status
+      ).toBe(400);
+      expect(
+        (await patch({ storeLocations: [{ hours: [{ dayOfWeek: 0, opensAt: '18:00', closesAt: '09:00' }] }] })).status
+      ).toBe(400);
+      expect((await patch({ storeLocations: [{ mapUrl: 'javascript:alert(1)' }] })).status).toBe(400);
+    });
+
+    it('empty strings on a location clear its nullable fields', async () => {
+      await patch({
+        storeLocations: [
+          { nameEn: 'x', addressEn: 'y', mapUrl: 'https://x.test', imageUrl: 'https://x.test/a.jpg', imageFileId: 'f1' },
+        ],
+      });
+      const cleared = await patch({
+        storeLocations: [{ nameEn: '', addressEn: '', mapUrl: '', imageUrl: '', imageFileId: '' }],
+      });
+      expect(cleared.body.settings.storeLocations[0]).toMatchObject({
+        nameEn: null,
+        addressEn: null,
+        mapUrl: null,
+        imageUrl: null,
+        imageFileId: null,
+      });
+    });
+  });
+
   describe('delivery fee config', () => {
     const patch = (body: unknown) =>
       request(app).patch('/api/settings').set(bearer(adminToken)).send(body);

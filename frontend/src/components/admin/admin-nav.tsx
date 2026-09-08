@@ -8,6 +8,7 @@ const SECTIONS = [
   { href: '/collections', labelEn: 'Collections', labelAr: 'المجموعات' },
   { href: '/categories', labelEn: 'Categories', labelAr: 'الفئات' },
   { href: '/products', labelEn: 'Products', labelAr: 'المنتجات' },
+  { href: '/discounts', labelEn: 'Discounts', labelAr: 'الخصومات' },
   { href: '/orders', labelEn: 'Orders', labelAr: 'الطلبات' },
   { href: '/analytics', labelEn: 'Analytics', labelAr: 'التحليلات' },
   { href: '/settings', labelEn: 'Settings', labelAr: 'الإعدادات' },

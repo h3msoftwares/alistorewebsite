@@ -13,6 +13,8 @@ export interface UiFiltersState {
   color: string | null;
   minPrice: number | null;
   maxPrice: number | null;
+  /** Show only products discounted right now (own sale or a catalog discount). */
+  onSale: boolean;
   sort: SortOption;
   search: string;
   page: number;
@@ -24,6 +26,7 @@ const initialState: UiFiltersState = {
   color: null,
   minPrice: null,
   maxPrice: null,
+  onSale: false,
   sort: 'newest',
   search: '',
   page: 1,
@@ -61,6 +64,10 @@ const uiFiltersSlice = createSlice({
       state.maxPrice = action.payload.max;
       state.page = 1;
     },
+    setOnSale(state, action: PayloadAction<boolean>) {
+      state.onSale = action.payload;
+      state.page = 1;
+    },
     setSort(state, action: PayloadAction<SortOption>) {
       state.sort = action.payload;
       state.page = 1;
@@ -85,6 +92,7 @@ export const {
   setSize,
   setColor,
   setPriceRange,
+  setOnSale,
   setSort,
   setSearch,
   setPage,
@@ -126,6 +134,7 @@ export function buildProductListQuery(f: UiFiltersState, collectionId?: string):
     ...(f.color ? { color: f.color } : {}),
     ...(f.minPrice != null ? { minPrice: f.minPrice } : {}),
     ...(f.maxPrice != null ? { maxPrice: f.maxPrice } : {}),
+    ...(f.onSale ? { onSale: true } : {}),
     sort: f.sort,
     page: f.page,
   };
