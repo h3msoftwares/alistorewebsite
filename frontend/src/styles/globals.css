@@ -637,6 +637,12 @@ main > .container.section:first-child {
   color: var(--color-on-primary);
   font-size: var(--fs-xs);
 }
+/* Placeholder shown only until site settings load — reserves the strip's
+   height (no colour / content) so the real strip mounting is shift-free. */
+.offers-strip--reserve {
+  background: transparent;
+  min-height: var(--offers-strip-h);
+}
 .offers-strip__inner {
   display: flex;
   align-items: center;

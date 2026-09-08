@@ -26,7 +26,7 @@ Instead of one task list per week, work is grouped into **modules** — a module
 | Frontend | Dev1 | Department pages (Women/Men/Kids): category grid + listing, wired to `GET /products` via TanStack Query | 5h |
 | Frontend | Dev1 | Filter UI (size, color, price, sort) driving the same endpoint's query params | 4h |
 | Backend | Dev2 | Category admin CRUD endpoints (create/edit/delete) | 3h |
-| Backend | Dev2 | Product image upload endpoint (admin) → Cloudinary/S3, save URLs to `ProductImage` | 3h |
+| Backend | Dev2 | Product image upload endpoint (admin) → **ImageKit** (client-side signed upload), save URLs to `ProductImage` — ✅ done | 3h |
 | Testing | Dev2 | Integration tests: category CRUD + product filtering/sorting (all query param combos) | 3h |
 
 **Module 1 total: ~18h** (was 30h)
@@ -109,12 +109,12 @@ Instead of one task list per week, work is grouped into **modules** — a module
 
 | Track | Dev | Task | Est. hrs |
 |---|---|---|---|
-| Frontend | Dev1 | Admin dashboard (Recharts: orders, pending count, revenue) → `GET /admin/dashboard` | 3h |
+| Frontend | Dev1 | Admin dashboard → `GET /admin/dashboard` (action tiles: pending / flagged / awaiting-COD / low-stock, recent orders, quick actions) + 30-day Recharts revenue & orders trend (from `GET /admin/analytics/overview`) — ✅ done | 3h |
 | Frontend | Dev1 | Admin product management: table + create/edit form (bilingual fields, variant rows, stock) | 5.5h |
 | Frontend | Dev1 | Admin order management: table, status update, "mark COD collected" toggle | 4h |
 | Backend | Dev2 | Performance pass: indexes on product/order listing queries under seeded + synthetic data | 2.5h |
 | Testing | Dev2 | Authorization boundary tests: STAFF vs. ADMIN on every admin route | 3h |
-| Testing | Dev2 | Pagination correctness tests (product/order lists, page-boundary edge cases) | 2h |
+| Testing | Dev2 | Pagination correctness tests — `backend/tests/integration/pagination.test.ts` (product + category-scoped lists: partial last page, page-past-end, no overlap/gaps, page<1 / non-integer / pageSize>cap rejected, defaults). Admin order lists are intentionally client-paginated (endpoint returns the full array). — ✅ done | 2h |
 | Security | Dev3 | RBAC boundary manual + automated tests confirming STAFF can't hit ADMIN-only actions | 2.5h |
 
 **Module 7 total: ~22.5h** (was 36h)
@@ -138,10 +138,10 @@ Instead of one task list per week, work is grouped into **modules** — a module
 
 | Track | Dev | Task | Est. hrs |
 |---|---|---|---|
-| QA | Dev1 | Cross-device/browser responsive QA pass across every page | 3h |
-| QA | Dev1 | Dark/light + RTL (Arabic) QA pass across every page; fix visual breaks | 3h |
-| QA | Dev1 | Accessibility pass: labels, focus states, contrast check | 2h |
-| QA | Dev1 | Bug-fix buffer from QA findings | 1.5h |
+| QA | Dev1 | Cross-device/browser responsive QA pass across every page — ✅ done (`frontend/docs/qa-responsive.md`: route × 360/768/1280 × LTR/RTL matrix, structural guarantees, findings) | 3h |
+| QA | Dev1 | RTL (Arabic) QA pass across every page; fix visual breaks — ✅ done (dark mode removed; storefront is light-only, so there is no dark/light pass — see `frontend/docs/qa-responsive.md`) | 3h |
+| QA | Dev1 | Accessibility pass: labels, focus states, contrast check — ✅ done (`frontend/docs/qa-accessibility.md`: static scan + keyboard walk + contrast; landmarks, skip link, focus-trap modals/drawers, `aria-label` on every icon-btn, `<Field>` label/error wiring, token contrast ratios) | 2h |
+| QA | Dev1 | Bug-fix buffer from QA findings — ✅ done (folded into the two QA docs; no blocking issues — status-change modals inherit the shared `Modal` focus behaviour, lone store card width-capped, coupon row wrap) | 1.5h |
 
 **Module 9 total: ~9.5h** (was 15h)
 
@@ -152,10 +152,10 @@ Instead of one task list per week, work is grouped into **modules** — a module
 
 | Track | Dev | Task | Est. hrs |
 |---|---|---|---|
-| Testing | Dev2 | Full end-to-end Supertest pass: every user journey (guest checkout, account checkout, admin flows) | 3.5h |
-| CI/CD | Dev2 | Finalize CI: block merge on failing tests/lint; add staging deploy step | 2.5h |
-| Perf | Dev2 | Basic load test against NFR target (50–100 concurrent users) | 2h |
-| Docs | Dev2 | Developer handoff docs (setup, env vars, deploy steps) | 1.5h |
+| Testing | Dev2 | Full end-to-end Supertest pass: every user journey — ✅ done (`backend/tests/integration/e2e-journeys.test.ts`: guest browse→cart→OTP→checkout→track; register→verify→login→cart→checkout→cancel; admin login→list→ship+estimate→mark-collected→dashboard). `npm run test:e2e`. | 3.5h |
+| CI/CD | Dev2 | Finalize CI: block merge on failing tests/lint; add staging deploy step — ✅ done (`.github/workflows/ci.yml`: backend typecheck/lint/test with a Postgres service, frontend typecheck/lint/test/build, `npm audit` report job, `deploy-staging` deploy-hook job on `main`). Mark `backend`+`frontend` as required checks to block merges. | 2.5h |
+| Perf | Dev2 | Basic load test against NFR target (50–100 concurrent users) — ✅ done (`loadtest/storefront.js` k6 ramped test with p95<800ms / <1% error thresholds; `loadtest/quick.mjs` zero-install Node smoke with the same gate; `npm run loadtest` / `loadtest:k6`) | 2h |
+| Docs | Dev2 | Developer handoff docs (setup, env vars, deploy steps) — ✅ done (`docs/DEPLOYMENT.md`: architecture, first-time setup, env var reference, migrations/seeding, CI overview, per-host deploy steps, rollback, smoke, handoff checklist) | 1.5h |
 
 **Module 10 total: ~9.5h** (was 15h)
 
