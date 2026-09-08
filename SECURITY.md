@@ -33,13 +33,16 @@ repository owner (see the GitHub repo's admin) — do not open a public issue.
 - **Role tiers (S4)** — STAFF+ADMIN by default; `requireRole('ADMIN')` narrows
   STAFF out of permanent deletes, site settings, discount/coupon writes, and
   the revenue reports.
-- **CSRF** — double-submit cookie + `X-CSRF-Token` header on every
-  state-changing request.
-- **Abuse** — per-IP and per-identifier rate limits on every auth and
-  order-lookup route; hCaptcha + email OTP + IP/phone/email blocklist +
-  order-velocity flagging at checkout.
+- **CSRF** — signed double-submit cookie (HMAC-bound) + `X-CSRF-Token` header
+  on every state-changing request.
+- **Abuse** — per-IP and per-identifier rate limits on every auth,
+  order-lookup and coupon-validate route; hCaptcha + email OTP +
+  IP/phone/email blocklist + order-velocity flagging at checkout.
+- **Business logic** — checkout stock claim and coupon redemption both use
+  atomic guarded DB updates (no oversell, no coupon over-redemption under
+  concurrency); coupons carry `maxRedemptions` / `maxPerCustomer` caps.
 - **Input** — Zod validation on every route body/query/params; a global
   sanitiser strips control chars / markup / prototype-pollution keys; Prisma
-  parameterises all SQL.
+  parameterises all SQL; server-assembled emails HTML-escape every field.
 - **Audit** — append-only `AuditLog` for auth attempts, step-up attempts, and
   every admin order/stock mutation.

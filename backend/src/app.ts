@@ -26,7 +26,7 @@ import addressRoutes from './modules/account/address.routes';
 import userRoutes from './modules/account/user.routes';
 import uploadRoutes from './modules/uploads/upload.routes';
 import settingsRoutes from './modules/settings/settings.routes';
-import discountRoutes from './modules/discounts/discount.routes';
+import { discountRoutes } from './modules/discounts/discount.routes';
 
 export function buildApp(
   opts: {
@@ -42,6 +42,7 @@ export function buildApp(
     resendVerificationRateLimit?: boolean;
     changePasswordRateLimit?: boolean;
     stepUpRateLimit?: boolean;
+    validateCouponRateLimit?: boolean;
     checkoutOtpVerifyRateLimit?: boolean;
     orderTrackRateLimit?: boolean;
     orderLookupRateLimit?: boolean;
@@ -90,11 +91,22 @@ export function buildApp(
   );
 
   // CORS_ORIGIN may be a comma-separated list (e.g. localhost + a LAN IP for
-  // testing on a phone). credentials:true still requires an exact match.
-  const corsOrigins = env.CORS_ORIGIN.split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
-  app.use(cors({ origin: corsOrigins, credentials: true }));
+  // testing on a phone). Per-request delegate so an origin that ISN'T on the
+  // allowlist gets no `Access-Control-Allow-Origin` AND no
+  // `Access-Control-Allow-Credentials` — the `cors` package otherwise emits
+  // ACAC:true unconditionally, which is noise a scanner flags.
+  const corsOrigins = new Set(
+    env.CORS_ORIGIN.split(',')
+      .map((o) => o.trim())
+      .filter(Boolean)
+  );
+  app.use(
+    cors((req, cb) => {
+      const origin = req.headers.origin;
+      const allowed = !origin || corsOrigins.has(origin);
+      cb(null, allowed ? { origin: true, credentials: true } : { origin: false });
+    })
+  );
   app.use(express.json());
   app.use(cookieParser());
 
@@ -200,7 +212,10 @@ export function buildApp(
   app.use('/api/admin', adminRoutes);
   app.use('/api/uploads', uploadRoutes);
   app.use('/api/settings', settingsRoutes);
-  app.use('/api', discountRoutes);
+  app.use(
+    '/api',
+    discountRoutes({ validateCouponRateLimit: opts.validateCouponRateLimit ?? env.NODE_ENV !== 'test' })
+  );
 
   // 404 fallback
   app.use((req, res) => {

@@ -22,7 +22,7 @@ Reflects the code as of the S1–S9 security track. File references are to `back
 | --- | --- | --- | --- |
 | **Access JWT** | `JWT_ACCESS_TTL` = **15 min** (CUSTOMER) / `JWT_ADMIN_ACCESS_TTL` = **5 min** (STAFF, ADMIN) | Browser memory only (never `localStorage`, never a cookie) | Bearer auth on every API call. TTL is chosen by **role**, so a privileged account always gets the short TTL — including on silent refresh, which re-signs with the account's current role. |
 | **Refresh JWT** | `JWT_REFRESH_TTL_DAYS` = **30 days** | `refreshToken` cookie — `httpOnly`, `SameSite=Strict`, `Secure` in production, `Path=/api/auth` | Exchanged for a new access token by `POST /api/auth/refresh` only. Stored **hashed** (`sha256`) in `RefreshToken`, so a DB leak alone can't be replayed. |
-| **CSRF token** | per session | `csrfToken` cookie — **not** `httpOnly` (the SPA reads it), `SameSite=Strict` | Double-submit: every state-changing request must echo it in the `X-CSRF-Token` header (timing-safe compared). |
+| **CSRF token** | per session | `csrfToken` cookie — **not** `httpOnly` (the SPA reads it), `SameSite=Strict` | **Signed** double-submit: cookie value is `<random>.<HMAC(key, random)>` (key derived from `JWT_ACCESS_SECRET`). Every state-changing request must echo the exact cookie value in `X-CSRF-Token` (timing-safe compare) AND that value's HMAC must verify — a planted / attacker-chosen cookie is rejected. |
 | **Guest cart id** | 30 days | `cartSession` cookie — `httpOnly`, `SameSite=Strict`, `Secure` in production, `Path=/` | Anonymous cart ownership. **Rotated** on login (S9). |
 | **OrderAccessToken** | issued per guest order | emailed link only; stored hashed | Lets a guest view/cancel their own order without an account. |
 
@@ -136,6 +136,7 @@ under `NODE_ENV=test` (a focused test re-enables the one it exercises).
 | `POST /api/auth/resend-verification` | 10 | IP |
 | `POST /api/auth/resend-verification` | 3 | email |
 | `POST /api/checkout/otp/verify` | 20 | IP |
+| `POST /api/coupons/validate` | 20 | IP |
 | `GET /api/orders/track/:token` | 10 | IP |
 | `POST /api/orders/lookup` | 10 | IP |
 | `POST /api/orders/lookup` | 3 | order number |

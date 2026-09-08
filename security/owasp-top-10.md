@@ -28,8 +28,11 @@ where**, then **gaps / residual risk**. Paths are `backend/src` unless noted.
   revenue reports (`/api/admin/dashboard`, `/api/admin/analytics/{sales,customers}`).
   Everything else stays STAFF+ADMIN. Covered by `admin-role-boundary.test.ts`
   (STAFF→403 / ADMIN→200 on every gated route).
-- **CSRF** (an access-control failure): double-submit cookie + `X-CSRF-Token`
-  header, timing-safe compare, on every non-GET (`middleware/csrf.middleware.ts`).
+- **CSRF** (an access-control failure): **signed** double-submit cookie
+  (`value.HMAC`, key from `JWT_ACCESS_SECRET`) + matching `X-CSRF-Token`
+  header, timing-safe compare, on every non-GET
+  (`middleware/csrf.middleware.ts`). Signed (not plain) so a cookie an
+  attacker *plants* can't produce a valid MAC — pentest H2.
 - Frontend `X-Frame-Options: DENY` + CSP `frame-ancestors 'none'` on both tiers
   (clickjacking).
 
@@ -47,7 +50,9 @@ where**, then **gaps / residual risk**. Paths are `backend/src` unless noted.
 - Passwords: **Argon2id** (`auth.service.ts`). Never logged, never returned.
 - Access tokens: **HS256, algorithm pinned** on verify (no `alg:none` /
   downgrade). Short TTL (5 min admin / 15 min customer), memory-only on the
-  client.
+  client. Verify also enforces a `maxAge: 1h` ceiling and **rejects a token
+  with no `exp`** — a token can't be minted immortal even if the secret
+  leaks (pentest V3).
 - Refresh tokens: random JWT, stored **sha256-hashed** — a DB dump can't be
   replayed. `httpOnly` + `SameSite=Strict` + `Secure` (prod) + `Path=/api/auth`.
 - Reset / verification / order-access / OTP tokens: all stored **hashed**, all
@@ -82,7 +87,10 @@ where**, then **gaps / residual risk**. Paths are `backend/src` unless noted.
   query string, strips control chars, and drops prototype-pollution keys.
   Admin-controlled URLs (social links, store map links) pass an http(s)-only
   allowlist before being rendered as `<a href>` (`safe-url.ts`,
-  `site-footer.tsx`).
+  `site-footer.tsx`). The transactional **emails** (the one place raw HTML is
+  assembled server-side) now escape every customer field on output via
+  `esc()` in `lib/mailer.ts` — output encoding, not the input denylist, is
+  the control there (pentest H1; `tests/unit/mailer-escaping.test.ts`).
 - **CSP** (frontend): restrictive baseline — `default-src 'self'`,
   `object-src 'none'`, no `frame-ancestors`, form posts to self only. Two
   documented relaxations (`'unsafe-inline'` for `script-src` / `style-src`);
@@ -107,6 +115,13 @@ where**, then **gaps / residual risk**. Paths are `backend/src` unless noted.
 - Checkout is defence-in-depth: hCaptcha → email OTP → PHONE/EMAIL/IP blocklist
   → order-velocity soft-flag for manual review. Guest tracking is a
   capability-URL (unguessable token), not an id.
+- **Stock claim is race-safe** (pentest V1): checkout decrements with an
+  atomic guarded `UPDATE … WHERE stockQuantity >= qty`, backed by a DB
+  `CHECK (stockQuantity >= 0)`. No oversell under concurrency.
+- **Coupons have usage caps** (pentest V2b): `maxRedemptions` (global,
+  enforced by an atomic guarded increment) and `maxPerCustomer`; every
+  redemption is recorded in `CouponRedemption`. `POST /api/coupons/validate`
+  is rate-limited so codes can't be enumerated.
 - Enumeration-safe by design: registration, login, forgot-password and
   order-lookup all return uniform responses and run constant-ish work on every
   branch.
@@ -138,7 +153,9 @@ where**, then **gaps / residual risk**. Paths are `backend/src` unless noted.
   `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`
   (camera/mic/geo/payment/usb/interest-cohort all denied), `X-Frame-Options:
   DENY`, `poweredByHeader: false`.
-- CORS is an **exact-match allowlist** with `credentials: true` (`CORS_ORIGIN`).
+- CORS is an **exact-match allowlist** with `credentials: true` (`CORS_ORIGIN`),
+  applied via a per-request delegate so a non-allowlisted origin gets **no**
+  `Access-Control-*` headers at all (pentest H3).
 - `trust proxy` is `1` in production only — a spoofed `X-Forwarded-For` can't
   move `req.ip` in dev/test.
 - Errors return a clean envelope; body-parser errors don't echo raw messages

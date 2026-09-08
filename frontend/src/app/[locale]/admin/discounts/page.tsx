@@ -367,6 +367,9 @@ const couponSchema = z
     isActive: z.boolean(),
     startsAt: z.string(),
     endsAt: z.string(),
+    // Blank = unlimited. NaN comes from an empty <input type=number>.
+    maxRedemptions: z.number().int().positive().optional().or(z.nan()),
+    maxPerCustomer: z.number().int().positive().optional().or(z.nan()),
   })
   .superRefine((v, ctx) => {
     if (v.type === 'PERCENT' && v.value > 100) {
@@ -385,6 +388,8 @@ const BLANK_COUPON: CouponForm = {
   isActive: true,
   startsAt: '',
   endsAt: '',
+  maxRedemptions: undefined,
+  maxPerCustomer: undefined,
 };
 
 function CouponsPanel({ isAr }: { isAr: boolean }) {
@@ -408,6 +413,8 @@ function CouponsPanel({ isAr }: { isAr: boolean }) {
             isActive: editing.isActive,
             startsAt: toLocalInput(editing.startsAt),
             endsAt: toLocalInput(editing.endsAt),
+            maxRedemptions: editing.maxRedemptions ?? undefined,
+            maxPerCustomer: editing.maxPerCustomer ?? undefined,
           }
         : BLANK_COUPON,
     [editing]
@@ -429,6 +436,8 @@ function CouponsPanel({ isAr }: { isAr: boolean }) {
       isActive: form.isActive,
       startsAt: fromLocalInput(form.startsAt),
       endsAt: fromLocalInput(form.endsAt),
+      maxRedemptions: Number.isFinite(form.maxRedemptions) ? form.maxRedemptions : null,
+      maxPerCustomer: Number.isFinite(form.maxPerCustomer) ? form.maxPerCustomer : null,
     };
     try {
       if (editing) await update.mutateAsync({ id: editing.id, body });
@@ -473,6 +482,26 @@ function CouponsPanel({ isAr }: { isAr: boolean }) {
             </Field>
             <Field label={t('Ends', 'ينتهي')} hint={t('Blank = no end', 'فارغ = بلا نهاية')} error={errors.endsAt?.message}>
               {(p) => <Input {...p} type="datetime-local" {...register('endsAt')} disabled={busy} />}
+            </Field>
+          </div>
+          <div className="admin-form__row">
+            <Field
+              label={t('Total uses', 'إجمالي مرات الاستخدام')}
+              hint={t('Blank = unlimited', 'فارغ = بلا حد')}
+              error={errors.maxRedemptions?.message}
+            >
+              {(p) => (
+                <Input {...p} type="number" min={1} step="1" {...register('maxRedemptions', { valueAsNumber: true })} disabled={busy} />
+              )}
+            </Field>
+            <Field
+              label={t('Uses per customer', 'مرات لكل عميل')}
+              hint={t('Blank = unlimited', 'فارغ = بلا حد')}
+              error={errors.maxPerCustomer?.message}
+            >
+              {(p) => (
+                <Input {...p} type="number" min={1} step="1" {...register('maxPerCustomer', { valueAsNumber: true })} disabled={busy} />
+              )}
             </Field>
           </div>
           <Choice type="checkbox" label={t('Active', 'مُفعَّل')} {...register('isActive')} disabled={busy} />

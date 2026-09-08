@@ -292,6 +292,11 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       : [];
     if (cartItems.length === 0) throw new AppError('VALIDATION_ERROR', 'Cart is empty');
 
+    // Preliminary, non-authoritative stock check — fast-fails with a friendly
+    // per-line message in the common case. The ACTUAL guard is the atomic
+    // conditional decrement after the order is created (see below): two
+    // concurrent checkouts for the last unit would both pass this read-check
+    // (READ COMMITTED), so it must not be the only gate.
     for (const item of cartItems) {
       if (item.variant.stockQuantity < item.quantity) {
         const label = [item.variant.size, item.variant.color].filter(Boolean).join('/') || 'one size';
@@ -313,11 +318,30 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     // silently ignoring it (so the shopper isn't surprised by the total).
     let couponCode: string | null = null;
     let discountAmount = 0;
+    let couponToRedeem: { id: string; maxRedemptions: number | null } | null = null;
     if (input.couponCode) {
       const coupon = await resolveCoupon(input.couponCode);
       if (!coupon) throw new AppError('VALIDATION_ERROR', 'That coupon code is not valid.');
+
+      // Per-customer cap (V2b). Keyed by account for a logged-in shopper,
+      // by contact email for a guest. Best-effort count inside the tx — a
+      // burst of simultaneous checkouts by ONE customer could slip one extra
+      // through; the global cap below is the race-safe one.
+      if (coupon.maxPerCustomer != null) {
+        const used = await tx.couponRedemption.count({
+          where: {
+            couponID: coupon.id,
+            ...(owner.userID ? { userID: owner.userID } : { email: contactEmail }),
+          },
+        });
+        if (used >= coupon.maxPerCustomer) {
+          throw new AppError('VALIDATION_ERROR', "You've already used this coupon the maximum number of times.");
+        }
+      }
+
       couponCode = coupon.code;
       discountAmount = couponAmountOff(coupon, subtotal);
+      couponToRedeem = { id: coupon.id, maxRedemptions: coupon.maxRedemptions };
     }
 
     // Admin-configured delivery fee (flat, per-region override, or free by
@@ -399,11 +423,45 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       include: { items: true },
     });
 
+    // Coupon redemption (V2b). The global cap is claimed with an atomic
+    // guarded increment — same shape as the stock claim: the predicate and
+    // the +1 happen in one UPDATE, so concurrent checkouts can't push
+    // `timesRedeemed` past `maxRedemptions`. 0 rows affected => the code was
+    // exhausted between resolveCoupon() and here => roll the order back.
+    if (couponToRedeem) {
+      const bumped = await tx.$executeRaw`
+        UPDATE "coupon"
+           SET "timesRedeemed" = "timesRedeemed" + 1
+         WHERE "id" = ${couponToRedeem.id}::uuid
+           AND ("maxRedemptions" IS NULL OR "timesRedeemed" < "maxRedemptions")
+      `;
+      if (bumped === 0) {
+        throw new AppError('VALIDATION_ERROR', 'That coupon code is no longer available.');
+      }
+      await tx.couponRedemption.create({
+        data: {
+          couponID: couponToRedeem.id,
+          orderID: order.id,
+          userID: owner.userID ?? null,
+          email: contactEmail,
+        },
+      });
+    }
+
     for (const item of cartItems) {
-      await tx.productVariant.update({
-        where: { id: item.variantID },
+      // Atomic, race-safe stock claim: the `stockQuantity: { gte }` predicate
+      // and the decrement happen in one UPDATE, and Postgres row-locks the
+      // matched row for the rest of the transaction. If another concurrent
+      // checkout already took the last unit, `count` is 0 here and we roll
+      // the whole order back — stock can never go negative, never oversell.
+      const claimed = await tx.productVariant.updateMany({
+        where: { id: item.variantID, stockQuantity: { gte: item.quantity } },
         data: { stockQuantity: { decrement: item.quantity } },
       });
+      if (claimed.count === 0) {
+        const label = [item.variant.size, item.variant.color].filter(Boolean).join('/') || 'one size';
+        throw new AppError('OUT_OF_STOCK', `Not enough stock for ${item.variant.product.nameEn} (${label})`);
+      }
       await tx.stockMovement.create({
         data: {
           variantID: item.variantID,
