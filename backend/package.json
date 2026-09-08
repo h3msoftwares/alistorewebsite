@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -15,6 +16,9 @@
     "seed:large": "tsx prisma/seed-large.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "vitest run tests/integration/e2e-journeys.test.ts",
+    "loadtest": "node ../loadtest/quick.mjs",
+    "loadtest:k6": "k6 run ../loadtest/storefront.js",
     "lint": "eslint src"
   },
   "dependencies": {

@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
 import { requireAuth } from '../../middleware/auth.middleware';
-import { requireRole } from '../../middleware/rbac.middleware';
+import { requireRole, requirePermission } from '../../middleware/rbac.middleware';
 import { RATE_LIMITED_BODY } from '../../lib/rate-limit';
 import {
   createDiscountSchema,
@@ -39,11 +39,12 @@ const passThrough: RequestHandler = (_req, _res, next) => next();
  */
 export function discountRoutes(opts: { validateCouponRateLimit?: boolean } = {}): Router {
   const router = Router();
-  // Viewing discounts / coupons is STAFF-ok…
   const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
-  // …but creating / editing / deleting one changes what the store charges, so
-  // every mutation (POST / PATCH / DELETE) is ADMIN only (S4).
-  const adminOnly = [requireAuth, requireRole('ADMIN')];
+  // Viewing vs. managing discounts/coupons is gated by the RBAC permission
+  // system (see lib/permissions.ts). `discounts:manage` is what "changes what
+  // the store charges" — POST / PATCH / DELETE.
+  const canView = [...admin, requirePermission('discounts:view')];
+  const canManage = [...admin, requirePermission('discounts:manage')];
 
   const validateCouponLimiter: RequestHandler =
     opts.validateCouponRateLimit === false
@@ -64,34 +65,34 @@ export function discountRoutes(opts: { validateCouponRateLimit?: boolean } = {})
     asyncHandler(validateCouponHandler)
   );
 
-  // ---- Discounts: read STAFF+ADMIN, write ADMIN ----
-  router.get('/discounts', ...admin, asyncHandler(listDiscountsHandler));
-  router.post('/discounts', ...adminOnly, validate({ body: createDiscountSchema }), asyncHandler(createDiscountHandler));
+  // ---- Discounts: view = discounts:view, write = discounts:manage ----
+  router.get('/discounts', ...canView, asyncHandler(listDiscountsHandler));
+  router.post('/discounts', ...canManage, validate({ body: createDiscountSchema }), asyncHandler(createDiscountHandler));
   router.patch(
     '/discounts/:id',
-    ...adminOnly,
+    ...canManage,
     validate({ params: discountIdParamSchema, body: updateDiscountSchema }),
     asyncHandler(updateDiscountHandler)
   );
   router.delete(
     '/discounts/:id',
-    ...adminOnly,
+    ...canManage,
     validate({ params: discountIdParamSchema }),
     asyncHandler(deleteDiscountHandler)
   );
 
-  // ---- Coupons: read STAFF+ADMIN, write ADMIN ----
-  router.get('/coupons', ...admin, asyncHandler(listCouponsHandler));
-  router.post('/coupons', ...adminOnly, validate({ body: createCouponSchema }), asyncHandler(createCouponHandler));
+  // ---- Coupons: view = discounts:view, write = discounts:manage ----
+  router.get('/coupons', ...canView, asyncHandler(listCouponsHandler));
+  router.post('/coupons', ...canManage, validate({ body: createCouponSchema }), asyncHandler(createCouponHandler));
   router.patch(
     '/coupons/:id',
-    ...adminOnly,
+    ...canManage,
     validate({ params: couponIdParamSchema, body: updateCouponSchema }),
     asyncHandler(updateCouponHandler)
   );
   router.delete(
     '/coupons/:id',
-    ...adminOnly,
+    ...canManage,
     validate({ params: couponIdParamSchema }),
     asyncHandler(deleteCouponHandler)
   );

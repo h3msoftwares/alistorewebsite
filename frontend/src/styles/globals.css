@@ -637,6 +637,12 @@ main > .container.section:first-child {
   color: var(--color-on-primary);
   font-size: var(--fs-xs);
 }
+/* Placeholder shown only until site settings load — reserves the strip's
+   height (no colour / content) so the real strip mounting is shift-free. */
+.offers-strip--reserve {
+  background: transparent;
+  min-height: var(--offers-strip-h);
+}
 .offers-strip__inner {
   display: flex;
   align-items: center;
@@ -1080,6 +1086,20 @@ main > .container.section:first-child {
 .home-row__arrow--next { inset-inline-end: var(--space-2); }
 .home-row__arrow:hover:not(:disabled) { background: var(--color-surface); }
 .home-row__arrow:disabled { opacity: 0; pointer-events: none; }
+
+/* Customer-review strip: wider tiles than the product rows so a screenshot of
+   a review stays legible. Each tile is a plain framed image; its natural
+   aspect ratio is kept (reviews are a mix of portrait / square screenshots). */
+.reviews-row .home-row__track > * { width: clamp(13rem, 62vw, 17rem); }
+.review-tile { margin: 0; }
+.review-tile img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+}
 
 /* Small screens: keep each row short so the home page isn't one long scroll —
    shorter media, tighter spacing. */
@@ -1914,6 +1934,7 @@ a.home-card__name:hover { text-decoration: underline; }
 .admin-pager__status { font-size: var(--fs-sm); color: var(--color-text-muted); }
 
 .admin-row-actions { display: inline-flex; gap: var(--space-2); }
+.admin-inline { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .admin-status-badge--archived { opacity: 0.7; }
 
 /* Coupon reduction shown under an order total (admin orders + dashboard). */

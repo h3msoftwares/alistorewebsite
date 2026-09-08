@@ -6,12 +6,25 @@ vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en' }) }));
 
 vi.mock('@/lib/api', () => ({
   ordersApi: { adminDashboard: vi.fn() },
+  analyticsApi: { getOverview: vi.fn() },
 }));
 
-import { ordersApi } from '@/lib/api';
+import { ordersApi, analyticsApi } from '@/lib/api';
 import AdminDashboardPage from './page';
 
 const mock = vi.mocked(ordersApi, true);
+const analyticsMock = vi.mocked(analyticsApi, true);
+
+const overview = {
+  range: { from: '2026-08-09T00:00:00.000Z', to: '2026-09-08T00:00:00.000Z' },
+  kpis: {},
+  revenueSeries: [
+    { bucket: '2026-09-06T00:00:00.000Z', revenue: 120, orders: 3 },
+    { bucket: '2026-09-07T00:00:00.000Z', revenue: 200, orders: 5 },
+  ],
+  funnel: { configured: false },
+  note: '',
+};
 
 const dashboard = {
   totalOrders: 12,
@@ -45,6 +58,7 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   mock.adminDashboard.mockResolvedValue(dashboard as never);
+  analyticsMock.getOverview.mockResolvedValue(overview as never);
 });
 
 describe('AdminDashboardPage', () => {
@@ -58,6 +72,12 @@ describe('AdminDashboardPage', () => {
     expect(screen.getByText('Low / out of stock')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
     expect(screen.getByText('1 out of stock')).toBeInTheDocument();
+  });
+
+  it('renders the 30-day revenue & orders trend chart', async () => {
+    renderPage();
+    expect(await screen.findByText('Revenue & orders')).toBeInTheDocument();
+    expect(screen.getByText(/Last 30 days/)).toBeInTheDocument();
   });
 
   it('marks a recent order that used a coupon', async () => {

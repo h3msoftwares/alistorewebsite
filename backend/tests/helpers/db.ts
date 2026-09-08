@@ -3,9 +3,15 @@ import { prisma } from '../../src/config/prisma';
 // Every mapped table (see @@map in prisma/schema.prisma). TRUNCATE ... CASCADE
 // clears them regardless of FK order; RESTART IDENTITY resets any sequences.
 const TABLES = [
+  'storehours',
+  'storelocation',
+  'reviewimage',
   'announcementline',
   'deliveryrate',
   'sitesetting',
+  'discount',
+  'coupon',
+  'role',
   'blacklistentry',
   'checkoutotp',
   'pushsubscription',

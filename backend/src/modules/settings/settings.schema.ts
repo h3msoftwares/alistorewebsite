@@ -35,6 +35,30 @@ export const updateSettingsSchema = z.object({
   heroCtaCollectionId: z.string().uuid().or(z.literal('')).nullish(),
   homeMoreHeadingEn: z.string().trim().max(80).optional(),
   homeMoreHeadingAr: z.string().trim().max(80).optional(),
+
+  // ---- Optional "Our story" page ----
+  // '' / null clears the field; with title + body both empty in a language the
+  // storefront falls back to the other language, and with all four empty the
+  // page (and its footer link) is hidden.
+  storyTitleEn: z.string().trim().max(120).or(z.literal('')).nullish(),
+  storyTitleAr: z.string().trim().max(120).or(z.literal('')).nullish(),
+  storyBodyEn: z.string().trim().max(8000).or(z.literal('')).nullish(),
+  storyBodyAr: z.string().trim().max(8000).or(z.literal('')).nullish(),
+
+  // ---- Customer-review images (home page strip) ----
+  // Replace-all: the given list becomes the whole strip, in order. Each row
+  // must carry an http(s) image URL; `imageFileId` lets a removed image be
+  // cleaned up from ImageKit.
+  reviewImages: z
+    .array(
+      z.object({
+        imageUrl: httpUrl,
+        imageFileId: z.string().trim().max(200).or(z.literal('')).nullish(),
+      })
+    )
+    .max(30)
+    .optional(),
+
   instagramUrl: urlField,
   facebookUrl: urlField,
   tiktokUrl: urlField,

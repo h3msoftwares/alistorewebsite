@@ -2,28 +2,22 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-
-const SECTIONS = [
-  { href: '', labelEn: 'Dashboard', labelAr: 'لوحة التحكم' },
-  { href: '/collections', labelEn: 'Collections', labelAr: 'المجموعات' },
-  { href: '/categories', labelEn: 'Categories', labelAr: 'الفئات' },
-  { href: '/products', labelEn: 'Products', labelAr: 'المنتجات' },
-  { href: '/discounts', labelEn: 'Discounts', labelAr: 'الخصومات' },
-  { href: '/orders', labelEn: 'Orders', labelAr: 'الطلبات' },
-  { href: '/analytics', labelEn: 'Analytics', labelAr: 'التحليلات' },
-  { href: '/settings', labelEn: 'Settings', labelAr: 'الإعدادات' },
-];
+import { ADMIN_SECTIONS, usePermissions } from '@/lib/rbac';
 
 /** Top nav strip for the whole /admin subtree — every section page renders
- *  under this via AdminLayout. */
+ *  under this via AdminLayout. Only the sections the viewer has `:view` for
+ *  are shown. */
 export function AdminNav({ locale }: { locale: string }) {
   const pathname = usePathname();
   const isAr = locale === 'ar';
   const base = `/${locale}/admin`;
+  const { has } = usePermissions();
+
+  const sections = ADMIN_SECTIONS.filter((s) => has(s.permission));
 
   return (
     <nav className="admin-nav" aria-label={isAr ? 'تنقل الإدارة' : 'Admin navigation'}>
-      {SECTIONS.map((s) => {
+      {sections.map((s) => {
         const href = `${base}${s.href}`;
         const active = s.href === '' ? pathname === base : pathname.startsWith(href);
         return (

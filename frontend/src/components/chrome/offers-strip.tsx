@@ -24,7 +24,14 @@ export function OffersStrip({ locale }: { locale: string }) {
     return () => window.clearInterval(id);
   }, [dismissed, lines.length]);
 
-  if (dismissed || !settings?.announcementActive || lines.length === 0) return null;
+  // While settings haven't resolved yet (only possible when the layout's SSR
+  // prefetch failed — e.g. backend down at render time), hold the strip's
+  // height with an empty band so its later mount doesn't shift the page.
+  if (!settings) {
+    return <div className="offers-strip offers-strip--reserve" aria-hidden />;
+  }
+
+  if (dismissed || !settings.announcementActive || lines.length === 0) return null;
 
   const line = lines[index % lines.length];
 

@@ -7,4 +7,9 @@ Thumbs.db
 
 PROJECT_OVERVIEW.md
 
-docs/
+# Scratch / planning docs are ignored, but keep the checked-in handoff,
+# QA and design docs.
+/docs/*
+!/docs/DEPLOYMENT.md
+frontend/docs/*
+!frontend/docs/*.md

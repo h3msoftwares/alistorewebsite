@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
-import { createCustomer, createAdmin, createStaff, bearer } from '../helpers/auth';
+import { createCustomer, createAdmin, createStaffWith, bearer } from '../helpers/auth';
 import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
 
 // The mailer is the one real I/O boundary (SMTP) — mock just the checkout-OTP
@@ -328,7 +328,7 @@ describe('Orders API', () => {
         .send(delivery);
       const orderId = checkout.body.order.id;
       // Fulfilment work (status change, mark COD collected) is STAFF-reachable…
-      const { token } = await createStaff();
+      const { token } = await createStaffWith(['orders:manage']);
 
       const status = await request(app)
         .patch(`/api/admin/orders/${orderId}/status`)

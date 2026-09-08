@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
+import { effectivePermissions } from '../../lib/permissions';
 import { z } from 'zod';
 import { updateProfileSchema } from './user.schema';
 
@@ -17,10 +18,26 @@ const publicSelect = {
   dateCreated: true,
 } satisfies Prisma.UserSelect;
 
+/** getProfile also resolves the caller's effective admin permissions + role
+ *  name so the admin UI can gate pages/nav without a second request. */
 export async function getProfile(userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: publicSelect });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { ...publicSelect, revokedPermissions: true, customRole: { select: { name: true, permissions: true } } },
+  });
   if (!user) throw new AppError('NOT_FOUND', 'User not found');
-  return user;
+  const { revokedPermissions, customRole, ...rest } = user;
+  return {
+    ...rest,
+    roleName: customRole?.name ?? null,
+    permissions: [
+      ...effectivePermissions({
+        role: user.role,
+        rolePermissions: customRole?.permissions ?? null,
+        revoked: revokedPermissions,
+      }),
+    ].sort(),
+  };
 }
 
 export async function updateProfile(userId: string, input: UpdateProfileInput) {

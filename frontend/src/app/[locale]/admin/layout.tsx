@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/ui/empty-state';
 import { AdminNav } from '@/components/admin/admin-nav';
 import { useAuth } from '@/hooks/use-auth';
+import { requiredPermissionForPath, usePermissions } from '@/lib/rbac';
 
 /**
  * Client-side auth guard for the whole /admin subtree.
@@ -19,14 +21,19 @@ import { useAuth } from '@/hooks/use-auth';
  * unguessable path (`/{locale}/ali-admin-login`) and bouncing scanners there
  * would just hand them the URL. Admins reach it by knowing it.
  *
- * Protected pages render a skeleton until the viewer is confirmed to be an
- * admin.
+ * Beyond the coarse STAFF/ADMIN check, each page is gated on the permission
+ * `requiredPermissionForPath` maps it to (see lib/rbac.tsx): a staff member
+ * whose role doesn't grant it gets an in-page "no access" notice instead of
+ * the page (the backend refuses the data regardless).
  */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { status, isAdmin } = useAuth();
+  const { has } = usePermissions();
   const router = useRouter();
   const params = useParams();
+  const pathname = usePathname();
   const locale = (typeof params?.locale === 'string' ? params.locale : 'en') || 'en';
+  const isAr = locale === 'ar';
 
   const resolving = status === 'loading';
 
@@ -42,10 +49,27 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     );
   }
 
+  const required = requiredPermissionForPath(pathname);
+  const allowed = !required || has(required);
+
   return (
     <div className="container admin-shell">
       <AdminNav locale={locale} />
-      {children}
+      {allowed ? (
+        children
+      ) : (
+        <div className="section--tight">
+          <EmptyState
+            tone="alert"
+            title={isAr ? 'لا تملك صلاحية الوصول إلى هذه الصفحة' : "You don't have access to this page"}
+            body={
+              isAr
+                ? 'اطلب من مسؤول أن يمنح دورك الصلاحية المطلوبة من صفحة الأدوار.'
+                : 'Ask an admin to grant your role this permission from the Roles page.'
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }

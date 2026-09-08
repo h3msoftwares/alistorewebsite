@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
 import { requireAuth } from '../../middleware/auth.middleware';
-import { requireRole } from '../../middleware/rbac.middleware';
+import { requireRole, requirePermission } from '../../middleware/rbac.middleware';
 import { requireFreshAuth } from '../../middleware/step-up.middleware';
 import {
   orderIdParamSchema,
@@ -22,6 +22,7 @@ import { updateStockHandler } from '../catalog/product.controller';
 import analyticsRoutes from '../analytics/analytics.routes';
 import blacklistRoutes from '../blacklist/blacklist.routes';
 import pushRoutes from '../push/push.routes';
+import roleRoutes from '../rbac/role.routes';
 
 const router = Router();
 
@@ -30,47 +31,56 @@ const router = Router();
 // at the app.ts level rather than being buried in per-route guards.
 router.use(requireAuth, requireRole('STAFF', 'ADMIN'));
 
-// S4: the sales dashboard is revenue data — ADMIN only. (The parent guard
-// already ran, so this just narrows STAFF out.)
-router.get('/dashboard', requireRole('ADMIN'), asyncHandler(salesDashboardHandler));
+router.get('/dashboard', requirePermission('dashboard:view'), asyncHandler(salesDashboardHandler));
 
-router.use('/analytics', analyticsRoutes);
+router.use('/analytics', requirePermission('analytics:view'), analyticsRoutes);
 
 router.get(
   '/orders',
+  requirePermission('orders:view'),
   validate({ query: adminListOrdersQuerySchema }),
   asyncHandler(listAllOrdersHandler)
 );
 // Step-up protected (S2): changing an order's fulfilment state is not
-// reversible by the customer and moves money-tracking — require a password
-// re-entry within the freshness window, not just a live session.
+// reversible by the customer and moves money-tracking — on top of the
+// `orders:manage` permission, require a password re-entry within the
+// freshness window, not just a live session.
 router.patch(
   '/orders/:id/status',
+  requirePermission('orders:manage'),
   requireFreshAuth(),
   validate({ params: orderIdParamSchema, body: updateOrderStatusSchema }),
   asyncHandler(updateOrderStatusHandler)
 );
 router.patch(
   '/orders/:id/collected',
+  requirePermission('orders:manage'),
   validate({ params: orderIdParamSchema, body: markCollectedSchema }),
   asyncHandler(markCodCollectedHandler)
 );
 router.patch(
   '/orders/:id/review',
+  requirePermission('orders:manage'),
   validate({ params: orderIdParamSchema }),
   asyncHandler(reviewOrderHandler)
 );
 
 // Step-up protected (S2): a direct stock write bypasses the ordinary
-// stock-movement trail, so treat it like the order-status change above.
+// stock-movement trail, so treat it like the order-status change above —
+// `products:manage` plus a fresh password.
 router.patch(
   '/variants/:variantId/stock',
+  requirePermission('products:manage'),
   requireFreshAuth(),
   validate({ params: adminVariantParamSchema, body: updateStockSchema }),
   asyncHandler(updateStockHandler)
 );
 
-router.use('/blacklist', blacklistRoutes);
+// Anti-abuse block list sits with order operations.
+router.use('/blacklist', requirePermission('orders:manage'), blacklistRoutes);
+// Any admin can register their own device for push alerts — no extra permission.
 router.use('/push-subscriptions', pushRoutes);
+
+router.use('/', roleRoutes);
 
 export default router;

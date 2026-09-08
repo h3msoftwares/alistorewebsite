@@ -3,8 +3,10 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Button, DataTable, EmptyState, ProductGridSkeleton, StatusPill } from '@/components/ui';
-import { StatGrid } from '@/components/admin/analytics';
+import { ChartCard, StatGrid, TrendLine } from '@/components/admin/analytics';
+import { bucketLabel } from '@/components/admin/analytics/format';
 import { useAdminDashboard } from '@/hooks/use-orders';
+import { useAnalyticsOverview } from '@/hooks/use-analytics';
 
 /** Admin landing page: an at-a-glance "what needs attention" view. The
  *  date-ranged deep dives live under /admin/analytics — this page is the
@@ -30,6 +32,13 @@ export default function AdminDashboardPage() {
     });
 
   const { data, isPending, isError, refetch } = useAdminDashboard();
+  // Last-30-days revenue & orders trend — reuses the analytics overview report.
+  const trend = useAnalyticsOverview('30d');
+  const trendSeries = (trend.data?.revenueSeries ?? []).map((p) => ({
+    x: bucketLabel(p.bucket),
+    revenue: p.revenue,
+    orders: p.orders,
+  }));
 
   return (
     <div className="section--tight">
@@ -80,6 +89,22 @@ export default function AdminDashboardPage() {
               </span>
             </Link>
           </StatGrid>
+
+          {trendSeries.length > 0 && (
+            <ChartCard
+              title={t('Revenue & orders', 'الإيرادات والطلبات')}
+              subtitle={t('Last 30 days · gross, excludes cancelled', 'آخر 30 يومًا · إجمالي، باستثناء الملغاة')}
+            >
+              <TrendLine
+                data={trendSeries}
+                series={[
+                  { key: 'revenue', label: t('Revenue', 'الإيرادات') },
+                  { key: 'orders', label: t('Orders', 'الطلبات') },
+                ]}
+                formatY={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
+              />
+            </ChartCard>
+          )}
 
           <div className="admin-dashboard__quick">
             <span className="admin-dashboard__quick-label">{t('Quick actions', 'إجراءات سريعة')}</span>

@@ -1,0 +1,39 @@
+{
+  "ci": {
+    "collect": {
+      "startServerCommand": "npm start",
+      "startServerReadyPattern": "Ready in|started server on|Local:",
+      "url": [
+        "http://localhost:3000/en",
+        "http://localhost:3000/en/women",
+        "http://localhost:3000/en/cart"
+      ],
+      "numberOfRuns": 3,
+      "settings": {
+        "preset": "desktop",
+        "throttlingMethod": "simulate"
+      }
+    },
+    "assert": {
+      "assertions": {
+        "categories:performance": ["error", { "minScore": 0.85 }],
+        "categories:accessibility": ["error", { "minScore": 0.95 }],
+        "categories:best-practices": ["warn", { "minScore": 0.9 }],
+        "categories:seo": ["warn", { "minScore": 0.9 }],
+
+        "first-contentful-paint": ["warn", { "maxNumericValue": 2000 }],
+        "largest-contentful-paint": ["error", { "maxNumericValue": 2500 }],
+        "total-blocking-time": ["error", { "maxNumericValue": 300 }],
+        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }],
+        "speed-index": ["warn", { "maxNumericValue": 3000 }],
+
+        "unused-javascript": ["warn", { "maxNumericValue": 200000 }],
+        "uses-responsive-images": "warn",
+        "modern-image-formats": "warn"
+      }
+    },
+    "upload": {
+      "target": "temporary-public-storage"
+    }
+  }
+}
