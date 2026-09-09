@@ -262,32 +262,30 @@ describe('Cart API — guest→user cart merge on login', () => {
 });
 
 describe('Cart API — checkout stock integrity under concurrency', () => {
-  // NOTE: skipped because it is flaky, not because the scenario doesn't
-  // matter. Two near-simultaneous checkouts for the last unit of a 1-stock
-  // variant should leave exactly one winner (`[201, 409]`, one order, stock
-  // 0). Checkout in orders/order.service.ts still has no row lock /
-  // serialisable isolation, so the two transactions sometimes both read
-  // pre-decrement stock, both pass the guard, and both commit (`[201, 201]`,
-  // stock -1) — and sometimes don't, depending on interleaving. This is an
-  // Orders-module bug, out of scope for the Cart task; un-skip and assert
-  // `[201, 409]` once checkout takes a lock.
-  it.skip('lets exactly one of two simultaneous checkouts win the last unit', async () => {
-    const a = request.agent(app);
-    const b = request.agent(app);
-    await a.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 1 });
-    await b.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 1 });
+  // Two DIFFERENT shoppers race for the last unit of a 1-stock variant. They
+  // have different cart owners, so checkout()'s owner advisory lock doesn't
+  // serialise them — the guarantee here is the atomic guarded decrement
+  // (`updateMany where stockQuantity >= qty`): the loser's conditional update
+  // matches 0 rows and the whole order rolls back. Exactly one winner:
+  // `[201, 409]`, one order, stock 0. (Two verified logged-in customers so
+  // the guest email-OTP gate is out of the picture.)
+  it('lets exactly one of two simultaneous checkouts win the last unit', async () => {
+    const a = await createCustomer();
+    const b = await createCustomer();
+    await request(app).post('/api/cart/items').set(bearer(a.token)).send({ variantId: lowStockVariantId, quantity: 1 });
+    await request(app).post('/api/cart/items').set(bearer(b.token)).send({ variantId: lowStockVariantId, quantity: 1 });
 
     const delivery = {
       deliveryName: 'Jane Doe',
       deliveryPhone: '0791234567',
       deliveryAddress: '12 Rainbow Street',
       deliveryCity: 'Amman',
-      guestEmail: 'j@test.dev',
+      deliveryRegion: 'BEIRUT',
     };
 
     const [ra, rb] = await Promise.all([
-      a.post('/api/orders/checkout').send(delivery),
-      b.post('/api/orders/checkout').send(delivery),
+      request(app).post('/api/orders/checkout').set(bearer(a.token)).send(delivery),
+      request(app).post('/api/orders/checkout').set(bearer(b.token)).send(delivery),
     ]);
 
     const statuses = [ra.status, rb.status].sort();
