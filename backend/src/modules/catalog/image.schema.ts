@@ -11,9 +11,9 @@ export const createImageSchema = z.object({
   // delete endpoint remove the underlying file, not just this row. Optional:
   // a caller without one (or a pre-migration client) just won't get that
   // cleanup for this image.
-  fileId: z.string().optional(),
-  altEn: z.string().max(300).optional(),
-  altAr: z.string().max(300).optional(),
+  fileId: z.string().max(200).optional(),
+  altEn: z.string().trim().max(300).optional(),
+  altAr: z.string().trim().max(300).optional(),
   sortOrder: z.number().int().nonnegative().default(0),
 });
 

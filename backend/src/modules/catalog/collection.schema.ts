@@ -61,11 +61,11 @@ export const collectionImageParamSchema = z.object({
 });
 
 export const createCollectionSchema = z.object({
-  nameEn: z.string().min(1),
-  nameAr: z.string().min(1),
+  nameEn: z.string().trim().min(1).max(200),
+  nameAr: z.string().trim().min(1).max(200),
   slug,
-  descriptionEn: z.string().optional(),
-  descriptionAr: z.string().optional(),
+  descriptionEn: z.string().trim().max(5000).optional(),
+  descriptionAr: z.string().trim().max(5000).optional(),
   isActive: z.boolean().default(true),
   // Nav curation: appears in the storefront chrome, ordered by sortOrder.
   showInNav: z.boolean().default(false),
@@ -76,10 +76,10 @@ export const createCollectionSchema = z.object({
   // at the top of the home page, with no category row. Order within that grid
   // reuses sortOrder. Takes precedence over showOnHome.
   showOnHomeAsImage: z.boolean().default(false),
-  sortOrder: z.number().int().nonnegative().default(0),
+  sortOrder: z.number().int().nonnegative().max(100000).default(0),
   accentColor: hexColor.optional().nullable(),
   // Optionally attach existing categories to the new collection on creation.
-  categoryIds: z.array(z.string().uuid()).optional(),
+  categoryIds: z.array(z.string().uuid()).max(500).optional(),
 });
 
 export const updateCollectionSchema = createCollectionSchema.partial().omit({ categoryIds: true });
@@ -87,5 +87,5 @@ export const updateCollectionSchema = createCollectionSchema.partial().omit({ ca
 // Body for POST /:id/categories — link one or more existing categories to this
 // collection (moves them; a category belongs to exactly one collection).
 export const linkCategoriesSchema = z.object({
-  categoryIds: z.array(z.string().uuid()).min(1),
+  categoryIds: z.array(z.string().uuid()).min(1).max(500),
 });

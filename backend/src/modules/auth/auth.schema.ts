@@ -14,7 +14,7 @@ export const registerSchema = z.object({
   // the user types.
   email: z.string().email().max(320).toLowerCase(),
   password: z.string().min(8).max(200),
-  name: z.string().min(1).max(120),
+  name: z.string().trim().min(1).max(120),
   // `region` (the governorate) rides along on the address so it prefills the
   // checkout delivery region — see auth.service.register(). Optional here, as
   // on the generic address schema; the sign-up form makes it a required field.
@@ -40,7 +40,7 @@ export const adminLoginSchema = z.object({
 });
 
 export const refreshSchema = z.object({
-  refreshToken: z.string().min(1),
+  refreshToken: z.string().min(1).max(512),
 });
 
 // Step-up re-auth: a signed-in user re-enters just their password. Same
