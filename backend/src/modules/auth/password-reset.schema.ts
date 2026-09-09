@@ -12,7 +12,8 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   token: z.string().min(1).max(512),
-  // Same floor as registerSchema.password — it's the same credential, just
-  // being replaced.
-  newPassword: z.string().min(8),
+  // Same bounds as registerSchema.password / changePasswordSchema.newPassword
+  // — it's the same credential, just being replaced. The max keeps a giant
+  // body from being forced through an Argon2 hash.
+  newPassword: z.string().min(8).max(200),
 });

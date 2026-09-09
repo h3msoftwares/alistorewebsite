@@ -65,13 +65,14 @@ const ctaLabel = z.string().trim().max(40);
 // Field shapes WITHOUT create-time defaults. The update schema partials over
 // these, so PATCHing one field never silently writes a `.default()` into the
 // others — `createCollectionSchema.partial()` would (Zod re-applies defaults
-// for absent keys), which reset showOnHome / sortOrder on every toggle.
+// for absent keys), which reset showOnHome / sortOrder on every toggle. The
+// length / range caps here also flow into both create and update.
 const collectionShape = {
-  nameEn: z.string().min(1),
-  nameAr: z.string().min(1),
+  nameEn: z.string().trim().min(1).max(200),
+  nameAr: z.string().trim().min(1).max(200),
   slug,
-  descriptionEn: z.string(),
-  descriptionAr: z.string(),
+  descriptionEn: z.string().trim().max(5000),
+  descriptionAr: z.string().trim().max(5000),
   isActive: z.boolean(),
   // Nav curation: appears in the storefront chrome, ordered by sortOrder.
   // Fully independent of the home-page flags below.
@@ -83,9 +84,9 @@ const collectionShape = {
   // precedence over showOnHome.
   showOnHomeAsImage: z.boolean(),
   // Nav position (with showInNav).
-  sortOrder: z.number().int().nonnegative(),
+  sortOrder: z.number().int().nonnegative().max(100000),
   // Home-page position — the shared ranking key for every home block.
-  homeSortOrder: z.number().int().nonnegative(),
+  homeSortOrder: z.number().int().nonnegative().max(100000),
   accentColor: hexColor.nullable(),
   homeImageCtaEn: ctaLabel.or(z.literal('')).nullable(),
   homeImageCtaAr: ctaLabel.or(z.literal('')).nullable(),
@@ -93,19 +94,19 @@ const collectionShape = {
 
 export const createCollectionSchema = z.object({
   ...collectionShape,
-  descriptionEn: z.string().optional(),
-  descriptionAr: z.string().optional(),
+  descriptionEn: z.string().trim().max(5000).optional(),
+  descriptionAr: z.string().trim().max(5000).optional(),
   isActive: z.boolean().default(true),
   showInNav: z.boolean().default(false),
   showOnHome: z.boolean().default(false),
   showOnHomeAsImage: z.boolean().default(false),
-  sortOrder: z.number().int().nonnegative().default(0),
-  homeSortOrder: z.number().int().nonnegative().default(0),
+  sortOrder: z.number().int().nonnegative().max(100000).default(0),
+  homeSortOrder: z.number().int().nonnegative().max(100000).default(0),
   accentColor: hexColor.optional().nullable(),
   homeImageCtaEn: ctaLabel.or(z.literal('')).optional().nullable(),
   homeImageCtaAr: ctaLabel.or(z.literal('')).optional().nullable(),
   // Optionally attach existing categories to the new collection on creation.
-  categoryIds: z.array(z.string().uuid()).optional(),
+  categoryIds: z.array(z.string().uuid()).max(500).optional(),
 });
 
 export const updateCollectionSchema = z.object(collectionShape).partial();
@@ -113,5 +114,5 @@ export const updateCollectionSchema = z.object(collectionShape).partial();
 // Body for POST /:id/categories — link one or more existing categories to this
 // collection (moves them; a category belongs to exactly one collection).
 export const linkCategoriesSchema = z.object({
-  categoryIds: z.array(z.string().uuid()).min(1),
+  categoryIds: z.array(z.string().uuid()).min(1).max(500),
 });

@@ -16,22 +16,24 @@ export const checkoutSchema = z.object({
   saveAddress: z.boolean().optional(),
   // Contact email: entered by a guest, or the account email for a signed-in
   // order (snapshotted so it survives the account being deleted).
-  guestEmail: z.string().email().optional(),
-  deliveryName: z.string().min(1),
-  // Kept in step with account/address.schema.ts (phone min 6, addressLine
-  // min 3) so any saved address can be checked out with.
-  deliveryPhone: z.string().min(6),
-  deliveryAddress: z.string().min(3),
-  deliveryCity: z.string().min(1),
+  guestEmail: z.string().email().max(320).optional(),
+  // Bounds kept in step with account/address.schema.ts so any saved address
+  // can be checked out with, and a direct API caller can't stuff ~100 KB
+  // (the express.json cap) into a field that's stored on the order and
+  // rendered in the admin UI / confirmation emails.
+  deliveryName: z.string().trim().min(1).max(120),
+  deliveryPhone: z.string().trim().min(6).max(30),
+  deliveryAddress: z.string().trim().min(3).max(300),
+  deliveryCity: z.string().trim().min(1).max(120),
   // Lebanese governorate — drives the delivery-fee calculation.
   deliveryRegion: regionName,
-  deliveryArea: z.string().optional(),
-  deliveryNotes: z.string().optional(),
-  notes: z.string().optional(),
+  deliveryArea: z.string().trim().max(120).optional(),
+  deliveryNotes: z.string().trim().max(1000).optional(),
+  notes: z.string().trim().max(2000).optional(),
   // The "verified" ticket from POST /api/checkout/otp/verify. Required
   // unless the caller is logged in with a verified account email — enforced
   // in order.service.ts (needs the account lookup, not expressible here).
-  emailVerifyToken: z.string().optional(),
+  emailVerifyToken: z.string().max(512).optional(),
   // Optional coupon code. If present it must resolve to an active, in-window
   // coupon (checked in order.service.ts) or the checkout is rejected.
   couponCode: z.string().trim().min(1).max(40).optional(),

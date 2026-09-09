@@ -48,11 +48,12 @@ const categorySlug = z
 // Field shapes WITHOUT create-time defaults — see the note in
 // collection.schema.ts. `createCategorySchema.partial()` re-applies defaults
 // for absent keys, so PATCHing e.g. `homeSortOrder` would reset `showOnHome`.
+// The length / range caps here flow into both create and update.
 const categoryShape = {
   // Nullable: a category can stand alone. `null` on update detaches it.
   collectionId: z.string().uuid().nullable(),
-  nameEn: z.string().min(1),
-  nameAr: z.string().min(1),
+  nameEn: z.string().trim().min(1).max(200),
+  nameAr: z.string().trim().min(1).max(200),
   slug: categorySlug,
   parentCategoryId: z.string().uuid(),
   isActive: z.boolean(),
@@ -60,10 +61,10 @@ const categoryShape = {
   // collection's showOnHome.
   showOnHome: z.boolean(),
   // Sibling order within a collection.
-  sortOrder: z.number().int().nonnegative(),
+  sortOrder: z.number().int().nonnegative().max(100000),
   // Position of this category's own home row (shared key with
   // Collection.homeSortOrder).
-  homeSortOrder: z.number().int().nonnegative(),
+  homeSortOrder: z.number().int().nonnegative().max(100000),
 };
 
 export const createCategorySchema = z.object({
@@ -72,8 +73,8 @@ export const createCategorySchema = z.object({
   parentCategoryId: z.string().uuid().optional(),
   isActive: z.boolean().default(true),
   showOnHome: z.boolean().default(false),
-  sortOrder: z.number().int().nonnegative().default(0),
-  homeSortOrder: z.number().int().nonnegative().default(0),
+  sortOrder: z.number().int().nonnegative().max(100000).default(0),
+  homeSortOrder: z.number().int().nonnegative().max(100000).default(0),
 });
 
 export const updateCategorySchema = z.object(categoryShape).partial();

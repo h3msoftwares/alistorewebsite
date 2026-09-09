@@ -1,12 +1,22 @@
 import { z } from 'zod';
 import { createImageSchema } from './image.schema';
 
+// Upper bounds for the free-text catalog fields. Nothing legitimate comes
+// near these; without them a direct API caller can store ~100 KB (the
+// express.json body cap) per field. Names/SKUs are short; descriptions get
+// room for a paragraph or two.
+const NAME_MAX = 200;
+const SKU_MAX = 64;
+const DESC_MAX = 5000;
+const VARIANT_ATTR_MAX = 60;
+const PRICE_MAX = 1_000_000;
+
 export const listProductsQuerySchema = z.object({
   collectionId: z.string().uuid().optional(),
   categoryId: z.string().uuid().optional(),
-  search: z.string().optional(),
-  size: z.string().optional(),
-  color: z.string().optional(),
+  search: z.string().max(200).optional(),
+  size: z.string().max(VARIANT_ATTR_MAX).optional(),
+  color: z.string().max(VARIANT_ATTR_MAX).optional(),
   minPrice: z.coerce.number().nonnegative().optional(),
   maxPrice: z.coerce.number().nonnegative().optional(),
   // Only products that are on sale / discounted right now (own sale or an
@@ -57,33 +67,33 @@ export const updateStockSchema = z.object({
 // price is nullish too — omit it (or send null) to fall back to the
 // product's own price; set it to give this size/colour its own price.
 const variantInputSchema = z.object({
-  sku: z.string().min(1),
-  size: z.string().min(1).nullish(),
-  color: z.string().min(1).nullish(),
-  price: z.number().positive().nullish(),
-  stockQuantity: z.number().int().nonnegative().default(0),
+  sku: z.string().trim().min(1).max(SKU_MAX),
+  size: z.string().trim().min(1).max(VARIANT_ATTR_MAX).nullish(),
+  color: z.string().trim().min(1).max(VARIANT_ATTR_MAX).nullish(),
+  price: z.number().positive().max(PRICE_MAX).nullish(),
+  stockQuantity: z.number().int().nonnegative().max(1_000_000).default(0),
 });
 
 export const discountTypeSchema = z.enum(['PERCENT', 'AMOUNT']);
 
 export const createProductSchema = z.object({
-  sku: z.string().min(1),
-  nameEn: z.string().min(1),
-  nameAr: z.string().min(1),
-  descriptionEn: z.string().optional(),
-  descriptionAr: z.string().optional(),
+  sku: z.string().trim().min(1).max(SKU_MAX),
+  nameEn: z.string().trim().min(1).max(NAME_MAX),
+  nameAr: z.string().trim().min(1).max(NAME_MAX),
+  descriptionEn: z.string().trim().max(DESC_MAX).optional(),
+  descriptionAr: z.string().trim().max(DESC_MAX).optional(),
   categoryId: z.string().uuid(),
   // No collectionId: a product's collection is the denormalized mirror of its
   // category's collection, derived server-side. It is never set directly.
-  price: z.number().positive(),
-  compareAtPrice: z.number().positive().optional(),
+  price: z.number().positive().max(PRICE_MAX),
+  compareAtPrice: z.number().positive().max(PRICE_MAX).optional(),
   // Free-standing signed quantity — may be 0 or negative, unrelated to isActive.
-  quantity: z.number().int().default(0),
+  quantity: z.number().int().min(-1_000_000).max(1_000_000).default(0),
   // Optional sale: both together, or neither. PERCENT is 0–100 (checked in the
   // service so `.partial()` still works for updates).
   saleType: discountTypeSchema.nullish(),
-  saleValue: z.number().nonnegative().nullish(),
-  variants: z.array(variantInputSchema).min(1),
+  saleValue: z.number().nonnegative().max(PRICE_MAX).nullish(),
+  variants: z.array(variantInputSchema).min(1).max(100),
 });
 
 export const updateProductSchema = createProductSchema.partial().omit({ variants: true });
