@@ -27,6 +27,7 @@ export default function NewCollectionPage() {
         showOnHome: values.showOnHome,
         showOnHomeAsImage: values.showOnHomeAsImage,
         sortOrder: values.sortOrder,
+        homeSortOrder: values.homeSortOrder,
         accentColor: values.accentColor || undefined,
         homeImageCtaEn: values.homeImageCtaEn || undefined,
         homeImageCtaAr: values.homeImageCtaAr || undefined,

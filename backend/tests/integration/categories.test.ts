@@ -194,6 +194,23 @@ describe('Categories API', () => {
   });
 
   describe('PATCH /api/categories/:id (admin)', () => {
+    it('changing homeSortOrder does not deselect the category from the home page', async () => {
+      const { token } = await createAdmin();
+      const col = await makeCollection({ slug: 'hs' });
+      const cat = await makeCategory(col.id);
+      await request(app)
+        .patch(`/api/categories/${cat.id}`)
+        .set(bearer(token))
+        .send({ showOnHome: true, sortOrder: 2, homeSortOrder: 40 });
+
+      const res = await request(app)
+        .patch(`/api/categories/${cat.id}`)
+        .set(bearer(token))
+        .send({ homeSortOrder: 15 });
+      expect(res.status).toBe(200);
+      expect(res.body.category).toMatchObject({ showOnHome: true, sortOrder: 2, homeSortOrder: 15 });
+    });
+
     it('re-links a category to a different collection', async () => {
       const { token } = await createAdmin();
       const a = await makeCollection({ slug: 'aa' });

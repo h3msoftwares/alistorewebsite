@@ -39,27 +39,41 @@ export const categoryImageParamSchema = z.object({
   imageId: z.string().uuid(),
 });
 
-export const createCategorySchema = z.object({
-  // Optional + nullable: a category can stand alone (no collection). Passing
-  // null on update detaches an existing category from its collection.
-  collectionId: z.string().uuid().nullish(),
+const categorySlug = z
+  .string()
+  .min(1)
+  .max(80)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be kebab-case');
+
+// Field shapes WITHOUT create-time defaults — see the note in
+// collection.schema.ts. `createCategorySchema.partial()` re-applies defaults
+// for absent keys, so PATCHing e.g. `homeSortOrder` would reset `showOnHome`.
+const categoryShape = {
+  // Nullable: a category can stand alone. `null` on update detaches it.
+  collectionId: z.string().uuid().nullable(),
   nameEn: z.string().min(1),
   nameAr: z.string().min(1),
-  slug: z
-    .string()
-    .min(1)
-    .max(80)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be kebab-case'),
+  slug: categorySlug,
+  parentCategoryId: z.string().uuid(),
+  isActive: z.boolean(),
+  // Home curation: its own featured row. Independent of the parent
+  // collection's showOnHome.
+  showOnHome: z.boolean(),
+  // Sibling order within a collection.
+  sortOrder: z.number().int().nonnegative(),
+  // Position of this category's own home row (shared key with
+  // Collection.homeSortOrder).
+  homeSortOrder: z.number().int().nonnegative(),
+};
+
+export const createCategorySchema = z.object({
+  ...categoryShape,
+  collectionId: z.string().uuid().nullish(),
   parentCategoryId: z.string().uuid().optional(),
   isActive: z.boolean().default(true),
-  // Home curation: gets its own featured row (name + horizontal scroll of its
-  // products) on the home page. Independent of its parent collection's own
-  // showOnHome.
   showOnHome: z.boolean().default(false),
   sortOrder: z.number().int().nonnegative().default(0),
+  homeSortOrder: z.number().int().nonnegative().default(0),
 });
 
-// All fields optional on update — including collectionId, which is how an
-// existing category gets re-linked to a different collection (or, with null,
-// detached from its collection entirely).
-export const updateCategorySchema = createCategorySchema.partial();
+export const updateCategorySchema = z.object(categoryShape).partial();

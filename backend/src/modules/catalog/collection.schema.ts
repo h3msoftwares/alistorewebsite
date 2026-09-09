@@ -60,29 +60,55 @@ export const collectionImageParamSchema = z.object({
   imageId: z.string().uuid(),
 });
 
-export const createCollectionSchema = z.object({
+const ctaLabel = z.string().trim().max(40);
+
+// Field shapes WITHOUT create-time defaults. The update schema partials over
+// these, so PATCHing one field never silently writes a `.default()` into the
+// others — `createCollectionSchema.partial()` would (Zod re-applies defaults
+// for absent keys), which reset showOnHome / sortOrder on every toggle.
+const collectionShape = {
   nameEn: z.string().min(1),
   nameAr: z.string().min(1),
   slug,
+  descriptionEn: z.string(),
+  descriptionAr: z.string(),
+  isActive: z.boolean(),
+  // Nav curation: appears in the storefront chrome, ordered by sortOrder.
+  // Fully independent of the home-page flags below.
+  showInNav: z.boolean(),
+  // Home curation: its own featured row (categories scroller). Independent of
+  // showInNav — a collection can be in the nav AND on the home page.
+  showOnHome: z.boolean(),
+  // Home curation: a full-width image banner instead of a row. Takes
+  // precedence over showOnHome.
+  showOnHomeAsImage: z.boolean(),
+  // Nav position (with showInNav).
+  sortOrder: z.number().int().nonnegative(),
+  // Home-page position — the shared ranking key for every home block.
+  homeSortOrder: z.number().int().nonnegative(),
+  accentColor: hexColor.nullable(),
+  homeImageCtaEn: ctaLabel.or(z.literal('')).nullable(),
+  homeImageCtaAr: ctaLabel.or(z.literal('')).nullable(),
+};
+
+export const createCollectionSchema = z.object({
+  ...collectionShape,
   descriptionEn: z.string().optional(),
   descriptionAr: z.string().optional(),
   isActive: z.boolean().default(true),
-  // Nav curation: appears in the storefront chrome, ordered by sortOrder.
   showInNav: z.boolean().default(false),
-  // Home curation: gets its own featured row (name + horizontal scroll of its
-  // categories) on the home page. Independent of showInNav.
   showOnHome: z.boolean().default(false),
-  // Home curation: shown as a single square image (its base image) in the grid
-  // at the top of the home page, with no category row. Order within that grid
-  // reuses sortOrder. Takes precedence over showOnHome.
   showOnHomeAsImage: z.boolean().default(false),
   sortOrder: z.number().int().nonnegative().default(0),
+  homeSortOrder: z.number().int().nonnegative().default(0),
   accentColor: hexColor.optional().nullable(),
+  homeImageCtaEn: ctaLabel.or(z.literal('')).optional().nullable(),
+  homeImageCtaAr: ctaLabel.or(z.literal('')).optional().nullable(),
   // Optionally attach existing categories to the new collection on creation.
   categoryIds: z.array(z.string().uuid()).optional(),
 });
 
-export const updateCollectionSchema = createCollectionSchema.partial().omit({ categoryIds: true });
+export const updateCollectionSchema = z.object(collectionShape).partial();
 
 // Body for POST /:id/categories — link one or more existing categories to this
 // collection (moves them; a category belongs to exactly one collection).

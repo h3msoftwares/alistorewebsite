@@ -126,13 +126,14 @@ const PER_CATEGORY = Math.max(1, Number(process.env.SEED_LARGE_PER_CATEGORY) || 
 const IMAGES_PER_COLOR = 3;
 
 const collectionDefs = [
-  { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#a65a7e' },
-  { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#38455c' },
+  { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, homeSortOrder: 10, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#a65a7e' },
+  { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, homeSortOrder: 20, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#38455c' },
   {
     slug: 'kids',
     nameEn: 'Kids',
     nameAr: 'أطفال',
     sortOrder: 4,
+    homeSortOrder: 40,
     showInNav: true,
     showOnHome: false,
     showOnHomeAsImage: true,
@@ -145,22 +146,23 @@ const collectionDefs = [
 ];
 
 // 5 categories per collection → 15 categories → 15 * PER_CATEGORY products.
+// Tuple: [collectionSlug, slug, nameEn, nameAr, sortOrder, showOnHome, homeSortOrder]
 const categoryDefs = [
-  ['women', 'wmn-tops', 'Tops', 'بلايز', 1, true],
-  ['women', 'wmn-dresses', 'Dresses', 'فساتين', 2, false],
-  ['women', 'wmn-knitwear', 'Knitwear', 'تريكو', 3, false],
-  ['women', 'wmn-bottoms', 'Bottoms', 'بناطيل وتنانير', 4, false],
-  ['women', 'wmn-outerwear', 'Outerwear', 'ملابس خارجية', 5, false],
-  ['men', 'men-shirts', 'Shirts', 'قمصان', 1, true],
-  ['men', 'men-tees', 'T-Shirts', 'تيشيرتات', 2, false],
-  ['men', 'men-knitwear', 'Knitwear', 'تريكو رجالي', 3, false],
-  ['men', 'men-trousers', 'Trousers', 'بناطيل', 4, false],
-  ['men', 'men-outerwear', 'Outerwear', 'ملابس خارجية', 5, false],
-  ['kids', 'kid-tops', 'Tops', 'بلايز أطفال', 1, false],
-  ['kids', 'kid-bottoms', 'Bottoms', 'بناطيل أطفال', 2, false],
-  ['kids', 'kid-sets', 'Sets', 'أطقم أطفال', 3, true],
-  ['kids', 'kid-outerwear', 'Outerwear', 'ملابس خارجية للأطفال', 4, false],
-  ['kids', 'kid-sleep', 'Sleepwear', 'ملابس نوم', 5, false],
+  ['women', 'wmn-tops', 'Tops', 'بلايز', 1, true, 12],
+  ['women', 'wmn-dresses', 'Dresses', 'فساتين', 2, false, 0],
+  ['women', 'wmn-knitwear', 'Knitwear', 'تريكو', 3, false, 0],
+  ['women', 'wmn-bottoms', 'Bottoms', 'بناطيل وتنانير', 4, false, 0],
+  ['women', 'wmn-outerwear', 'Outerwear', 'ملابس خارجية', 5, false, 0],
+  ['men', 'men-shirts', 'Shirts', 'قمصان', 1, true, 22],
+  ['men', 'men-tees', 'T-Shirts', 'تيشيرتات', 2, false, 0],
+  ['men', 'men-knitwear', 'Knitwear', 'تريكو رجالي', 3, false, 0],
+  ['men', 'men-trousers', 'Trousers', 'بناطيل', 4, false, 0],
+  ['men', 'men-outerwear', 'Outerwear', 'ملابس خارجية', 5, false, 0],
+  ['kids', 'kid-tops', 'Tops', 'بلايز أطفال', 1, false, 0],
+  ['kids', 'kid-bottoms', 'Bottoms', 'بناطيل أطفال', 2, false, 0],
+  ['kids', 'kid-sets', 'Sets', 'أطقم أطفال', 3, true, 32],
+  ['kids', 'kid-outerwear', 'Outerwear', 'ملابس خارجية للأطفال', 4, false, 0],
+  ['kids', 'kid-sleep', 'Sleepwear', 'ملابس نوم', 5, false, 0],
 ] as const;
 
 async function main() {
@@ -179,6 +181,13 @@ async function main() {
       emailVerified: new Date(),
     },
   });
+
+  // Seed is authoritative for curation: clear every nav / home flag first so
+  // re-runs converge instead of accumulating stale "on home" rows.
+  await prisma.collection.updateMany({
+    data: { showInNav: false, showOnHome: false, showOnHomeAsImage: false },
+  });
+  await prisma.category.updateMany({ data: { showOnHome: false } });
 
   // ---- Collections (+ one base image each) ----
   const collectionId = new Map<string, string>();
@@ -200,8 +209,16 @@ async function main() {
 
   // ---- Categories ----
   const categoryId = new Map<string, string>();
-  for (const [colSlug, slug, nameEn, nameAr, sortOrder, showOnHome] of categoryDefs) {
-    const data = { nameEn, nameAr, slug, collectionID: collectionId.get(colSlug)!, sortOrder, showOnHome };
+  for (const [colSlug, slug, nameEn, nameAr, sortOrder, showOnHome, homeSortOrder] of categoryDefs) {
+    const data = {
+      nameEn,
+      nameAr,
+      slug,
+      collectionID: collectionId.get(colSlug)!,
+      sortOrder,
+      showOnHome,
+      homeSortOrder,
+    };
     const cat = await prisma.category.upsert({ where: { slug }, update: data, create: data });
     categoryId.set(slug, cat.id);
   }
@@ -308,12 +325,12 @@ async function main() {
       ],
     });
   }
-  // Built-in smart home rows — on + slotted after the main collections so the
-  // treatment is visible out of the box (the migration seeds them off).
+  // Built-in smart home rows — on + interleaved with the collections in the
+  // shared "Home page order" (women 10, men 20, kids-sets 32, kids banner 40).
   for (const s of [
-    { type: 'NEW_ARRIVALS' as const, sortOrder: 5 },
-    { type: 'BEST_SELLERS' as const, sortOrder: 6 },
-    { type: 'ON_SALE' as const, sortOrder: 7 },
+    { type: 'NEW_ARRIVALS' as const, sortOrder: 15 },
+    { type: 'BEST_SELLERS' as const, sortOrder: 25 },
+    { type: 'ON_SALE' as const, sortOrder: 35 },
   ]) {
     await prisma.homeShowcase.upsert({
       where: { type: s.type },

@@ -74,19 +74,25 @@ export function HomeMiddle({ locale }: { locale: string }) {
   const zone1Pending =
     featuredCollections.isPending || featuredCategories.isPending || imageCollections.isPending;
 
+  // One shared ranking key for every home block: `homeSortOrder` on
+  // collections & categories, `sortOrder` on the smart rows.
   const zone1: FeaturedItem[] = zone1Pending
     ? []
     : [
         ...(featuredCollections.data ?? []).map(
-          (collection): FeaturedItem => ({ kind: 'collection', sortOrder: collection.sortOrder, collection })
+          (collection): FeaturedItem => ({
+            kind: 'collection',
+            sortOrder: collection.homeSortOrder,
+            collection,
+          })
         ),
         ...(featuredCategories.data ?? []).map(
-          (category): FeaturedItem => ({ kind: 'category', sortOrder: category.sortOrder, category })
+          (category): FeaturedItem => ({ kind: 'category', sortOrder: category.homeSortOrder, category })
         ),
         ...(imageCollections.data ?? []).map(
           (collection): FeaturedItem => ({
             kind: 'imageCollection',
-            sortOrder: collection.sortOrder,
+            sortOrder: collection.homeSortOrder,
             collection,
           })
         ),

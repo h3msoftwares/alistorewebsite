@@ -1,6 +1,6 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Alert, Button, Choice, Field, Input, Textarea } from '@/components/ui';
@@ -24,6 +24,7 @@ export const collectionFormSchema = z.object({
   // { valueAsNumber: true }) below does the string->number conversion
   // instead, so the field is already a number by the time Zod sees it.
   sortOrder: z.number().int().nonnegative(),
+  homeSortOrder: z.number().int().nonnegative(),
   accentColor: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'Must be a #rrggbb hex colour')
@@ -46,6 +47,7 @@ export const collectionFormDefaults: CollectionFormValues = {
   showOnHome: false,
   showOnHomeAsImage: false,
   sortOrder: 0,
+  homeSortOrder: 0,
   accentColor: '',
   homeImageCtaEn: '',
   homeImageCtaAr: '',
@@ -71,11 +73,20 @@ export function CollectionForm({
 
   const {
     register,
+    control,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<CollectionFormValues>({ resolver: zodResolver(collectionFormSchema), defaultValues });
 
   const busy = isSubmitting;
+
+  // Accent colour is optional, so it's controlled: `''` means "no accent" and
+  // the swatch falls back to a default hue; picking a colour or clearing it
+  // writes back through `setValue`.
+  const HEX = /^#[0-9a-fA-F]{6}$/;
+  const accentColor = useWatch({ control, name: 'accentColor' }) ?? '';
+  const accentSwatch = HEX.test(accentColor) ? accentColor : '#a65a7e';
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
@@ -108,8 +119,8 @@ export function CollectionForm({
 
       <div className="admin-form__row">
         <Field
-          label={t('Sort order', 'ترتيب العرض')}
-          hint={t('Lower shows first — also orders the home image grid', 'الأصغر يظهر أولاً — ويُرتّب أيضًا شبكة صور الرئيسية')}
+          label={t('Nav order', 'ترتيب التنقل')}
+          hint={t('Position in the top nav (lower first)', 'الموضع في شريط التنقل (الأصغر أولاً)')}
           error={errors.sortOrder?.message}
         >
           {(p) => (
@@ -117,11 +128,54 @@ export function CollectionForm({
           )}
         </Field>
         <Field
+          label={t('Home order', 'ترتيب الرئيسية')}
+          hint={t('Position on the home page, among all home blocks', 'الموضع في الصفحة الرئيسية بين كل عناصرها')}
+          error={errors.homeSortOrder?.message}
+        >
+          {(p) => (
+            <Input
+              {...p}
+              type="number"
+              min={0}
+              {...register('homeSortOrder', { valueAsNumber: true })}
+              disabled={busy}
+            />
+          )}
+        </Field>
+      </div>
+      <div className="admin-form__row">
+        <Field
           label={t('Accent colour', 'لون مميز')}
-          hint={t('#rrggbb, optional', '#rrggbb، اختياري')}
+          hint={t('Optional — tints this collection across the storefront', 'اختياري — يلوّن هذه المجموعة في المتجر')}
           error={errors.accentColor?.message}
         >
-          {(p) => <Input {...p} type="text" placeholder="#a65a7e" {...register('accentColor')} disabled={busy} />}
+          {(p) => (
+            <div className="colour-field">
+              <input
+                {...p}
+                type="color"
+                className="colour-field__swatch"
+                value={accentSwatch}
+                onChange={(e) =>
+                  setValue('accentColor', e.target.value, { shouldDirty: true, shouldValidate: true })
+                }
+                disabled={busy}
+                aria-label={t('Accent colour', 'لون مميز')}
+              />
+              <span className="colour-field__value">{accentColor || t('None', 'بدون')}</span>
+              {accentColor ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setValue('accentColor', '', { shouldDirty: true })}
+                  disabled={busy}
+                >
+                  {t('Clear', 'مسح')}
+                </Button>
+              ) : null}
+            </div>
+          )}
         </Field>
       </div>
 

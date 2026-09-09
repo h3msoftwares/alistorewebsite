@@ -57,6 +57,7 @@ const baseProduct: Product = {
     isActive: true,
     showOnHome: false,
     sortOrder: 0,
+    homeSortOrder: 0,
     images: [],
   },
 };

@@ -77,11 +77,11 @@ describe('use-catalog queries', () => {
     expect(result.current.data?.map((c) => c.slug)).toEqual(['a', 'b', 'c']);
   });
 
-  it('useFeaturedCollections keeps only showOnHome and orders by sortOrder', async () => {
+  it('useFeaturedCollections keeps only showOnHome and orders by homeSortOrder', async () => {
     mockCatalog.listCollections.mockResolvedValue([
-      { id: 'c', slug: 'c', showOnHome: true, sortOrder: 3 },
-      { id: 'a', slug: 'a', showOnHome: true, sortOrder: 1 },
-      { id: 'hidden', slug: 'hidden', showOnHome: false, sortOrder: 0 },
+      { id: 'c', slug: 'c', showOnHome: true, sortOrder: 1, homeSortOrder: 3 },
+      { id: 'a', slug: 'a', showOnHome: true, sortOrder: 3, homeSortOrder: 1 },
+      { id: 'hidden', slug: 'hidden', showOnHome: false, sortOrder: 0, homeSortOrder: 0 },
     ] as never);
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useFeaturedCollections(), { wrapper: Wrapper });
@@ -90,11 +90,11 @@ describe('use-catalog queries', () => {
     expect(result.current.data?.map((c) => c.slug)).toEqual(['a', 'c']);
   });
 
-  it('useOtherCollections keeps everything showOnHome=false, ordered by sortOrder', async () => {
+  it('useOtherCollections keeps everything off the home page, ordered by homeSortOrder', async () => {
     mockCatalog.listCollections.mockResolvedValue([
-      { id: 'featured', slug: 'featured', showOnHome: true, sortOrder: 0 },
-      { id: 'z', slug: 'z', showOnHome: false, sortOrder: 2 },
-      { id: 'a', slug: 'a', showOnHome: false, sortOrder: 1 },
+      { id: 'featured', slug: 'featured', showOnHome: true, homeSortOrder: 0 },
+      { id: 'z', slug: 'z', showOnHome: false, homeSortOrder: 2 },
+      { id: 'a', slug: 'a', showOnHome: false, homeSortOrder: 1 },
     ] as never);
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useOtherCollections(), { wrapper: Wrapper });
@@ -103,10 +103,10 @@ describe('use-catalog queries', () => {
     expect(result.current.data?.map((c) => c.slug)).toEqual(['a', 'z']);
   });
 
-  it('useFeaturedCategories fetches showOnHome=true categories, sorted by sortOrder', async () => {
+  it('useFeaturedCategories fetches showOnHome=true categories, sorted by homeSortOrder', async () => {
     mockCatalog.listFeaturedCategories.mockResolvedValue([
-      { id: 'c', slug: 'c', sortOrder: 2 },
-      { id: 'a', slug: 'a', sortOrder: 1 },
+      { id: 'c', slug: 'c', sortOrder: 1, homeSortOrder: 2 },
+      { id: 'a', slug: 'a', sortOrder: 2, homeSortOrder: 1 },
     ] as never);
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useFeaturedCategories(), { wrapper: Wrapper });

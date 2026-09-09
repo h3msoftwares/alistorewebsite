@@ -187,13 +187,14 @@ async function main() {
   // the description + CTA, and the photo), slotted in by sortOrder — to demo
   // that treatment.
   const collectionDefs = [
-    { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#a65a7e' },
-    { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#38455c' },
+    { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, homeSortOrder: 10, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#a65a7e' },
+    { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, homeSortOrder: 20, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#38455c' },
     {
       slug: 'kids',
       nameEn: 'Kids',
       nameAr: 'أطفال',
       sortOrder: 4,
+      homeSortOrder: 40,
       showInNav: true,
       showOnHome: false,
       showOnHomeAsImage: true,
@@ -204,6 +205,14 @@ async function main() {
       homeImageCtaAr: 'تسوّق الأطفال',
     },
   ];
+
+  // Seed is authoritative for curation: clear every nav / home flag first, then
+  // the upserts below set only the intended ones back on. Keeps re-runs
+  // converging instead of accumulating stale "on home" rows from old seeds.
+  await prisma.collection.updateMany({
+    data: { showInNav: false, showOnHome: false, showOnHomeAsImage: false },
+  });
+  await prisma.category.updateMany({ data: { showOnHome: false } });
 
   const collections = new Map<string, { id: string }>();
   for (const c of collectionDefs) {
@@ -237,7 +246,7 @@ async function main() {
     { collectionSlug: 'women', nameEn: 'Nightwear', nameAr: 'ملابس النوم النسائية', slug: 'women-nightwear', sortOrder: 2 },
     { collectionSlug: 'men', nameEn: "Men's Shirts", nameAr: 'قمصان رجالي', slug: 'men-shirts', sortOrder: 1 },
     { collectionSlug: 'men', nameEn: "Men's Underwear", nameAr: 'ملابس داخلية رجالية', slug: 'men-underwear', sortOrder: 2 },
-    { collectionSlug: 'kids', nameEn: "Kids' Pajamas", nameAr: 'بيجامات أطفال', slug: 'kids-pajamas', sortOrder: 4, showOnHome: true },
+    { collectionSlug: 'kids', nameEn: "Kids' Pajamas", nameAr: 'بيجامات أطفال', slug: 'kids-pajamas', sortOrder: 4, homeSortOrder: 30, showOnHome: true },
     { collectionSlug: 'kids', nameEn: "Kids' Everyday", nameAr: 'ملابس أطفال يومية', slug: 'kids-everyday', sortOrder: 2 },
   ];
 
@@ -251,6 +260,7 @@ async function main() {
       collectionID,
       sortOrder: c.sortOrder,
       showOnHome: c.showOnHome ?? false,
+      homeSortOrder: 'homeSortOrder' in c ? c.homeSortOrder : 0,
     };
     const cat = await prisma.category.upsert({
       where: { slug: c.slug },
@@ -1714,12 +1724,13 @@ async function main() {
   }
 
   // Built-in "smart" home rows — the migration creates them switched off
-  // (production-safe); this dev seed turns them on and slots them after the
-  // three main collections so the treatment is visible out of the box.
+  // (production-safe); this dev seed turns them on and interleaves them with
+  // the collections in the shared "Home page order" (women 10, men 20,
+  // pajamas 30, kids banner 40).
   for (const s of [
-    { type: 'NEW_ARRIVALS' as const, sortOrder: 5 },
-    { type: 'BEST_SELLERS' as const, sortOrder: 6 },
-    { type: 'ON_SALE' as const, sortOrder: 7 },
+    { type: 'NEW_ARRIVALS' as const, sortOrder: 15 },
+    { type: 'BEST_SELLERS' as const, sortOrder: 25 },
+    { type: 'ON_SALE' as const, sortOrder: 35 },
   ]) {
     await prisma.homeShowcase.upsert({
       where: { type: s.type },

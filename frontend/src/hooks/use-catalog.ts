@@ -39,10 +39,8 @@ export function useNavCollections() {
 }
 
 /** Collections promoted into the home page's featured row (own row: name +
- *  a horizontal scroll of its categories), in `sortOrder`. Derived from
- *  `useCollections()` — no separate request. Image-collections
- *  (`showOnHomeAsImage`) are excluded — they render as a square in the top
- *  grid instead, never also as a row. */
+ *  a horizontal scroll of its categories), in `homeSortOrder`. Image
+ *  collections (`showOnHomeAsImage`) are excluded — they render as a banner. */
 export function useFeaturedCollections() {
   const q = useCollections();
   return {
@@ -50,13 +48,12 @@ export function useFeaturedCollections() {
     data: q.data
       ?.filter((c) => c.showOnHome && !c.showOnHomeAsImage)
       .slice()
-      .sort((a, b) => a.sortOrder - b.sortOrder),
+      .sort((a, b) => a.homeSortOrder - b.homeSortOrder),
   };
 }
 
-/** Every collection NOT promoted to the home page's featured row and NOT
- *  shown as a top-grid square — the "rest of the collections" block below it,
- *  in `sortOrder`. */
+/** Every collection NOT on the home page at all — the "rest of the
+ *  collections" block below the curated zone, in `homeSortOrder`. */
 export function useOtherCollections() {
   const q = useCollections();
   return {
@@ -64,13 +61,12 @@ export function useOtherCollections() {
     data: q.data
       ?.filter((c) => !c.showOnHome && !c.showOnHomeAsImage)
       .slice()
-      .sort((a, b) => a.sortOrder - b.sortOrder),
+      .sort((a, b) => a.homeSortOrder - b.homeSortOrder),
   };
 }
 
-/** Collections the owner shows as a single square image in the grid at the
- *  top of the home page (no category row), in `sortOrder`. Derived from
- *  `useCollections()` — no separate request. */
+/** Collections the owner shows on the home page as a full-width image banner
+ *  (`showOnHomeAsImage`), in `homeSortOrder`. */
 export function useHomeImageCollections() {
   const q = useCollections();
   return {
@@ -78,7 +74,7 @@ export function useHomeImageCollections() {
     data: q.data
       ?.filter((c) => c.showOnHomeAsImage)
       .slice()
-      .sort((a, b) => a.sortOrder - b.sortOrder),
+      .sort((a, b) => a.homeSortOrder - b.homeSortOrder),
   };
 }
 
@@ -134,13 +130,13 @@ export function useStandaloneCategories() {
 }
 
 /** Categories promoted to their own home-page row, across every collection,
- *  sorted client-side by `sortOrder` (shared ranking key with featured
- *  collections — see `useFeaturedCollections`). */
+ *  sorted by `homeSortOrder` (the shared home-page ranking key — see
+ *  `useFeaturedCollections`). */
 export function useFeaturedCategories() {
   return useQuery({
     queryKey: queryKeys.categories.featured(),
     queryFn: () => catalogApi.listFeaturedCategories(),
-    select: (data) => data.slice().sort((a, b) => a.sortOrder - b.sortOrder),
+    select: (data) => data.slice().sort((a, b) => a.homeSortOrder - b.homeSortOrder),
   });
 }
 

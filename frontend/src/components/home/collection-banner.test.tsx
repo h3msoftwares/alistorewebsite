@@ -17,6 +17,7 @@ const base: Collection = {
   showOnHome: false,
   showOnHomeAsImage: true,
   sortOrder: 3,
+  homeSortOrder: 3,
   accentColor: '#b4611e',
   images: [{ id: 'i1', collectionID: 'c1', url: 'https://ik.imagekit.io/demo/kids.jpg', sortOrder: 0 }],
 };

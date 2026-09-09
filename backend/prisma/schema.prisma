@@ -276,20 +276,23 @@ model Collection {
   descriptionEn     String?
   descriptionAr     String?
   isActive          Boolean   @default(true)
-  // Owner opts a collection into the top nav / footer; nav order reuses sortOrder.
+  // Owner opts a collection into the top nav / footer; nav order is `sortOrder`.
   showInNav         Boolean   @default(false)
   // Owner opts a collection into the home page's featured row (own row: name +
   // horizontal scroll of its categories). Independent of showInNav — a
-  // collection can be navigable without being featured, or vice versa. Order
-  // among featured rows (collections AND categories, interleaved) reuses
-  // sortOrder as a shared ranking key.
+  // collection can be navigable without being featured, or vice versa.
   showOnHome        Boolean   @default(false)
-  // Owner shows this collection on the home page as a single square image (its
-  // base image) in a grid at the top, with no category row. Position within
-  // that grid reuses sortOrder. Takes precedence over showOnHome — an
-  // image-collection is not also given a scrolling row.
+  // Owner shows this collection on the home page as a full-width image banner
+  // (coloured panel + CTA, and the photo). Takes precedence over showOnHome —
+  // an image-collection is not also given a scrolling row.
   showOnHomeAsImage Boolean   @default(false)
+  // Position in the top nav (with showInNav). NOT the home-page order.
   sortOrder         Int       @default(0)
+  // Position on the home page — the single shared ranking key for EVERY home
+  // block (featured collections, image banners, featured categories, smart
+  // rows), so the owner orders them all in one list. Separate from sortOrder
+  // so nav order and home order are independent.
+  homeSortOrder     Int       @default(0)
   // #rrggbb — the storefront derives the --collection-accent* CSS custom
   // properties from this. null ⇒ the collection uses the default accent. Also
   // the background colour of the home-page image banner (showOnHomeAsImage).
@@ -351,10 +354,15 @@ model Category {
   isActive         Boolean   @default(true)
   // Owner opts a category into the home page's featured row (own row: name +
   // horizontal scroll of its products) — independent of its parent
-  // collection's own showOnHome. Shares the sortOrder ranking key with
-  // Collection.showOnHome for one interleaved featured-row order.
+  // collection's own showOnHome.
   showOnHome       Boolean   @default(false)
+  // Position among this category's siblings on their collection's page and in
+  // that collection's home row. NOT the home-page order.
   sortOrder        Int       @default(0)
+  // Position of this category's OWN featured row on the home page — the same
+  // shared key as Collection.homeSortOrder, so every home block orders in one
+  // list. Separate from sortOrder (sibling order within a collection).
+  homeSortOrder    Int       @default(0)
   // See Collection.archivedAt — archive is the admin's primary "remove"
   // action; permanent delete needs the category archived and empty first.
   archivedAt       DateTime?

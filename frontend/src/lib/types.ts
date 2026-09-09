@@ -72,16 +72,18 @@ export interface Collection {
   /** Owner-picked: appears in the top nav / footer. Order reuses `sortOrder`. */
   showInNav: boolean;
   /** Owner-picked: gets its own featured row on the home page (name + a
-   *  horizontal scroll of its categories). Independent of `showInNav`. Order
-   *  among featured rows (collections + categories, interleaved) reuses
-   *  `sortOrder` as a shared ranking key. */
+   *  horizontal scroll of its categories). Independent of `showInNav`. */
   showOnHome: boolean;
   /** Owner-picked: shown on the home page as a full-width image banner — its
    *  base image on one side, a coloured panel (`accentColor`) with the
-   *  description and a CTA button on the other. Slots into the featured-row
-   *  order by `sortOrder`. Takes precedence over `showOnHome`. */
+   *  description and a CTA button on the other. Takes precedence over
+   *  `showOnHome`. */
   showOnHomeAsImage: boolean;
+  /** Position in the top nav (with `showInNav`). NOT the home-page order. */
   sortOrder: number;
+  /** Position on the home page — the shared ranking key for every home block
+   *  (featured collections, image banners, featured categories, smart rows). */
+  homeSortOrder: number;
   /** `#rrggbb` — drives the `--collection-accent*` CSS vars (see `accentStyle`),
    *  and the background of the home-page image banner. */
   accentColor?: string | null;
@@ -110,7 +112,12 @@ export interface Category {
    *  horizontal scroll of its products), independent of its parent
    *  collection's own `showOnHome`. */
   showOnHome: boolean;
+  /** Sibling order within a collection (its page + that collection's home row).
+   *  NOT the home-page order of this category's own featured row. */
   sortOrder: number;
+  /** Position of this category's own featured row on the home page (shared key
+   *  with `Collection.homeSortOrder`). */
+  homeSortOrder: number;
   /** Set when archived from the admin — hidden from the storefront, restorable. */
   archivedAt?: string | null;
   images: CategoryImage[];
@@ -740,6 +747,7 @@ export interface CollectionBody {
   showOnHome?: boolean;
   showOnHomeAsImage?: boolean;
   sortOrder?: number;
+  homeSortOrder?: number;
   accentColor?: string | null;
   homeImageCtaEn?: string | null;
   homeImageCtaAr?: string | null;
@@ -757,6 +765,7 @@ export interface CategoryBody {
   isActive?: boolean;
   showOnHome?: boolean;
   sortOrder?: number;
+  homeSortOrder?: number;
 }
 
 export interface VariantBody {

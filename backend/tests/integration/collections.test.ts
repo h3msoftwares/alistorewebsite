@@ -211,6 +211,40 @@ describe('Collections API', () => {
       expect(clear.body.collection.accentColor).toBeNull();
     });
 
+    it('a single-field PATCH leaves every other curation field untouched', async () => {
+      await tokens();
+      const col = await makeCollection({ slug: 'r' });
+      // Set up a curated collection: in nav AND on the home page, with orders.
+      await request(app)
+        .patch(`/api/collections/${col.id}`)
+        .set(bearer(adminToken))
+        .send({ showInNav: true, showOnHome: true, sortOrder: 3, homeSortOrder: 50 });
+
+      // Toggling nav must NOT wipe showOnHome / the orders (Zod .partial()
+      // used to re-apply defaults for absent keys).
+      const navOff = await request(app)
+        .patch(`/api/collections/${col.id}`)
+        .set(bearer(adminToken))
+        .send({ showInNav: false });
+      expect(navOff.body.collection).toMatchObject({
+        showInNav: false,
+        showOnHome: true,
+        sortOrder: 3,
+        homeSortOrder: 50,
+      });
+
+      // Changing the home order must NOT deselect it from the home page.
+      const reorder = await request(app)
+        .patch(`/api/collections/${col.id}`)
+        .set(bearer(adminToken))
+        .send({ homeSortOrder: 10 });
+      expect(reorder.body.collection).toMatchObject({
+        showOnHome: true,
+        sortOrder: 3,
+        homeSortOrder: 10,
+      });
+    });
+
     it('404s unknown id', async () => {
       await tokens();
       const res = await request(app)
