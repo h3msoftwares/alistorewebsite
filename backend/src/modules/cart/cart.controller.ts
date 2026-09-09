@@ -2,8 +2,7 @@ import { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import * as cartService from './cart.service';
 import { paramString } from '../../lib/params';
-
-const GUEST_CART_COOKIE = 'cartSession';
+import { GUEST_CART_COOKIE, guestCartCookieOptions } from './guest-cart-cookie';
 
 /** Resolves the current cart owner: logged-in user id, or a guest session id
  *  persisted in a long-lived cookie. Creates the cookie on first use. */
@@ -12,11 +11,7 @@ function resolveOwner(req: Request, res: Response) {
   let sessionID = req.cookies?.[GUEST_CART_COOKIE];
   if (!sessionID) {
     sessionID = randomUUID();
-    res.cookie(GUEST_CART_COOKIE, sessionID, {
-      httpOnly: true,
-      sameSite: 'strict',
-      maxAge: 1000 * 60 * 60 * 24 * 30,
-    });
+    res.cookie(GUEST_CART_COOKIE, sessionID, guestCartCookieOptions);
   }
   return { sessionID };
 }

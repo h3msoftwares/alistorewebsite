@@ -3,6 +3,7 @@ export type AppErrorCode =
   | 'NOT_FOUND'
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
+  | 'STEP_UP_REQUIRED'
   | 'CONFLICT'
   | 'OUT_OF_STOCK'
   | 'RATE_LIMITED'
@@ -13,6 +14,11 @@ const STATUS_BY_CODE: Record<AppErrorCode, number> = {
   NOT_FOUND: 404,
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,
+  // A valid session, but a password re-entry is required for this action
+  // (step-up auth). 403 (not 401) on purpose: the SPA's 401 handler triggers
+  // a silent token refresh, which would not satisfy freshness — this must
+  // surface a re-auth prompt instead.
+  STEP_UP_REQUIRED: 403,
   CONFLICT: 409,
   OUT_OF_STOCK: 409,
   RATE_LIMITED: 429,

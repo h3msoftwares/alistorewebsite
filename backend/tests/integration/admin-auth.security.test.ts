@@ -8,7 +8,7 @@ import { prisma } from '../../src/config/prisma';
 import { createUser, createAdmin, createCustomer, bearer } from '../helpers/auth';
 
 const app = buildApp();
-const DASH = '/api/admin/dashboard'; // requireAuth + requireRole(STAFF, ADMIN)
+const DASH = '/api/admin/dashboard'; // requireAuth + requireRole(ADMIN) — probe for forged-token attacks
 const adminLogin = (body: unknown) => request(app).post('/api/auth/ali-admin-login').send(body);
 
 const EMAIL = 'sec.admin@alistore.test';
@@ -77,7 +77,15 @@ describe('admin auth — JWT hardening (forged-token attacks against /api/admin)
     expect(res.status).toBe(200);
     const decoded = jwt.decode(res.body.accessToken, { complete: true });
     expect(decoded?.header.alg).toBe('HS256');
-    expect(Object.keys(decoded?.payload as object).sort()).toEqual(['exp', 'iat', 'id', 'role']);
+    // `auth_time` (step-up freshness, S2) is a plain unix timestamp — no
+    // secret material, same as iat/exp.
+    expect(Object.keys(decoded?.payload as object).sort()).toEqual([
+      'auth_time',
+      'exp',
+      'iat',
+      'id',
+      'role',
+    ]);
   });
 });
 

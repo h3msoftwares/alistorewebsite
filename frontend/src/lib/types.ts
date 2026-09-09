@@ -226,6 +226,10 @@ export interface Coupon {
   isActive: boolean;
   startsAt: IsoDateTime | null;
   endsAt: IsoDateTime | null;
+  /** Usage caps — null = unlimited. */
+  maxRedemptions: number | null;
+  maxPerCustomer: number | null;
+  timesRedeemed: number;
   dateCreated: IsoDateTime;
 }
 
@@ -236,6 +240,8 @@ export interface CouponBody {
   isActive?: boolean;
   startsAt?: string | null;
   endsAt?: string | null;
+  maxRedemptions?: number | null;
+  maxPerCustomer?: number | null;
 }
 
 /** `POST /api/coupons/validate` success payload. */

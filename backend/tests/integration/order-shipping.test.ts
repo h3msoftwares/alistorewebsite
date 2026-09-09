@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
-import { createCustomer, createStaff, bearer } from '../helpers/auth';
+import { createCustomer, createStaffWith, bearer } from '../helpers/auth';
 import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
 
 vi.mock('../../src/lib/mailer', async (importOriginal) => {
@@ -50,7 +50,7 @@ async function flushAsync() {
 describe('Order shipping — estimate + customer email', () => {
   it('moving an order to SHIPPED stores the estimate and emails the customer once', async () => {
     const orderId = await placeOrder();
-    const { token: staff } = await createStaff();
+    const { token: staff } = await createStaffWith(['orders:manage']);
 
     const res = await request(app)
       .patch(`/api/admin/orders/${orderId}/status`)
@@ -72,7 +72,7 @@ describe('Order shipping — estimate + customer email', () => {
 
   it('does not re-email when SHIPPED is re-selected, and a later status change can revise the estimate', async () => {
     const orderId = await placeOrder();
-    const { token: staff } = await createStaff();
+    const { token: staff } = await createStaffWith(['orders:manage']);
     const ship = (body: unknown) =>
       request(app).patch(`/api/admin/orders/${orderId}/status`).set(bearer(staff)).send(body);
 
@@ -89,7 +89,7 @@ describe('Order shipping — estimate + customer email', () => {
 
   it('omitting estimatedDeliveryDays on a status change leaves the stored value untouched', async () => {
     const orderId = await placeOrder();
-    const { token: staff } = await createStaff();
+    const { token: staff } = await createStaffWith(['orders:manage']);
     const ship = (body: unknown) =>
       request(app).patch(`/api/admin/orders/${orderId}/status`).set(bearer(staff)).send(body);
 
@@ -100,7 +100,7 @@ describe('Order shipping — estimate + customer email', () => {
 
   it('rejects a negative or absurd estimate (400)', async () => {
     const orderId = await placeOrder();
-    const { token: staff } = await createStaff();
+    const { token: staff } = await createStaffWith(['orders:manage']);
     for (const bad of [-1, 500, 3.5]) {
       const res = await request(app)
         .patch(`/api/admin/orders/${orderId}/status`)

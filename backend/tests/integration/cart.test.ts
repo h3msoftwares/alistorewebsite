@@ -190,17 +190,29 @@ describe('Cart API — guest→user cart merge on login', () => {
   const makeMergeUser = () =>
     createUser({ role: 'CUSTOMER', email: creds.email, password: creds.password, emailVerified: true });
 
-  it('hands a whole guest cart to the user on login and clears the guest cookie', async () => {
+  it('hands a whole guest cart to the user on login and rotates the guest cookie', async () => {
     await makeMergeUser();
     const agent = request.agent(app);
-    await agent.post('/api/cart/items').send({ variantId, quantity: 2 });
+    const seed = await agent.post('/api/cart/items').send({ variantId, quantity: 2 });
     await agent.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 1 });
+    const guestCookie = (seed.headers['set-cookie'] as unknown as string[]).find((c) =>
+      c.startsWith('cartSession=')
+    )!;
+    const guestSessionId = guestCookie.match(/cartSession=([^;]+)/)![1];
 
     const login = await agent
       .post('/api/auth/login')
       .send({ identifier: creds.email, password: creds.password });
     expect(login.status).toBe(200);
-    expect(login.headers['set-cookie'].join(';')).toMatch(/cartSession=;|cartSession=;? *Expires/i);
+    // S9 session-fixation mitigation: the guest cookie is ROTATED to a fresh
+    // value, not cleared — the pre-login id is retired.
+    const rotated = (login.headers['set-cookie'] as unknown as string[]).find((c) =>
+      c.startsWith('cartSession=')
+    )!;
+    const newSessionId = rotated.match(/cartSession=([^;]+)/)![1];
+    expect(newSessionId).toBeTruthy();
+    expect(newSessionId).not.toBe(guestSessionId);
+    expect(rotated).toMatch(/HttpOnly/i);
 
     const get = await request(app).get('/api/cart').set(bearer(login.body.accessToken));
     expect(get.body.items).toHaveLength(2);

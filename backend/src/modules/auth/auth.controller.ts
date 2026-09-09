@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as authService from './auth.service';
 import { mergeGuestCartIntoUser } from '../cart/cart.service';
+import { GUEST_CART_COOKIE, rotateGuestCartCookie } from '../cart/guest-cart-cookie';
 
 // Exported so the email-verification controller and the test suite reference
 // the exact same string. Deliberately identical for "new email", "email
@@ -12,7 +13,6 @@ export const REGISTER_MESSAGE =
 // Exported so the change-password controller sets the refresh cookie exactly
 // the same way login/refresh do.
 export const REFRESH_COOKIE = 'refreshToken';
-const GUEST_CART_COOKIE = 'cartSession';
 export const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
@@ -21,8 +21,11 @@ export const cookieOptions = {
 };
 
 /** Fold whatever the guest had in their cookie-session cart into the
- *  just-authenticated user's cart, then clear the guest cookie. Best-effort —
- *  a merge failure must not fail the login/register response. */
+ *  just-authenticated user's cart, then ROTATE the guest session id (S9 —
+ *  session-fixation mitigation: the pre-login id is retired and replaced,
+ *  not merely deleted, so a value an attacker pre-seeded in the victim's
+ *  browser cannot be reused after login). Best-effort — a merge failure
+ *  must not fail the login response; the rotation still happens. */
 async function absorbGuestCart(req: Request, res: Response, userId: string) {
   const sessionID = req.cookies?.[GUEST_CART_COOKIE];
   if (!sessionID) return;
@@ -31,7 +34,7 @@ async function absorbGuestCart(req: Request, res: Response, userId: string) {
   } catch {
     // ignore — the user is still logged in, just without the guest cart merged
   }
-  res.clearCookie(GUEST_CART_COOKIE);
+  rotateGuestCartCookie(res);
 }
 
 export async function registerHandler(req: Request, res: Response) {

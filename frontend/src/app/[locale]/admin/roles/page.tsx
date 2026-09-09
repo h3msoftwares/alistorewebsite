@@ -385,6 +385,9 @@ function NewMemberForm({
 }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  // Only a full ADMIN can create an ADMIN account (backend enforces it). For a
+  // delegated `roles:manage` staffer the new account is always STAFF.
+  const isFullAdmin = usePermissions().isFullAdmin;
   const [form, setForm] = useState<NewTeamMember>(BLANK_MEMBER);
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof NewTeamMember>(k: K, v: NewTeamMember[K]) =>
@@ -458,19 +461,21 @@ function NewMemberForm({
               />
             )}
           </Field>
-          <Field label={t('Access', 'الوصول')}>
-            {(p) => (
-              <Select
-                {...p}
-                value={form.role}
-                onChange={(e) => set('role', e.target.value as 'STAFF' | 'ADMIN')}
-                disabled={busy}
-              >
-                <option value="STAFF">{t('Staff (role-scoped)', 'موظف (حسب الدور)')}</option>
-                <option value="ADMIN">{t('Admin (all permissions)', 'مسؤول (كل الصلاحيات)')}</option>
-              </Select>
-            )}
-          </Field>
+          {isFullAdmin && (
+            <Field label={t('Access', 'الوصول')}>
+              {(p) => (
+                <Select
+                  {...p}
+                  value={form.role}
+                  onChange={(e) => set('role', e.target.value as 'STAFF' | 'ADMIN')}
+                  disabled={busy}
+                >
+                  <option value="STAFF">{t('Staff (role-scoped)', 'موظف (حسب الدور)')}</option>
+                  <option value="ADMIN">{t('Admin (all permissions)', 'مسؤول (كل الصلاحيات)')}</option>
+                </Select>
+              )}
+            </Field>
+          )}
         </div>
         {form.role === 'STAFF' && (
           <Field label={t('Role', 'الدور')} hint={t('No role = no admin access yet', 'بلا دور = لا وصول للإدارة بعد')}>
@@ -567,7 +572,12 @@ function AdminRevokeRow({
 function TeamPanel({ locale }: { locale: 'en' | 'ar' }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
-  const canManage = usePermissions().has('roles:manage');
+  const perms = usePermissions();
+  const canManage = perms.has('roles:manage');
+  // Only a full ADMIN can touch the ADMIN tier (create/promote/demote an admin,
+  // revoke an admin's permissions). The backend enforces this — mirror it here
+  // so a delegated `roles:manage` staffer isn't shown controls that only 403.
+  const isFullAdmin = perms.isFullAdmin;
   const { user } = useAuth();
 
   const { data: catalog } = usePermissionCatalog();
@@ -646,7 +656,7 @@ function TeamPanel({ locale }: { locale: 'en' | 'ar' }) {
                     {m.email && <p className="muted">{m.email}</p>}
                   </td>
                   <td data-label={t('Access', 'الوصول')}>
-                    {canManage && !isSelf ? (
+                    {canManage && !isSelf && isFullAdmin ? (
                       <Select
                         value={m.role}
                         disabled={busy}
@@ -693,7 +703,7 @@ function TeamPanel({ locale }: { locale: 'en' | 'ar' }) {
                   <td data-label={t('Permissions', 'الصلاحيات')}>
                     <span className="admin-inline">
                       {m.effectivePermissions.length}
-                      {m.role === 'ADMIN' && canManage && catalog && (
+                      {m.role === 'ADMIN' && isFullAdmin && catalog && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -727,7 +737,7 @@ function TeamPanel({ locale }: { locale: 'en' | 'ar' }) {
                     </span>
                   </td>
                 </tr>
-                {expanded === m.id && m.role === 'ADMIN' && catalog && (
+                {expanded === m.id && m.role === 'ADMIN' && isFullAdmin && catalog && (
                   <tr>
                     <td colSpan={5}>
                       <AdminRevokeRow
