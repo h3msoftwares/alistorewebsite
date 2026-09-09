@@ -323,16 +323,18 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       const coupon = await resolveCoupon(input.couponCode);
       if (!coupon) throw new AppError('VALIDATION_ERROR', 'That coupon code is not valid.');
 
-      // Lock the coupon row for the rest of this transaction so concurrent
-      // checkouts of the SAME code serialize here — makes the per-customer
-      // count below race-free (and the global guarded increment even safer).
-      await tx.$executeRaw`SELECT 1 FROM "coupon" WHERE "id" = ${coupon.id}::uuid FOR UPDATE`;
-
       // Per-customer cap (V2b). `maxPerCustomer` defaults to 1 (single use
       // per customer) — null only when an admin explicitly made it unlimited.
       // A logged-in shopper is matched by BOTH account id and contact email
       // (so "once as a guest, again logged in" with the same inbox is still
       // caught); a guest by email alone.
+      //
+      // This count is not serialized against a simultaneous checkout by the
+      // SAME shopper (two tabs, same millisecond) — that edge could slip one
+      // extra use through. The GLOBAL `maxRedemptions` cap below, by
+      // contrast, IS race-safe (atomic guarded increment). Serializing every
+      // redeemer of a code on one row-lock was worse — it made unrelated
+      // shoppers contend and time out under load.
       if (coupon.maxPerCustomer != null) {
         const identity: Prisma.CouponRedemptionWhereInput[] = [];
         if (owner.userID) identity.push({ userID: owner.userID });
