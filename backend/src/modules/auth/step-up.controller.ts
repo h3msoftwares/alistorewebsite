@@ -21,9 +21,11 @@ export async function stepUpHandler(req: Request, res: Response) {
     ok = false;
     throw err;
   } finally {
-    // Append-only audit trail, same shape as the login attempts. Never lets
-    // a write failure change the response.
-    prisma.auditLog
+    // Append-only audit trail, same shape as the login attempts. Awaited so
+    // the row is durable before the handler returns (a fire-and-forget write
+    // can be lost, and races the tests); `.catch` keeps a write failure from
+    // changing the response, which is already sent by this point.
+    await prisma.auditLog
       .create({
         data: {
           entityType: 'auth',

@@ -109,10 +109,40 @@ Everything else — order fulfilment (`/status` (also step-up), `/collected`,
 `/review`), order listing, catalog CRUD + archive/restore, blacklist,
 image-upload auth, push subscriptions — stays STAFF+ADMIN. A STAFF token on an
 ADMIN-only route gets `FORBIDDEN` (403). Covered by
-`tests/integration/admin-role-boundary.test.ts`.
+`tests/integration/rbac.test.ts`.
 
-There is **no staff-account management API/UI** yet — STAFF/ADMIN users are
-created by seed or direct DB write (`security/operations.md` §4).
+## 5c. Fine-grained permissions & the `roles:manage` delegation ceiling
+
+On top of the coarse `requireRole` gate, every admin page has a
+`requirePermission('<area>:<view|manage>')` check (`lib/permissions.ts`,
+`rbac.middleware.ts`). **ADMIN** implicitly holds every key; **STAFF** holds
+only the keys on their assigned custom `Role` (bare STAFF = none); **CUSTOMER**
+none. Per-user `revokedPermissions` subtracts from either.
+
+The "Permissions & roles" page (`/api/admin/roles`, `/api/admin/team*`) is
+itself gated by `roles:manage` — an ADMIN can delegate team/role management to a
+STAFF. Because that same surface can *create accounts and grant permissions*,
+`role.service.ts` enforces a ceiling on any **non-ADMIN** caller:
+
+- **Never the ADMIN tier.** A non-ADMIN cannot create an ADMIN, promote/demote
+  anyone to or from ADMIN, or modify/revoke against an existing ADMIN account
+  (`FORBIDDEN`).
+- **Never your own role.** Nobody changes their own STAFF/ADMIN role or
+  deactivates themselves here.
+- **Can't grant what you don't hold.** A role a non-ADMIN authors, edits, or
+  assigns — and the role attached when they create a STAFF account — may only
+  contain permission keys the caller themselves currently hold. They also can't
+  edit or delete a role that already carries keys beyond their set.
+
+An ADMIN caller bypasses all three. Every mutation here
+(`role.created/updated/deleted`, `team.member_created/updated`,
+`team.role_assigned`, `team.permissions_revoked`) writes an `AuditLog` row.
+Regression cover: `tests/integration/rbac.test.ts` ("roles:manage delegation
+guardrails").
+
+STAFF/ADMIN accounts are created through this API (ADMIN, or a delegated
+`roles:manage` STAFF within the ceiling above) or by seed / direct DB write
+(`security/operations.md` §4).
 
 ## 6. Rate limits (per endpoint)
 

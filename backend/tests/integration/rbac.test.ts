@@ -293,6 +293,127 @@ describe('Team member updates (PATCH /api/admin/team/:id)', () => {
   });
 });
 
+// A STAFF who has been delegated `roles:manage` must NOT be able to use it to
+// escalate past their own level. Regression cover for the privilege-escalation
+// finding: self-promote to ADMIN, mint an ADMIN, author an over-powered role
+// and self-assign it, or strip a real ADMIN's permissions.
+describe('roles:manage delegation guardrails', () => {
+  /** STAFF whose role carries roles:manage plus the orders area — so we can
+   *  tell "permission you hold" from "permission you don't". */
+  async function delegatedStaff() {
+    return staffWithRole(
+      ['roles:view', 'roles:manage', 'orders:view', 'orders:manage'],
+      'Team lead ' + Math.random().toString(36).slice(2)
+    );
+  }
+
+  it('cannot promote itself to ADMIN', async () => {
+    const { user, token } = await delegatedStaff();
+    const res = await request(app)
+      .patch(`/api/admin/team/${user.id}`)
+      .set(bearer(token))
+      .send({ role: 'ADMIN' });
+    expect(res.status).toBe(403);
+    const after = await prisma.user.findUnique({ where: { id: user.id }, select: { role: true } });
+    expect(after?.role).toBe('STAFF');
+  });
+
+  it('cannot promote another STAFF to ADMIN', async () => {
+    const { token } = await delegatedStaff();
+    const { user: victim } = await createUser({ role: 'STAFF' });
+    const res = await request(app)
+      .patch(`/api/admin/team/${victim.id}`)
+      .set(bearer(token))
+      .send({ role: 'ADMIN' });
+    expect(res.status).toBe(403);
+  });
+
+  it('cannot mint a fresh ADMIN account', async () => {
+    const { token } = await delegatedStaff();
+    const res = await request(app)
+      .post('/api/admin/team')
+      .set(bearer(token))
+      .send({ name: 'E', email: 'evil@x.test', password: 'longenough', role: 'ADMIN' });
+    expect(res.status).toBe(403);
+  });
+
+  it('cannot modify or revoke against an existing ADMIN account', async () => {
+    const { token } = await delegatedStaff();
+    const { user: someAdmin } = await createUser({ role: 'ADMIN' });
+    expect(
+      (await request(app).post('/api/admin/team/revoke').set(bearer(token))
+        .send({ userId: someAdmin.id, revoked: ['orders:view'] })).status
+    ).toBe(403);
+    expect(
+      (await request(app).patch(`/api/admin/team/${someAdmin.id}`).set(bearer(token))
+        .send({ isActive: false })).status
+    ).toBe(403);
+  });
+
+  it('can only author a role with permissions it holds', async () => {
+    const { token } = await delegatedStaff();
+    // beyond their set → 403
+    expect(
+      (await request(app).post('/api/admin/roles').set(bearer(token))
+        .send({ name: 'Grab', permissions: ['settings:manage'] })).status
+    ).toBe(403);
+    // within their set → 201
+    expect(
+      (await request(app).post('/api/admin/roles').set(bearer(token))
+        .send({ name: 'Desk copy', permissions: ['orders:manage'] })).status
+    ).toBe(201);
+  });
+
+  it('cannot assign a role more powerful than itself', async () => {
+    const { token } = await delegatedStaff();
+    const { user: target } = await createUser({ role: 'STAFF' });
+    const strong = await prisma.role.create({
+      data: { name: 'Strong', permissions: ['settings:manage'] },
+    });
+    const res = await request(app)
+      .post('/api/admin/team/assign-role')
+      .set(bearer(token))
+      .send({ userId: target.id, roleId: strong.id });
+    expect(res.status).toBe(403);
+  });
+
+  it('cannot edit or delete a role that outranks it', async () => {
+    const { token } = await delegatedStaff();
+    const strong = await prisma.role.create({
+      data: { name: 'Strong2', permissions: ['settings:manage', 'products:manage'] },
+    });
+    expect(
+      (await request(app).patch(`/api/admin/roles/${strong.id}`).set(bearer(token))
+        .send({ name: 'renamed' })).status
+    ).toBe(403);
+    expect(
+      (await request(app).delete(`/api/admin/roles/${strong.id}`).set(bearer(token))).status
+    ).toBe(403);
+  });
+
+  it('still can do the legitimate job: create a STAFF account with an in-ceiling role', async () => {
+    const { token } = await delegatedStaff();
+    const deskRole = await prisma.role.create({
+      data: { name: 'Desk3', permissions: ['orders:view'] },
+    });
+    const res = await request(app)
+      .post('/api/admin/team')
+      .set(bearer(token))
+      .send({ name: 'New', email: 'newstaff@x.test', password: 'longenough', role: 'STAFF', roleId: deskRole.id });
+    expect(res.status).toBe(201);
+    expect(res.body.user.role).toBe('STAFF');
+  });
+
+  it('writes an audit row for an RBAC change', async () => {
+    const before = await prisma.auditLog.count({ where: { action: 'role.created' } });
+    await request(app)
+      .post('/api/admin/roles')
+      .set(bearer(adminToken))
+      .send({ name: 'Audited', permissions: ['orders:view'] });
+    expect(await prisma.auditLog.count({ where: { action: 'role.created' } })).toBe(before + 1);
+  });
+});
+
 describe('GET /api/users/me', () => {
   it('carries the caller’s effective permissions and role name', async () => {
     const { token } = await staffWithRole(['dashboard:view', 'orders:view'], 'Support');
