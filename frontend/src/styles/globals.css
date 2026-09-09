@@ -2193,6 +2193,33 @@ a.home-card__name:hover { text-decoration: underline; }
 /* Edit-page variant line items — each row saves/deletes independently. */
 .admin-variants-list { display: flex; flex-direction: column; gap: var(--space-3); }
 
+/* Account page: underline tab bar switching the settings sections and the
+   order history. */
+.account-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-block: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+.account-tabs__tab {
+  padding: var(--space-2) var(--space-1);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.account-tabs__tab:hover { color: var(--color-text); }
+.account-tabs__tab[aria-selected='true'] {
+  color: var(--color-text);
+  border-bottom-color: var(--color-primary);
+}
+
 /* ============================================================
    5. BASE COMPONENTS
    ============================================================ */
@@ -3024,6 +3051,42 @@ a.home-card__name:hover { text-decoration: underline; }
   .cookie-consent__actions .btn {
     flex: 1;
   }
+}
+
+/* ---- 5.15c WhatsApp contact bubble (see components/chrome/whatsapp-bubble.tsx) ---- */
+/* Fixed floating action button linking to the shop's WhatsApp. #25d366 is
+   WhatsApp's own brand green, kept literal (like the footer's deliberate dark
+   band) so the control reads as "WhatsApp", not as a site accent. The corner
+   flips to bottom-left under RTL via the logical inset. */
+.whatsapp-bubble {
+  position: fixed;
+  inset-block-end: var(--space-5);
+  inset-inline-end: var(--space-5);
+  z-index: var(--z-toast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: var(--radius-pill);
+  background: #25d366;
+  color: #fff;
+  box-shadow: var(--shadow-md);
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+.whatsapp-bubble:hover { background: #1db855; transform: translateY(-2px); }
+.whatsapp-bubble:focus-visible { outline: none; box-shadow: var(--shadow-md), var(--shadow-focus); }
+@media (max-width: 640px) {
+  .whatsapp-bubble {
+    inset-block-end: var(--space-4);
+    inset-inline-end: var(--space-4);
+    width: 3rem;
+    height: 3rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .whatsapp-bubble,
+  .whatsapp-bubble:hover { transition: none; transform: none; }
 }
 
 /* ---- 5.15 Page placeholder (empty routes until real content is built) ---- */

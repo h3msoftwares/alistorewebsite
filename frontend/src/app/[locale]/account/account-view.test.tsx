@@ -32,6 +32,13 @@ const addresses = {
 const createAddress = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, isError: false };
 const updateAddress = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, isError: false };
 const deleteAddress = { mutate: vi.fn(), isPending: false };
+const myOrders: { data: unknown[]; isPending: boolean; isError: boolean } = {
+  data: [
+    { id: 'o1', orderNumber: 'AS-1001', dateCreated: '2026-02-03T10:00:00Z', total: '42.50', status: 'SHIPPED' },
+  ],
+  isPending: false,
+  isError: false,
+};
 
 vi.mock('@/hooks/use-auth', () => ({
   useAuth: () => auth,
@@ -46,6 +53,7 @@ vi.mock('@/hooks/use-account', () => ({
   useUpdateAddress: () => updateAddress,
   useDeleteAddress: () => deleteAddress,
 }));
+vi.mock('@/hooks/use-orders', () => ({ useMyOrders: () => myOrders }));
 vi.mock('@/lib/use-delivery-region-options', async () => {
   const { DELIVERY_REGIONS } = await vi.importActual<typeof import('@/lib/regions')>('@/lib/regions');
   return {
@@ -61,6 +69,13 @@ const renderView = () => {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.status = 'authenticated';
+  Object.assign(myOrders, {
+    data: [
+      { id: 'o1', orderNumber: 'AS-1001', dateCreated: '2026-02-03T10:00:00Z', total: '42.50', status: 'SHIPPED' },
+    ],
+    isPending: false,
+    isError: false,
+  });
   Object.assign(logout, { mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false });
   Object.assign(changePassword, {
     mutateAsync: vi.fn().mockResolvedValue(undefined),
@@ -81,12 +96,34 @@ describe('<AccountView>', () => {
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/en/login?next=/en/account');
   });
 
-  it('shows the profile (email + verified badge) and the saved addresses', () => {
+  it('shows the profile (email + verified badge) and the saved addresses on the Account tab', () => {
     renderView();
     expect(screen.getByText('ali@test.dev')).toBeInTheDocument();
     expect(screen.getByText('Verified')).toBeInTheDocument();
     expect(screen.getByText(/12 Rainbow St, Amman/)).toBeInTheDocument();
     expect(screen.getByText(/Mount Lebanon ·/)).toBeInTheDocument();
+    // Orders live behind their own tab, not shown by default.
+    expect(screen.queryByText('AS-1001')).not.toBeInTheDocument();
+  });
+
+  it('switches to the Orders tab and lists the user’s orders', async () => {
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('tab', { name: 'Orders' }));
+
+    const link = screen.getByRole('link', { name: /AS-1001/ });
+    expect(link).toHaveAttribute('href', '/en/orders/o1');
+    expect(screen.getByText('$42.50')).toBeInTheDocument();
+    // account-details fields are no longer mounted
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+  });
+
+  it('Orders tab shows an empty state when there are no orders', async () => {
+    Object.assign(myOrders, { data: [], isPending: false, isError: false });
+    const user = userEvent.setup();
+    renderView();
+    await user.click(screen.getByRole('tab', { name: 'Orders' }));
+    expect(screen.getByText('No orders yet')).toBeInTheDocument();
   });
 
   it('prefills the governorate when editing a saved address', async () => {

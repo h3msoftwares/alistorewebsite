@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Alert, Badge, Button, Field, Input, Select, Skeleton, Textarea } from '@/components/ui';
+import { Alert, Badge, Button, EmptyState, Field, Input, Select, Skeleton, StatusPill, Textarea } from '@/components/ui';
 import { LogoutButton } from '@/components/chrome/logout-button';
 import { useDeliveryRegionOptions } from '@/lib/use-delivery-region-options';
 import { regionLabel } from '@/lib/regions';
@@ -18,7 +18,9 @@ import {
   useUpdateAddress,
   useUpdateProfile,
 } from '@/hooks/use-account';
+import { useMyOrders } from '@/hooks/use-orders';
 import { isApiError } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 import type { Address, AddressBody } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
@@ -69,6 +71,7 @@ export function AccountView({ locale }: { locale: Locale }) {
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { status } = useAuth();
   const hydrated = useHydrated();
+  const [tab, setTab] = useState<'details' | 'orders'>('details');
 
   if (!hydrated || status === 'loading') {
     return (
@@ -105,10 +108,108 @@ export function AccountView({ locale }: { locale: Locale }) {
         <h1>{t('My account', 'حسابي')}</h1>
         <LogoutButton locale={locale} />
       </div>
-      <ProfileSection locale={locale} />
-      <SecuritySection locale={locale} />
-      <AddressesSection locale={locale} />
+
+      <div className="account-tabs" role="tablist" aria-label={t('Account sections', 'أقسام الحساب')}>
+        <button
+          type="button"
+          role="tab"
+          id="account-tab-details"
+          aria-selected={tab === 'details'}
+          aria-controls="account-panel-details"
+          className="account-tabs__tab"
+          onClick={() => setTab('details')}
+        >
+          {t('Account', 'الحساب')}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="account-tab-orders"
+          aria-selected={tab === 'orders'}
+          aria-controls="account-panel-orders"
+          className="account-tabs__tab"
+          onClick={() => setTab('orders')}
+        >
+          {t('Orders', 'الطلبات')}
+        </button>
+      </div>
+
+      {tab === 'details' ? (
+        <div role="tabpanel" id="account-panel-details" aria-labelledby="account-tab-details">
+          <ProfileSection locale={locale} />
+          <SecuritySection locale={locale} />
+          <AddressesSection locale={locale} />
+        </div>
+      ) : (
+        <div role="tabpanel" id="account-panel-orders" aria-labelledby="account-tab-orders">
+          <OrdersSection locale={locale} />
+        </div>
+      )}
     </div>
+  );
+}
+
+function OrdersSection({ locale }: { locale: Locale }) {
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
+  const money = (n: number) => formatCurrency(n, locale);
+  const orders = useMyOrders();
+
+  return (
+    <section style={{ marginBlockStart: 'var(--space-5)' }}>
+      <h2 style={{ fontSize: 'var(--fs-md)' }}>{t('My orders', 'طلباتي')}</h2>
+
+      {orders.isPending ? (
+        <div className="stack" style={{ marginBlockStart: 'var(--space-3)' }}>
+          <Skeleton variant="block" height="4rem" />
+          <Skeleton variant="block" height="4rem" />
+        </div>
+      ) : orders.isError ? (
+        <div style={{ marginBlockStart: 'var(--space-3)' }}>
+          <Alert tone="danger">{t("Couldn't load your orders.", 'تعذّر تحميل طلباتك.')}</Alert>
+        </div>
+      ) : orders.data.length === 0 ? (
+        <div style={{ marginBlockStart: 'var(--space-3)' }}>
+          <EmptyState
+            title={t('No orders yet', 'لا توجد طلبات بعد')}
+            action={
+              <Link className="btn btn--primary" href={`/${locale}`}>
+                {t('Browse the store', 'تصفح المتجر')}
+              </Link>
+            }
+          />
+        </div>
+      ) : (
+        <ul className="stack" style={{ listStyle: 'none', padding: 0, marginBlockStart: 'var(--space-3)' }}>
+          {orders.data.map((o) => (
+            <li key={o.id}>
+              <Link
+                href={`/${locale}/orders/${o.id}`}
+                className="card"
+                style={{ display: 'block', padding: 'var(--space-4)' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+                  <div>
+                    <strong>{o.orderNumber}</strong>
+                    <div className="prose" style={{ fontSize: 'var(--fs-sm)' }}>
+                      {new Date(o.dateCreated).toLocaleDateString(isAr ? 'ar-EG' : 'en-US', {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'end' }}>
+                    <div className="is-numeric">{money(Number(o.total))}</div>
+                    <StatusPill status={o.status} locale={locale} />
+                  </div>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
