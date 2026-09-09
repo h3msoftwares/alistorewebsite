@@ -78,6 +78,15 @@ const VELOCITY_PHONE_MAX = 3;
 const VELOCITY_EMAIL_MAX = 3;
 const VELOCITY_IP_MAX = 5;
 
+// Checkout is the heaviest transaction in the app (address check, cart load,
+// discount resolution, order + N line items, velocity counts, per-line stock
+// claim, coupon redemption). Under a burst of shoppers hitting the same
+// popular variant the atomic stock/coupon row-claims serialize, so the last
+// checkout in line can wait well past Prisma's default 5s ceiling — which would
+// surface as a 500 rather than an orderly "sold out". These give that queue
+// real headroom without letting a genuinely stuck transaction hang forever.
+const CHECKOUT_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
+
 // A customer (or a guest bearing a valid access token) may cancel their own
 // order up to — but not including — SHIPPED. An admin isn't bound by this;
 // see performCancellation's `enforceCancellableGate`.
@@ -512,7 +521,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     }
 
     return order;
-  });
+  }, CHECKOUT_TX_OPTIONS);
 
   if (order.flaggedForReview) {
     await recordAudit({
