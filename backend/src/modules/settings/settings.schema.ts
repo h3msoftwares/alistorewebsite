@@ -39,11 +39,40 @@ export const updateSettingsSchema = z.object({
   // ---- Optional "Our story" page ----
   // '' / null clears the field; with title + body both empty in a language the
   // storefront falls back to the other language, and with all four empty the
-  // page (and its footer link) is hidden.
+  // page (and its footer link) is hidden. `storyImageUrl` shows beside the text.
   storyTitleEn: z.string().trim().max(120).or(z.literal('')).nullish(),
   storyTitleAr: z.string().trim().max(120).or(z.literal('')).nullish(),
   storyBodyEn: z.string().trim().max(8000).or(z.literal('')).nullish(),
   storyBodyAr: z.string().trim().max(8000).or(z.literal('')).nullish(),
+  storyImageUrl: httpUrl.or(z.literal('')).nullish(),
+  storyImageFileId: z.string().trim().max(200).or(z.literal('')).nullish(),
+
+  // ---- Built-in "smart" home-page rows ----
+  // Replace-all: the given rows overwrite the matching showcase types (by
+  // `type`); types not sent are left as-is. Off by default; `sortOrder` slots
+  // an active row into the featured-row order.
+  showcases: z
+    .array(
+      z.object({
+        type: z.enum(['BEST_SELLERS', 'NEW_ARRIVALS', 'ON_SALE']),
+        isActive: z.boolean().default(false),
+        sortOrder: z.number().int().min(0).max(9999).default(0),
+        labelEn: z.string().trim().max(60).or(z.literal('')).nullish(),
+        labelAr: z.string().trim().max(60).or(z.literal('')).nullish(),
+      })
+    )
+    .max(3)
+    .optional()
+    .superRefine((rows, ctx) => {
+      if (!rows) return;
+      const seen = new Set<string>();
+      rows.forEach((r, i) => {
+        if (seen.has(r.type)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [i, 'type'], message: 'duplicate showcase type' });
+        }
+        seen.add(r.type);
+      });
+    }),
 
   // ---- Customer-review images (home page strip) ----
   // Replace-all: the given list becomes the whole strip, in order. Each row

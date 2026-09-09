@@ -73,6 +73,67 @@ describe('Products API', () => {
       const res = await request(app).get('/api/products');
       expect(res.body.items).toHaveLength(0);
     });
+
+    it('sort=best_selling ranks by units sold in the last 90 days, cancelled orders excluded', async () => {
+      const mk = (name: string) =>
+        makeProduct(collectionId, categoryId, {
+          over: { nameEn: name },
+          variants: [{ sku: `${name}-v`, size: 'M', color: 'Black', stockQuantity: 50 }],
+        });
+      const [top, mid, none, cancelled] = await Promise.all([
+        mk('Top'),
+        mk('Mid'),
+        mk('None'),
+        mk('Cancelled'),
+      ]);
+
+      const orderItem = (p: Awaited<ReturnType<typeof mk>>, qty: number, when: Date) => ({
+        orderNumber: `AS-${p.nameEn}-${when.getTime()}`,
+        deliveryName: 'x',
+        deliveryPhone: '123456',
+        deliveryAddress: 's',
+        deliveryCity: 'c',
+        subtotal: 1,
+        total: 1,
+        dateCreated: when,
+        items: {
+          create: {
+            variantID: p.variants[0].id,
+            productName: p.nameEn,
+            productSKU: p.sku,
+            variantSKU: p.variants[0].sku,
+            quantity: qty,
+            unitPrice: 1,
+            lineTotal: qty,
+          },
+        },
+      });
+      const recent = new Date();
+      const stale = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
+
+      await prisma.order.create({ data: orderItem(top, 8, recent) });
+      await prisma.order.create({ data: orderItem(mid, 3, recent) });
+      await prisma.order.create({ data: orderItem(none, 20, stale) }); // outside the window
+      await prisma.order.create({
+        data: { ...orderItem(cancelled, 99, recent), status: 'CANCELLED' },
+      });
+
+      const res = await request(app).get('/api/products?sort=best_selling');
+      expect(res.status).toBe(200);
+      const names = res.body.items.map((p: { nameEn: string }) => p.nameEn);
+      // Only Top and Mid have qualifying recent sales, most units first.
+      expect(names.slice(0, 2)).toEqual(['Top', 'Mid']);
+      expect(res.body.total).toBe(2);
+    });
+
+    it('sort=best_selling falls back to newest when nothing has sold', async () => {
+      await makeProduct(collectionId, categoryId, { over: { nameEn: 'First' } });
+      await new Promise((r) => setTimeout(r, 10));
+      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Second' } });
+      const res = await request(app).get('/api/products?sort=best_selling');
+      expect(res.status).toBe(200);
+      expect(res.body.items.map((p: { nameEn: string }) => p.nameEn)).toEqual(['Second', 'First']);
+    });
   });
 
   // Backs the header type-ahead (frontend SearchOverlay -> useProducts({ search, pageSize })).

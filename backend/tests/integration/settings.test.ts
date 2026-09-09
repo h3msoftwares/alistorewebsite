@@ -253,6 +253,73 @@ describe('Site settings API', () => {
     it('rejects a body over the length cap', async () => {
       expect((await patch({ storyBodyEn: 'x'.repeat(8001) })).status).toBe(400);
     });
+
+    it('stores + clears the side image; rejects a non-http(s) URL', async () => {
+      const set = await patch({
+        storyImageUrl: 'https://ik.imagekit.io/demo/story.jpg',
+        storyImageFileId: 'file_story',
+      });
+      expect(set.body.settings.storyImageUrl).toBe('https://ik.imagekit.io/demo/story.jpg');
+      expect(set.body.settings.storyImageFileId).toBe('file_story');
+
+      const cleared = await patch({ storyImageUrl: '', storyImageFileId: '' });
+      expect(cleared.body.settings.storyImageUrl).toBeNull();
+      expect(cleared.body.settings.storyImageFileId).toBeNull();
+
+      expect((await patch({ storyImageUrl: 'javascript:alert(1)' })).status).toBe(400);
+    });
+  });
+
+  describe('home showcases', () => {
+    const patch = (body: unknown) =>
+      request(app).patch('/api/settings').set(bearer(adminToken)).send(body);
+
+    it('upserts by type, returns them ordered by sortOrder, and clears a label with ""', async () => {
+      const res = await patch({
+        showcases: [
+          { type: 'BEST_SELLERS', isActive: true, sortOrder: 6, labelEn: 'Top picks', labelAr: 'الأفضل' },
+          { type: 'ON_SALE', isActive: true, sortOrder: 3 },
+          { type: 'NEW_ARRIVALS', isActive: false, sortOrder: 9 },
+        ],
+      });
+      expect(res.status).toBe(200);
+      const list = res.body.settings.showcases;
+      expect(list.map((s: { type: string }) => s.type)).toEqual([
+        'ON_SALE',
+        'BEST_SELLERS',
+        'NEW_ARRIVALS',
+      ]);
+      expect(list.find((s: { type: string }) => s.type === 'BEST_SELLERS')).toMatchObject({
+        isActive: true,
+        sortOrder: 6,
+        labelEn: 'Top picks',
+      });
+
+      const cleared = await patch({
+        showcases: [{ type: 'BEST_SELLERS', isActive: true, sortOrder: 6, labelEn: '' }],
+      });
+      expect(
+        cleared.body.settings.showcases.find((s: { type: string }) => s.type === 'BEST_SELLERS').labelEn
+      ).toBeNull();
+      // types not sent are left untouched
+      expect(
+        cleared.body.settings.showcases.find((s: { type: string }) => s.type === 'ON_SALE').isActive
+      ).toBe(true);
+    });
+
+    it('rejects an unknown type and a duplicate type', async () => {
+      expect((await patch({ showcases: [{ type: 'WISHLIST', isActive: true, sortOrder: 1 }] })).status).toBe(400);
+      expect(
+        (
+          await patch({
+            showcases: [
+              { type: 'ON_SALE', isActive: true, sortOrder: 1 },
+              { type: 'ON_SALE', isActive: false, sortOrder: 2 },
+            ],
+          })
+        ).status
+      ).toBe(400);
+    });
   });
 
   describe('customer review images', () => {

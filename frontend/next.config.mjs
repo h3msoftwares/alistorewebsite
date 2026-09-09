@@ -20,12 +20,23 @@ try {
   // malformed env → keep the default
 }
 
+// The admin image uploader (lib/imagekit-upload.ts) POSTs files straight from
+// the browser to ImageKit's upload endpoint, so `connect-src` must name it.
+// This is a fixed ImageKit host, independent of any custom CDN endpoint.
+const imagekitUploadOrigin = 'https://upload.imagekit.io';
+
 // Third parties the storefront actually loads:
 //  - Google Analytics 4 (gtag.js) — only ever runs after "Accept All" in the
 //    cookie banner, but the origins must be allow-listed for it to load at all.
 //  - hCaptcha — the checkout bot gate (script + iframe challenge + verify XHR).
 const GA = ['https://www.googletagmanager.com', 'https://www.google-analytics.com'];
 const HCAPTCHA = ['https://hcaptcha.com', 'https://*.hcaptcha.com'];
+
+// Placeholder product photos come from the Unsplash CDN in the seed scripts
+// (prisma/seed*.ts). Dev-only: a real deployment uploads photos to ImageKit
+// and the stored URLs are all on `imagekitOrigin`, so production `img-src`
+// stays locked down exactly as the security baseline sets it.
+const SEED_IMG_HOSTS = isDev ? ['https://images.unsplash.com'] : [];
 
 /**
  * Content-Security-Policy.
@@ -61,11 +72,12 @@ function contentSecurityPolicy() {
       ...HCAPTCHA,
     ],
     'style-src': ["'self'", "'unsafe-inline'", ...HCAPTCHA],
-    'img-src': ["'self'", 'data:', 'blob:', imagekitOrigin, ...GA, ...HCAPTCHA],
+    'img-src': ["'self'", 'data:', 'blob:', imagekitOrigin, ...GA, ...HCAPTCHA, ...SEED_IMG_HOSTS],
     'font-src': ["'self'", 'data:', ...HCAPTCHA],
     'connect-src': [
       "'self'",
       apiOrigin,
+      imagekitUploadOrigin,
       ...GA,
       'https://*.analytics.google.com',
       ...HCAPTCHA,

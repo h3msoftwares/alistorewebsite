@@ -40,4 +40,22 @@ describe('<OurStoryView>', () => {
     renderView('ar');
     expect(screen.getByText('English only body.')).toBeInTheDocument();
   });
+
+  it('shows the image beside the text when a story image is set', () => {
+    settings.data = {
+      storyTitleEn: 'How we began',
+      storyBodyEn: 'Body.',
+      storyImageUrl: 'https://ik.imagekit.io/demo/story.jpg',
+    };
+    const { container } = renderView('en');
+    const img = screen.getByRole('img');
+    expect(img).toHaveAttribute('src', 'https://ik.imagekit.io/demo/story.jpg');
+    expect(container.querySelector('.our-story--with-image')).toBeInTheDocument();
+  });
+
+  it('renders no image element when no story image is set', () => {
+    settings.data = { storyTitleEn: 'How we began', storyBodyEn: 'Body.' };
+    renderView('en');
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
 });

@@ -15,7 +15,9 @@ export const listProductsQuerySchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v === 'true'),
-  sort: z.enum(['newest', 'price_asc', 'price_desc']).default('newest'),
+  // `best_selling` ranks by units sold in the last 90 days (see product.service);
+  // with no recent sales it falls back to `newest`.
+  sort: z.enum(['newest', 'price_asc', 'price_desc', 'best_selling']).default('newest'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(60).default(24),
   // active = live products; archived = soft-deleted only; all = both.

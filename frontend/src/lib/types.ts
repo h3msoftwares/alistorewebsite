@@ -76,13 +76,18 @@ export interface Collection {
    *  among featured rows (collections + categories, interleaved) reuses
    *  `sortOrder` as a shared ranking key. */
   showOnHome: boolean;
-  /** Owner-picked: shown on the home page as a single square image (its base
-   *  image) in a grid at the top, with no category row. Position within that
-   *  grid reuses `sortOrder`. Takes precedence over `showOnHome`. */
+  /** Owner-picked: shown on the home page as a full-width image banner — its
+   *  base image on one side, a coloured panel (`accentColor`) with the
+   *  description and a CTA button on the other. Slots into the featured-row
+   *  order by `sortOrder`. Takes precedence over `showOnHome`. */
   showOnHomeAsImage: boolean;
   sortOrder: number;
-  /** `#rrggbb` — drives the `--collection-accent*` CSS vars (see `accentStyle`). */
+  /** `#rrggbb` — drives the `--collection-accent*` CSS vars (see `accentStyle`),
+   *  and the background of the home-page image banner. */
   accentColor?: string | null;
+  /** CTA label on the home-page image banner. Empty ⇒ a generic "Shop <name>". */
+  homeImageCtaEn?: string | null;
+  homeImageCtaAr?: string | null;
   /** Set when archived from the admin — hidden from the storefront, restorable. */
   archivedAt?: string | null;
   images: CollectionImage[];
@@ -456,7 +461,7 @@ export interface NewTeamMember {
 
 // ---- Product list query (GET /api/products) ----
 
-export type ProductSort = 'newest' | 'price_asc' | 'price_desc';
+export type ProductSort = 'newest' | 'price_asc' | 'price_desc' | 'best_selling';
 
 /** `active` = live on the storefront; `archived` = archived only; `all` = both.
  *  Anything other than `active` is admin-only. */
@@ -526,6 +531,20 @@ export interface ReviewImage {
   sortOrder: number;
 }
 
+/** Built-in "smart" home-page rows — a computed product list the owner can
+ *  turn on and slot into the featured-row order without a real category. */
+export type ShowcaseType = 'BEST_SELLERS' | 'NEW_ARRIVALS' | 'ON_SALE';
+
+export interface HomeShowcase {
+  type: ShowcaseType;
+  isActive: boolean;
+  /** Shared ranking key with featured collections / categories. */
+  sortOrder: number;
+  /** Overrides the default heading; empty ⇒ the built-in label. */
+  labelEn: string | null;
+  labelAr: string | null;
+}
+
 /** A physical store shown in the home page's "Visit us" section. */
 export interface StoreLocation {
   id: UUID;
@@ -563,6 +582,9 @@ export interface SiteSettings {
   storyTitleAr: string | null;
   storyBodyEn: string | null;
   storyBodyAr: string | null;
+  /** Optional image shown beside the "Our story" text. */
+  storyImageUrl: string | null;
+  storyImageFileId: string | null;
   instagramUrl: string | null;
   facebookUrl: string | null;
   tiktokUrl: string | null;
@@ -574,6 +596,8 @@ export interface SiteSettings {
   storeLocations: StoreLocation[];
   /** Customer-review screenshots shown in the home page's review strip. */
   reviewImages: ReviewImage[];
+  /** Built-in smart home rows (best sellers / new / on sale), by `sortOrder`. */
+  showcases: HomeShowcase[];
   /** Resolved collection for the hero CTA, when one is set. */
   heroCtaCollection: Pick<Collection, 'id' | 'slug' | 'nameEn' | 'nameAr'> | null;
   // Delivery fee — off ⇒ every order ships free.
@@ -597,6 +621,7 @@ export type SiteSettingsBody = Partial<
     | 'freeDeliveryThreshold'
     | 'storeLocations'
     | 'reviewImages'
+    | 'showcases'
   >
 > & {
   heroCtaCollectionId?: UUID | '' | null;
@@ -604,6 +629,14 @@ export type SiteSettingsBody = Partial<
   deliveryRates?: { region: string; fee: number }[];
   /** Replace-all: the whole customer-review strip, in order. */
   reviewImages?: { imageUrl: string; imageFileId?: string | null }[];
+  /** Upsert by `type`: the built-in smart home rows. */
+  showcases?: {
+    type: ShowcaseType;
+    isActive: boolean;
+    sortOrder: number;
+    labelEn?: string | null;
+    labelAr?: string | null;
+  }[];
   /** number ⇒ set; null ⇒ clear the free-over rule. */
   freeDeliveryThreshold?: number | null;
   /** Replace-all: the whole set of stores, in order. Each carries its own
@@ -708,6 +741,8 @@ export interface CollectionBody {
   showOnHomeAsImage?: boolean;
   sortOrder?: number;
   accentColor?: string | null;
+  homeImageCtaEn?: string | null;
+  homeImageCtaAr?: string | null;
   categoryIds?: UUID[];
 }
 

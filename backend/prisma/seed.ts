@@ -26,13 +26,55 @@ function requireSeedAdminPassword(): string {
   return pw;
 }
 
-/** Deterministic per-product photo — same SKU always resolves to the same
- *  image, so reseeding doesn't reshuffle every product's picture. Real
- *  product photos aren't part of this seed; picsum's `seed` param is just a
- *  stand-in that happens to be stable and free. */
-function picsum(seed: string, w = 800, h = 1000): string {
-  return `https://picsum.photos/seed/${seed}/${w}/${h}`;
+/**
+ * Deterministic per-item clothing photo. A given seed string always resolves
+ * to the same picture (so reseeding never reshuffles a card), and it's a real
+ * apparel shot rather than a random stock image. Draws from a fixed pool of
+ * Unsplash photos (permanent CDN URLs, unlike loremflickr which rate-limits
+ * and 500s when a page loads hundreds at once). `topic` biases which slice of
+ * the pool a garment type draws from. Still placeholders — swap
+ * `ProductImage.url` for the shop's own photos before launch.
+ */
+const APPAREL_PHOTOS = [
+  '1521572163474-6864f9cf17ab', '1489987707025-afc232f7ea0f', '1483985988355-763728e1935b',
+  '1487222477894-8943e31ef7b2', '1490114538077-0a7f8cb49891', '1434389677669-e08b4cac3105',
+  '1525507119028-ed4c629a60a3', '1503341504253-dff4815485f1', '1576566588028-4147f3842f27',
+  '1620799140408-edc6dcb6d633', '1594633312681-425c7b97ccd1', '1596755094514-f87e34085b2c',
+  '1618354691373-d851c5c3a990', '1542272604-787c3835535d', '1594938298603-c8148c4dae35',
+  '1551232864-3f0890e580d9', '1616150638538-ffb0679a3fc4', '1571945153237-4929e783af4a',
+  '1560243563-062bfc001d68', '1591047139829-d91aecb6caea', '1602810318383-e386cc2a3ccf',
+  '1620012253295-c15cc3e65df4', '1598554747436-c9293d6a588f', '1607345366928-199ea26cfe3e',
+  '1554568218-0f1715e72254', '1556905055-8f358a7a47b2', '1620799139507-2a76f79a2f4d',
+  '1612722432474-b971cdcea546', '1503342217505-b0a15ec3261c', '1495385794356-15371f348c31',
+  '1552902865-b72c031ac5ea', '1441984904996-e0b6ba687e04', '1445205170230-053b83016050',
+  '1578932750294-f5075e85f44a', '1617137968427-85924c800a22', '1519238263530-99bdd11df2ea',
+];
+
+function hash32(s: string): number {
+  let h = 5381;
+  for (let i = 0; i < s.length; i += 1) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h;
 }
+
+function clothImage(seed: string, topic: string, w = 800, h = 1000): string {
+  const id = APPAREL_PHOTOS[(hash32(seed) + hash32(topic)) % APPAREL_PHOTOS.length];
+  return `https://images.unsplash.com/photo-${id}?w=${w}&h=${h}&fit=crop&q=80`;
+}
+
+/** A garment keyword per category / collection slug — nudges which apparel
+ *  photos the type tends to draw from. */
+const CLOTH_TOPIC: Record<string, string> = {
+  'women-lingerie': 'underwear',
+  'women-nightwear': 'pajamas',
+  'men-shirts': 'shirt',
+  'men-underwear': 'underwear',
+  'kids-pajamas': 'pajamas',
+  'kids-everyday': 'clothing',
+  women: 'dress',
+  men: 'menswear',
+  kids: 'clothing',
+};
+const clothTopicFor = (slug: string): string => CLOTH_TOPIC[slug] ?? 'clothing';
 
 interface VariantDef {
   size?: string;
@@ -141,27 +183,34 @@ async function main() {
   // ---- Collections (replace the old Department enum; owner-editable) ----
   // showOnHome demos the home page's featured row: women + men get their own
   // "collection row" (name + horizontal scroll of categories). kids opts into
-  // showOnHomeAsImage instead — a single square image in the grid at the top,
-  // no category row — to demo that treatment.
+  // showOnHomeAsImage instead — a full-width image banner (coloured panel with
+  // the description + CTA, and the photo), slotted in by sortOrder — to demo
+  // that treatment.
   const collectionDefs = [
     { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#a65a7e' },
     { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#38455c' },
-    { slug: 'kids', nameEn: 'Kids', nameAr: 'أطفال', sortOrder: 3, showInNav: true, showOnHome: false, showOnHomeAsImage: true, accentColor: '#b4611e' },
+    {
+      slug: 'kids',
+      nameEn: 'Kids',
+      nameAr: 'أطفال',
+      sortOrder: 4,
+      showInNav: true,
+      showOnHome: false,
+      showOnHomeAsImage: true,
+      accentColor: '#b4611e',
+      descriptionEn: 'Play-proof basics and cosy sets — soft fabrics that survive the wash and the playground.',
+      descriptionAr: 'أساسيات تتحمّل اللعب وأطقم مريحة — أقمشة ناعمة تصمد أمام الغسيل والملعب.',
+      homeImageCtaEn: 'Shop kids',
+      homeImageCtaAr: 'تسوّق الأطفال',
+    },
   ];
 
   const collections = new Map<string, { id: string }>();
   for (const c of collectionDefs) {
+    const { slug, ...rest } = c;
     const col = await prisma.collection.upsert({
-      where: { slug: c.slug },
-      update: {
-        nameEn: c.nameEn,
-        nameAr: c.nameAr,
-        sortOrder: c.sortOrder,
-        showInNav: c.showInNav,
-        showOnHome: c.showOnHome,
-        showOnHomeAsImage: c.showOnHomeAsImage,
-        accentColor: c.accentColor,
-      },
+      where: { slug },
+      update: rest,
       create: c,
     });
     collections.set(c.slug, { id: col.id });
@@ -170,7 +219,13 @@ async function main() {
     // list thumbnail) has a picture. Replace-all keeps reseeding idempotent.
     await prisma.collectionImage.deleteMany({ where: { collectionID: col.id } });
     await prisma.collectionImage.create({
-      data: { collectionID: col.id, url: picsum(`collection-${c.slug}`), altEn: c.nameEn, altAr: c.nameAr, sortOrder: 0 },
+      data: {
+        collectionID: col.id,
+        url: clothImage(`collection-${c.slug}`, clothTopicFor(c.slug)),
+        altEn: c.nameEn,
+        altAr: c.nameAr,
+        sortOrder: 0,
+      },
     });
   }
 
@@ -1603,15 +1658,17 @@ async function main() {
       });
     }
 
-    // Photos: one generic (untagged) shot, then several genuinely different
-    // photos per variant colour so the card's hover-to-scrub gallery and the
-    // PDP's colour-swap gallery both have real images to move between. Products
-    // with no colour variants just get a few generic shots. Deterministic
-    // picsum seeds, re-created on every run (ProductImage has no natural key to
-    // upsert against; drop-and-recreate keeps the seed idempotent).
+    // Photos: one generic shot, then several genuinely different photos per
+    // variant colour so the card's hover-to-scrub gallery and the PDP's
+    // colour-swap gallery both have real images to move between. Products with
+    // no colour variants just get a few generic shots. Deterministic
+    // clothing-photo seeds (see `clothImage`), re-created on every run
+    // (ProductImage has no natural key to upsert against; drop-and-recreate
+    // keeps the seed idempotent).
     const IMAGES_PER_COLOR = 4;
     const GENERIC_IMAGES = 3;
     const colorSlug = (c: string) => c.toLowerCase().replace(/\s+/g, '-');
+    const topic = clothTopicFor(p.categorySlug);
     const productColors = [
       ...new Set(p.variants.map((vv) => vv.color).filter((c): c is string => Boolean(c))),
     ];
@@ -1620,11 +1677,11 @@ async function main() {
     const images =
       productColors.length > 0
         ? [
-            { productID: product.id, url: picsum(p.sku), altEn: p.nameEn, altAr: p.nameAr, sortOrder: 0 },
+            { productID: product.id, url: clothImage(p.sku, topic), altEn: p.nameEn, altAr: p.nameAr, sortOrder: 0 },
             ...productColors.flatMap((color, ci) =>
               Array.from({ length: IMAGES_PER_COLOR }, (_, k) => ({
                 productID: product.id,
-                url: picsum(`${p.sku}-${colorSlug(color)}-${k + 1}`),
+                url: clothImage(`${p.sku}-${colorSlug(color)}-${k + 1}`, topic),
                 altEn: `${p.nameEn} — ${color} (${k + 1})`,
                 altAr: `${p.nameAr} — ${color} (${k + 1})`,
                 sortOrder: 1 + ci * IMAGES_PER_COLOR + k,
@@ -1634,7 +1691,7 @@ async function main() {
           ]
         : Array.from({ length: GENERIC_IMAGES }, (_, k) => ({
             productID: product.id,
-            url: picsum(k === 0 ? p.sku : `${p.sku}-${k + 1}`),
+            url: clothImage(k === 0 ? p.sku : `${p.sku}-${k + 1}`, topic),
             altEn: p.nameEn,
             altAr: p.nameAr,
             sortOrder: k,
@@ -1653,6 +1710,21 @@ async function main() {
         { settingID: 1, sortOrder: 1, textEn: 'Cash on delivery — pay when it arrives', textAr: 'الدفع عند الاستلام — ادفع عند وصول الطلب' },
         { settingID: 1, sortOrder: 2, textEn: 'New season styles just landed', textAr: 'تشكيلة الموسم الجديد وصلت الآن' },
       ],
+    });
+  }
+
+  // Built-in "smart" home rows — the migration creates them switched off
+  // (production-safe); this dev seed turns them on and slots them after the
+  // three main collections so the treatment is visible out of the box.
+  for (const s of [
+    { type: 'NEW_ARRIVALS' as const, sortOrder: 5 },
+    { type: 'BEST_SELLERS' as const, sortOrder: 6 },
+    { type: 'ON_SALE' as const, sortOrder: 7 },
+  ]) {
+    await prisma.homeShowcase.upsert({
+      where: { type: s.type },
+      create: { type: s.type, settingID: 1, isActive: true, sortOrder: s.sortOrder },
+      update: { isActive: true, sortOrder: s.sortOrder },
     });
   }
   // Delivery fee: shipped OFF so the storefront behaves as before, but with a

@@ -87,6 +87,8 @@ const settingsFormSchema = z.object({
   storyTitleAr: z.string().trim().max(120),
   storyBodyEn: z.string().trim().max(8000),
   storyBodyAr: z.string().trim().max(8000),
+  storyImageUrl: z.string(), // set by the uploader; '' = no image
+  storyImageFileId: z.string(),
   // ---- Customer review images ----
   reviewImages: z
     .array(z.object({ imageUrl: z.string().min(1, 'Upload an image'), imageFileId: z.string() }))
@@ -332,6 +334,8 @@ export default function AdminSettingsPage() {
     storyTitleAr: settings.storyTitleAr ?? '',
     storyBodyEn: settings.storyBodyEn ?? '',
     storyBodyAr: settings.storyBodyAr ?? '',
+    storyImageUrl: settings.storyImageUrl ?? '',
+    storyImageFileId: settings.storyImageFileId ?? '',
     reviewImages: (settings.reviewImages ?? []).map((r) => ({
       imageUrl: r.imageUrl,
       imageFileId: r.imageFileId ?? '',
@@ -371,6 +375,11 @@ export default function AdminSettingsPage() {
   const locations = useFieldArray({ control, name: 'storeLocations' });
   const reviews = useFieldArray({ control, name: 'reviewImages' });
   const watchedReviews = useWatch({ control, name: 'reviewImages' }) ?? [];
+  const storyImageUrl = useWatch({ control, name: 'storyImageUrl' });
+  const setStoryImage = (url: string, fileId: string) => {
+    setValue('storyImageUrl', url, { shouldDirty: true });
+    setValue('storyImageFileId', fileId, { shouldDirty: true });
+  };
 
   // Store locations: watched for the per-card image preview and per-day
   // "closed" state (which drives whether the time inputs are enabled).
@@ -961,6 +970,30 @@ export default function AdminSettingsPage() {
               {(p) => <Textarea {...p} rows={8} dir="rtl" {...register('storyBodyAr')} disabled={busy} />}
             </Field>
           </div>
+
+          <p className="admin-form__hint" style={{ marginBlockStart: 'var(--space-4)' }}>
+            {t('Image (optional) — shown beside the text', 'صورة (اختياري) — تظهر بجانب النص')}
+          </p>
+          {storyImageUrl ? (
+            <div className="admin-variant-row" style={{ alignItems: 'center' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={storyImageUrl}
+                alt=""
+                style={{ width: 140, height: 90, objectFit: 'cover', borderRadius: 'var(--radius-sm)' }}
+              />
+              <Button type="button" variant="outline" onClick={() => setStoryImage('', '')} disabled={busy}>
+                {t('Remove image', 'إزالة الصورة')}
+              </Button>
+            </div>
+          ) : (
+            <ImageUploader
+              folder="/site/story"
+              locale={locale}
+              disabled={busy}
+              onUploaded={(img) => setStoryImage(img.url, img.fileId)}
+            />
+          )}
         </div>
 
         {/* ---- Customer reviews ---- */}

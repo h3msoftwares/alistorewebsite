@@ -1789,56 +1789,60 @@ a.home-card__name:hover { text-decoration: underline; }
   aspect-ratio: 3 / 4;
 }
 
-/* ---- Home image-grid zone: collections shown as a big square image
-   (showOnHomeAsImage), above the featured rows. One image per row on small
-   screens, two side-by-side on large screens, with padding around and between. ---- */
-.home-zone--image-grid { padding-block: 0; }
-.home-image-grid {
+/* ---- Home image banner: a collection shown as a full-bleed band
+   (showOnHomeAsImage) — a coloured panel (its accentColor) with the
+   description + CTA on one side, its photo on the other. Interleaved into the
+   featured rows by sortOrder, so it is not pinned to the top. Panel/photo sit
+   side by side on wide screens and stack (panel first) on narrow ones; in RTL
+   the grid mirrors so the panel is on the reading-start side. ---- */
+.home-banner {
   display: grid;
   grid-template-columns: 1fr;
-  justify-items: center;
-  gap: clamp(var(--space-3), 2vw, var(--space-5));
-  padding: clamp(var(--space-3), 2vw, var(--space-5));
+  align-items: stretch;
+  margin-block: clamp(var(--space-6), 6vw, var(--space-8));
+  overflow: hidden;
 }
 @media (min-width: 900px) {
-  .home-image-grid { grid-template-columns: repeat(2, 1fr); }
+  .home-banner { grid-template-columns: 1fr 1fr; }
 }
-.home-square {
+.home-banner__panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: clamp(var(--space-5), 5vw, var(--space-9)) var(--gutter);
+  background: var(--collection-accent, var(--color-secondary));
+  color: var(--collection-on-accent, #fff);
+}
+.home-banner__eyebrow {
+  margin: 0;
+  font-size: var(--fs-sm);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.home-banner__title {
+  margin: 0;
+  font-family: var(--collection-heading-font, var(--font-serif));
+  font-size: clamp(var(--fs-xl), 3.5vw, var(--fs-3xl));
+  line-height: var(--lh-sm);
+  color: inherit;
+}
+[lang='ar'] .home-banner__title { font-family: var(--font-arabic); }
+.home-banner__cta { align-self: flex-start; }
+.home-banner__media {
   position: relative;
   display: block;
-  width: 100%;
-  max-width: 34rem;
-  aspect-ratio: 1 / 1;
-  overflow: hidden;
-  background: var(--color-surface);
+  min-height: clamp(15rem, 42vw, 26rem);
+  background: var(--collection-accent-soft, var(--color-surface));
 }
-.home-square__img { position: absolute; inset: 0; display: block; }
-.home-square img { object-fit: cover; }
-.home-square__placeholder {
-  display: block;
-  width: 100%;
-  height: 100%;
+.home-banner__media img { object-fit: cover; }
+.home-banner__placeholder {
+  position: absolute;
+  inset: 0;
   background:
     linear-gradient(135deg, var(--color-surface) 0%, var(--collection-accent-soft, var(--color-accent-soft)) 120%);
 }
-/* Name link, pinned to the top reading-start corner, on a soft scrim so it
-   stays legible over any photo. */
-.home-square__name {
-  position: absolute;
-  inset-block-start: 0;
-  inset-inline-start: 0;
-  z-index: 1;
-  margin: clamp(var(--space-3), 2.5vw, var(--space-5));
-  padding: var(--space-2) var(--space-3);
-  background: var(--color-surface-raised);
-  color: var(--collection-accent, var(--color-text));
-  font-family: var(--collection-heading-font, var(--font-serif));
-  font-size: var(--fs-lg);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
-}
-[lang='ar'] .home-square__name { font-family: var(--font-arabic); }
-.home-square__name:hover { text-decoration: underline; }
 
 /* ============================================================
    ADMIN — nav shell, image uploader/gallery
@@ -3088,6 +3092,25 @@ a.home-card__name:hover { text-decoration: underline; }
   .whatsapp-bubble,
   .whatsapp-bubble:hover { transition: none; transform: none; }
 }
+
+/* ---- 5.14b "Our story" page: text, optionally beside an image ---- */
+.our-story { max-width: 44rem; }
+.our-story--with-image {
+  max-width: var(--container-max);
+  display: grid;
+  gap: clamp(var(--space-5), 4vw, var(--space-8));
+  align-items: start;
+}
+@media (min-width: 800px) {
+  .our-story--with-image { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); }
+  .our-story__media { position: sticky; top: var(--space-6); }
+}
+.our-story__media img {
+  display: block;
+  width: 100%;
+  border-radius: var(--radius-lg);
+}
+.our-story__text { max-width: none; }
 
 /* ---- 5.15 Page placeholder (empty routes until real content is built) ---- */
 .page-placeholder {

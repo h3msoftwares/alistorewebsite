@@ -78,6 +78,14 @@ enum DiscountStacking {
   OVERRIDE
 }
 
+// Built-in "smart" home-page rows — computed product lists the owner can turn
+// on and slot into the featured-row order without creating a real category.
+enum ShowcaseType {
+  BEST_SELLERS
+  NEW_ARRIVALS
+  ON_SALE
+}
+
 // ============ USERS / AUTH ============
 
 model User {
@@ -283,8 +291,14 @@ model Collection {
   showOnHomeAsImage Boolean   @default(false)
   sortOrder         Int       @default(0)
   // #rrggbb — the storefront derives the --collection-accent* CSS custom
-  // properties from this. null ⇒ the collection uses the default accent.
+  // properties from this. null ⇒ the collection uses the default accent. Also
+  // the background colour of the home-page image banner (showOnHomeAsImage).
   accentColor       String?
+  // Call-to-action label on the home-page image banner (showOnHomeAsImage).
+  // null / "" ⇒ a generic "Shop <name>". `descriptionEn`/`descriptionAr` fill
+  // the banner's copy.
+  homeImageCtaEn    String?
+  homeImageCtaAr    String?
   // Set when the owner archives the collection from the admin: hidden from
   // the storefront, kept in the DB, restorable. Permanent delete is only
   // allowed once archived (and empty of products).
@@ -819,12 +833,15 @@ model SiteSetting {
   homeMoreHeadingEn   String  @default("More to explore")
   homeMoreHeadingAr   String  @default("المزيد لاكتشافه")
 
-  // Optional "Our story" page. All four null / "" ⇒ the page and its footer
-  // link are hidden. Body is plain text; blank lines separate paragraphs.
-  storyTitleEn String?
-  storyTitleAr String?
-  storyBodyEn  String?
-  storyBodyAr  String?
+  // Optional "Our story" page. Title + body both null / "" in every language ⇒
+  // the page and its footer link are hidden. Body is plain text; blank lines
+  // separate paragraphs. An optional image sits beside the text.
+  storyTitleEn    String?
+  storyTitleAr    String?
+  storyBodyEn     String?
+  storyBodyAr     String?
+  storyImageUrl   String?
+  storyImageFileId String?
 
   // Footer links — null / "" ⇒ the link is hidden.
   instagramUrl        String?
@@ -850,6 +867,7 @@ model SiteSetting {
   deliveryRates     DeliveryRate[]
   storeLocations    StoreLocation[]
   reviewImages      ReviewImage[]
+  showcases         HomeShowcase[]
 
   @@map("sitesetting")
 }
@@ -868,6 +886,27 @@ model ReviewImage {
 
   @@index([settingID])
   @@map("reviewimage")
+}
+
+// One row per built-in smart home-page row (see ShowcaseType). Off by default;
+// when `isActive`, it renders as a horizontal product scroller slotted into the
+// featured-row list by `sortOrder` — the same ranking key featured collections
+// and categories use. `labelEn`/`labelAr` override the default heading.
+// Replace-all on settings update, like DeliveryRate.
+model HomeShowcase {
+  type      ShowcaseType
+  settingID Int          @default(1)
+  isActive  Boolean      @default(false)
+  sortOrder Int          @default(0)
+  labelEn   String?
+  labelAr   String?
+  lastEdit  DateTime     @default(now()) @updatedAt
+
+  setting SiteSetting @relation(fields: [settingID], references: [id], onDelete: Cascade)
+
+  @@id([type])
+  @@index([settingID])
+  @@map("homeshowcase")
 }
 
 // A physical store the customer can visit — the home page's "Visit us"

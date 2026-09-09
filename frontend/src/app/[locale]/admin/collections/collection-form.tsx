@@ -28,6 +28,10 @@ export const collectionFormSchema = z.object({
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'Must be a #rrggbb hex colour')
     .or(z.literal('')),
+  // Button label on the home-page image banner (showOnHomeAsImage). Blank ⇒ a
+  // generic "Shop <name>".
+  homeImageCtaEn: z.string().max(40),
+  homeImageCtaAr: z.string().max(40),
 });
 export type CollectionFormValues = z.infer<typeof collectionFormSchema>;
 
@@ -43,6 +47,8 @@ export const collectionFormDefaults: CollectionFormValues = {
   showOnHomeAsImage: false,
   sortOrder: 0,
   accentColor: '',
+  homeImageCtaEn: '',
+  homeImageCtaAr: '',
 };
 
 export function CollectionForm({
@@ -129,6 +135,23 @@ export function CollectionForm({
           {...register('showOnHomeAsImage')}
           disabled={busy}
         />
+      </div>
+
+      <p className="admin-form__hint">
+        {t(
+          'Image banner (when "Show on home as image" is on): the accent colour is the panel background, the English/Arabic description is its copy, and the button below links to the collection.',
+          'شريط الصورة (عند تفعيل "إظهار في الرئيسية كصورة"): اللون المميز هو خلفية اللوحة، والوصف بالإنجليزية/العربية هو نصّها، والزر أدناه يفتح المجموعة.'
+        )}
+      </p>
+      <div className="admin-form__row">
+        <Field label={t('Banner button (English)', 'زر الشريط (إنجليزي)')} error={errors.homeImageCtaEn?.message}>
+          {(p) => (
+            <Input {...p} placeholder={t('Shop the collection', 'تسوّق المجموعة')} {...register('homeImageCtaEn')} disabled={busy} />
+          )}
+        </Field>
+        <Field label={t('Banner button (Arabic)', 'زر الشريط (عربي)')} error={errors.homeImageCtaAr?.message}>
+          {(p) => <Input {...p} dir="rtl" {...register('homeImageCtaAr')} disabled={busy} />}
+        </Field>
       </div>
 
       {submitError && <Alert tone="danger">{submitError}</Alert>}

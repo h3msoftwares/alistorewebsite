@@ -1,12 +1,22 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { AdminNav } from '@/components/admin/admin-nav';
 import { useAuth } from '@/hooks/use-auth';
 import { requiredPermissionForPath, usePermissions } from '@/lib/rbac';
+
+// `false` on the server and on the hydration render, `true` afterwards. Auth
+// state is client-only (the boot refresh in StoreProvider resolves in an
+// effect), and this nested layout can hydrate *after* that effect has already
+// flipped the store off "loading" — so branching on `status` during hydration
+// would render a different tree than SSR did and trip a hydration mismatch.
+// Gate the resolved branches on this so the first client render always matches
+// the server's "checking access" skeleton, then flips once mounted.
+const subscribe = () => () => {};
+const useHydrated = () => useSyncExternalStore(subscribe, () => true, () => false);
 
 /**
  * Client-side auth guard for the whole /admin subtree.
@@ -29,13 +39,14 @@ import { requiredPermissionForPath, usePermissions } from '@/lib/rbac';
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { status, isAdmin } = useAuth();
   const { has } = usePermissions();
+  const hydrated = useHydrated();
   const router = useRouter();
   const params = useParams();
   const pathname = usePathname();
   const locale = (typeof params?.locale === 'string' ? params.locale : 'en') || 'en';
   const isAr = locale === 'ar';
 
-  const resolving = status === 'loading';
+  const resolving = !hydrated || status === 'loading';
 
   useEffect(() => {
     if (!resolving && !isAdmin) router.replace(`/${locale}`);

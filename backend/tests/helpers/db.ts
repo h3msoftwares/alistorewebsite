@@ -6,6 +6,7 @@ const TABLES = [
   'storehours',
   'storelocation',
   'reviewimage',
+  'homeshowcase',
   'announcementline',
   'deliveryrate',
   'sitesetting',

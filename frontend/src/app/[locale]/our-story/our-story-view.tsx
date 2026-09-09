@@ -16,10 +16,11 @@ function paragraphs(body: string): string[][] {
 
 /**
  * "Our story" — an optional content page filled in from
- * /admin/settings → Our story. Title + body per language; a language with no
- * body falls back to the other. With nothing written in either language the
- * page shows a short placeholder (and the footer link is hidden — see
- * site-footer.tsx), so a stray `/our-story` visit never 404s.
+ * /admin/settings → Our story. Title + body per language (a language with no
+ * body falls back to the other) and an optional image shown beside the text.
+ * With nothing written in either language the page shows a short placeholder
+ * (and the footer link is hidden — see site-footer.tsx), so a stray
+ * `/our-story` visit never 404s.
  */
 export function OurStoryView({ locale }: { locale: 'en' | 'ar' }) {
   const { data: settings } = useSettings();
@@ -36,11 +37,19 @@ export function OurStoryView({ locale }: { locale: 'en' | 'ar' }) {
   const title = ar
     ? settings?.storyTitleAr || settings?.storyTitleEn || ''
     : settings?.storyTitleEn || settings?.storyTitleAr || '';
+  const imageUrl = settings?.storyImageUrl?.trim() || null;
+  const heading = title || t('Our story', 'قصتنا');
 
   return (
-    <div className="container section" style={{ maxWidth: '44rem' }}>
-      <article className="prose" dir={ar ? 'rtl' : 'ltr'} style={{ maxWidth: 'none' }}>
-        <h1>{title || t('Our story', 'قصتنا')}</h1>
+    <div className={`container section our-story${imageUrl ? ' our-story--with-image' : ''}`}>
+      {imageUrl && (
+        <div className="our-story__media">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={imageUrl} alt={heading} loading="lazy" />
+        </div>
+      )}
+      <article className="prose our-story__text" dir={ar ? 'rtl' : 'ltr'}>
+        <h1>{heading}</h1>
         {body ? (
           paragraphs(body).map((lines, i) => (
             <p key={i}>

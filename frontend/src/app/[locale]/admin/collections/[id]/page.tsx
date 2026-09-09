@@ -47,6 +47,8 @@ export default function EditCollectionPage() {
           showOnHomeAsImage: values.showOnHomeAsImage,
           sortOrder: values.sortOrder,
           accentColor: values.accentColor ? values.accentColor : null,
+          homeImageCtaEn: values.homeImageCtaEn || null,
+          homeImageCtaAr: values.homeImageCtaAr || null,
         },
       });
     } catch (e) {
@@ -113,6 +115,8 @@ export default function EditCollectionPage() {
           showOnHomeAsImage: collection.showOnHomeAsImage,
           sortOrder: collection.sortOrder,
           accentColor: collection.accentColor ?? '',
+          homeImageCtaEn: collection.homeImageCtaEn ?? '',
+          homeImageCtaAr: collection.homeImageCtaAr ?? '',
         }}
         onSubmit={onSubmit}
         submitLabel={t('Save changes', 'حفظ التغييرات')}

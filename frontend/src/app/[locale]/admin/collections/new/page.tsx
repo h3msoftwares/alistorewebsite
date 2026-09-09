@@ -28,6 +28,8 @@ export default function NewCollectionPage() {
         showOnHomeAsImage: values.showOnHomeAsImage,
         sortOrder: values.sortOrder,
         accentColor: values.accentColor || undefined,
+        homeImageCtaEn: values.homeImageCtaEn || undefined,
+        homeImageCtaAr: values.homeImageCtaAr || undefined,
       });
       // Images can only be attached once the collection exists.
       router.push(`/${locale}/admin/collections/${created.id}`);

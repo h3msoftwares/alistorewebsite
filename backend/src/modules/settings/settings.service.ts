@@ -14,6 +14,7 @@ const settingsInclude = {
     include: { hours: { orderBy: { dayOfWeek: 'asc' as const } } },
   },
   reviewImages: { orderBy: { sortOrder: 'asc' as const } },
+  showcases: { orderBy: { sortOrder: 'asc' as const } },
   heroCtaCollection: { select: { id: true, slug: true, nameEn: true, nameAr: true } },
 };
 
@@ -60,6 +61,8 @@ const NULLABLE_FIELDS = [
   'storyTitleAr',
   'storyBodyEn',
   'storyBodyAr',
+  'storyImageUrl',
+  'storyImageFileId',
 ] as const;
 
 function scalarData(input: UpdateSettingsInput): Record<string, unknown> {
@@ -124,6 +127,15 @@ export async function updateSettings(input: UpdateSettingsInput) {
     );
     staleImageFileIds.push(...[...before].filter((id) => !after.has(id)));
   }
+  if (input.storyImageFileId !== undefined) {
+    const cur = await prisma.siteSetting.findUnique({
+      where: { id: SETTINGS_ID },
+      select: { storyImageFileId: true },
+    });
+    const before = cur?.storyImageFileId ?? null;
+    const after = orNull(input.storyImageFileId);
+    if (before && before !== after) staleImageFileIds.push(before);
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
     await tx.siteSetting.upsert({
@@ -173,6 +185,30 @@ export async function updateSettings(input: UpdateSettingsInput) {
             imageFileId: orNull(r.imageFileId),
             sortOrder: i,
           })),
+        });
+      }
+    }
+
+    if (input.showcases) {
+      // Upsert by type (the PK) — the 3 built-in rows always exist; types not
+      // sent are left untouched.
+      for (const s of input.showcases) {
+        await tx.homeShowcase.upsert({
+          where: { type: s.type },
+          create: {
+            type: s.type,
+            settingID: SETTINGS_ID,
+            isActive: s.isActive,
+            sortOrder: s.sortOrder,
+            labelEn: orNull(s.labelEn),
+            labelAr: orNull(s.labelAr),
+          },
+          update: {
+            isActive: s.isActive,
+            sortOrder: s.sortOrder,
+            labelEn: orNull(s.labelEn),
+            labelAr: orNull(s.labelAr),
+          },
         });
       }
     }

@@ -127,6 +127,10 @@ export async function listProducts(query: ListProductsQuery) {
     // cov.all ⇒ every product is discounted; no extra restriction needed.
   }
 
+  if (query.sort === 'best_selling') {
+    return bestSellingPage(where, query, discounts);
+  }
+
   const orderBy: Prisma.ProductOrderByWithRelationInput =
     query.sort === 'price_asc'
       ? { price: 'asc' }
@@ -148,6 +152,83 @@ export async function listProducts(query: ListProductsQuery) {
   return {
     items: items.map((p) => withPricing(p, discounts)),
     total,
+    page: query.page,
+    pageSize: query.pageSize,
+  };
+}
+
+// How far back "best sellers" looks, and how deep the ranking goes.
+const BEST_SELLING_WINDOW_DAYS = 90;
+const BEST_SELLING_MAX = 200;
+
+/**
+ * `sort=best_selling`: rank products by units sold in the last
+ * BEST_SELLING_WINDOW_DAYS (cancelled / returned orders don't count), keep the
+ * top BEST_SELLING_MAX, then page that list. With no qualifying sales it falls
+ * back to `sort=newest` so the row is never empty on a fresh store.
+ */
+async function bestSellingPage(
+  where: Prisma.ProductWhereInput,
+  query: ListProductsQuery,
+  discounts: Awaited<ReturnType<typeof activeDiscounts>>
+) {
+  const since = new Date(Date.now() - BEST_SELLING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const sold = await prisma.orderItem.groupBy({
+    by: ['variantID'],
+    where: { order: { dateCreated: { gte: since }, status: { notIn: ['CANCELLED', 'RETURNED'] } } },
+    _sum: { quantity: true },
+  });
+
+  const variants = sold.length
+    ? await prisma.productVariant.findMany({
+        where: { id: { in: sold.map((s) => s.variantID) } },
+        select: { id: true, productID: true },
+      })
+    : [];
+  const productForVariant = new Map(variants.map((v) => [v.id, v.productID]));
+  const units = new Map<string, number>();
+  for (const s of sold) {
+    const pid = productForVariant.get(s.variantID);
+    if (pid) units.set(pid, (units.get(pid) ?? 0) + (s._sum.quantity ?? 0));
+  }
+
+  const ranked = [...units.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => id)
+    .slice(0, BEST_SELLING_MAX);
+
+  if (ranked.length === 0) {
+    // No qualifying sales — behave like `sort=newest` (inline, not a recursive
+    // call, so the return type stays inferrable).
+    const [rows, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        orderBy: { dateCreated: 'desc' },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        include: productInclude,
+      }),
+      prisma.product.count({ where }),
+    ]);
+    return {
+      items: rows.map((p) => withPricing(p, discounts)),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
+  }
+
+  const rank = new Map(ranked.map((id, i) => [id, i]));
+  const rows = await prisma.product.findMany({
+    where: { ...where, id: { in: ranked } },
+    include: productInclude,
+  });
+  rows.sort((a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity));
+
+  const start = (query.page - 1) * query.pageSize;
+  return {
+    items: rows.slice(start, start + query.pageSize).map((p) => withPricing(p, discounts)),
+    total: rows.length,
     page: query.page,
     pageSize: query.pageSize,
   };

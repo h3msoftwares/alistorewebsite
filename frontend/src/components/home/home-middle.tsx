@@ -9,13 +9,16 @@ import {
 import { useSettings } from '@/hooks/use-settings';
 import { useReveal } from '@/hooks/use-reveal';
 import { CollectionRow } from './collection-row';
-import { CollectionSquare } from './collection-square';
+import { CollectionBanner } from './collection-banner';
 import { CategoryRow } from './category-row';
-import type { Category, Collection } from '@/lib/types';
+import { ShowcaseRow } from './showcase-row';
+import type { Category, Collection, HomeShowcase } from '@/lib/types';
 
 type FeaturedItem =
   | { kind: 'collection'; sortOrder: number; collection: Collection }
-  | { kind: 'category'; sortOrder: number; category: Category };
+  | { kind: 'category'; sortOrder: number; category: Category }
+  | { kind: 'imageCollection'; sortOrder: number; collection: Collection }
+  | { kind: 'showcase'; sortOrder: number; showcase: HomeShowcase };
 
 function RowSkeleton() {
   return (
@@ -34,13 +37,18 @@ function RowSkeleton() {
 
 /**
  * Home page middle section:
- *   Zone 1 — admin-featured collections + categories (Collection.showOnHome /
- *            Category.showOnHome), interleaved into one list by sortOrder as
- *            a shared ranking key. A featured collection renders its
- *            categories; a featured category renders its products.
+ *   Zone 1 — everything the owner has curated onto the home page, interleaved
+ *            into one list by `sortOrder` as a shared ranking key:
+ *              • featured collections (Collection.showOnHome) — a row of their
+ *                categories;
+ *              • featured categories (Category.showOnHome) — a row of their
+ *                products;
+ *              • image collections (Collection.showOnHomeAsImage) — a full-width
+ *                banner (coloured panel + CTA, and the photo);
+ *              • built-in smart rows (best sellers / new / on sale) that are
+ *                switched on.
  *   Zone 2 — every other (non-featured) collection, same row treatment —
- *            "the rest of the collections", so nothing the owner has built
- *            out is ever hidden, just deprioritized.
+ *            "the rest", so nothing is hidden, just deprioritized.
  */
 export function HomeMiddle({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
@@ -58,7 +66,13 @@ export function HomeMiddle({ locale }: { locale: string }) {
       ? 'المزيد لاكتشافه'
       : 'More to explore';
 
-  const zone1Pending = featuredCollections.isPending || featuredCategories.isPending;
+  const activeShowcases = (settings?.showcases ?? [])
+    .filter((s) => s.isActive)
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const zone1Pending =
+    featuredCollections.isPending || featuredCategories.isPending || imageCollections.isPending;
 
   const zone1: FeaturedItem[] = zone1Pending
     ? []
@@ -69,62 +83,71 @@ export function HomeMiddle({ locale }: { locale: string }) {
         ...(featuredCategories.data ?? []).map(
           (category): FeaturedItem => ({ kind: 'category', sortOrder: category.sortOrder, category })
         ),
+        ...(imageCollections.data ?? []).map(
+          (collection): FeaturedItem => ({
+            kind: 'imageCollection',
+            sortOrder: collection.sortOrder,
+            collection,
+          })
+        ),
+        ...activeShowcases.map(
+          (showcase): FeaturedItem => ({ kind: 'showcase', sortOrder: showcase.sortOrder, showcase })
+        ),
       ].sort((a, b) => a.sortOrder - b.sortOrder);
 
   const hasZone1 = zone1Pending || zone1.length > 0;
   const otherPending = otherCollections.isPending;
   const others = otherCollections.data ?? [];
-  const imagePending = imageCollections.isPending;
-  const images = imageCollections.data ?? [];
-  const hasImageGrid = imagePending || images.length > 0;
 
-  if (
-    !zone1Pending &&
-    !otherPending &&
-    !imagePending &&
-    zone1.length === 0 &&
-    others.length === 0 &&
-    images.length === 0
-  )
-    return null;
+  if (!zone1Pending && !otherPending && zone1.length === 0 && others.length === 0) return null;
 
   return (
     <div className="home-middle">
-      {hasImageGrid && (
-        <div className="home-zone home-zone--image-grid">
-          <div className="home-image-grid">
-            {imagePending
-              ? Array.from({ length: 2 }).map((_, i) => (
-                  <span key={i} className="home-square skeleton" aria-hidden />
-                ))
-              : images.map((collection, i) => (
-                  <CollectionSquare key={collection.id} locale={locale} collection={collection} delayMs={i * 80} />
-                ))}
-          </div>
-        </div>
-      )}
-
       {hasZone1 && (
         <div className="home-zone home-zone--featured">
           {zone1Pending
             ? Array.from({ length: 2 }).map((_, i) => <RowSkeleton key={i} />)
-            : zone1.map((item, i) =>
-                item.kind === 'collection' ? (
-                  <CollectionRow
-                    key={`col-${item.collection.id}`}
+            : zone1.map((item, i) => {
+                const delayMs = Math.min(i, 3) * 80;
+                if (item.kind === 'collection') {
+                  return (
+                    <CollectionRow
+                      key={`col-${item.collection.id}`}
+                      locale={locale}
+                      collection={item.collection}
+                      delayMs={delayMs}
+                    />
+                  );
+                }
+                if (item.kind === 'category') {
+                  return (
+                    <CategoryRow
+                      key={`cat-${item.category.id}`}
+                      locale={locale}
+                      category={item.category}
+                      delayMs={delayMs}
+                    />
+                  );
+                }
+                if (item.kind === 'imageCollection') {
+                  return (
+                    <CollectionBanner
+                      key={`img-${item.collection.id}`}
+                      locale={locale}
+                      collection={item.collection}
+                      delayMs={delayMs}
+                    />
+                  );
+                }
+                return (
+                  <ShowcaseRow
+                    key={`show-${item.showcase.type}`}
                     locale={locale}
-                    collection={item.collection}
-                    delayMs={Math.min(i, 3) * 80}
+                    showcase={item.showcase}
+                    delayMs={delayMs}
                   />
-                ) : (
-                  <CategoryRow
-                    key={`cat-${item.category.id}`}
-                    locale={locale}
-                    category={item.category}
-                    delayMs={Math.min(i, 3) * 80}
-                  />
-                )
-              )}
+                );
+              })}
         </div>
       )}
 
