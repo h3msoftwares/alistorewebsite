@@ -43,8 +43,8 @@ export const createCategorySchema = z.object({
   // Optional + nullable: a category can stand alone (no collection). Passing
   // null on update detaches an existing category from its collection.
   collectionId: z.string().uuid().nullish(),
-  nameEn: z.string().min(1),
-  nameAr: z.string().min(1),
+  nameEn: z.string().trim().min(1).max(200),
+  nameAr: z.string().trim().min(1).max(200),
   slug: z
     .string()
     .min(1)
@@ -56,7 +56,7 @@ export const createCategorySchema = z.object({
   // products) on the home page. Independent of its parent collection's own
   // showOnHome.
   showOnHome: z.boolean().default(false),
-  sortOrder: z.number().int().nonnegative().default(0),
+  sortOrder: z.number().int().nonnegative().max(100000).default(0),
 });
 
 // All fields optional on update — including collectionId, which is how an

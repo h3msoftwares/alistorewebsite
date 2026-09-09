@@ -1,8 +1,13 @@
 import { z } from 'zod';
 
+// A single cart line never legitimately holds hundreds of units; the cap
+// rejects an absurd value at validation rather than leaning on the stock
+// check further downstream.
+const cartQuantity = z.number().int().min(1).max(999);
+
 export const addCartItemSchema = z.object({
   variantId: z.string().uuid(),
-  quantity: z.number().int().min(1).default(1),
+  quantity: cartQuantity.default(1),
 });
 
 // Both optional, but at least one must be present. `variantId` repoints the
@@ -10,7 +15,7 @@ export const addCartItemSchema = z.object({
 // `quantity` alongside it keeps the line's current quantity.
 export const updateCartItemSchema = z
   .object({
-    quantity: z.number().int().min(1).optional(),
+    quantity: cartQuantity.optional(),
     variantId: z.string().uuid().optional(),
   })
   .refine((data) => data.quantity !== undefined || data.variantId !== undefined, {
