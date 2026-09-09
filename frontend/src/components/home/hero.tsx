@@ -3,6 +3,8 @@
 import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { ArrowRight } from 'lucide-react';
+import { Icon } from '@/components/ui';
 import { useSettings } from '@/hooks/use-settings';
 import { useNavCollections } from '@/hooks/use-catalog';
 import { useReveal } from '@/hooks/use-reveal';
@@ -112,7 +114,10 @@ export function Hero({ locale }: { locale: string }) {
         <div ref={asideRef} className={`hero__aside ${asideClass}`} style={asideStyle}>
           <p className="hero__lede">{lede}</p>
           <Link href={`/${locale}/${ctaSlug}`} className="btn btn--primary btn--lg hero__cta">
-            {ctaLabel}
+            <span>{ctaLabel}</span>
+            <span className="hero__cta-arrow" aria-hidden>
+              <Icon as={ArrowRight} size={18} flipRtl />
+            </span>
           </Link>
         </div>
       </div>

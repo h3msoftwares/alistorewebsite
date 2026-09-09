@@ -419,6 +419,13 @@ model Product {
   dateCreated    DateTime      @default(now())
   lastEdit       DateTime      @default(now()) @updatedAt
   deletedAt      DateTime?
+  // Generated, READ-ONLY search haystack — Postgres computes it (see migration
+  // 20260909180000_product_search_text): lower(nameEn + nameAr) plus a
+  // punctuation/whitespace-stripped copy so "tshirt" matches "T-Shirt". It is
+  // NOT NULL in the DB; typed optional here only so Prisma leaves it out of
+  // every INSERT/UPDATE (a generated column rejects an explicit value). Never
+  // write it from app code.
+  searchText     String?
 
   category   Category         @relation(fields: [categoryID], references: [id])
   collection Collection?      @relation(fields: [collectionID], references: [id], onDelete: SetNull)

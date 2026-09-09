@@ -1,18 +1,26 @@
 'use client';
 
-import { useEffect, useState, useSyncExternalStore, type KeyboardEvent } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type KeyboardEvent,
+} from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Clock, Search } from 'lucide-react';
+import { Clock, Search, Sparkles } from 'lucide-react';
 import { Drawer } from '@/components/ui/drawer';
 import { CatalogImage, Icon, PriceTag } from '@/components/ui';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import { useProducts } from '@/hooks/use-catalog';
+import { useNavCollections, useProducts } from '@/hooks/use-catalog';
 
 const MIN_CHARS = 2;
 const MAX_RESULTS = 8;
 const RECENT_KEY = 'alistore:recent-searches';
 const RECENT_MAX = 6;
+const SUGGEST_MAX = 6;
+const IDLE_MAX = 10;
 
 // `false` on the server / first client render, `true` after mount — so reading
 // localStorage for recent searches can't cause a hydration mismatch, without a
@@ -59,11 +67,12 @@ const optionId = (i: number) => `search-option-${i}`;
 /**
  * Header search: type-ahead over the catalogue. The input is debounced and,
  * once it has at least MIN_CHARS, drives `GET /api/products?search=…` via
- * `useProducts`. Below MIN_CHARS it offers the shopper's recent searches as
- * suggestions. Either list is keyboard-navigable from the input — ↑/↓ move a
- * highlight (ARIA combobox / `aria-activedescendant`, focus stays in the box),
- * Enter opens the highlighted product or re-runs the highlighted search, Home/
- * End jump to the ends. Lives inside the shared `Drawer` (focus-trapped, Esc /
+ * `useProducts`. Below MIN_CHARS it offers suggestions — the shopper's recent
+ * searches, then "Popular searches" (the nav collections) to fill an empty
+ * box. Either list is keyboard-navigable from the input — ↑/↓ move a highlight
+ * (ARIA combobox / `aria-activedescendant`, focus stays in the box), Enter
+ * opens the highlighted product or fills the highlighted suggestion, Home/End
+ * jump to the ends. Lives inside the shared `Drawer` (focus-trapped, Esc /
  * backdrop / X to close).
  */
 export function SearchOverlay({
@@ -97,6 +106,21 @@ export function SearchOverlay({
     setRecent(readRecent());
   }
 
+  // "Popular searches" — the nav collections (already cached: the root layout
+  // prefetches them). Names double as good search terms.
+  const { data: navCollections } = useNavCollections();
+  const recentLower = new Set(recent.map((r) => r.toLowerCase()));
+  const suggestions = (navCollections ?? [])
+    .map((c) => (isAr ? c.nameAr : c.nameEn).trim())
+    .filter((name) => name && !recentLower.has(name.toLowerCase()))
+    .slice(0, SUGGEST_MAX);
+
+  // The single navigable list shown while the box is (near-)empty.
+  const idleOptions: { label: string; kind: 'recent' | 'suggestion' }[] = [
+    ...recent.map((label) => ({ label, kind: 'recent' as const })),
+    ...suggestions.map((label) => ({ label, kind: 'suggestion' as const })),
+  ].slice(0, IDLE_MAX);
+
   // keepPreviousData:false — a type-ahead must never show the previous query's
   // hits under a new search term, nor keep them after the new query resolves
   // to fewer / zero.
@@ -108,11 +132,11 @@ export function SearchOverlay({
   // What to render. `data` is only trusted once the debounced query has caught
   // up with what's typed (`query === rawQuery`) — otherwise we're mid-debounce
   // and whatever `data` holds is for an older term.
-  type Phase = 'idle' | 'recent' | 'searching' | 'error' | 'empty' | 'results';
+  type Phase = 'idle' | 'suggest' | 'searching' | 'error' | 'empty' | 'results';
   const settled = wantsSearch && query === rawQuery && queryLongEnough && !isError && data !== undefined;
   const phase: Phase = !wantsSearch
-    ? recent.length > 0
-      ? 'recent'
+    ? idleOptions.length > 0
+      ? 'suggest'
       : 'idle'
     : query === rawQuery && isError
       ? 'error'
@@ -125,9 +149,9 @@ export function SearchOverlay({
   const items = phase === 'results' && data ? data.items : [];
   const extra = phase === 'results' && data ? data.total - data.items.length : 0;
 
-  const mode: 'results' | 'recent' | 'none' =
-    phase === 'results' ? 'results' : phase === 'recent' ? 'recent' : 'none';
-  const navLen = mode === 'results' ? items.length : mode === 'recent' ? recent.length : 0;
+  const mode: 'results' | 'suggest' | 'none' =
+    phase === 'results' ? 'results' : phase === 'suggest' ? 'suggest' : 'none';
+  const navLen = mode === 'results' ? items.length : mode === 'suggest' ? idleOptions.length : 0;
 
   // Clear the box each time the overlay closes, so reopening starts fresh —
   // and shows recent-search suggestions rather than the last result set.
@@ -139,7 +163,9 @@ export function SearchOverlay({
 
   // Reset the highlight whenever the navigable list changes (new query, results
   // arrived, overlay reopened) — adjust-during-render, not an effect.
-  const navSig = `${open}|${phase}|${rawQuery}|${items.map((p) => p.id).join(',')}|${recent.join(',')}`;
+  const navSig = `${open}|${phase}|${rawQuery}|${items.map((p) => p.id).join(',')}|${idleOptions
+    .map((o) => `${o.kind}:${o.label}`)
+    .join(',')}`;
   const [sig, setSig] = useState(navSig);
   const [activeIndex, setActiveIndex] = useState(-1);
   if (sig !== navSig) {
@@ -178,8 +204,8 @@ export function SearchOverlay({
       setActiveIndex(navLen - 1);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (mode === 'recent' && activeIndex >= 0) {
-        setTerm(recent[activeIndex]);
+      if (mode === 'suggest' && activeIndex >= 0) {
+        setTerm(idleOptions[activeIndex].label);
       } else if (mode === 'results') {
         // A highlighted result, or — with nothing highlighted — the top hit.
         const target = activeIndex >= 0 ? items[activeIndex] : items[0];
@@ -219,41 +245,54 @@ export function SearchOverlay({
         />
       </form>
 
-      {mode === 'recent' && (
+      {mode === 'suggest' && (
         <div>
-          <div className="search-overlay__recent-head">
-            <span className="search-overlay__hint" style={{ margin: 0 }}>
-              {t('Recent searches', 'عمليات البحث الأخيرة')}
-            </span>
-            <button
-              type="button"
-              className="search-overlay__clear"
-              onClick={() => {
-                clearRecent();
-                setRecent([]);
-              }}
-            >
-              {t('Clear', 'مسح')}
-            </button>
-          </div>
+          {recent.length > 0 && (
+            <div className="search-overlay__recent-head">
+              <span className="search-overlay__hint" style={{ margin: 0 }}>
+                {t('Recent searches', 'عمليات البحث الأخيرة')}
+              </span>
+              <button
+                type="button"
+                className="search-overlay__clear"
+                onClick={() => {
+                  clearRecent();
+                  setRecent([]);
+                }}
+              >
+                {t('Clear', 'مسح')}
+              </button>
+            </div>
+          )}
           <ul id={listboxId} className="search-overlay__recent" role="listbox">
-            {recent.map((r, i) => (
-              <li key={r} role="presentation">
-                <button
-                  type="button"
-                  id={optionId(i)}
-                  role="option"
-                  aria-selected={i === activeIndex}
-                  data-active={i === activeIndex || undefined}
-                  className="search-overlay__recent-item"
-                  onMouseMove={() => setActiveIndex(i)}
-                  onClick={() => setTerm(r)}
-                >
-                  <Icon as={Clock} size={14} />
-                  <span>{r}</span>
-                </button>
-              </li>
-            ))}
+            {idleOptions.map((o, i) => {
+              const startsSuggestions =
+                o.kind === 'suggestion' && (i === 0 || idleOptions[i - 1].kind !== 'suggestion');
+              return (
+                <Fragment key={`${o.kind}:${o.label}`}>
+                  {startsSuggestions && (
+                    <li role="presentation" className="search-overlay__group">
+                      {t('Popular searches', 'عمليات بحث شائعة')}
+                    </li>
+                  )}
+                  <li role="presentation">
+                    <button
+                      type="button"
+                      id={optionId(i)}
+                      role="option"
+                      aria-selected={i === activeIndex}
+                      data-active={i === activeIndex || undefined}
+                      className="search-overlay__recent-item"
+                      onMouseMove={() => setActiveIndex(i)}
+                      onClick={() => setTerm(o.label)}
+                    >
+                      <Icon as={o.kind === 'recent' ? Clock : Sparkles} size={14} />
+                      <span>{o.label}</span>
+                    </button>
+                  </li>
+                </Fragment>
+              );
+            })}
           </ul>
         </div>
       )}

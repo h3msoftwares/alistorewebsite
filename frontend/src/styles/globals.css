@@ -867,6 +867,14 @@ main > .container.section:first-child {
 .search-overlay__recent-item svg { color: var(--color-text-muted); flex-shrink: 0; }
 .search-overlay__recent-item:hover,
 .search-overlay__recent-item[data-active] { background: var(--color-surface-sunken); }
+.search-overlay__group {
+  margin: var(--space-3) 0 var(--space-1);
+  padding: 0 var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+.search-overlay__recent-head + .search-overlay__recent .search-overlay__group:first-child,
+.search-overlay__recent > .search-overlay__group:first-child { margin-top: var(--space-2); }
 
 .drawer__divider {
   border: 0;
@@ -938,6 +946,34 @@ main > .container.section:first-child {
 }
 .hero__cta { text-decoration: none; align-self: flex-end; }
 [lang='ar'] .hero__cta { align-self: flex-start; }
+
+/* Discover CTA arrow: a gentle idle nudge toward the reading direction that
+   turns into a firmer step on hover / focus. `--dir` flips the travel in RTL
+   (the glyph itself is mirrored by `flipRtl` on the inner <Icon>). */
+.hero__cta-arrow {
+  display: inline-flex;
+  --dir: 1;
+}
+[dir='rtl'] .hero__cta-arrow { --dir: -1; }
+@media (prefers-reduced-motion: no-preference) {
+  .hero__cta-arrow { animation: cta-arrow-nudge 1.9s ease-in-out infinite; }
+  .hero__cta:hover .hero__cta-arrow,
+  .hero__cta:focus-visible .hero__cta-arrow {
+    animation: none;
+    transform: translateX(calc(4px * var(--dir)));
+    transition: transform 0.2s var(--drawer-ease, ease);
+  }
+}
+@keyframes cta-arrow-nudge {
+  0%,
+  55%,
+  100% {
+    transform: translateX(0);
+  }
+  78% {
+    transform: translateX(calc(3px * var(--dir)));
+  }
+}
 
 /* Illustration — transparent PNG, so it sits straight on the band with no
    frame. Bottom-anchored: Ali's feet land on the fold, no gap beneath. */
@@ -1055,6 +1091,13 @@ main > .container.section:first-child {
 }
 .home-row__track:active { cursor: grabbing; }
 .home-row__track::-webkit-scrollbar { display: none; }
+/* Kill the browser's native image / link drag inside the track so a
+   click-drag over a photo scrolls the row instead of peeling off a ghost
+   image (paired with the pointer capture in horizontal-scroller.tsx). */
+.home-row__track :where(img, a) {
+  -webkit-user-drag: none;
+  user-select: none;
+}
 
 .home-row__track > * {
   flex: 0 0 auto;
@@ -3243,6 +3286,32 @@ a.home-card__name:hover { text-decoration: underline; }
     opacity 0.6s var(--drawer-ease, ease),
     transform 0.6s var(--drawer-ease, ease);
   will-change: opacity, transform;
+}
+
+/* Staggered entrance for the tiles inside a home row (categories / products)
+   as the row reveals — each card fades + rises just after the one before it. */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal .home-row__track > * { opacity: 0; }
+  .reveal.is-visible .home-row__track > * {
+    animation: tile-reveal 0.5s var(--drawer-ease, ease) both;
+  }
+  .reveal.is-visible .home-row__track > *:nth-child(1) { animation-delay: 0.06s; }
+  .reveal.is-visible .home-row__track > *:nth-child(2) { animation-delay: 0.11s; }
+  .reveal.is-visible .home-row__track > *:nth-child(3) { animation-delay: 0.16s; }
+  .reveal.is-visible .home-row__track > *:nth-child(4) { animation-delay: 0.21s; }
+  .reveal.is-visible .home-row__track > *:nth-child(5) { animation-delay: 0.26s; }
+  .reveal.is-visible .home-row__track > *:nth-child(6) { animation-delay: 0.31s; }
+  .reveal.is-visible .home-row__track > *:nth-child(n + 7) { animation-delay: 0.36s; }
+}
+@keyframes tile-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* This reveal is an explicit design choice, so keep a short, plain fade even

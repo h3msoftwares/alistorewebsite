@@ -54,8 +54,12 @@ function withPricing<T extends Priced>(p: T, discounts: DiscountCandidate[] = []
   const priceFor = (base: Prisma.Decimal | number) =>
     pricedWithDiscount(base, p.saleType, p.saleValue, picked);
   const onSaleFor = (base: Prisma.Decimal | number) => priceFor(base) < round2(toNumber(base));
+  // `searchText` is a DB-generated haystack for search only — never part of the
+  // API shape (it's just nameEn+nameAr normalized, already on the wire).
+  const rest = { ...p } as T & { searchText?: string };
+  delete rest.searchText;
   return {
-    ...p,
+    ...rest,
     effectivePrice: priceFor(p.price),
     onSale: onSaleFor(p.price),
     discount: picked ? { type: picked.type, value: picked.value, stacking: picked.stacking } : null,
@@ -64,6 +68,98 @@ function withPricing<T extends Priced>(p: T, discounts: DiscountCandidate[] = []
       return { ...v, effectivePrice: priceFor(base), onSale: onSaleFor(base) };
     }),
   };
+}
+
+// Apparel synonyms so search works "by meaning" without an ML layer: when a
+// token (or its singular stem) is a key here, the listed words match too.
+// Deliberately small and clothing-specific; pairs are listed both directions.
+const SEARCH_SYNONYMS: Record<string, string[]> = {
+  tee: ['tshirt', 'shirt'],
+  tshirt: ['tee', 'shirt'],
+  shirt: ['tshirt', 'tee'],
+  top: ['tshirt', 'blouse'],
+  trouser: ['pants', 'trousers'],
+  trousers: ['pants'],
+  pants: ['trousers'],
+  short: ['shorts'],
+  jumper: ['sweater', 'pullover'],
+  sweater: ['jumper', 'pullover'],
+  pullover: ['sweater', 'jumper'],
+  hoodie: ['hooded', 'sweatshirt'],
+  sweatshirt: ['hoodie'],
+  sneaker: ['shoe', 'trainer'],
+  sneakers: ['shoes', 'trainers'],
+  trainer: ['sneaker', 'shoe'],
+  trainers: ['sneakers', 'shoes'],
+  frock: ['dress'],
+  gown: ['dress'],
+  jean: ['denim'],
+  jeans: ['denim'],
+  denim: ['jeans'],
+  cap: ['hat'],
+  hat: ['cap'],
+  coat: ['jacket'],
+  jacket: ['coat'],
+  kid: ['child', 'boy', 'girl'],
+  kids: ['children', 'boys', 'girls'],
+  // cross-language hits people actually type into an EN/AR store
+  قميص: ['shirt', 'tshirt'],
+  تيشيرت: ['tshirt', 'tee', 'shirt'],
+  فستان: ['dress'],
+  بنطلون: ['pants', 'trousers'],
+  حذاء: ['shoes'],
+  جاكيت: ['jacket', 'coat'],
+};
+
+// Naive English de-pluralization — enough to make "shirts" find "shirt" and
+// "boxes" find "box" without pulling in a stemmer. Leaves short words and
+// "…ss" (dress, glass) alone.
+function singular(w: string): string {
+  if (w.length <= 3) return w;
+  if (w.endsWith('ies')) return w.slice(0, -3) + 'y';
+  if (w.endsWith('es') && !w.endsWith('sses')) return w.slice(0, -2);
+  if (w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1);
+  return w;
+}
+
+const NON_WORD = /[^\p{L}\p{N}]+/gu;
+
+/**
+ * Turn a raw search string into a Prisma filter over the generated `searchText`
+ * column (see migration 20260909180000). Matching is lenient by design:
+ *  - the whole phrase and a punctuation-stripped form are tried as substrings,
+ *    so "t-shirt", "tshirt" and "t shirt" all land on the same products;
+ *  - otherwise every word must appear (AND), each satisfied by the word itself,
+ *    its singular stem, or an apparel synonym — so "tees" finds "T-Shirt".
+ * Returns `null` when the string has nothing usable to match on.
+ */
+function buildSearchFilter(raw: string): Prisma.ProductWhereInput | null {
+  const q = raw.trim().toLowerCase();
+  if (!q) return null;
+
+  const collapsed = q.replace(NON_WORD, ''); // "t-shirt" -> "tshirt"
+  const tokens = q.split(NON_WORD).filter((t) => t.length >= 2);
+
+  const like = (s: string): Prisma.ProductWhereInput => ({
+    searchText: { contains: s, mode: 'insensitive' },
+  });
+  const formsFor = (tok: string): string[] => {
+    const forms = new Set<string>([tok, singular(tok)]);
+    for (const syn of SEARCH_SYNONYMS[tok] ?? SEARCH_SYNONYMS[singular(tok)] ?? []) forms.add(syn);
+    return [...forms].filter((f) => f.length >= 2);
+  };
+
+  const or: Prisma.ProductWhereInput[] = [like(q)];
+  if (collapsed && collapsed !== q) or.push(like(collapsed));
+  if (collapsed) {
+    const stem = singular(collapsed);
+    if (stem !== collapsed) or.push(like(stem));
+  }
+  if (tokens.length) {
+    or.push({ AND: tokens.map((tok) => ({ OR: formsFor(tok).map(like) })) });
+  }
+
+  return { OR: or };
 }
 
 // `active` = live products; `archived` = soft-deleted only; `all` = both.
@@ -81,14 +177,7 @@ export async function listProducts(query: ListProductsQuery) {
     ...productStatusWhere(query),
     ...(query.collectionId ? { collectionID: query.collectionId } : {}),
     ...(query.categoryId ? { categoryID: query.categoryId } : {}),
-    ...(query.search
-      ? {
-          OR: [
-            { nameEn: { contains: query.search, mode: 'insensitive' } },
-            { nameAr: { contains: query.search, mode: 'insensitive' } },
-          ],
-        }
-      : {}),
+    ...(query.search ? (buildSearchFilter(query.search) ?? {}) : {}),
     ...(query.minPrice || query.maxPrice
       ? {
           price: {

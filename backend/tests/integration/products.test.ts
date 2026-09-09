@@ -189,6 +189,40 @@ describe('Products API', () => {
       const res = await request(app).get('/api/products?search=');
       expect(res.body.total).toBe(3);
     });
+
+    it('ignores punctuation and spacing: "tshirt" / "t shirt" find "T-Shirt"', async () => {
+      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Classic T-Shirt', nameAr: 'تيشيرت كلاسيكي' } });
+      for (const term of ['tshirt', 't-shirt', 't shirt', 'T-SHIRT']) {
+        expect(names(await request(app).get(`/api/products?search=${encodeURIComponent(term)}`))).toEqual(
+          ['Classic T-Shirt'],
+        );
+      }
+    });
+
+    it('matches across singular/plural ("tshirts" → "T-Shirt", "boxer" → "…Boxer 3-Pack")', async () => {
+      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Classic T-Shirt', nameAr: 'تيشيرت' } });
+      expect(names(await request(app).get('/api/products?search=tshirts'))).toEqual(['Classic T-Shirt']);
+      expect(names(await request(app).get('/api/products?search=boxers'))).toEqual(['Cotton Boxer 3-Pack']);
+    });
+
+    it('matches "by meaning" via apparel synonyms ("tee" → "T-Shirt", "pants" → "Trousers")', async () => {
+      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Classic T-Shirt', nameAr: 'تيشيرت' } });
+      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Chino Trousers', nameAr: 'بنطلون تشينو' } });
+      expect(names(await request(app).get('/api/products?search=tee'))).toEqual(['Classic T-Shirt']);
+      expect(names(await request(app).get('/api/products?search=pants'))).toEqual(['Chino Trousers']);
+    });
+
+    it('still narrows on every word — "red hoodie" excludes a blue one', async () => {
+      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Red Hoodie', nameAr: 'هودي أحمر' } });
+      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Blue Hoodie', nameAr: 'هودي أزرق' } });
+      expect(names(await request(app).get('/api/products?search=red%20hoodie'))).toEqual(['Red Hoodie']);
+    });
+
+    it('does not leak the internal searchText field in the response', async () => {
+      const res = await request(app).get('/api/products?search=satin');
+      expect(res.body.items.length).toBeGreaterThan(0);
+      for (const item of res.body.items) expect(item).not.toHaveProperty('searchText');
+    });
   });
 
   describe('GET /api/products/:id', () => {

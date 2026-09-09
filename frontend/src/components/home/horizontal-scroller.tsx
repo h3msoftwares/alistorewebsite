@@ -1,13 +1,24 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Icon } from '@/components/ui';
 
-// Drag-to-scroll is mouse-only (React's MouseEvent, not PointerEvent) —
-// touch already gets native, momentum-based scrolling from `overflow-x:
-// auto`, which is smoother than anything a manual JS drag would produce.
+// Drag-to-scroll is mouse / pen only — touch already gets native, momentum-
+// based scrolling from `overflow-x: auto`, which is smoother than anything a
+// manual JS drag would produce. Once a real drag starts we take a pointer
+// capture, so moving over an <img> or a tile's <Link> can't hand the drag off
+// to the browser's own image/link drag (the old bug: the scroll would stick
+// the moment the cursor crossed a photo).
 const DRAG_THRESHOLD_PX = 4;
 
 /**
@@ -76,32 +87,57 @@ export function HorizontalScroller({
     el.scrollBy({ left: step, behavior: 'smooth' });
   };
 
-  // Mouse click-and-drag scrolling. `moved` tracks whether the pointer
+  // Mouse / pen click-and-drag scrolling. `moved` tracks whether the pointer
   // travelled far enough to count as a drag rather than a click, so a real
   // drag doesn't also fire the tile's <Link> navigation underneath it.
-  const drag = useRef({ active: false, startX: 0, startScroll: 0, moved: false });
+  const drag = useRef({ active: false, startX: 0, startScroll: 0, moved: false, pointerId: -1 });
 
-  const onMouseDown = (e: MouseEvent<HTMLDivElement>) => {
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     const el = trackRef.current;
-    if (!el || e.button !== 0) return;
-    drag.current = { active: true, startX: e.clientX, startScroll: el.scrollLeft, moved: false };
+    // Touch keeps native momentum scrolling — only hijack mouse / pen.
+    if (!el || e.button !== 0 || (e.pointerType !== 'mouse' && e.pointerType !== 'pen')) return;
+    drag.current = {
+      active: true,
+      startX: e.clientX,
+      startScroll: el.scrollLeft,
+      moved: false,
+      pointerId: e.pointerId,
+    };
   };
-  const onMouseMove = (e: MouseEvent<HTMLDivElement>) => {
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     const el = trackRef.current;
     const d = drag.current;
     if (!d.active || !el) return;
     const delta = e.clientX - d.startX;
-    if (Math.abs(delta) > DRAG_THRESHOLD_PX) d.moved = true;
-    if (!d.moved) return;
-    // Content should track the cursor 1:1. In LTR that means scrollLeft
-    // moves opposite the drag (drag right → scrollLeft decreases); RTL's
-    // negative-range scrollLeft convention flips that — same sign flip as
-    // the arrow buttons' scrollBy (see the RTL note on the component).
+    if (!d.moved) {
+      if (Math.abs(delta) <= DRAG_THRESHOLD_PX) return;
+      d.moved = true;
+      // From here the track owns the pointer: every move / up lands on it even
+      // over a photo, and the browser never starts its own image / link drag.
+      try {
+        el.setPointerCapture(d.pointerId);
+      } catch {
+        /* capture unsupported / pointer already gone */
+      }
+    }
+    // Content tracks the cursor 1:1. In LTR that means scrollLeft moves
+    // opposite the drag; RTL's negative-range scrollLeft convention flips it —
+    // same sign flip as the arrow buttons (see the RTL note on the component).
     const isRtl = getComputedStyle(el).direction === 'rtl';
     el.scrollLeft = d.startScroll + (isRtl ? delta : -delta);
   };
   const endDrag = () => {
-    drag.current.active = false;
+    const d = drag.current;
+    if (d.active && d.pointerId >= 0) {
+      try {
+        trackRef.current?.releasePointerCapture(d.pointerId);
+      } catch {
+        /* already released */
+      }
+    }
+    d.active = false;
+    d.pointerId = -1;
+    // `moved` is left set until onClickCapture consumes the trailing click.
   };
   // Capture phase: swallow the click that would otherwise follow a drag,
   // before it reaches a tile's <Link>. A plain click (no real movement)
@@ -142,10 +178,10 @@ export function HorizontalScroller({
             className="home-row__track"
             ref={trackRef}
             onScroll={updateBounds}
-            onMouseDown={onMouseDown}
-            onMouseMove={onMouseMove}
-            onMouseUp={endDrag}
-            onMouseLeave={endDrag}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
             onClickCapture={onClickCapture}
             onDragStart={(e) => e.preventDefault()}
           >

@@ -24,7 +24,11 @@ vi.mock('@/lib/api', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/api')>();
   return {
     ...actual,
-    catalogApi: { ...actual.catalogApi, listProducts: vi.fn() },
+    catalogApi: {
+      ...actual.catalogApi,
+      listProducts: vi.fn(),
+      listCollections: vi.fn().mockResolvedValue([]),
+    },
   };
 });
 
@@ -214,6 +218,43 @@ describe('<SearchOverlay> — recent-search suggestions', () => {
     await user.click(await screen.findByRole('button', { name: 'Clear' }));
     expect(screen.queryByText('Recent searches')).not.toBeInTheDocument();
     expect(window.localStorage.getItem(RECENT_KEY)).toBeNull();
+  });
+});
+
+describe('<SearchOverlay> — popular-search suggestions', () => {
+  const navCollections = [
+    { id: 'w', slug: 'women', nameEn: 'Women', nameAr: 'نساء', showInNav: true, sortOrder: 1 },
+    { id: 'm', slug: 'men', nameEn: 'Men', nameAr: 'رجال', showInNav: true, sortOrder: 2 },
+    { id: 'h', slug: 'hidden', nameEn: 'Hidden', nameAr: 'مخفي', showInNav: false, sortOrder: 3 },
+  ];
+
+  it('offers the nav collections as popular searches while the box is empty', async () => {
+    const user = userEvent.setup();
+    mock.listCollections.mockResolvedValue(navCollections as never);
+    mock.listProducts.mockResolvedValue(result([makeProduct()]) as never);
+    renderOverlay();
+
+    expect(await screen.findByText('Popular searches')).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Women' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Hidden' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('option', { name: 'Men' }));
+    expect(screen.getByRole('combobox')).toHaveValue('Men');
+    await waitFor(() =>
+      expect(mock.listProducts).toHaveBeenLastCalledWith({ search: 'Men', pageSize: 8 }),
+    );
+  });
+
+  it('lists recent searches above popular searches, without duplicating', async () => {
+    mock.listCollections.mockResolvedValue(navCollections as never);
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(['women', 'linen shirt']));
+    renderOverlay();
+
+    expect(await screen.findByText('Popular searches')).toBeInTheDocument();
+    expect(screen.getByText('Recent searches')).toBeInTheDocument();
+    // "women" is already a recent search — it isn't repeated under popular.
+    expect(screen.getAllByRole('option', { name: /^women$/i })).toHaveLength(1);
+    expect(screen.getByRole('option', { name: 'Men' })).toBeInTheDocument();
   });
 });
 
