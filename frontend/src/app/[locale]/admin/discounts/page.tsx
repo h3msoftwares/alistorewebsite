@@ -389,7 +389,8 @@ const BLANK_COUPON: CouponForm = {
   startsAt: '',
   endsAt: '',
   maxRedemptions: undefined,
-  maxPerCustomer: undefined,
+  // Single-use per customer by default — clear it for a multi-use / unlimited code.
+  maxPerCustomer: 1,
 };
 
 function CouponsPanel({ isAr }: { isAr: boolean }) {

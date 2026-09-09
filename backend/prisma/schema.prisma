@@ -455,12 +455,13 @@ model Coupon {
   isActive    Boolean      @default(true)
   startsAt    DateTime?
   endsAt      DateTime?
-  // Usage caps. null = unlimited. `maxRedemptions` is the total across all
-  // shoppers; `timesRedeemed` is the atomic counter checkout increments (see
-  // order.service.ts). `maxPerCustomer` caps how many times one account /
-  // guest-email can use the code.
+  // Usage caps (enforced at checkout — see order.service.ts).
+  //  `maxRedemptions` — total across all shoppers; null = unlimited.
+  //  `maxPerCustomer` — per account / per guest-email; DEFAULTS TO 1 so a
+  //    coupon is single-use per customer unless the admin opts into more (or
+  //    null for unlimited). `timesRedeemed` is the atomic global counter.
   maxRedemptions Int?
-  maxPerCustomer Int?
+  maxPerCustomer Int?         @default(1)
   timesRedeemed  Int          @default(0)
   dateCreated DateTime     @default(now())
   lastEdit    DateTime     @default(now()) @updatedAt
