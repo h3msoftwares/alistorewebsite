@@ -27,6 +27,22 @@ function itemLabel(item: OrderItem): string {
   return `${item.productName}${variant ? ` (${variant})` : ''} x${item.quantity}`;
 }
 
+// HTML-escape for the `html` email bodies. The `text` bodies never use this.
+// Every interpolation of a customer-controlled value (name, address, phone,
+// notes, product name, email, SKU) into an `html` template MUST go through
+// this — output encoding, not the input sanitiser, is the real XSS control
+// for the mail path.
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+export function esc(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
+}
+
 // Built once and reused — nodemailer pools SMTP connections internally.
 // `configured` is false in any environment where SMTP hasn't been set up
 // (fresh checkout, CI) — sendPasswordResetEmail becomes a logged no-op
@@ -68,7 +84,7 @@ export async function sendPasswordResetEmail(
 
   const html = `
     <p>You requested a password reset for your Ali's Store account.</p>
-    <p><a href="${resetUrl}">Reset your password</a></p>
+    <p><a href="${esc(resetUrl)}">Reset your password</a></p>
     <p>This link expires in ${ttlMinutes} minutes. If you didn't request this, you can
     safely ignore this email — your password won't be changed.</p>
   `.trim();
@@ -115,7 +131,7 @@ export async function sendVerificationEmail(
 
   const html = `
     <p>Welcome to Ali's Store! Confirm your email address to finish setting up your account.</p>
-    <p><a href="${verifyUrl}">Verify your email</a></p>
+    <p><a href="${esc(verifyUrl)}">Verify your email</a></p>
     <p>This link is valid for ${validFor}. If you didn't create an account, you can ignore this email.</p>
   `.trim();
 
@@ -176,13 +192,13 @@ export async function sendOrderConfirmationEmail(
     `Track this order or cancel it any time before it ships: ${orderUrl}`;
 
   const itemRows = order.items
-    .map((i) => `<tr><td>${itemLabel(i)}</td><td>${money(Number(i.lineTotal))}</td></tr>`)
+    .map((i) => `<tr><td>${esc(itemLabel(i))}</td><td>${money(Number(i.lineTotal))}</td></tr>`)
     .join('');
 
   const html = `
-    <p>Hi ${order.deliveryName},</p>
+    <p>Hi ${esc(order.deliveryName)},</p>
     <p>Thanks for your order! Here's your confirmation.</p>
-    <p><strong>Order ${order.orderNumber}</strong><br>Payment: Cash on delivery</p>
+    <p><strong>Order ${esc(order.orderNumber)}</strong><br>Payment: Cash on delivery</p>
     <table>${itemRows}</table>
     <p>
       Subtotal: ${money(Number(order.subtotal))}<br>
@@ -191,13 +207,13 @@ export async function sendOrderConfirmationEmail(
     </p>
     <p>
       Delivering to:<br>
-      ${order.deliveryName}<br>
-      ${deliveryLine(order)}<br>
-      Phone: ${order.deliveryPhone}
-      ${order.deliveryNotes ? `<br>Delivery notes: ${order.deliveryNotes}` : ''}
+      ${esc(order.deliveryName)}<br>
+      ${esc(deliveryLine(order))}<br>
+      Phone: ${esc(order.deliveryPhone)}
+      ${order.deliveryNotes ? `<br>Delivery notes: ${esc(order.deliveryNotes)}` : ''}
     </p>
-    <p>We'll call ${order.deliveryPhone} to confirm delivery. Thanks for shopping with Ali's Store!</p>
-    <p><a href="${orderUrl}">Track this order or cancel it</a> any time before it ships.</p>
+    <p>We'll call ${esc(order.deliveryPhone)} to confirm delivery. Thanks for shopping with Ali's Store!</p>
+    <p><a href="${esc(orderUrl)}">Track this order or cancel it</a> any time before it ships.</p>
   `.trim();
 
   try {
@@ -243,26 +259,29 @@ export async function sendOwnerOrderAlertEmail(to: string, order: OrderWithItems
     (order.notes ? `\nCustomer notes: ${order.notes}` : '');
 
   const itemRows = order.items
-    .map((i) => `<tr><td>${itemLabel(i)}</td><td>${i.variantSKU}</td><td>${money(Number(i.lineTotal))}</td></tr>`)
+    .map(
+      (i) =>
+        `<tr><td>${esc(itemLabel(i))}</td><td>${esc(i.variantSKU)}</td><td>${money(Number(i.lineTotal))}</td></tr>`
+    )
     .join('');
 
   const html = `
     <p><strong>New order placed.</strong></p>
     <p>
-      Order ${order.orderNumber}<br>
+      Order ${esc(order.orderNumber)}<br>
       Total: ${money(Number(order.total))} (subtotal ${money(Number(order.subtotal))} + delivery ${money(Number(order.deliveryFee))})<br>
       Payment: Cash on delivery — not yet collected
     </p>
     <p>
-      Customer: ${order.deliveryName} — ${order.deliveryPhone}
-      ${order.guestEmail ? `<br>Email: ${order.guestEmail}` : ''}
+      Customer: ${esc(order.deliveryName)} — ${esc(order.deliveryPhone)}
+      ${order.guestEmail ? `<br>Email: ${esc(order.guestEmail)}` : ''}
     </p>
     <table>${itemRows}</table>
     <p>
       Deliver to:<br>
-      ${deliveryLine(order)}
-      ${order.deliveryNotes ? `<br>Delivery notes: ${order.deliveryNotes}` : ''}
-      ${order.notes ? `<br>Customer notes: ${order.notes}` : ''}
+      ${esc(deliveryLine(order))}
+      ${order.deliveryNotes ? `<br>Delivery notes: ${esc(order.deliveryNotes)}` : ''}
+      ${order.notes ? `<br>Customer notes: ${esc(order.notes)}` : ''}
     </p>
   `.trim();
 
@@ -299,9 +318,9 @@ export async function sendOrderCancelledEmail(to: string, order: OrderWithItems)
     `If this wasn't you, or you have any questions, get in touch and we'll sort it out.`;
 
   const html = `
-    <p>Hi ${order.deliveryName},</p>
+    <p>Hi ${esc(order.deliveryName)},</p>
     <p>
-      Your order <strong>${order.orderNumber}</strong> has been cancelled, and the total
+      Your order <strong>${esc(order.orderNumber)}</strong> has been cancelled, and the total
       (${money(Number(order.total))}) won't be charged since payment was cash on delivery.
     </p>
     <p>If this wasn't you, or you have any questions, get in touch and we'll sort it out.</p>
@@ -353,13 +372,13 @@ export async function sendOrderShippedEmail(
     `Payment is cash on delivery — please have ${money(Number(order.total))} ready.`;
 
   const html = `
-    <p>Hi ${order.deliveryName},</p>
+    <p>Hi ${esc(order.deliveryName)},</p>
     <p>
-      Good news — your order <strong>${order.orderNumber}</strong> has shipped and is on its way to
-      ${deliveryLine(order)}.
+      Good news — your order <strong>${esc(order.orderNumber)}</strong> has shipped and is on its way to
+      ${esc(deliveryLine(order))}.
     </p>
     <p>${eta}</p>
-    <p><a href="${trackUrl}">Track your order</a></p>
+    <p><a href="${esc(trackUrl)}">Track your order</a></p>
     <p>Payment is cash on delivery — please have ${money(Number(order.total))} ready.</p>
   `.trim();
 
@@ -399,10 +418,10 @@ export async function sendOwnerOrderCancelledAlertEmail(to: string, order: Order
   const html = `
     <p><strong>Order cancelled.</strong></p>
     <p>
-      Order ${order.orderNumber}<br>
+      Order ${esc(order.orderNumber)}<br>
       Total: ${money(Number(order.total))}<br>
-      Customer: ${order.deliveryName} — ${order.deliveryPhone}
-      ${order.guestEmail ? `<br>Email: ${order.guestEmail}` : ''}
+      Customer: ${esc(order.deliveryName)} — ${esc(order.deliveryPhone)}
+      ${order.guestEmail ? `<br>Email: ${esc(order.guestEmail)}` : ''}
     </p>
   `.trim();
 
@@ -441,7 +460,7 @@ export async function sendCheckoutOtpEmail(to: string, code: string, ttlMinutes:
 
   const html = `
     <p>Your Ali's Store verification code is:</p>
-    <p style="font-size: 1.5em; font-weight: bold; letter-spacing: 0.1em;">${code}</p>
+    <p style="font-size: 1.5em; font-weight: bold; letter-spacing: 0.1em;">${esc(code)}</p>
     <p>It expires in ${ttlMinutes} minutes. If you didn't request this, you can ignore this email.</p>
   `.trim();
 

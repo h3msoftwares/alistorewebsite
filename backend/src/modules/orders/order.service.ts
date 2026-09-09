@@ -78,6 +78,15 @@ const VELOCITY_PHONE_MAX = 3;
 const VELOCITY_EMAIL_MAX = 3;
 const VELOCITY_IP_MAX = 5;
 
+// Checkout is the heaviest transaction in the app (address check, cart load,
+// discount resolution, order + N line items, velocity counts, per-line stock
+// claim, coupon redemption). Under a burst of shoppers hitting the same
+// popular variant the atomic stock/coupon row-claims serialize, so the last
+// checkout in line can wait well past Prisma's default 5s ceiling — which would
+// surface as a 500 rather than an orderly "sold out". These give that queue
+// real headroom without letting a genuinely stuck transaction hang forever.
+const CHECKOUT_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
+
 // A customer (or a guest bearing a valid access token) may cancel their own
 // order up to — but not including — SHIPPED. An admin isn't bound by this;
 // see performCancellation's `enforceCancellableGate`.
@@ -292,6 +301,11 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       : [];
     if (cartItems.length === 0) throw new AppError('VALIDATION_ERROR', 'Cart is empty');
 
+    // Preliminary, non-authoritative stock check — fast-fails with a friendly
+    // per-line message in the common case. The ACTUAL guard is the atomic
+    // conditional decrement after the order is created (see below): two
+    // concurrent checkouts for the last unit would both pass this read-check
+    // (READ COMMITTED), so it must not be the only gate.
     for (const item of cartItems) {
       if (item.variant.stockQuantity < item.quantity) {
         const label = [item.variant.size, item.variant.color].filter(Boolean).join('/') || 'one size';
@@ -313,11 +327,38 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     // silently ignoring it (so the shopper isn't surprised by the total).
     let couponCode: string | null = null;
     let discountAmount = 0;
+    let couponToRedeem: { id: string; maxRedemptions: number | null } | null = null;
     if (input.couponCode) {
       const coupon = await resolveCoupon(input.couponCode);
       if (!coupon) throw new AppError('VALIDATION_ERROR', 'That coupon code is not valid.');
+
+      // Per-customer cap (V2b). `maxPerCustomer` defaults to 1 (single use
+      // per customer) — null only when an admin explicitly made it unlimited.
+      // A logged-in shopper is matched by BOTH account id and contact email
+      // (so "once as a guest, again logged in" with the same inbox is still
+      // caught); a guest by email alone.
+      //
+      // This count is not serialized against a simultaneous checkout by the
+      // SAME shopper (two tabs, same millisecond) — that edge could slip one
+      // extra use through. The GLOBAL `maxRedemptions` cap below, by
+      // contrast, IS race-safe (atomic guarded increment). Serializing every
+      // redeemer of a code on one row-lock was worse — it made unrelated
+      // shoppers contend and time out under load.
+      if (coupon.maxPerCustomer != null) {
+        const identity: Prisma.CouponRedemptionWhereInput[] = [];
+        if (owner.userID) identity.push({ userID: owner.userID });
+        if (contactEmail) identity.push({ email: contactEmail });
+        const used = identity.length
+          ? await tx.couponRedemption.count({ where: { couponID: coupon.id, OR: identity } })
+          : 0;
+        if (used >= coupon.maxPerCustomer) {
+          throw new AppError('VALIDATION_ERROR', "You've already used this coupon the maximum number of times.");
+        }
+      }
+
       couponCode = coupon.code;
       discountAmount = couponAmountOff(coupon, subtotal);
+      couponToRedeem = { id: coupon.id, maxRedemptions: coupon.maxRedemptions };
     }
 
     // Admin-configured delivery fee (flat, per-region override, or free by
@@ -399,11 +440,45 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       include: { items: true },
     });
 
+    // Coupon redemption (V2b). The global cap is claimed with an atomic
+    // guarded increment — same shape as the stock claim: the predicate and
+    // the +1 happen in one UPDATE, so concurrent checkouts can't push
+    // `timesRedeemed` past `maxRedemptions`. 0 rows affected => the code was
+    // exhausted between resolveCoupon() and here => roll the order back.
+    if (couponToRedeem) {
+      const bumped = await tx.$executeRaw`
+        UPDATE "coupon"
+           SET "timesRedeemed" = "timesRedeemed" + 1
+         WHERE "id" = ${couponToRedeem.id}::uuid
+           AND ("maxRedemptions" IS NULL OR "timesRedeemed" < "maxRedemptions")
+      `;
+      if (bumped === 0) {
+        throw new AppError('VALIDATION_ERROR', 'That coupon code is no longer available.');
+      }
+      await tx.couponRedemption.create({
+        data: {
+          couponID: couponToRedeem.id,
+          orderID: order.id,
+          userID: owner.userID ?? null,
+          email: contactEmail,
+        },
+      });
+    }
+
     for (const item of cartItems) {
-      await tx.productVariant.update({
-        where: { id: item.variantID },
+      // Atomic, race-safe stock claim: the `stockQuantity: { gte }` predicate
+      // and the decrement happen in one UPDATE, and Postgres row-locks the
+      // matched row for the rest of the transaction. If another concurrent
+      // checkout already took the last unit, `count` is 0 here and we roll
+      // the whole order back — stock can never go negative, never oversell.
+      const claimed = await tx.productVariant.updateMany({
+        where: { id: item.variantID, stockQuantity: { gte: item.quantity } },
         data: { stockQuantity: { decrement: item.quantity } },
       });
+      if (claimed.count === 0) {
+        const label = [item.variant.size, item.variant.color].filter(Boolean).join('/') || 'one size';
+        throw new AppError('OUT_OF_STOCK', `Not enough stock for ${item.variant.product.nameEn} (${label})`);
+      }
       await tx.stockMovement.create({
         data: {
           variantID: item.variantID,
@@ -446,7 +521,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     }
 
     return order;
-  });
+  }, CHECKOUT_TX_OPTIONS);
 
   if (order.flaggedForReview) {
     await recordAudit({

@@ -5,8 +5,18 @@ import type { UserRole } from '@prisma/client';
 import { prisma } from '../../src/config/prisma';
 import { env } from '../../src/config/env';
 
-export function signAccessToken(id: string, role: UserRole): string {
-  return jwt.sign({ id, role }, env.JWT_ACCESS_SECRET, { expiresIn: '15m' });
+/**
+ * Mints a test access token. `auth_time` defaults to "now" so a token is
+ * fresh for step-up-protected routes (requireFreshAuth); pass
+ * `authTimeSec` (e.g. a value well in the past) to simulate a session that
+ * has only been kept alive by silent refresh.
+ */
+export function signAccessToken(id: string, role: UserRole, authTimeSec?: number): string {
+  return jwt.sign(
+    { id, role, auth_time: authTimeSec ?? Math.floor(Date.now() / 1000) },
+    env.JWT_ACCESS_SECRET,
+    { expiresIn: '15m' }
+  );
 }
 
 export function bearer(token: string): { Authorization: string } {
@@ -43,3 +53,18 @@ export async function createUser(opts: CreateUserOpts = {}) {
 export const createCustomer = () => createUser({ role: 'CUSTOMER' });
 export const createStaff = () => createUser({ role: 'STAFF' });
 export const createAdmin = () => createUser({ role: 'ADMIN' });
+
+/**
+ * A STAFF user whose custom role carries exactly `permissions` — for tests
+ * that exercise an admin-panel action as a non-ADMIN back-office user under
+ * the RBAC permission model (`requirePermission`). ADMIN implicitly holds
+ * every permission, so use `createAdmin()` when the role doesn't matter.
+ */
+export async function createStaffWith(permissions: string[], roleName?: string) {
+  const role = await prisma.role.create({
+    data: { name: roleName ?? `role-${randomUUID().slice(0, 8)}`, permissions },
+  });
+  const { user } = await createUser({ role: 'STAFF' });
+  await prisma.user.update({ where: { id: user.id }, data: { customRoleID: role.id } });
+  return { role, user, token: signAccessToken(user.id, 'STAFF') };
+}

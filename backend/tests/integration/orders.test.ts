@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
-import { createCustomer, createAdmin, createStaff, bearer } from '../helpers/auth';
+import { createCustomer, createAdmin, createStaffWith, bearer } from '../helpers/auth';
 import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
 
 // The mailer is the one real I/O boundary (SMTP) — mock just the checkout-OTP
@@ -327,7 +327,8 @@ describe('Orders API', () => {
         .set(bearer(buyer.token))
         .send(delivery);
       const orderId = checkout.body.order.id;
-      const { token } = await createStaff();
+      // Fulfilment work (status change, mark COD collected) is STAFF-reachable…
+      const { token } = await createStaffWith(['orders:manage']);
 
       const status = await request(app)
         .patch(`/api/admin/orders/${orderId}/status`)
@@ -342,7 +343,9 @@ describe('Orders API', () => {
         .send({ collected: true });
       expect(collected.body.order.paymentStatus).toBe('COLLECTED');
 
-      const dash = await request(app).get('/api/admin/dashboard').set(bearer(token));
+      // …but the revenue dashboard is ADMIN-only since S4.
+      const { token: adminToken } = await createAdmin();
+      const dash = await request(app).get('/api/admin/dashboard').set(bearer(adminToken));
       expect(dash.body).toMatchObject({
         totalOrders: 1,
         pendingOrders: 0,

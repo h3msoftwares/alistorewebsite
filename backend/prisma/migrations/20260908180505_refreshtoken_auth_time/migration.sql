@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "refreshtoken" ADD COLUMN     "authTime" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

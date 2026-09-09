@@ -2,15 +2,16 @@ import { Request, Response } from 'express';
 import * as orderService from './order.service';
 import { paramString } from '../../lib/params';
 import { AppError } from '../../lib/AppError';
+import { GUEST_CART_COOKIE } from '../cart/guest-cart-cookie';
 
 export async function checkoutHandler(req: Request, res: Response) {
-  const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.cartSession };
+  const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.[GUEST_CART_COOKIE] };
   const order = await orderService.checkout(owner, { ...req.body, ipAddress: req.ip });
   res.status(201).json({ order });
 }
 
 export async function deliveryQuoteHandler(req: Request, res: Response) {
-  const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.cartSession };
+  const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.[GUEST_CART_COOKIE] };
   const { region } = (req.validatedQuery ?? {}) as { region: string };
   res.json(await orderService.getDeliveryQuote(owner, region));
 }

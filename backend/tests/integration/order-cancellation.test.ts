@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
-import { createCustomer, createStaff, bearer } from '../helpers/auth';
+import { createCustomer, createStaffWith, bearer } from '../helpers/auth';
 import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
 
 vi.mock('../../src/lib/mailer', async (importOriginal) => {
@@ -114,7 +114,7 @@ describe('Regression: admin cancelling via the status dropdown now restores stoc
   // that the customer-facing button works.
   it('restores stock, writes a RETURN movement, and audits order.cancelled (not order.status_changed)', async () => {
     const { orderId } = await placeOrder(3);
-    const { user: staff, token: staffToken } = await createStaff();
+    const { user: staff, token: staffToken } = await createStaffWith(['orders:manage']);
 
     const before = await prisma.productVariant.findUnique({ where: { id: variantId } });
     expect(before?.stockQuantity).toBe(7); // 10 - 3
@@ -148,7 +148,7 @@ describe('Regression: admin cancelling via the status dropdown now restores stoc
   it('an admin can force-cancel a SHIPPED order (not bound by CANCELLABLE_STATUSES)', async () => {
     const { orderId } = await placeOrder(2);
     await prisma.order.update({ where: { id: orderId }, data: { status: 'SHIPPED' } });
-    const { token: staffToken } = await createStaff();
+    const { token: staffToken } = await createStaffWith(['orders:manage']);
 
     const res = await request(app)
       .patch(`/api/admin/orders/${orderId}/status`)
@@ -162,7 +162,7 @@ describe('Regression: admin cancelling via the status dropdown now restores stoc
 
   it('ordinary admin status transitions (not to CANCELLED) are unaffected — still a plain update', async () => {
     const { orderId } = await placeOrder(1);
-    const { token: staffToken } = await createStaff();
+    const { token: staffToken } = await createStaffWith(['orders:manage']);
 
     const res = await request(app)
       .patch(`/api/admin/orders/${orderId}/status`)

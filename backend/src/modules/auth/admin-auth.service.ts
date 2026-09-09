@@ -130,10 +130,11 @@ export async function adminLogin(
     throw invalidCredentials();
   }
 
-  // 4. Success.
+  // 4. Success. Fresh login → fresh auth_time for step-up checks.
   await clearLockState(user);
-  const accessToken = signAccessToken({ id: user.id, role: user.role });
-  const { token: refreshToken } = await issueRefreshToken(user.id);
+  const authTime = new Date();
+  const { token: refreshToken } = await issueRefreshToken(user.id, { authTime });
+  const accessToken = signAccessToken({ id: user.id, role: user.role }, Math.floor(authTime.getTime() / 1000));
   await recordAttempt('success', identifier, ctx, user.id);
   return { accessToken, refreshToken, userId: user.id };
 }
