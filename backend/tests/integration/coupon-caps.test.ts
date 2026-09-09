@@ -136,4 +136,57 @@ describe('Coupon usage caps', () => {
     expect(coupon?.timesRedeemed).toBe(wins.length);
     expect(await prisma.couponRedemption.count({ where: { couponID: coupon!.id } })).toBe(wins.length);
   });
+
+  // Pentest: one account fired N parallel POST /orders/checkout, all with the
+  // same maxPerCustomer=1 coupon on one cart item — every request passed the
+  // per-customer count check at 0 and redeemed. checkout() now takes an
+  // advisory lock on the cart owner, so the losers re-read an emptied cart.
+  it('ONE customer, N concurrent checkouts of a maxPerCustomer=1 coupon → exactly one redemption', async () => {
+    await createCoupon({ code: 'ONCEPC', maxPerCustomer: 1 });
+    const { token } = await createCustomer();
+    await request(app).post('/api/cart/items').set(bearer(token)).send({ variantId, quantity: 1 });
+
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        request(app)
+          .post('/api/orders/checkout')
+          .set(bearer(token))
+          .send({ ...delivery, deliveryName: 'PC', couponCode: 'ONCEPC' })
+      )
+    );
+    const wins = results.filter((r) => r.status === 201);
+    expect(wins.length).toBe(1);
+
+    const coupon = await prisma.coupon.findUnique({ where: { code: 'ONCEPC' } });
+    expect(coupon?.timesRedeemed).toBe(1);
+    expect(await prisma.couponRedemption.count({ where: { couponID: coupon!.id } })).toBe(1);
+    const orders = await prisma.order.findMany({ where: { couponCode: 'ONCEPC' } });
+    expect(orders).toHaveLength(1);
+  });
+
+  // Pentest: one account fired N parallel checkouts of a single 1-item cart —
+  // all read the cart before any cleared it and each produced a full order
+  // (one cart → N orders, stock over-decremented). Same owner advisory lock.
+  it('ONE customer, N concurrent checkouts of one cart → exactly one order', async () => {
+    const { token } = await createCustomer();
+    await request(app).post('/api/cart/items').set(bearer(token)).send({ variantId, quantity: 1 });
+
+    const before = await prisma.productVariant.findUnique({ where: { id: variantId } });
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        request(app).post('/api/orders/checkout').set(bearer(token)).send({ ...delivery, deliveryName: 'DUP' })
+      )
+    );
+    const wins = results.filter((r) => r.status === 201);
+    expect(wins.length).toBe(1);
+    // the losers see an already-cleared cart, not another chance to order
+    for (const r of results.filter((r) => r.status !== 201)) {
+      expect(r.body.error.message).toMatch(/cart is empty/i);
+    }
+
+    // beforeEach truncates, so this is the whole table — one cart, one order
+    expect(await prisma.order.count()).toBe(1);
+    const after = await prisma.productVariant.findUnique({ where: { id: variantId } });
+    expect(before!.stockQuantity - after!.stockQuantity).toBe(1);
+  });
 });
