@@ -232,3 +232,92 @@ describe('Admin: flagged-order review', () => {
     expect(await prisma.auditLog.count({ where: { action: 'order.flagged', entityID: flaggedOrder.id } })).toBe(1);
   });
 });
+
+describe('Blocked customer — cannot check out (admin Customers "block" toggle)', () => {
+  it('a guest checkout with a blocked customer\'s email is refused', async () => {
+    // Obtain the OTP ticket while the account is still active (simulating a
+    // ticket grabbed just before the admin blocks them), then block, then
+    // check out — isolates the checkout-layer defence from the OTP-layer one.
+    const { user } = await createUser({ email: 'blocked-guest@test.dev', emailVerified: true });
+    const ticket = await getEmailVerifyToken('blocked-guest@test.dev');
+    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+
+    const agent = request.agent(app);
+    await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+    const res = await agent
+      .post('/api/orders/checkout')
+      .send({ ...delivery, deliveryPhone: '0790000000', guestEmail: 'blocked-guest@test.dev', emailVerifyToken: ticket });
+
+    expect(res.status).toBe(403);
+    expect(await prisma.order.count()).toBe(0);
+  });
+
+  it('a guest checkout with a blocked customer\'s phone is refused (even with a fresh email)', async () => {
+    const { user } = await createUser({ email: 'blocked-phone@test.dev', emailVerified: true });
+    await prisma.user.update({ where: { id: user.id }, data: { isActive: false, phone: '0799999999' } });
+
+    const ticket = await getEmailVerifyToken('someoneelse@test.dev');
+    const agent = request.agent(app);
+    await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+    const res = await agent
+      .post('/api/orders/checkout')
+      .send({ ...delivery, deliveryPhone: '0799999999', guestEmail: 'someoneelse@test.dev', emailVerifyToken: ticket });
+
+    expect(res.status).toBe(403);
+    expect(await prisma.order.count()).toBe(0);
+  });
+
+  it('case-folding the blocked email does not bypass the check', async () => {
+    const { user } = await createUser({ email: 'block-case@test.dev', emailVerified: true });
+    // ticket for the lower-cased email (accounts + OTP rows are always stored
+    // lower-cased), then block, then check out passing a MIXED-CASE guestEmail
+    const ticket = await getEmailVerifyToken('block-case@test.dev');
+    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+
+    const agent = request.agent(app);
+    await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+    const res = await agent
+      .post('/api/orders/checkout')
+      .send({ ...delivery, deliveryPhone: '0790000001', guestEmail: 'Block-Case@Test.dev', emailVerifyToken: ticket });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('a customer blocked mid-session cannot finish an authenticated checkout', async () => {
+    const { user, token } = await createCustomer(); // active + verified, gets a live access token
+    await request(app).post('/api/cart/items').set(bearer(token)).send({ variantId, quantity: 1 });
+    // admin blocks them while the access token is still valid
+    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+
+    const res = await request(app).post('/api/orders/checkout').set(bearer(token)).send(delivery);
+    expect(res.status).toBe(403);
+    expect(await prisma.order.count()).toBe(0);
+  });
+
+  it('the checkout email-OTP request is refused for a blocked customer email', async () => {
+    const { user } = await createUser({ email: 'block-otp@test.dev', emailVerified: true });
+    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+
+    const res = await request(app)
+      .post('/api/checkout/otp/request')
+      .send({ email: 'block-otp@test.dev', captchaToken: HCAPTCHA_DUMMY_TOKEN });
+
+    expect(res.status).toBe(429); // generic throttle — same as a blacklist hit, no distinguishing error
+    expect(mockSendOtp).not.toHaveBeenCalled();
+  });
+
+  it('unblocking restores guest checkout with that email', async () => {
+    const { user } = await createUser({ email: 'unblock-me@test.dev', emailVerified: true });
+    await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+    await prisma.user.update({ where: { id: user.id }, data: { isActive: true } });
+
+    const ticket = await getEmailVerifyToken('unblock-me@test.dev');
+    const agent = request.agent(app);
+    await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
+    const res = await agent
+      .post('/api/orders/checkout')
+      .send({ ...delivery, guestEmail: 'unblock-me@test.dev', emailVerifyToken: ticket });
+
+    expect(res.status).toBe(201);
+  });
+});

@@ -255,8 +255,21 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     // Resolved early (before cart/stock work) since the blacklist and OTP
     // checks below both need it.
     const account = owner.userID
-      ? await tx.user.findUnique({ where: { id: owner.userID }, select: { name: true, email: true, emailVerified: true } })
+      ? await tx.user.findUnique({
+          where: { id: owner.userID },
+          select: { name: true, email: true, emailVerified: true, isActive: true },
+        })
       : null;
+
+    // A signed-in shopper who was blocked (or deleted) mid-session: the access
+    // token is still valid for its short TTL, but the account is dead. Refuse
+    // — same intent as the admin Customers "block" toggle, which flips
+    // `isActive`. (Login / refresh already reject a blocked account; this
+    // covers the in-flight token window.)
+    if (owner.userID && (!account || !account.isActive)) {
+      throw new AppError('FORBIDDEN', 'Your account has been blocked by an administrator.');
+    }
+
     const deliveryName = account?.name ?? input.deliveryName;
     const contactEmail = account?.email ?? input.guestEmail ?? null;
 
@@ -264,7 +277,26 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     // Distinct from the automatic order-velocity soft-flag below: this is a
     // deliberate admin decision, not a heuristic, so it refuses the order
     // outright rather than just flagging it.
+    //
+    // Two sources feed it: (1) BlacklistEntry rows an admin added by hand;
+    // (2) a registered CUSTOMER account an admin blocked from the Customers
+    // page — its `isActive` is false, and neither its email nor its phone may
+    // be used to slip an order through as a guest.
+    const emailLc = contactEmail?.toLowerCase() ?? null;
+    const blockedContact = await tx.user.findFirst({
+      where: {
+        role: 'CUSTOMER',
+        isActive: false,
+        deletedAt: null,
+        OR: [
+          { phone: input.deliveryPhone },
+          ...(emailLc ? [{ email: emailLc }] : []),
+        ],
+      },
+      select: { id: true },
+    });
     const blacklisted =
+      Boolean(blockedContact) ||
       (await isBlacklisted('PHONE', input.deliveryPhone)) ||
       (contactEmail ? await isBlacklisted('EMAIL', contactEmail) : false) ||
       (input.ipAddress ? await isBlacklisted('IP', input.ipAddress) : false);
