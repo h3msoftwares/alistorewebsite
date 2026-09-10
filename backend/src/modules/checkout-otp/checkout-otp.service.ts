@@ -52,6 +52,18 @@ export async function requestOtp(email: string, captchaToken: string, requestIP:
   if (requestIP && (await isBlacklisted('IP', requestIP))) {
     throw new AppError('RATE_LIMITED', REQUEST_THROTTLED);
   }
+  // A registered CUSTOMER an admin blocked from the Customers page (isActive
+  // false): don't let them start the guest email-OTP flow to check out under
+  // their own address. Same generic response as the blacklist hit above —
+  // order.service.ts refuses the checkout itself too, this just stops it
+  // earlier and without a distinguishing error.
+  const blockedCustomer = await prisma.user.findFirst({
+    where: { role: 'CUSTOMER', isActive: false, deletedAt: null, email: email.toLowerCase() },
+    select: { id: true },
+  });
+  if (blockedCustomer) {
+    throw new AppError('RATE_LIMITED', REQUEST_THROTTLED);
+  }
 
   const now = Date.now();
 
