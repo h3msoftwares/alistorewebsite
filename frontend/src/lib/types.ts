@@ -466,6 +466,49 @@ export interface NewTeamMember {
   roleId?: string | null;
 }
 
+// ---- Customers (admin directory of registered shoppers) ----
+
+export type CustomerSort = 'newest' | 'oldest' | 'name' | 'orders';
+
+export interface CustomerListQuery {
+  search?: string;
+  status?: 'active' | 'inactive' | 'all';
+  sort?: CustomerSort;
+  page?: number;
+  pageSize?: number;
+}
+
+/** One row in `GET /api/admin/customers`. `totalSpent` / order tallies exclude
+ *  cancelled + returned orders. */
+export interface AdminCustomerSummary {
+  id: UUID;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  isActive: boolean;
+  emailVerified: boolean;
+  joinedAt: IsoDateTime;
+  /** Every order ever placed, whatever its status. */
+  orderCount: number;
+  /** Orders that count toward spend (not cancelled / returned). */
+  paidOrderCount: number;
+  totalSpent: Decimalish;
+  lastOrderAt: IsoDateTime | null;
+}
+
+export interface AdminCustomerListResponse {
+  customers: AdminCustomerSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** `GET /api/admin/customers/:id` — the summary fields plus the full order
+ *  history (newest first, line items included). */
+export interface AdminCustomerDetail extends AdminCustomerSummary {
+  orders: Order[];
+}
+
 // ---- Product list query (GET /api/products) ----
 
 export type ProductSort = 'newest' | 'price_asc' | 'price_desc' | 'best_selling';

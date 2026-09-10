@@ -243,6 +243,34 @@ describe('Auth API', () => {
       expect(res.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
     });
 
+    it('tells a blocked customer (right password) that an admin blocked them, and audits it', async () => {
+      const { user } = await verifiedCustomer();
+      await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ identifier: creds.email, password: creds.password });
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+      expect(res.body.error.message).toMatch(/blocked by an administrator/i);
+      expect(res.body.error.meta).toEqual({ reason: 'account_blocked' });
+
+      const audit = await prisma.auditLog.findMany({
+        where: { entityType: 'auth', action: 'customer_login.account_blocked' },
+      });
+      expect(audit).toHaveLength(1);
+    });
+
+    it('a blocked account with a WRONG password gets the generic 401 (no "blocked" disclosure)', async () => {
+      const { user } = await verifiedCustomer();
+      await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
+      const res = await request(app)
+        .post('/api/auth/login')
+        .send({ identifier: creds.email, password: 'wrongpass12' });
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual({ error: { code: 'UNAUTHORIZED', message: 'Invalid credentials' } });
+    });
+
     it('401s a wrong password', async () => {
       await verifiedCustomer();
       const res = await request(app)

@@ -19,6 +19,7 @@ import type { PermissionArea } from '@/lib/types';
 export const PERMISSION_AREAS: PermissionArea[] = [
   { area: 'dashboard', label: 'Dashboard', levels: ['view'] },
   { area: 'orders', label: 'Orders', levels: ['view', 'manage'] },
+  { area: 'customers', label: 'Customers', levels: ['view', 'manage'] },
   { area: 'products', label: 'Products', levels: ['view', 'manage'] },
   { area: 'collections', label: 'Collections', levels: ['view', 'manage'] },
   { area: 'categories', label: 'Categories', levels: ['view', 'manage'] },
@@ -31,6 +32,7 @@ export const PERMISSION_AREAS: PermissionArea[] = [
 const AREA_LABEL_AR: Record<string, string> = {
   dashboard: 'لوحة التحكم',
   orders: 'الطلبات',
+  customers: 'الزبائن',
   products: 'المنتجات',
   collections: 'المجموعات',
   categories: 'الفئات',
@@ -78,6 +80,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { href: '/products', labelEn: 'Products', labelAr: 'المنتجات', permission: 'products:view' },
   { href: '/discounts', labelEn: 'Discounts', labelAr: 'الخصومات', permission: 'discounts:view' },
   { href: '/orders', labelEn: 'Orders', labelAr: 'الطلبات', permission: 'orders:view' },
+  { href: '/customers', labelEn: 'Customers', labelAr: 'الزبائن', permission: 'customers:view' },
   { href: '/analytics', labelEn: 'Analytics', labelAr: 'التحليلات', permission: 'analytics:view' },
   { href: '/roles', labelEn: 'Roles', labelAr: 'الأدوار', permission: 'roles:view' },
   { href: '/settings', labelEn: 'Settings', labelAr: 'الإعدادات', permission: 'settings:view' },

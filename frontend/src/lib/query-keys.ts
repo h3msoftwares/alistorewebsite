@@ -1,4 +1,4 @@
-import type { CatalogListQuery, ProductListQuery, UUID } from './types';
+import type { CatalogListQuery, CustomerListQuery, ProductListQuery, UUID } from './types';
 
 // Central query-key factory so invalidation stays consistent across hooks.
 export const queryKeys = {
@@ -46,6 +46,11 @@ export const queryKeys = {
     track: (token: string) => ['orders', 'track', token] as const,
     admin: (status?: string, flagged?: boolean) => ['orders', 'admin', status ?? null, flagged ?? false] as const,
     dashboard: () => ['orders', 'dashboard'] as const,
+  },
+  customers: {
+    all: () => ['customers'] as const,
+    list: (query: CustomerListQuery) => ['customers', 'list', query] as const,
+    detail: (id: UUID) => ['customers', 'detail', id] as const,
   },
   analytics: {
     all: () => ['analytics'] as const,

@@ -122,4 +122,18 @@ describe('<LoginForm>', () => {
     expect(resend.mutateAsync).toHaveBeenCalledWith({ email: 'a@x.dev', locale: 'en' });
     expect(await screen.findByText(/sent a fresh verification link/i)).toBeInTheDocument();
   });
+
+  it('on a 403 "account_blocked" shows the admin-blocked notice — not the verify/resend UI', () => {
+    login.isError = true;
+    login.error = new ApiError(403, {
+      code: 'FORBIDDEN',
+      message: 'Your account has been blocked by an administrator. Please contact support if you think this is a mistake.',
+      meta: { reason: 'account_blocked' },
+    });
+    renderForm();
+
+    expect(screen.getByText(/blocked by an administrator/i)).toBeInTheDocument();
+    expect(screen.queryByText(/needs to be verified/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Resend verification email/i })).not.toBeInTheDocument();
+  });
 });

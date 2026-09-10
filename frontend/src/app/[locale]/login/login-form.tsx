@@ -61,16 +61,27 @@ export function LoginForm({ locale, next: nextRaw = null }: { locale: Locale; ne
   const busy = isSubmitting || login.isPending;
   const err = login.isError && isApiError(login.error) ? login.error : null;
   const rateLimited = err?.status === 429;
-  // The backend only 403s here after the password is proven correct, so
-  // telling this user their email is unverified leaks nothing.
-  const unverified = err?.status === 403;
+  // The backend only 403s here after the password is proven correct, so a
+  // specific reason leaks nothing to anyone who doesn't hold it.
+  const blocked =
+    err?.status === 403 && (err.meta as { reason?: string } | undefined)?.reason === 'account_blocked';
+  const unverified = err?.status === 403 && !blocked;
 
   return (
     <div className="section" style={{ maxWidth: '22rem', marginInline: 'auto' }}>
       <p className="eyebrow">{t("Ali's Store", 'متجر علي')}</p>
       <h1>{t('Sign in', 'تسجيل الدخول')}</h1>
 
-      {unverified ? (
+      {blocked ? (
+        <div style={{ marginBlockStart: 'var(--space-3)' }}>
+          <Alert tone="danger">
+            {t(
+              'Your account has been blocked by an administrator. Please contact support if you think this is a mistake.',
+              'تم حظر حسابك من قِبل المسؤول. يرجى التواصل مع الدعم إذا كنت تعتقد أن هذا خطأ.'
+            )}
+          </Alert>
+        </div>
+      ) : unverified ? (
         <div className="stack" style={{ marginBlockStart: 'var(--space-3)' }}>
           <Alert tone="warning">
             {t(

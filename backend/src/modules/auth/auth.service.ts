@@ -34,7 +34,8 @@ export type CustomerLoginOutcome =
   | 'invalid_credentials'
   | 'locked_out'
   | 'privileged_denied' // correct creds, but an ADMIN/STAFF account — must use the admin door
-  | 'email_unverified'; // correct creds, but the email was never verified
+  | 'email_unverified' // correct creds, but the email was never verified
+  | 'account_blocked'; // correct creds, but an admin has deactivated the account
 
 export interface LoginContext {
   ip: string;
@@ -237,9 +238,14 @@ export async function login(
     where: { OR: [{ email: lookup }, { phone: lookup }], deletedAt: null },
   });
 
-  const loginable = Boolean(user?.isActive && user?.passwordHash);
+  const hasPassword = Boolean(user?.passwordHash);
+  const loginable = Boolean(user?.isActive) && hasPassword;
+  // Verify against the real hash whenever there is one — even for a blocked
+  // account — so a correct password can unlock the specific "you're blocked"
+  // message below (same reveal-only-to-the-password-holder rule as the
+  // email_unverified path).
   const passwordValid = await argon2
-    .verify(loginable ? user!.passwordHash! : DUMMY_HASH, password)
+    .verify(hasPassword ? user!.passwordHash! : DUMMY_HASH, password)
     .catch(() => false);
 
   const now = new Date();
@@ -257,6 +263,20 @@ export async function login(
   if (user?.lockedUntil && user.lockedUntil > now) {
     await recordLoginAttempt('locked_out', identifier, ctx, user.id);
     throw new AppError('UNAUTHORIZED', 'Invalid credentials');
+  }
+
+  // 2b. Real account, correct password — but an admin has blocked it. Tell the
+  //     holder specifically: they've just proven the password, so this reveals
+  //     nothing to anyone who doesn't have it (same call the email_unverified
+  //     branch makes). A wrong password on a blocked account still falls
+  //     through to the generic rejection below.
+  if (user && hasPassword && passwordValid && !user.isActive) {
+    await recordLoginAttempt('account_blocked', identifier, ctx, user.id);
+    throw new AppError(
+      'FORBIDDEN',
+      'Your account has been blocked by an administrator. Please contact support if you think this is a mistake.',
+      { reason: 'account_blocked' }
+    );
   }
 
   // 3. No usable account, or wrong password. Advance the failure counter (and

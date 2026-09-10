@@ -23,6 +23,7 @@ import analyticsRoutes from '../analytics/analytics.routes';
 import blacklistRoutes from '../blacklist/blacklist.routes';
 import pushRoutes from '../push/push.routes';
 import roleRoutes from '../rbac/role.routes';
+import customerRoutes from '../customers/customers.routes';
 
 const router = Router();
 
@@ -75,6 +76,10 @@ router.patch(
   validate({ params: adminVariantParamSchema, body: updateStockSchema }),
   asyncHandler(updateStockHandler)
 );
+
+// Registered-customer directory + their order history. Its own permission
+// area; per-route view/manage checks live in the sub-router.
+router.use('/customers', customerRoutes);
 
 // Anti-abuse block list sits with order operations.
 router.use('/blacklist', requirePermission('orders:manage'), blacklistRoutes);

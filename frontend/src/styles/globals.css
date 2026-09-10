@@ -2003,6 +2003,34 @@ a.home-card__name:hover { text-decoration: underline; }
 }
 .admin-order-eta:hover:not(:disabled) { color: var(--color-text); border-color: var(--color-text); }
 
+/* Row-expander: a table cell's primary text doubling as the disclosure
+   toggle (admin Customers → a customer's order history). */
+.admin-disclosure {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-text);
+  text-align: start;
+  cursor: pointer;
+}
+.admin-disclosure::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-inline-end: var(--space-2);
+  border-block: 4px solid transparent;
+  border-inline-start: 5px solid currentColor;
+  vertical-align: middle;
+  transition: transform 0.15s ease;
+}
+[dir='rtl'] .admin-disclosure::before { transform: scaleX(-1); }
+.admin-disclosure[aria-expanded='true']::before { transform: rotate(90deg); }
+[dir='rtl'] .admin-disclosure[aria-expanded='true']::before { transform: rotate(90deg); }
+.admin-disclosure:hover { text-decoration: underline; }
+
 /* ===== Admin analytics dashboards =====
    Chart series colours live in components/admin/analytics/palette.ts as
    literals (SVG fill/stroke); these are the surrounding chrome only. */
@@ -2434,6 +2462,19 @@ a.home-card__name:hover { text-decoration: underline; }
   color: var(--color-on-danger);
 }
 .btn--danger:hover { opacity: 0.9; }
+
+/* Quiet destructive action — danger-coloured label on a transparent field,
+   filling in on hover. For a low-frequency block/remove control in a table
+   row, where a solid .btn--danger would shout. Pair with variant="ghost". */
+.btn--danger-quiet {
+  background: transparent;
+  color: var(--color-danger-text);
+  border-color: transparent;
+}
+.btn--danger-quiet:hover:not(:disabled) {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger);
+}
 
 .btn--sm { min-height: 36px; padding: var(--space-2) var(--space-4); }
 .btn--lg { min-height: 52px; padding: var(--space-4) var(--space-8); font-size: var(--fs-base); }

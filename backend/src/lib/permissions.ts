@@ -19,6 +19,7 @@ export interface PermissionArea {
 export const PERMISSION_AREAS: PermissionArea[] = [
   { area: 'dashboard', label: 'Dashboard', levels: ['view'] },
   { area: 'orders', label: 'Orders', levels: ['view', 'manage'] },
+  { area: 'customers', label: 'Customers', levels: ['view', 'manage'] },
   { area: 'products', label: 'Products', levels: ['view', 'manage'] },
   { area: 'collections', label: 'Collections', levels: ['view', 'manage'] },
   { area: 'categories', label: 'Categories', levels: ['view', 'manage'] },
