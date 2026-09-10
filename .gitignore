@@ -17,3 +17,8 @@ frontend/docs/*
 
 # Load-test run artifacts (regenerated; not source)
 /loadtest/results/
+
+/reports
+
+TEST_PLAN.md
+CLAUDE.md
