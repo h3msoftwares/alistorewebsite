@@ -218,6 +218,19 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
 
   let rawAccessToken: string | undefined;
   const order = await prisma.$transaction(async (tx) => {
+    // Serialize a single shopper's own concurrent checkouts. Without this, N
+    // parallel POST /api/orders/checkout for the same cart each read the cart
+    // before any of them clears it (READ COMMITTED) — producing N duplicate
+    // orders from one cart — and each passes the per-customer coupon check
+    // while the redemption count is still 0, so `maxPerCustomer` is bypassed.
+    // A transaction-scoped advisory lock keyed on the cart OWNER (not on the
+    // coupon row or any shared row) serializes exactly that one shopper's
+    // requests and nobody else's, and releases automatically on commit or
+    // rollback. The requests that lose the race re-read an already-emptied
+    // cart and get a clean "cart is empty" 400.
+    const ownerLockKey = owner.userID ? `checkout:u:${owner.userID}` : `checkout:s:${owner.sessionID}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${ownerLockKey}), 0)`;
+
     // A saved-address reference must belong to the person checking out. Without
     // this, an authenticated user could pass another user's Address id — it
     // would be stored as the order's `addressID` and handed straight back by
@@ -338,16 +351,22 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       // (so "once as a guest, again logged in" with the same inbox is still
       // caught); a guest by email alone.
       //
-      // This count is not serialized against a simultaneous checkout by the
-      // SAME shopper (two tabs, same millisecond) — that edge could slip one
-      // extra use through. The GLOBAL `maxRedemptions` cap below, by
-      // contrast, IS race-safe (atomic guarded increment). Serializing every
-      // redeemer of a code on one row-lock was worse — it made unrelated
-      // shoppers contend and time out under load.
+      // The owner advisory lock at the top of this transaction already
+      // serializes one account's / one session's concurrent checkouts. This
+      // second lock — keyed on (coupon, identity) — also covers the one path
+      // the owner lock can't see: the same person redeeming as a logged-in
+      // shopper AND as a guest with the same email at the same instant (two
+      // different owner keys, one identity). With both locks the count below
+      // is race-free; the GLOBAL `maxRedemptions` cap stays enforced by its
+      // own atomic guarded increment further down.
       if (coupon.maxPerCustomer != null) {
         const identity: Prisma.CouponRedemptionWhereInput[] = [];
         if (owner.userID) identity.push({ userID: owner.userID });
         if (contactEmail) identity.push({ email: contactEmail });
+        if (identity.length) {
+          const idKey = (contactEmail ?? owner.userID ?? '').toLowerCase();
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`coupon:${coupon.id}:${idKey}`}), 42)`;
+        }
         const used = identity.length
           ? await tx.couponRedemption.count({ where: { couponID: coupon.id, OR: identity } })
           : 0;
