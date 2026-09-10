@@ -15,10 +15,14 @@ export async function verifyCaptcha(token: string, remoteIp?: string): Promise<b
     const body = new URLSearchParams({ secret: env.HCAPTCHA_SECRET, response: token });
     if (remoteIp) body.set('remoteip', remoteIp);
 
+    // Bound the wait — a hung siteverify must not pin the OTP-request thread
+    // until the platform default. Fail-closed on timeout, same as any other
+    // error below.
     const res = await fetch(SITEVERIFY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return false;
 

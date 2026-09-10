@@ -182,7 +182,7 @@ async function loadCartSubtotal(db: DbClient, owner: CheckoutOwner): Promise<num
         },
       },
     }),
-    activeDiscounts(),
+    activeDiscounts(undefined, db),
   ]);
   return round2(items.reduce((sum, i) => sum + lineUnitPrice(i.variant, discounts) * i.quantity, 0));
 }
@@ -264,10 +264,14 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     // Distinct from the automatic order-velocity soft-flag below: this is a
     // deliberate admin decision, not a heuristic, so it refuses the order
     // outright rather than just flagging it.
+    // Pass `tx` so these run on the transaction's own connection — otherwise
+    // each concurrent checkout borrows a 2nd pool connection here while holding
+    // the tx open, doubling connection demand and causing P2024/P2028 timeout
+    // cascades under a burst (see the production-readiness audit).
     const blacklisted =
-      (await isBlacklisted('PHONE', input.deliveryPhone)) ||
-      (contactEmail ? await isBlacklisted('EMAIL', contactEmail) : false) ||
-      (input.ipAddress ? await isBlacklisted('IP', input.ipAddress) : false);
+      (await isBlacklisted('PHONE', input.deliveryPhone, tx)) ||
+      (contactEmail ? await isBlacklisted('EMAIL', contactEmail, tx) : false) ||
+      (input.ipAddress ? await isBlacklisted('IP', input.ipAddress, tx) : false);
     if (blacklisted) {
       throw new AppError('FORBIDDEN', 'Unable to place this order. Contact support if you think this is a mistake.');
     }
@@ -328,8 +332,9 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
 
     // Effective unit price per line = variant override → product sale → best
     // active catalog discount. Snapshotted onto each OrderItem below so the
-    // order stays correct even if a discount later ends.
-    const discounts = await activeDiscounts();
+    // order stays correct even if a discount later ends. `tx` — same pool
+    // reason as the blacklist check above.
+    const discounts = await activeDiscounts(undefined, tx);
     const unitPriceFor = (i: (typeof cartItems)[number]) => lineUnitPrice(i.variant, discounts);
     const subtotal = round2(
       cartItems.reduce((sum, i) => sum + unitPriceFor(i) * i.quantity, 0)
@@ -342,7 +347,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     let discountAmount = 0;
     let couponToRedeem: { id: string; maxRedemptions: number | null } | null = null;
     if (input.couponCode) {
-      const coupon = await resolveCoupon(input.couponCode);
+      const coupon = await resolveCoupon(input.couponCode, undefined, tx);
       if (!coupon) throw new AppError('VALIDATION_ERROR', 'That coupon code is not valid.');
 
       // Per-customer cap (V2b). `maxPerCustomer` defaults to 1 (single use

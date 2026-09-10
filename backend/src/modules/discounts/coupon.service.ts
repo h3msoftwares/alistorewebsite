@@ -4,6 +4,9 @@ import { AppError } from '../../lib/AppError';
 import { round2, toNumber } from '../../lib/money';
 import type { CreateCouponInput, UpdateCouponInput } from './coupon.schema';
 
+// Shared client or an interactive-transaction client — see blacklist.service.ts.
+type Db = typeof prisma | Prisma.TransactionClient;
+
 // ---- Admin CRUD ----
 
 export function listCoupons() {
@@ -92,10 +95,14 @@ export interface ResolvedCoupon {
  *  null when the code is unknown, disabled, outside its date window, or has
  *  already hit its global redemption cap. Per-customer caps need the caller's
  *  identity and are enforced at checkout. */
-export async function resolveCoupon(rawCode: string, at: Date = new Date()): Promise<ResolvedCoupon | null> {
+export async function resolveCoupon(
+  rawCode: string,
+  at: Date = new Date(),
+  db: Db = prisma
+): Promise<ResolvedCoupon | null> {
   const code = rawCode.trim().toUpperCase();
   if (!code) return null;
-  const c = await prisma.coupon.findUnique({ where: { code } });
+  const c = await db.coupon.findUnique({ where: { code } });
   if (!c || !c.isActive) return null;
   if (c.startsAt && c.startsAt > at) return null;
   if (c.endsAt && c.endsAt < at) return null;

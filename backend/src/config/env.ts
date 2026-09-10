@@ -26,6 +26,10 @@ export const HCAPTCHA_TEST_SECRET = '0x0000000000000000000000000000000000000000'
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
+  // Bind address. Default 0.0.0.0 so a PaaS (Railway/Fly) can route to the
+  // container. On a VPS behind Nginx, set HOST=127.0.0.1 so Express is not
+  // reachable from the internet even if the firewall is misconfigured.
+  HOST: z.string().default('0.0.0.0'),
   DATABASE_URL: z.string().min(1),
   // 32 chars is the floor everywhere; production additionally rejects known
   // placeholders and a shared access/refresh secret (see assertStrongSecrets).
@@ -43,6 +47,13 @@ const envSchema = z.object({
   // mid-task, short enough that a walked-away / hijacked session goes stale.
   STEP_UP_FRESHNESS_MIN: z.coerce.number().default(10),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
+
+  // App-wide baseline rate limiter (see app.ts): requests per IP per minute.
+  // Per-route auth/checkout buckets layer stricter limits on top. Tunable so
+  // ops can raise it to ride out a legitimate traffic spike or lower it to
+  // clamp abuse without a redeploy. Default matches the previous hard-coded
+  // value, so leaving it unset changes nothing.
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
 
   // Email (forgot-password). Defaulted to empty rather than required — a
   // checkout without SMTP configured yet should still boot; lib/mailer.ts

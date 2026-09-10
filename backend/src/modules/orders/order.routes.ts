@@ -40,12 +40,27 @@ const passThrough: RequestHandler = (_req, _res, next) => next();
  * All limiters default ON; buildApp() turns them off under test.
  */
 export function orderRoutes(
-  opts: { trackRateLimit?: boolean; lookupRateLimit?: boolean } = {}
+  opts: { trackRateLimit?: boolean; lookupRateLimit?: boolean; checkoutRateLimit?: boolean } = {}
 ): Router {
   const router = Router();
 
   const trackOn = opts.trackRateLimit !== false;
   const lookupOn = opts.lookupRateLimit !== false;
+  const checkoutOn = opts.checkoutRateLimit !== false;
+
+  // Checkout is the heaviest transaction in the app and had NO limiter — a
+  // script could hammer it. 12 per 5 min per IP is well above any real
+  // shopper (1–3 orders a session) but stops abuse. Nginx adds an edge
+  // backstop (deploy/nginx/alistore.conf).
+  const checkoutLimiter: RequestHandler = checkoutOn
+    ? rateLimit({
+        windowMs: 5 * 60 * 1000,
+        max: 12,
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: RATE_LIMITED_BODY,
+      })
+    : passThrough;
 
   const trackIpLimiter: RequestHandler = trackOn
     ? rateLimit({
@@ -82,7 +97,7 @@ export function orderRoutes(
     : passThrough;
 
   // Checkout works for guests and logged-in users alike (COD only, per spec).
-  router.post('/checkout', optionalAuth, validate({ body: checkoutSchema }), asyncHandler(checkoutHandler));
+  router.post('/checkout', checkoutLimiter, optionalAuth, validate({ body: checkoutSchema }), asyncHandler(checkoutHandler));
 
   // Live delivery-fee estimate for the caller's cart (GET → no CSRF).
   router.get(

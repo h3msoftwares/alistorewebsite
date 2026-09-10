@@ -11,5 +11,9 @@ PROJECT_OVERVIEW.md
 # QA and design docs.
 /docs/*
 !/docs/DEPLOYMENT.md
+!/docs/PRODUCTION-READINESS-AUDIT.md
 frontend/docs/*
 !frontend/docs/*.md
+
+# Load-test run artifacts (regenerated; not source)
+/loadtest/results/

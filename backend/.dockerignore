@@ -1,0 +1,14 @@
+# Keep the build context small and keep secrets / local state OUT of image layers.
+node_modules
+dist
+.env
+.env.*
+!.env.example
+*.log
+coverage
+.vitest
+tests
+.git
+.gitignore
+Dockerfile
+.dockerignore

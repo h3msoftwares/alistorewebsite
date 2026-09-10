@@ -1,0 +1,59 @@
+# Ali's Store API — systemd unit for the VPS deployment.
+#   sudo cp deploy/systemd/alistore-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now alistore-api
+#   journalctl -u alistore-api -f
+#
+# Assumes: a `deploy` user, the repo checked out at /srv/alistore, Node 20 on
+# PATH (nvm's default symlink or a system install), and /etc/alistore/api.env
+# holding the production env (chmod 600, owned by deploy). Deploy flow:
+#   cd /srv/alistore/backend && npm ci && npm run build   (then restart)
+
+[Unit]
+Description=Ali's Store API (Express)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/srv/alistore/backend
+EnvironmentFile=/etc/alistore/api.env
+
+# Apply committed migrations before starting (idempotent; safe on every boot).
+ExecStartPre=/usr/bin/env npx prisma migrate deploy
+# NOTE: after the audit's start-path fix, `npm start` is correct. Until then the
+# explicit path avoids the dist/server.js vs dist/src/server.js bug.
+ExecStart=/usr/bin/env node dist/src/server.js
+
+# Restart on crash, but back off so a crash-loop doesn't peg the 1 vCPU.
+Restart=on-failure
+RestartSec=3
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Graceful shutdown: give in-flight requests time to drain. The app must
+# handle SIGTERM (audit fix) — until then systemd SIGKILLs after the timeout.
+KillSignal=SIGTERM
+TimeoutStopSec=25
+
+# Hardening.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/alistore
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Memory guard on a 1 GB box — restart rather than let the OOM killer pick a
+# victim. Node's own --max-old-space-size should be set in api.env too
+# (NODE_OPTIONS=--max-old-space-size=768).
+MemoryMax=900M
+MemoryHigh=800M
+
+[Install]
+WantedBy=multi-user.target

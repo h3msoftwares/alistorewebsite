@@ -56,6 +56,13 @@ const transporter = configured
       port: env.SMTP_PORT,
       secure: env.SMTP_PORT === 465, // Gmail: 587 = STARTTLS (default), 465 = implicit TLS
       auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD },
+      // Bound every phase so a wedged relay can't hang a sender for minutes.
+      // Senders are already fire-and-forget post-commit, but the checkout-OTP
+      // sender's result IS awaited, so an unbounded socket there would stall
+      // that request.
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     })
   : null;
 

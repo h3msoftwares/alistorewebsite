@@ -46,6 +46,7 @@ export async function deleteImageKitFile(fileId: string): Promise<void> {
       headers: {
         Authorization: `Basic ${Buffer.from(`${env.IMAGEKIT_PRIVATE_KEY}:`).toString('base64')}`,
       },
+      signal: AbortSignal.timeout(8000),
     });
     // 404 = already gone (e.g. deleted directly in the ImageKit dashboard) — not an error for us.
     if (!res.ok && res.status !== 404) {

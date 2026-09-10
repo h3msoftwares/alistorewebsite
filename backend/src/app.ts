@@ -46,6 +46,7 @@ export function buildApp(
     checkoutOtpVerifyRateLimit?: boolean;
     orderTrackRateLimit?: boolean;
     orderLookupRateLimit?: boolean;
+    orderCheckoutRateLimit?: boolean;
     // Double-submit-cookie CSRF check. Defaults ON everywhere except tests
     // (where the suites don't carry the header); a focused test passes `true`.
     csrf?: boolean;
@@ -126,7 +127,7 @@ export function buildApp(
   // check still counts against the per-IP budget. Disabled under test so
   // suites can fire many requests without tripping it.
   if (env.NODE_ENV !== 'test') {
-    app.use(rateLimit({ windowMs: 60 * 1000, max: 300 }));
+    app.use(rateLimit({ windowMs: 60 * 1000, max: env.RATE_LIMIT_MAX }));
   }
 
   // CSRF: sets/reads the `csrfToken` cookie and requires a matching
@@ -205,6 +206,7 @@ export function buildApp(
     orderRoutes({
       trackRateLimit: opts.orderTrackRateLimit ?? env.NODE_ENV !== 'test',
       lookupRateLimit: opts.orderLookupRateLimit ?? env.NODE_ENV !== 'test',
+      checkoutRateLimit: opts.orderCheckoutRateLimit ?? env.NODE_ENV !== 'test',
     })
   );
   app.use('/api/addresses', addressRoutes);

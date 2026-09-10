@@ -5,6 +5,10 @@ import { toNumber } from '../../lib/money';
 import type { DiscountCandidate } from '../../lib/pricing';
 import type { CreateDiscountInput, UpdateDiscountInput } from './discount.schema';
 
+// Shared client or an interactive-transaction client — see the note in
+// blacklist.service.ts. Callers inside a `$transaction` pass their `tx`.
+type Db = typeof prisma | Prisma.TransactionClient;
+
 // ---- Admin CRUD ----
 
 export function listDiscounts() {
@@ -123,8 +127,11 @@ export async function deleteDiscount(id: string) {
 
 /** Every discount that is active and within its time window at `at`. Small
  *  table, no cache — called once per product-listing / cart / checkout. */
-export async function activeDiscounts(at: Date = new Date()): Promise<DiscountCandidate[]> {
-  const rows = await prisma.discount.findMany({
+export async function activeDiscounts(
+  at: Date = new Date(),
+  db: Db = prisma
+): Promise<DiscountCandidate[]> {
+  const rows = await db.discount.findMany({
     where: {
       isActive: true,
       AND: [

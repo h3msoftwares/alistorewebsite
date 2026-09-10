@@ -1,0 +1,65 @@
+# 1 vCPU / 1 GB VPS emulation for the Express API — LOAD TESTING ONLY.
+#
+#   docker compose -p alistore-loadtest -f loadtest/emulation/docker-compose.yml up -d --build
+#
+# The API container is capped at 1 CPU / 1 GB to approximate the target VPS.
+# Postgres is deliberately NOT capped with it: the stated architecture hosts
+# the DB separately (Neon/Supabase), so the constrained component under test is
+# the app server. A co-located-DB variant is documented in README.md.
+#
+# Caveats: a Docker CPU/RAM cap on a shared Windows host is an approximation,
+# not a real VPS. Relative results (latency knees, leak/no-leak, error onset,
+# integrity pass/fail, query plans) transfer; treat absolute ms/rps as
+# indicative and note the caveat in the report.
+
+services:
+  pg:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: alistore
+      POSTGRES_PASSWORD: alistore
+      POSTGRES_DB: alistore
+    command:
+      # A small managed instance's worth of headroom — not the thing we're
+      # trying to starve.
+      - "postgres"
+      - "-c"
+      - "max_connections=100"
+      - "-c"
+      - "shared_buffers=256MB"
+    ports:
+      - "5544:5432"
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alistore -d alistore"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ../../backend
+    image: alistore-loadtest-api:latest
+    env_file:
+      - ./backend.env
+    # Stock `npm start` runs `node dist/server.js`, but tsc (rootDir ".") emits
+    # dist/src/server.js — see the audit's CRITICAL start-path finding. Use the
+    # correct path here so the stack boots; the fix lands in package.json.
+    command: ["sh", "-c", "npx prisma migrate deploy && node dist/src/server.js"]
+    ports:
+      - "4010:4000"
+    depends_on:
+      pg:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
+    # Approximate a PaaS/systemd auto-restart so the crash-recovery test has
+    # something to observe.
+    restart: unless-stopped

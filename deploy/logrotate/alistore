@@ -1,0 +1,33 @@
+# /etc/logrotate.d/alistore  — keep logs from filling the 25 GB SSD.
+#
+# The app logs to stdout/stderr → journald (systemd). Cap journald separately:
+#   /etc/systemd/journald.conf →  SystemMaxUse=500M   (then systemctl restart systemd-journald)
+# This file covers Nginx's own access/error logs for the API vhost.
+
+/var/log/nginx/alistore.access.log /var/log/nginx/alistore.error.log {
+    daily
+    rotate 14
+    maxsize 100M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    sharedscripts
+    postrotate
+        [ -f /var/run/nginx.pid ] && kill -USR1 "$(cat /var/run/nginx.pid)"
+    endscript
+}
+
+# If you switch the app to file logging (e.g. pino -> /var/log/alistore/api.log,
+# recommended in the audit), add:
+#
+# /var/log/alistore/*.log {
+#     daily
+#     rotate 10
+#     maxsize 200M
+#     missingok
+#     notifempty
+#     compress
+#     delaycompress
+#     copytruncate
+# }

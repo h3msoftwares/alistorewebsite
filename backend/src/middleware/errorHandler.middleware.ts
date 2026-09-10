@@ -34,6 +34,20 @@ export function errorHandler(err: unknown, _req: Request, res: Response, next: N
     return res.status(status).json({ error: { code, message } });
   }
 
+  // Prisma "the database is momentarily overloaded" errors — a connection-pool
+  // timeout (P2024), an interactive-transaction timeout (P2028), or a write
+  // conflict / deadlock (P2034). These are transient: answer 503 with a
+  // Retry-After so the client (or its user) can try again, instead of a bare
+  // 500 that reads as "the app is broken".
+  const prismaCode = (err as { code?: unknown } | null)?.code;
+  if (prismaCode === 'P2024' || prismaCode === 'P2028' || prismaCode === 'P2034') {
+    console.error(`[transient db error ${prismaCode}]`, (err as Error).message?.split('\n')[0]);
+    res.setHeader('Retry-After', '2');
+    return res.status(503).json({
+      error: { code: 'SERVICE_BUSY', message: 'The service is busy right now. Please try again in a moment.' },
+    });
+  }
+
   console.error('[unhandled error]', err);
   return res.status(500).json({
     error: { code: 'INTERNAL', message: 'Something went wrong' },

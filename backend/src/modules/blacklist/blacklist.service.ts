@@ -1,6 +1,12 @@
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
-import type { BlacklistType } from '@prisma/client';
+import type { BlacklistType, Prisma } from '@prisma/client';
+
+/** Either the shared client or an interactive-transaction client. Callers that
+ *  are already inside a `$transaction` MUST pass their `tx` so the query runs
+ *  on the transaction's own connection instead of borrowing a second one from
+ *  the pool (see the checkout-burst finding in the production-readiness audit). */
+type Db = typeof prisma | Prisma.TransactionClient;
 
 // Emails are matched case-insensitively (accounts are stored lower-cased
 // too); phone/IP are matched as-is — an admin enters them exactly as they
@@ -12,8 +18,12 @@ function normalize(type: BlacklistType, value: string): string {
 
 /** Checked at checkout-OTP request time and at order-creation time — see
  *  checkout-otp.service.ts and order.service.ts. */
-export async function isBlacklisted(type: BlacklistType, value: string): Promise<boolean> {
-  const entry = await prisma.blacklistEntry.findUnique({
+export async function isBlacklisted(
+  type: BlacklistType,
+  value: string,
+  db: Db = prisma
+): Promise<boolean> {
+  const entry = await db.blacklistEntry.findUnique({
     where: { type_value: { type, value: normalize(type, value) } },
     select: { id: true },
   });
