@@ -17,9 +17,13 @@ const imageOrder = { orderBy: { sortOrder: 'asc' as const } };
 
 const categoryInclude = {
   images: imageOrder,
-  // `collection` is null for a standalone category.
+  // `collection` is null for a standalone category. `archivedAt` included so
+  // admin pickers can flag "this category's parent collection is archived"
+  // (fix-list.md #15, resolves 12.2) — previously not selected at all, so
+  // that state was invisible to the frontend regardless of what it tried to
+  // do with it.
   collection: {
-    select: { id: true, nameEn: true, nameAr: true, slug: true, accentColor: true },
+    select: { id: true, nameEn: true, nameAr: true, slug: true, accentColor: true, archivedAt: true },
   },
   children: {
     where: { isActive: true },
@@ -78,8 +82,14 @@ export async function getCategoryById(id: string) {
   return category;
 }
 
+// Public storefront lookup — same "active" gate as getCollectionBySlug, for
+// the same reason (fix-list.md #8, resolves 12.1). Previously unfiltered, so
+// an archived category's direct slug URL stayed fully live.
 export async function getCategoryBySlug(slug: string) {
-  const category = await prisma.category.findUnique({ where: { slug }, include: categoryInclude });
+  const category = await prisma.category.findFirst({
+    where: { slug, ...statusWhere('active') },
+    include: categoryInclude,
+  });
   if (!category) throw new AppError('NOT_FOUND', 'Category not found');
   return category;
 }

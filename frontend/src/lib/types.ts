@@ -124,7 +124,7 @@ export interface Category {
   /** Present on `GET /categories` (one level of nesting). */
   children?: Category[];
   /** `null` for a standalone category. */
-  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug' | 'accentColor'> | null;
+  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug' | 'accentColor' | 'archivedAt'> | null;
 }
 
 export interface ProductVariant {

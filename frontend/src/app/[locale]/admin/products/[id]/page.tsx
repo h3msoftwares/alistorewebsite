@@ -4,13 +4,16 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Alert, Button, EmptyState, ProductGridSkeleton } from '@/components/ui';
+import { Archive, RotateCcw, Trash2 } from 'lucide-react';
+import { Alert, Button, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
 import { ImageGallery } from '@/components/admin/image-gallery';
 import {
   useAddProductImage,
   useDeleteProduct,
   useDeleteProductImage,
+  usePermanentDeleteProduct,
   useProduct,
+  useRestoreProduct,
   useUpdateProduct,
   useUpdateProductImage,
 } from '@/hooks/use-catalog';
@@ -27,7 +30,9 @@ export default function EditProductPage() {
 
   const { data: product, isPending, isError, refetch } = useProduct(id);
   const updateProduct = useUpdateProduct();
-  const deleteProduct = useDeleteProduct();
+  const archiveProduct = useDeleteProduct();
+  const restoreProduct = useRestoreProduct();
+  const permanentDeleteProduct = usePermanentDeleteProduct();
   const addImage = useAddProductImage();
   const updateImage = useUpdateProductImage();
   const deleteImage = useDeleteProductImage();
@@ -51,7 +56,6 @@ export default function EditProductPage() {
           categoryId: product.categoryID,
           price: Number(product.price),
           compareAtPrice: product.compareAtPrice != null ? String(product.compareAtPrice) : '',
-          quantity: product.quantity,
           saleType: product.saleType ?? '',
           saleValue: product.saleValue != null ? String(product.saleValue) : '',
         }
@@ -74,7 +78,6 @@ export default function EditProductPage() {
           categoryId: values.categoryId,
           price: values.price,
           compareAtPrice: values.compareAtPrice ? Number(values.compareAtPrice) : undefined,
-          quantity: values.quantity,
           saleType: values.saleType || null,
           saleValue: values.saleValue ? Number(values.saleValue) : null,
         },
@@ -84,12 +87,42 @@ export default function EditProductPage() {
     }
   };
 
-  const onDeleteProduct = async () => {
+  // Three distinct actions, matching the list page (admin/products/page.tsx)
+  // — see the identical comment in admin/collections/[id]/page.tsx
+  // (fix-list.md #15, resolves 12.8).
+  const onArchiveProduct = async () => {
     if (!product) return;
     const name = isAr ? product.nameAr : product.nameEn;
-    if (!window.confirm(t(`Delete "${name}"? This can't be undone.`, `حذف "${name}"؟ لا يمكن التراجع عن هذا.`))) return;
+    if (
+      !window.confirm(
+        t(
+          `Archive "${name}"? It will be hidden from the storefront but kept.`,
+          `أرشفة "${name}"؟ سيُخفى من المتجر مع الاحتفاظ به.`
+        )
+      )
+    )
+      return;
     try {
-      await deleteProduct.mutateAsync(id);
+      await archiveProduct.mutateAsync(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('Archive failed', 'فشلت الأرشفة'));
+    }
+  };
+
+  const onRestoreProduct = async () => {
+    try {
+      await restoreProduct.mutateAsync(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('Restore failed', 'فشلت الاستعادة'));
+    }
+  };
+
+  const onPermanentDeleteProduct = async () => {
+    if (!product) return;
+    const name = isAr ? product.nameAr : product.nameEn;
+    if (!window.confirm(t(`Permanently delete "${name}"? This cannot be undone.`, `حذف "${name}" نهائيًا؟ لا يمكن التراجع.`))) return;
+    try {
+      await permanentDeleteProduct.mutateAsync(id);
       router.push(`/${locale}/admin/products`);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Delete failed', 'فشل الحذف'));
@@ -128,9 +161,25 @@ export default function EditProductPage() {
     <div className="section--tight">
       <div className="admin-page__head">
         <h1>{isAr ? product.nameAr : product.nameEn}</h1>
-        <Button variant="danger" onClick={onDeleteProduct} loading={deleteProduct.isPending}>
-          {t('Delete product', 'حذف المنتج')}
-        </Button>
+        <span className="admin-row-actions">
+          {product.deletedAt ? (
+            <>
+              <Button variant="outline" onClick={onRestoreProduct} loading={restoreProduct.isPending}>
+                <Icon as={RotateCcw} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                {t('Restore', 'استعادة')}
+              </Button>
+              <Button variant="danger" onClick={onPermanentDeleteProduct} loading={permanentDeleteProduct.isPending}>
+                <Icon as={Trash2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                {t('Delete permanently', 'حذف نهائي')}
+              </Button>
+            </>
+          ) : (
+            <Button variant="danger" onClick={onArchiveProduct} loading={archiveProduct.isPending}>
+              <Icon as={Archive} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+              {t('Archive product', 'أرشفة المنتج')}
+            </Button>
+          )}
+        </span>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">

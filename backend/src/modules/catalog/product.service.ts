@@ -169,7 +169,22 @@ function productStatusWhere(query: ListProductsQuery): Prisma.ProductWhereInput 
   const status = query.status ?? (query.includeInactive ? 'all' : 'active');
   if (status === 'archived') return { deletedAt: { not: null } };
   if (status === 'all') return {};
-  return { isActive: true, deletedAt: null };
+  // Storefront default: the product's own active/undeleted state, AND its
+  // parent category's/collection's — archiving a category or collection is
+  // the admin's real "hide everything under this" action, but nothing here
+  // previously enforced that at the listing/search level, so a product
+  // stayed fully searchable/browsable under an archived parent (fix-list.md
+  // #8, resolves 12.6). `collection` is optional on Category (a standalone
+  // category has none), hence the OR.
+  return {
+    isActive: true,
+    deletedAt: null,
+    category: {
+      archivedAt: null,
+      isActive: true,
+      OR: [{ collectionID: null }, { collection: { archivedAt: null, isActive: true } }],
+    },
+  };
 }
 
 export async function listProducts(query: ListProductsQuery) {
