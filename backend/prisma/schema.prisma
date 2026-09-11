@@ -866,6 +866,13 @@ model SiteSetting {
   contactEmail        String?
   contactPhone        String?
 
+  // Sender identity for outgoing customer/owner email (order confirmations,
+  // shipped/cancelled notices, password reset, checkout OTP…) — admin-set here
+  // instead of hard-coded, overriding SMTP_FROM from the environment when set.
+  // null ⇒ falls back to SMTP_FROM. See lib/mailer.ts's resolveFrom().
+  mailFromName  String?
+  mailFromEmail String?
+
   // Delivery fee. `deliveryFeeEnabled` off ⇒ every order ships free.
   // `deliveryFeeFlat` applies to any governorate without a `DeliveryRate`
   // override. `freeDeliveryThreshold` (null ⇒ off) waives the fee once the

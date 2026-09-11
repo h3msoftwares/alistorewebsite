@@ -95,6 +95,11 @@ export const updateSettingsSchema = z.object({
   contactEmail: z.string().trim().email().or(z.literal('')).nullish(),
   contactPhone: z.string().trim().max(40).or(z.literal('')).nullish(),
 
+  // ---- Outgoing-email sender identity ----
+  // '' / null ⇒ clear (mailer.ts falls back to SMTP_FROM from the environment).
+  mailFromName: z.string().trim().max(120).or(z.literal('')).nullish(),
+  mailFromEmail: z.string().trim().email().max(320).or(z.literal('')).nullish(),
+
   // ---- "Visit us" store locations ----
   // Replace-all: the given list becomes the whole set of stores, in order.
   // Each location carries its own opening hours (a day not listed = closed);

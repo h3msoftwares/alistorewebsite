@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Dosis, Cairo } from 'next/font/google';
+import { Alex_Brush, Cairo, Inter, Markazi_Text, Playfair_Display } from 'next/font/google';
 import { dehydrate } from '@tanstack/react-query';
 import { StoreProvider } from '@/store/provider';
 import { GoogleAnalytics } from '@/components/analytics/google-analytics';
@@ -17,16 +17,31 @@ import '@/styles/globals.css';
 // this is the standard next-intl-style pattern so <html lang dir> can be
 // set per-locale. middleware.ts redirects "/" to "/en" or "/ar".
 
-// Fonts backing the --font-sans/--font-serif/--font-arabic chains declared
-// in globals.css — loaded here via next/font (self-hosted, no layout shift)
-// and exposed as CSS variables so the stylesheet's fallback chains resolve
-// to a real face instead of silently falling back to system fonts.
-// Dosis covers both English roles (body + headings — see --font-sans /
-// --font-serif in globals.css); Cairo covers Arabic. Neither ships a true
-// italic, so the "one italic accent word per headline" heading pattern
-// renders as a browser-synthesized (faux) slant.
-const dosis = Dosis({ subsets: ['latin'], variable: '--font-dosis', display: 'swap' });
+// Fonts backing the --font-sans/--font-serif/--font-arabic/--font-arabic
+// -heading/--font-brand chains declared in globals.css — loaded here via
+// next/font (self-hosted, no layout shift) and exposed as CSS variables so
+// the stylesheet's fallback chains resolve to a real face instead of
+// silently falling back to system fonts.
+//   --font-sans     Inter            English body / UI / buttons
+//   --font-serif    Playfair Display English headings + section titles
+//   --font-arabic           Cairo         Arabic body / UI
+//   --font-arabic-heading   Markazi Text  Arabic headings + section titles
+// Playfair Display ships a true italic (unlike the old single-style Dosis),
+// so the "one italic accent word per headline" pattern renders as a real
+// slanted cut, not a browser-synthesized fake one.
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' });
+const playfairDisplay = Playfair_Display({
+  subsets: ['latin'],
+  style: ['normal', 'italic'],
+  variable: '--font-playfair',
+  display: 'swap',
+});
 const cairo = Cairo({ subsets: ['arabic', 'latin'], variable: '--font-cairo', display: 'swap' });
+const markaziText = Markazi_Text({ subsets: ['arabic', 'latin'], variable: '--font-markazi', display: 'swap' });
+// Latin-only script face for the brand wordmark ("Ali's Store" in the header
+// logo + footer). Alex Brush has no Arabic glyphs, so the Arabic wordmark
+// stays on --font-arabic (Cairo) — see the [lang='ar'] overrides in globals.css.
+const alexBrush = Alex_Brush({ subsets: ['latin'], weight: '400', variable: '--font-alex-brush', display: 'swap' });
 
 export async function generateMetadata({
   params,
@@ -89,7 +104,11 @@ export default async function LocaleLayout({
   ]);
 
   return (
-    <html lang={locale} dir={dir} className={`${dosis.variable} ${cairo.variable}`}>
+    <html
+      lang={locale}
+      dir={dir}
+      className={`${inter.variable} ${playfairDisplay.variable} ${cairo.variable} ${markaziText.variable} ${alexBrush.variable}`}
+    >
       <body>
         <StoreProvider dehydratedState={dehydrate(queryClient)}>
           <GoogleAnalytics />

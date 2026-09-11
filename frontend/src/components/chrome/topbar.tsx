@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Heart, Menu, Search, ShoppingBag, User } from 'lucide-react';
@@ -105,7 +106,15 @@ export function Topbar({ locale }: { locale: string }) {
         </button>
 
         <Link href={`/${locale}`} className="site-header__logo topbar__logo">
-          {brandName}
+          <Image
+            src="/ali-store-A-traced.png"
+            alt=""
+            width={64}
+            height={59}
+            className="site-header__logo-mark"
+            preload
+          />
+          <span>{brandName}</span>
         </Link>
 
         <nav className="collection-switcher topbar__nav" aria-label={t('Collections', 'الأقسام')}>

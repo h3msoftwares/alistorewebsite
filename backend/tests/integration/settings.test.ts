@@ -64,6 +64,29 @@ describe('Site settings API', () => {
     expect(res.body.settings.instagramUrl).toBeNull();
   });
 
+  it('sets and clears the outgoing-email sender identity (mailFromName / mailFromEmail)', async () => {
+    const set = await request(app)
+      .patch('/api/settings')
+      .set(bearer(adminToken))
+      .send({ mailFromName: 'Rima Boutique', mailFromEmail: 'orders@rima.test' });
+    expect(set.status).toBe(200);
+    expect(set.body.settings).toMatchObject({
+      mailFromName: 'Rima Boutique',
+      mailFromEmail: 'orders@rima.test',
+    });
+
+    const cleared = await request(app)
+      .patch('/api/settings')
+      .set(bearer(adminToken))
+      .send({ mailFromName: '', mailFromEmail: '' });
+    expect(cleared.body.settings.mailFromName).toBeNull();
+    expect(cleared.body.settings.mailFromEmail).toBeNull();
+
+    expect(
+      (await request(app).patch('/api/settings').set(bearer(adminToken)).send({ mailFromEmail: 'nope' })).status
+    ).toBe(400);
+  });
+
   it('rejects an invalid URL and a bad email', async () => {
     expect(
       (await request(app).patch('/api/settings').set(bearer(adminToken)).send({ facebookUrl: 'not a url' })).status

@@ -41,7 +41,7 @@
   --navy-2: #1d0775;
   --dark-ultramarine: #251b91;
   --yellow: #fffa00;
-  --bright-gold: #ffd800; /* main brand colour — primary CTA / wordmark */
+  --bright-gold: #cf9d4c; /* main brand colour — primary CTA / wordmark (user-directed 2026-09-11, matches the traced-A logo mark) */
   --ink: #0f0e12;         /* near-black field from the home artwork — secondary emphasis + footer band (user-directed 2026-09-05, replaces navy-2 as secondary) */
   --ink-2: #26242e;       /* lifted ink for hover — not a colour swap */
 
@@ -68,8 +68,8 @@
 
   /* ---- Primary / secondary / accent ---- */
   --color-primary: var(--bright-gold); /* wordmark, primary CTA, announcement/offers strip */
-  --color-primary-hover: #e0b400;      /* darker gold, not a colour swap */
-  --color-on-primary: var(--navy);     /* white fails contrast on this gold (~1.4:1); navy gives ~12:1 and reads as the brand pairing */
+  --color-primary-hover: #af7e2f;      /* darker gold, not a colour swap */
+  --color-on-primary: var(--navy);     /* white fails contrast on this gold (~2.4:1); navy gives ~7:1 and reads as the brand pairing */
 
   --color-secondary: var(--ink);       /* quiet emphasis, secondary buttons/badges, footer band — near-black from the home artwork */
   --color-secondary-hover: var(--ink-2);
@@ -103,25 +103,38 @@
   --color-border-strong: #c7c4dd;     /* inputs, table cell dividers */
   --color-ring: var(--navy);          /* global focus ring — same everywhere, incl. per-collection pages */
 
-  /* ---- Collection accents (compound styling — overridden per data-collection) ---- */
-  --collection-accent: var(--color-accent);
+  /* ---- Collection accents (compound styling — overridden per data-collection) ----
+     Fallback for a row with no admin-set accentColor (a smart showcase row like
+     "Best sellers" — see home/showcase-row.tsx — or any other non-collection
+     list): the brand gold, not the hot --color-accent yellow. */
+  --collection-accent: var(--color-primary);
   --collection-accent-soft: var(--color-accent-soft);
-  --collection-on-accent: var(--color-on-accent);
+  --collection-on-accent: var(--color-on-primary);
   --collection-radius: var(--radius-sm);
   --collection-heading-font: var(--font-serif);
   --collection-tracking: -0.01em;
 
-  /* ---- Typography ---- */
-  /* var(--font-dosis)/--font-cairo are set on <html> by next/font in
-     app/[locale]/layout.tsx; quoted names are the graceful fallback if this
-     file is used outside that layout. Dosis covers both English roles (body
-     + headings) — there's no separate serif face in this system anymore,
-     --font-serif just points at the same family so every existing
-     font-family: var(--font-serif) rule (headings, wordmark, etc.) picks it
-     up without a find-and-replace across the file. */
-  --font-sans: var(--font-dosis), 'Dosis', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
-  --font-serif: var(--font-dosis), 'Dosis', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  /* ---- Typography ----
+     var(--font-inter)/--font-playfair/--font-cairo/--font-markazi/
+     --font-alex-brush are set on <html> by next/font in app/[locale]/
+     layout.tsx; quoted names are the graceful fallback if this file is used
+     outside that layout.
+       --font-sans             Inter            body / UI / buttons (EN)
+       --font-serif            Playfair Display headings + section titles (EN)
+       --font-arabic           Cairo            body / UI (AR)
+       --font-arabic-heading   Markazi Text     headings + section titles (AR)
+     Every existing `font-family: var(--font-serif)` rule (headings, hero
+     display, etc.) picks up Playfair automatically; each one is paired with
+     an explicit `[lang='ar']` override onto --font-arabic-heading rather
+     than --font-arabic, so Arabic headings don't inherit the body face. */
+  --font-sans: var(--font-inter), 'Inter', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-serif: var(--font-playfair), 'Playfair Display', Georgia, 'Times New Roman', serif;
   --font-arabic: var(--font-cairo), 'Cairo', 'Tahoma', sans-serif;
+  --font-arabic-heading: var(--font-markazi), 'Markazi Text', var(--font-arabic);
+  /* Latin-only script face for the brand wordmark (header logo, footer brand
+     name) — Alex Brush has no Arabic glyphs, so [lang='ar'] wordmarks stay on
+     --font-arabic instead of falling through this chain. */
+  --font-brand: var(--font-alex-brush), 'Alex Brush', cursive;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 
   /* size / line-height pairs */
@@ -259,7 +272,7 @@ h1 em, h2 em, h3 em, h4 em,
 }
 [lang='ar'] h1 em, [lang='ar'] h2 em, [lang='ar'] h3 em, [lang='ar'] h4 em,
 [lang='ar'] .heading__accent {
-  font-family: var(--font-arabic);
+  font-family: var(--font-arabic-heading);
   font-style: normal;
   font-weight: var(--fw-bold);
 }
@@ -273,7 +286,7 @@ h1 em, h2 em, h3 em, h4 em,
   letter-spacing: var(--tracking-tight);
   margin: 0 0 var(--space-4);
 }
-[lang='ar'] .display { font-family: var(--font-arabic); }
+[lang='ar'] .display { font-family: var(--font-arabic-heading); }
 
 p {
   margin: 0 0 var(--space-3);
@@ -486,13 +499,43 @@ main > .container.section:first-child {
 }
 
 .site-header__logo {
-  font-family: var(--font-serif);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* Alex Brush (script) reads smaller than a comparable serif at the same
+     size, hence the size bump over the old --fs-xl — reset for Arabic below,
+     where Cairo takes over at its normal heading size. */
+  font-family: var(--font-brand);
+  font-size: var(--fs-2xl);
+  /* Alex Brush ships one weight (400) — bold here would be a synthesized
+     faux-bold, which distorts a script face's strokes. Arabic (Cairo) gets
+     its normal bold weight back below. */
+  font-weight: var(--fw-regular);
+  /* A script face's letters are drawn to connect — extra tracking breaks
+     that. Arabic (Cairo, a sans face) gets the tracking back below. */
+  letter-spacing: normal;
+  white-space: nowrap;
+  /* Brand wordmark — an exempt "logotype" under WCAG 1.4.3, so this doesn't
+     chase the usual text-contrast minimums. Swapped to --color-text-on-dark
+     by the [data-on-dark] rule above when the header sits over the hero. */
+  color: var(--color-primary);
+}
+[lang='ar'] .site-header__logo {
+  font-family: var(--font-arabic);
   font-size: var(--fs-xl);
   font-weight: var(--fw-bold);
   letter-spacing: 0.02em;
-  white-space: nowrap;
 }
-[lang='ar'] .site-header__logo { font-family: var(--font-arabic); }
+
+/* Sized off the logo's own font-size (not a fixed px value), so it shrinks in
+   step with the `.topbar__logo` breakpoint override below. The mark is a
+   fixed-colour gold monogram — it reads the same on the light header and the
+   dark-hero state, so (unlike the brand-name text) it needs no colour swap. */
+.site-header__logo-mark {
+  display: block;
+  height: 1.6em;
+  width: auto;
+}
 
 .site-header__nav {
   display: flex;
@@ -593,12 +636,19 @@ main > .container.section:first-child {
 }
 
 .site-footer__brand-name {
-  font-family: var(--font-serif);
-  font-size: var(--fs-lg);
+  /* Same brand-wordmark treatment as the header logo — see its comments for
+     why the size/weight/tracking all differ from the Arabic override below. */
+  font-family: var(--font-brand);
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-regular);
+  letter-spacing: normal;
   color: var(--color-text-on-dark);
   margin-bottom: var(--space-2);
 }
-[lang='ar'] .site-footer__brand-name { font-family: var(--font-arabic); }
+[lang='ar'] .site-footer__brand-name {
+  font-family: var(--font-arabic);
+  font-size: var(--fs-lg);
+}
 
 .site-footer__social {
   display: flex;
@@ -616,6 +666,14 @@ main > .container.section:first-child {
   justify-content: space-between;
   font-size: var(--fs-xs);
 }
+/* Developer credit — same muted-on-dark treatment as the column links, just
+   inline rather than block. */
+.site-footer__credit a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+.site-footer__credit a:hover { color: var(--color-text-on-dark); }
 
 /* Newsletter capture (stub — no submit logic here) */
 .newsletter {
@@ -1053,7 +1111,7 @@ main > .container.section:first-child {
   font-size: var(--fs-2xl);
   color: var(--collection-accent, var(--color-text));
 }
-[lang='ar'] .home-row__title { font-family: var(--font-arabic); }
+[lang='ar'] .home-row__title { font-family: var(--font-arabic-heading); }
 
 /* Bleeds to the viewport edge (negative margin cancels .container's inline
    padding) so the arrows sit at the actual edge of the tile row, and the
@@ -1178,7 +1236,7 @@ main > .container.section:first-child {
   font-size: var(--fs-2xl);
   line-height: var(--lh-2xl);
 }
-[lang='ar'] .store-info__title { font-family: var(--font-arabic); }
+[lang='ar'] .store-info__title { font-family: var(--font-arabic-heading); }
 
 .store-info__grid {
   display: grid;
@@ -1224,7 +1282,7 @@ main > .container.section:first-child {
   font-family: var(--font-serif);
   font-size: var(--fs-lg);
 }
-[lang='ar'] .store-card__name { font-family: var(--font-arabic); }
+[lang='ar'] .store-card__name { font-family: var(--font-arabic-heading); }
 .store-card__address {
   margin: 0 0 var(--space-3);
   max-width: 34ch;
@@ -1871,7 +1929,7 @@ a.home-card__name:hover { text-decoration: underline; }
   line-height: var(--lh-sm);
   color: inherit;
 }
-[lang='ar'] .home-banner__title { font-family: var(--font-arabic); }
+[lang='ar'] .home-banner__title { font-family: var(--font-arabic-heading); }
 .home-banner__cta { align-self: flex-start; }
 .home-banner__media {
   position: relative;
@@ -2500,7 +2558,7 @@ a.home-card__name:hover { text-decoration: underline; }
 .icon-btn--bordered { border-color: var(--color-border); }
 .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* count badge (cart) */
+/* count badge (cart / favourites) */
 .icon-btn__badge {
   position: absolute;
   inset-block-start: 2px;
@@ -2511,8 +2569,8 @@ a.home-card__name:hover { text-decoration: underline; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-accent);
-  color: var(--color-on-accent);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
   font-size: var(--fs-2xs);
   font-weight: var(--fw-semibold);
   font-variant-numeric: tabular-nums;
@@ -3131,7 +3189,7 @@ a.home-card__name:hover { text-decoration: underline; }
   color: var(--color-text);
   margin: 0;
 }
-[lang='ar'] .state__title { font-family: var(--font-arabic); }
+[lang='ar'] .state__title { font-family: var(--font-arabic-heading); }
 .state__body { max-width: 42ch; margin: 0; }
 .state__actions { margin-top: var(--space-3); display: flex; gap: var(--space-3); }
 
@@ -3303,12 +3361,13 @@ a.home-card__name:hover { text-decoration: underline; }
    uses the default accent.
    ============================================================ */
 
-/* Arabic headings: force the Arabic face regardless of collection (Dosis
-   has no Arabic coverage). Element-level selector beats the h1..h4 rule. */
+/* Arabic headings: force the Arabic heading face regardless of collection
+   (Playfair Display has no Arabic coverage). Element-level selector beats
+   the h1..h4 rule above (section 2) on specificity, not source order. */
 [lang='ar'] h1,
 [lang='ar'] h2,
 [lang='ar'] h3,
-[lang='ar'] h4 { font-family: var(--font-arabic); }
+[lang='ar'] h4 { font-family: var(--font-arabic-heading); }
 
 /* ============================================================
    7b. SCROLL-INTO-VIEW REVEAL (see hooks/use-reveal.ts)

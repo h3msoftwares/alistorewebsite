@@ -63,6 +63,8 @@ const settingsFormSchema = z.object({
   brandNameAr: z.string().trim().min(1, 'Required'),
   contactEmail: z.string().trim().email('Must be an email').or(z.literal('')),
   contactPhone: z.string().trim().max(40),
+  mailFromName: z.string().trim().max(120),
+  mailFromEmail: z.string().trim().email('Must be an email').or(z.literal('')),
   instagramUrl: urlOrEmpty,
   facebookUrl: urlOrEmpty,
   tiktokUrl: urlOrEmpty,
@@ -195,7 +197,9 @@ const SECTIONS: { id: TabId; en: string; ar: string; terms: string }[] = [
     ar: 'العلامة والتواصل',
     terms:
       'brand name store title contact email phone number instagram facebook tiktok whatsapp social links footer ' +
-      'العلامة اسم المتجر بريد إلكتروني هاتف رقم تواصل انستغرام فيسبوك تيك توك واتساب روابط التواصل',
+      'outgoing email sender from address smtp notification emails ' +
+      'العلامة اسم المتجر بريد إلكتروني هاتف رقم تواصل انستغرام فيسبوك تيك توك واتساب روابط التواصل ' +
+      'بريد المرسل عنوان الإرسال',
   },
   {
     id: 'announcement',
@@ -313,6 +317,8 @@ export default function AdminSettingsPage() {
     brandNameAr: settings.brandNameAr,
     contactEmail: settings.contactEmail ?? '',
     contactPhone: settings.contactPhone ?? '',
+    mailFromName: settings.mailFromName ?? '',
+    mailFromEmail: settings.mailFromEmail ?? '',
     instagramUrl: settings.instagramUrl ?? '',
     facebookUrl: settings.facebookUrl ?? '',
     tiktokUrl: settings.tiktokUrl ?? '',
@@ -545,6 +551,25 @@ export default function AdminSettingsPage() {
           </Field>
           <Field label={t('Contact phone', 'هاتف التواصل')} error={errors.contactPhone?.message}>
             {(p) => <Input {...p} {...register('contactPhone')} disabled={busy} />}
+          </Field>
+        </div>
+        <div className="admin-form__row">
+          <Field
+            label={t('Outgoing email name', 'اسم مرسِل البريد')}
+            hint={t('Shown as the sender name, e.g. "Ali’s Store"', 'يظهر كاسم المرسل، مثل "متجر علي"')}
+            error={errors.mailFromName?.message}
+          >
+            {(p) => <Input {...p} {...register('mailFromName')} placeholder="Ali's Store" disabled={busy} />}
+          </Field>
+          <Field
+            label={t('Outgoing email address', 'عنوان بريد الإرسال')}
+            hint={t(
+              'Replaces SMTP_FROM. Must be an address your email provider lets you send from.',
+              'يحل محل SMTP_FROM. يجب أن يكون عنوانًا يسمح مزوّد البريد بالإرسال منه.'
+            )}
+            error={errors.mailFromEmail?.message}
+          >
+            {(p) => <Input {...p} type="email" {...register('mailFromEmail')} disabled={busy} />}
           </Field>
         </div>
         <div className="admin-form__row">

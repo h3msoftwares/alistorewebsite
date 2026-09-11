@@ -52,3 +52,18 @@ describe('<SiteFooter> — Join / register teaser', () => {
     expect(screen.queryByRole('textbox', { name: /create an account/i })).not.toBeInTheDocument();
   });
 });
+
+describe('<SiteFooter> — developer credit', () => {
+  it('credits H3M Softwares with a mailto and tel link', () => {
+    renderFooter();
+    expect(screen.getByText('H3M Softwares')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'h3msoftwares@gmail.com' })).toHaveAttribute(
+      'href',
+      'mailto:h3msoftwares@gmail.com'
+    );
+    expect(screen.getByRole('link', { name: '+961 81 076 393' })).toHaveAttribute(
+      'href',
+      'tel:+96181076393'
+    );
+  });
+});

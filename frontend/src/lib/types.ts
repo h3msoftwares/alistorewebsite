@@ -641,6 +641,10 @@ export interface SiteSettings {
   whatsappUrl: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
+  /** Sender identity for outgoing customer/owner email — null falls back to
+   *  SMTP_FROM from the environment (see backend lib/mailer.ts). */
+  mailFromName: string | null;
+  mailFromEmail: string | null;
   announcementLines: AnnouncementLine[];
   /** Physical stores shown in the home page's "Visit us" section. */
   storeLocations: StoreLocation[];

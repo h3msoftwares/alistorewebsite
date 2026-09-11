@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import type { Order, OrderItem } from '@prisma/client';
 import { env } from '../config/env';
+import { prisma } from '../config/prisma';
 import { DELIVERY_REGIONS } from './regions';
 
 type OrderWithItems = Order & { items: OrderItem[] };
@@ -67,6 +68,31 @@ const transporter = configured
   : null;
 
 /**
+ * The sender identity for every outgoing email — admin-set from
+ * Settings → Brand & contact (`SiteSetting.mailFromName` / `mailFromEmail`),
+ * falling back to `SMTP_FROM` from the environment when unset. Re-read on
+ * every send (not cached at module load) so a change in the admin panel takes
+ * effect immediately, no restart needed. Note this only changes the `From`
+ * header the customer sees — actual delivery still authenticates as
+ * SMTP_USER, so most providers require `mailFromEmail` to be that same
+ * address or a domain/sender they've been told to trust.
+ */
+export async function resolveFrom(): Promise<string> {
+  try {
+    const s = await prisma.siteSetting.findUnique({
+      where: { id: 1 },
+      select: { mailFromName: true, mailFromEmail: true },
+    });
+    if (s?.mailFromEmail) {
+      return s.mailFromName ? `${s.mailFromName} <${s.mailFromEmail}>` : s.mailFromEmail;
+    }
+  } catch (err) {
+    console.error('[mailer] failed to load the configured sender address — falling back to SMTP_FROM', err);
+  }
+  return env.SMTP_FROM;
+}
+
+/**
  * Sends the password-reset email. Deliberately never throws — a delivery
  * failure must never surface differently to the caller than success (that
  * asymmetry would itself be an information leak / DoS vector), so every
@@ -82,6 +108,7 @@ export async function sendPasswordResetEmail(
     console.warn('[mailer] SMTP is not configured — skipping password-reset email to', to);
     return false;
   }
+  const from = await resolveFrom();
 
   const text =
     `You requested a password reset for your Ali's Store account.\n\n` +
@@ -98,7 +125,7 @@ export async function sendPasswordResetEmail(
 
   try {
     const info = await transporter.sendMail({
-      from: env.SMTP_FROM,
+      from,
       to,
       subject: "Reset your Ali's Store password",
       text,
@@ -127,6 +154,7 @@ export async function sendVerificationEmail(
     console.warn('[mailer] SMTP is not configured — skipping verification email to', to);
     return false;
   }
+  const from = await resolveFrom();
 
   const hours = Math.round(ttlMinutes / 60);
   const validFor = hours >= 1 ? `${hours} hour${hours === 1 ? '' : 's'}` : `${ttlMinutes} minutes`;
@@ -144,7 +172,7 @@ export async function sendVerificationEmail(
 
   try {
     const info = await transporter.sendMail({
-      from: env.SMTP_FROM,
+      from,
       to,
       subject: "Verify your Ali's Store email",
       text,
@@ -177,6 +205,7 @@ export async function sendOrderConfirmationEmail(
     console.warn('[mailer] SMTP is not configured — skipping order-confirmation email to', to);
     return false;
   }
+  const from = await resolveFrom();
 
   const itemLines = order.items.map((i) => `- ${itemLabel(i)} — ${money(Number(i.lineTotal))}`).join('\n');
   const deliveryFeeLine = Number(order.deliveryFee) === 0 ? 'Free' : money(Number(order.deliveryFee));
@@ -225,7 +254,7 @@ export async function sendOrderConfirmationEmail(
 
   try {
     const info = await transporter.sendMail({
-      from: env.SMTP_FROM,
+      from,
       to,
       subject: `Order confirmed — ${order.orderNumber}`,
       text,
@@ -248,6 +277,7 @@ export async function sendOwnerOrderAlertEmail(to: string, order: OrderWithItems
     console.warn('[mailer] SMTP is not configured — skipping owner order alert for', order.orderNumber);
     return false;
   }
+  const from = await resolveFrom();
 
   const itemLines = order.items
     .map((i) => `- ${itemLabel(i)} — SKU ${i.variantSKU} — ${money(Number(i.lineTotal))}`)
@@ -294,7 +324,7 @@ export async function sendOwnerOrderAlertEmail(to: string, order: OrderWithItems
 
   try {
     const info = await transporter.sendMail({
-      from: env.SMTP_FROM,
+      from,
       to,
       subject: `New order ${order.orderNumber} — ${money(Number(order.total))} (COD)`,
       text,
@@ -317,6 +347,7 @@ export async function sendOrderCancelledEmail(to: string, order: OrderWithItems)
     console.warn('[mailer] SMTP is not configured — skipping order-cancelled email to', to);
     return false;
   }
+  const from = await resolveFrom();
 
   const text =
     `Hi ${order.deliveryName},\n\n` +
@@ -335,7 +366,7 @@ export async function sendOrderCancelledEmail(to: string, order: OrderWithItems)
 
   try {
     const info = await transporter.sendMail({
-      from: env.SMTP_FROM,
+      from,
       to,
       subject: `Order cancelled — ${order.orderNumber}`,
       text,
@@ -363,6 +394,7 @@ export async function sendOrderShippedEmail(
     console.warn('[mailer] SMTP is not configured — skipping order-shipped email to', to);
     return false;
   }
+  const from = await resolveFrom();
 
   const base = env.FRONTEND_URL.replace(/\/+$/, '');
   const trackUrl = order.userID ? `${base}/en/orders/${order.id}` : `${base}/en/orders/lookup`;
@@ -391,7 +423,7 @@ export async function sendOrderShippedEmail(
 
   try {
     const info = await transporter.sendMail({
-      from: env.SMTP_FROM,
+      from,
       to,
       subject: `Your order has shipped — ${order.orderNumber}`,
       text,
@@ -414,6 +446,7 @@ export async function sendOwnerOrderCancelledAlertEmail(to: string, order: Order
     console.warn('[mailer] SMTP is not configured — skipping owner cancellation alert for', order.orderNumber);
     return false;
   }
+  const from = await resolveFrom();
 
   const text =
     `Order cancelled.\n\n` +
@@ -434,7 +467,7 @@ export async function sendOwnerOrderCancelledAlertEmail(to: string, order: Order
 
   try {
     const info = await transporter.sendMail({
-      from: env.SMTP_FROM,
+      from,
       to,
       subject: `Order cancelled ${order.orderNumber}`,
       text,
@@ -460,6 +493,7 @@ export async function sendCheckoutOtpEmail(to: string, code: string, ttlMinutes:
     console.warn('[mailer] SMTP is not configured — skipping checkout-OTP email to', to);
     return false;
   }
+  const from = await resolveFrom();
 
   const text =
     `Your Ali's Store verification code is ${code}.\n\n` +
@@ -473,7 +507,7 @@ export async function sendCheckoutOtpEmail(to: string, code: string, ttlMinutes:
 
   try {
     const info = await transporter.sendMail({
-      from: env.SMTP_FROM,
+      from,
       to,
       subject: `${code} is your Ali's Store verification code`,
       text,

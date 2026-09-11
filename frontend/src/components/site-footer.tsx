@@ -167,6 +167,14 @@ export function SiteFooter({ locale }: { locale: string }) {
             © {new Date().getFullYear()} {brandName}
           </span>
           <span>{t('Prices in USD', 'الأسعار بالدولار الأمريكي')}</span>
+          <span className="site-footer__credit">
+            {t('Built by ', 'صُمم بواسطة ')}
+            <strong>H3M Softwares</strong>
+            {' — '}
+            <a href="mailto:h3msoftwares@gmail.com">h3msoftwares@gmail.com</a>
+            {' · '}
+            <a href="tel:+96181076393">+961 81 076 393</a>
+          </span>
         </div>
       </div>
     </footer>

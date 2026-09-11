@@ -8,6 +8,12 @@ vi.mock('next/link', () => ({
     <a href={typeof href === 'string' ? href : '#'}>{children}</a>
   ),
 }));
+vi.mock('next/image', () => ({
+  default: ({ src, alt }: Record<string, unknown>) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src as string} alt={alt as string} />
+  ),
+}));
 vi.mock('next/navigation', () => ({ usePathname: () => '/en' }));
 
 const auth = { user: null as { name: string } | null, isAuthenticated: false };
@@ -42,6 +48,15 @@ describe('initialsOf', () => {
     expect(initialsOf('')).toBe('');
     expect(initialsOf(null)).toBe('');
     expect(initialsOf(undefined)).toBe('');
+  });
+});
+
+describe('<Topbar> logo', () => {
+  it('shows the traced-A mark beside the brand name, linking home', () => {
+    renderBar();
+    const link = screen.getByRole('link', { name: "Ali's Store" });
+    expect(link).toHaveAttribute('href', '/en');
+    expect(link.querySelector('img')).toHaveAttribute('src', '/ali-store-A-traced.png');
   });
 });
 

@@ -57,6 +57,8 @@ const NULLABLE_FIELDS = [
   'whatsappUrl',
   'contactEmail',
   'contactPhone',
+  'mailFromName',
+  'mailFromEmail',
   'storyTitleEn',
   'storyTitleAr',
   'storyBodyEn',
