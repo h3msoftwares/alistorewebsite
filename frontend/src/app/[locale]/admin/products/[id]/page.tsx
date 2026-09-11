@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Archive, RotateCcw, Trash2 } from 'lucide-react';
 import { Alert, Button, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
 import { ImageGallery } from '@/components/admin/image-gallery';
+import { isApiError } from '@/lib/api';
 import {
   useAddProductImage,
   useDeleteProduct,
@@ -80,9 +81,29 @@ export default function EditProductPage() {
           compareAtPrice: values.compareAtPrice ? Number(values.compareAtPrice) : undefined,
           saleType: values.saleType || null,
           saleValue: values.saleValue ? Number(values.saleValue) : null,
+          // Optimistic-concurrency guard (fix-list.md #14, resolves 1.5) —
+          // the server rejects this write if `lastEdit` no longer matches,
+          // instead of silently overwriting whatever another admin just
+          // saved. `product` is always defined here (the form isn't
+          // rendered until it's loaded — see the isPending guard below).
+          expectedLastEdit: product?.lastEdit,
         },
       });
     } catch (e) {
+      if (isApiError(e) && e.code === 'CONFLICT') {
+        // The form's `values` are wired to `product` (below), so refetching
+        // pulls in whatever the other admin just saved — this edit is lost,
+        // same as it would be for two people editing the same document
+        // anywhere else, but at least it's visible instead of silent.
+        void refetch();
+        setError(
+          t(
+            'Someone else changed this product while you were editing. The form now shows their version — review and re-apply your change if still needed.',
+            'قام شخص آخر بتغيير هذا المنتج أثناء تعديلك. يعرض النموذج الآن نسختهم — راجع وأعد تطبيق تغييرك إذا لزم الأمر.'
+          )
+        );
+        return;
+      }
       setError(e instanceof Error ? e.message : t('Save failed', 'فشل الحفظ'));
     }
   };

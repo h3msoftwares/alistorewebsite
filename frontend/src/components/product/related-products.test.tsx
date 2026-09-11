@@ -27,6 +27,7 @@ function makeProduct(id: string, overrides: Partial<Product> = {}): Product {
     onSale: false,
     isActive: true,
     dateCreated: '2026-01-01T00:00:00.000Z',
+    lastEdit: '2026-01-01T00:00:00.000Z',
     images: [],
     variants: [{ id: `v-${id}`, productID: id, sku: `v-${id}`, size: null, color: null, stockQuantity: 5 }],
     ...overrides,

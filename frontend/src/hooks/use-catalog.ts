@@ -384,8 +384,13 @@ export function useCreateProduct() {
 export function useUpdateProduct() {
   const inv = useInvalidator();
   return useMutation({
-    mutationFn: ({ id, body }: { id: UUID; body: Partial<Omit<ProductBody, 'variants'>> }) =>
-      catalogApi.updateProduct(id, body),
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: UUID;
+      body: Partial<Omit<ProductBody, 'variants'>> & { expectedLastEdit?: string };
+    }) => catalogApi.updateProduct(id, body),
     onSuccess: inv.products,
   });
 }

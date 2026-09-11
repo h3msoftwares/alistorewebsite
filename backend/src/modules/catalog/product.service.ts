@@ -394,7 +394,7 @@ export async function createProduct(input: CreateProductInput) {
 export async function updateProduct(id: string, input: UpdateProductInput) {
   const existing = await prisma.product.findUnique({
     where: { id },
-    select: { saleType: true, saleValue: true },
+    select: { saleType: true, saleValue: true, lastEdit: true },
   });
   if (!existing) throw new AppError('NOT_FOUND', 'Product not found');
 
@@ -410,28 +410,46 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
     input.saleValue !== undefined ? (input.saleValue ?? null) : existing.saleValue;
   assertValidSale(nextSaleType, nextSaleValue);
 
+  const data: Prisma.ProductUpdateInput = {
+    ...(input.sku !== undefined ? { sku: input.sku } : {}),
+    ...(input.nameEn !== undefined ? { nameEn: input.nameEn } : {}),
+    ...(input.nameAr !== undefined ? { nameAr: input.nameAr } : {}),
+    ...(input.descriptionEn !== undefined ? { descriptionEn: input.descriptionEn } : {}),
+    ...(input.descriptionAr !== undefined ? { descriptionAr: input.descriptionAr } : {}),
+    ...(input.categoryId !== undefined
+      ? { categoryID: input.categoryId, collectionID: nextCollectionID ?? null }
+      : {}),
+    ...(input.price !== undefined ? { price: input.price } : {}),
+    ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice } : {}),
+    ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
+    ...(input.saleType !== undefined ? { saleType: input.saleType ?? null } : {}),
+    ...(input.saleValue !== undefined ? { saleValue: input.saleValue ?? null } : {}),
+  };
+
   try {
-    const updated = await prisma.product.update({
-      where: { id },
-      data: {
-        ...(input.sku !== undefined ? { sku: input.sku } : {}),
-        ...(input.nameEn !== undefined ? { nameEn: input.nameEn } : {}),
-        ...(input.nameAr !== undefined ? { nameAr: input.nameAr } : {}),
-        ...(input.descriptionEn !== undefined ? { descriptionEn: input.descriptionEn } : {}),
-        ...(input.descriptionAr !== undefined ? { descriptionAr: input.descriptionAr } : {}),
-        ...(input.categoryId !== undefined
-          ? { categoryID: input.categoryId, collectionID: nextCollectionID ?? null }
-          : {}),
-        ...(input.price !== undefined ? { price: input.price } : {}),
-        ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice } : {}),
-        ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
-        ...(input.saleType !== undefined ? { saleType: input.saleType ?? null } : {}),
-        ...(input.saleValue !== undefined ? { saleValue: input.saleValue ?? null } : {}),
-      },
-      include: productInclude,
-    });
+    if (input.expectedLastEdit !== undefined) {
+      // Atomic conditional update — same shape as the stock/status claims
+      // elsewhere in this codebase (order.service.ts): the row's current
+      // `lastEdit` is re-checked at the instant of the write itself, not in
+      // a separate earlier read, so a genuinely concurrent second edit can't
+      // slip through between the check and the write.
+      const claim = await prisma.product.updateMany({
+        where: { id, lastEdit: input.expectedLastEdit },
+        data,
+      });
+      if (claim.count === 0) {
+        throw new AppError(
+          'CONFLICT',
+          'This product was changed by someone else since you loaded it. Refresh and try again.'
+        );
+      }
+    } else {
+      await prisma.product.update({ where: { id }, data });
+    }
+    const updated = await prisma.product.findUniqueOrThrow({ where: { id }, include: productInclude });
     return withPricing(updated);
   } catch (e) {
+    if (e instanceof AppError) throw e;
     throw mapPrismaError(e);
   }
 }

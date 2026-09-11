@@ -32,8 +32,10 @@ describe('Catalog archive / restore / permanent delete', () => {
       const pub = await request(app).get('/api/products');
       expect(pub.body.items.map((x: { id: string }) => x.id)).not.toContain(p.id);
 
+      // 401, not 403 (fix-list.md #5) — no token at all is the textbook 401
+      // case, and lets the frontend's existing refresh-and-retry logic fire.
       const anon = await request(app).get('/api/products?status=archived');
-      expect(anon.status).toBe(403);
+      expect(anon.status).toBe(401);
 
       const asCustomer = await request(app)
         .get('/api/products?status=archived')
@@ -117,10 +119,16 @@ describe('Catalog archive / restore / permanent delete', () => {
       expect(pub.body.collections.map((c: { id: string }) => c.id)).not.toContain(col.id);
     });
 
-    it('anon cannot request status=archived / status=all', async () => {
-      expect((await request(app).get('/api/collections?status=archived')).status).toBe(403);
-      expect((await request(app).get('/api/collections?status=all')).status).toBe(403);
-      expect((await request(app).get('/api/categories?status=all')).status).toBe(403);
+    it('anon cannot request status=archived / status=all (401 — fix-list.md #5)', async () => {
+      expect((await request(app).get('/api/collections?status=archived')).status).toBe(401);
+      expect((await request(app).get('/api/collections?status=all')).status).toBe(401);
+      expect((await request(app).get('/api/categories?status=all')).status).toBe(401);
+    });
+
+    it('a logged-in customer (valid session, wrong role) still gets 403, not 401', async () => {
+      expect(
+        (await request(app).get('/api/collections?status=archived').set(bearer(customerToken))).status
+      ).toBe(403);
     });
 
     it('search filters by name / slug (case-insensitive)', async () => {

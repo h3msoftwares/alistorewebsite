@@ -24,6 +24,7 @@ const product: Product = {
   onSale: false,
   isActive: true,
   dateCreated: '2026-01-01T00:00:00.000Z',
+  lastEdit: '2026-01-01T00:00:00.000Z',
   images: [],
   // No S/Blue variant on purpose: S only exists paired with Red, M only
   // with Blue. Both individual axes ("is there stock for S anywhere" / "is

@@ -16,6 +16,7 @@ const product: Product = {
   onSale: false,
   isActive: true,
   dateCreated: '2026-01-01T00:00:00.000Z',
+  lastEdit: '2026-01-01T00:00:00.000Z',
   images: [
     { id: 'img1', productID: 'p1', url: 'https://example.com/generic.jpg', altEn: 'Front (generic)', altAr: null, sortOrder: 0, color: null },
     { id: 'img2', productID: 'p1', url: 'https://example.com/red.jpg', altEn: 'Red colourway', altAr: null, sortOrder: 1, color: 'Red' },

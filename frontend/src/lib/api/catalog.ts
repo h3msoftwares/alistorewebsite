@@ -217,7 +217,10 @@ export function createProduct(body: ProductBody) {
   return api.post<{ product: Product }>('/api/products', body).then((r) => r.product);
 }
 
-export function updateProduct(id: UUID, body: Partial<Omit<ProductBody, 'variants'>>) {
+export function updateProduct(
+  id: UUID,
+  body: Partial<Omit<ProductBody, 'variants'>> & { expectedLastEdit?: string }
+) {
   return api.patch<{ product: Product }>(`/api/products/${id}`, body).then((r) => r.product);
 }
 

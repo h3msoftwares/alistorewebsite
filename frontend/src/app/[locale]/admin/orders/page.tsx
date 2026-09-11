@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import {
   Alert,
@@ -245,7 +246,14 @@ export default function AdminOrdersPage() {
                 const collected = o.paymentStatus === 'COLLECTED';
                 return (
                   <tr key={o.id} aria-busy={busy || undefined}>
-                    <td data-label={t('Order', 'الطلب')}>{o.orderNumber}</td>
+                    {/* Every row now links to a genuinely admin-aware detail
+                        view (fix-list.md #4, resolves 2.2) — previously
+                        there was no way to see an order's actual line items
+                        anywhere in the admin panel, only this table's item
+                        *count*. */}
+                    <td data-label={t('Order', 'الطلب')}>
+                      <Link href={`/${locale}/admin/orders/${o.id}`}>{o.orderNumber}</Link>
+                    </td>
                     <td data-label={t('Date', 'التاريخ')}>{date(o.dateCreated)}</td>
                     <td data-label={t('Customer', 'الزبون')}>
                       {o.deliveryName} {o.flaggedForReview && <Badge variant="sale">{t('Flagged', 'معلَّم')}</Badge>}

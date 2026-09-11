@@ -346,6 +346,60 @@ describe('Products API', () => {
       expect(Number(res.body.product.price)).toBe(99);
     });
 
+    it('without expectedLastEdit, a second concurrent edit still silently wins (unchanged, backward-compatible default)', async () => {
+      const p = await makeProduct(collectionId, categoryId, { over: { price: 10 } });
+      const tabA = await request(app).patch(`/api/products/${p.id}`).set(bearer(adminToken)).send({ price: 50 });
+      const tabB = await request(app).patch(`/api/products/${p.id}`).set(bearer(adminToken)).send({ price: 60 });
+      expect(tabA.status).toBe(200);
+      expect(tabB.status).toBe(200);
+      const final = await prisma.product.findUniqueOrThrow({ where: { id: p.id } });
+      expect(Number(final.price)).toBe(60);
+    });
+
+    it('409s a concurrent edit when expectedLastEdit is stale (fix-list.md #14, resolves 1.5)', async () => {
+      const p = await makeProduct(collectionId, categoryId, { over: { price: 10 } });
+      const fetched = await request(app).get(`/api/products/${p.id}`);
+      const staleLastEdit = fetched.body.product.lastEdit;
+
+      // Tab A saves first, using the same lastEdit both tabs loaded with.
+      const tabA = await request(app)
+        .patch(`/api/products/${p.id}`)
+        .set(bearer(adminToken))
+        .send({ price: 50, expectedLastEdit: staleLastEdit });
+      expect(tabA.status).toBe(200);
+
+      // Tab B still has the OLD lastEdit (never refetched) — its save must
+      // be rejected instead of silently overwriting tab A's change.
+      const tabB = await request(app)
+        .patch(`/api/products/${p.id}`)
+        .set(bearer(adminToken))
+        .send({ price: 60, expectedLastEdit: staleLastEdit });
+      expect(tabB.status).toBe(409);
+      expect(tabB.body.error.code).toBe('CONFLICT');
+
+      const final = await prisma.product.findUniqueOrThrow({ where: { id: p.id } });
+      expect(Number(final.price)).toBe(50); // tab A's write stands, not silently overwritten
+    });
+
+    it('accepts the write when expectedLastEdit is fresh (re-fetched after the conflict)', async () => {
+      const p = await makeProduct(collectionId, categoryId, { over: { price: 10 } });
+      const first = await request(app)
+        .get(`/api/products/${p.id}`);
+      await request(app)
+        .patch(`/api/products/${p.id}`)
+        .set(bearer(adminToken))
+        .send({ price: 50, expectedLastEdit: first.body.product.lastEdit });
+
+      // Re-fetch, as the frontend does after a 409, then retry with the now-current lastEdit.
+      const refetched = await request(app).get(`/api/products/${p.id}`);
+      const res = await request(app)
+        .patch(`/api/products/${p.id}`)
+        .set(bearer(adminToken))
+        .send({ price: 70, expectedLastEdit: refetched.body.product.lastEdit });
+      expect(res.status).toBe(200);
+      expect(Number(res.body.product.price)).toBe(70);
+    });
+
     it('soft-deletes a product', async () => {
       const p = await makeProduct(collectionId, categoryId);
       const res = await request(app).delete(`/api/products/${p.id}`).set(bearer(adminToken));

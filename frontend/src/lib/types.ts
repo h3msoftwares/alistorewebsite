@@ -176,6 +176,10 @@ export interface Product {
   isActive: boolean;
   /** Set when the product is archived (soft-deleted) from the admin. */
   deletedAt?: string | null;
+  /** Bumped on every write (Prisma @updatedAt). Sent back as `expectedLastEdit`
+   *  on the next PATCH so the server can detect (and reject) a concurrent
+   *  edit instead of silently overwriting it — see updateProduct(). */
+  lastEdit: IsoDateTime;
   dateCreated: IsoDateTime;
   images: ProductImage[];
   variants: ProductVariant[];
