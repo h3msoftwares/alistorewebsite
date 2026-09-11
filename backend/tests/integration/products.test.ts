@@ -53,6 +53,32 @@ describe('Products API', () => {
       expect(res.body.items.map((p: { nameEn: string }) => p.nameEn)).toEqual(['Mid']);
     });
 
+    it('paginates a tied sort key stably — every row appears exactly once across pages, none repeated or skipped (fix-list.md #19, resolves 11.6)', async () => {
+      // 6 products, all the same price — the exact shape that used to have
+      // no deterministic order at all (Postgres doesn't guarantee stable
+      // row order across repeated queries for tied sort keys without a
+      // tiebreaker column).
+      const ids = new Set<string>();
+      for (let i = 0; i < 6; i++) {
+        const p = await makeProduct(collectionId, categoryId, { over: { nameEn: `Tied ${i}`, price: 20 } });
+        ids.add(p.id);
+      }
+
+      const page1 = await request(app).get('/api/products?sort=price_asc&page=1&pageSize=3');
+      const page2 = await request(app).get('/api/products?sort=price_asc&page=2&pageSize=3');
+      const seen = [...page1.body.items, ...page2.body.items].map((p: { id: string }) => p.id);
+
+      expect(seen).toHaveLength(6);
+      expect(new Set(seen)).toEqual(ids); // every row exactly once — none skipped, none repeated
+
+      // Re-fetching the same two pages again returns identical order —
+      // stability across repeated requests, not just within one.
+      const page1Again = await request(app).get('/api/products?sort=price_asc&page=1&pageSize=3');
+      expect(page1Again.body.items.map((p: { id: string }) => p.id)).toEqual(
+        page1.body.items.map((p: { id: string }) => p.id)
+      );
+    });
+
     it('filters by search term and by variant size', async () => {
       await makeProduct(collectionId, categoryId, { over: { nameEn: 'Red Hoodie' } });
       await makeProduct(collectionId, categoryId, {

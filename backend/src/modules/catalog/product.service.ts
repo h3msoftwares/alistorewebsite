@@ -235,12 +235,21 @@ export async function listProducts(query: ListProductsQuery) {
     return bestSellingPage(where, query, discounts);
   }
 
-  const orderBy: Prisma.ProductOrderByWithRelationInput =
+  // `id` as a secondary key (fix-list.md #19, resolves 11.6): the primary
+  // key alone doesn't uniquely order rows — `price_asc`/`price_desc` tie
+  // whenever two products share a price (27 tied price groups in the
+  // current catalog), and even `dateCreated` could tie in principle
+  // (millisecond timestamps, bulk-imported data, …). Without a tiebreaker,
+  // Postgres doesn't guarantee the same row order across repeated paginated
+  // queries for tied rows — a product can silently shift page, or be
+  // skipped or repeated, between one page fetch and the next. `id` is
+  // arbitrary but stable, which is all a tiebreaker needs to be.
+  const orderBy: Prisma.ProductOrderByWithRelationInput[] =
     query.sort === 'price_asc'
-      ? { price: 'asc' }
+      ? [{ price: 'asc' }, { id: 'asc' }]
       : query.sort === 'price_desc'
-        ? { price: 'desc' }
-        : { dateCreated: 'desc' };
+        ? [{ price: 'desc' }, { id: 'asc' }]
+        : [{ dateCreated: 'desc' }, { id: 'asc' }];
 
   const [items, total] = await Promise.all([
     prisma.product.findMany({
@@ -307,7 +316,7 @@ async function bestSellingPage(
     const [rows, total] = await Promise.all([
       prisma.product.findMany({
         where,
-        orderBy: { dateCreated: 'desc' },
+        orderBy: [{ dateCreated: 'desc' }, { id: 'asc' }], // same tiebreaker as above
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
         include: productInclude,

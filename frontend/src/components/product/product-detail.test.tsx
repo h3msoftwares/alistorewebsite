@@ -130,6 +130,37 @@ describe('ProductDetail', () => {
     await waitFor(() => expect(mockCart.addCartItem).toHaveBeenCalledWith('v1', 1));
   });
 
+  it('pre-selects the variant from a deep-linked ?size= (fix-list.md #20, resolves 3.7)', async () => {
+    mockCatalog.getProduct.mockResolvedValue(baseProduct);
+    mockCart.addCartItem.mockResolvedValue({ id: 'ci1' } as never);
+    const { Wrapper } = createWrapper();
+    const user = userEvent.setup();
+    render(<ProductDetail id="p1" locale="en" initialSize="M" />, { wrapper: Wrapper });
+
+    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+
+    // No click needed — Add to cart is already enabled and the deep-linked
+    // size chip already shows selected, exactly as if the shopper had just
+    // clicked it themselves.
+    expect(screen.getByRole('button', { name: 'M' })).toHaveAttribute('aria-pressed', 'true');
+    const addToCartBtn = screen.getByRole('button', { name: 'Add to cart' });
+    expect(addToCartBtn).not.toBeDisabled();
+
+    await user.click(addToCartBtn);
+    await waitFor(() => expect(mockCart.addCartItem).toHaveBeenCalledWith('v1', 1));
+  });
+
+  it('a deep-linked ?size= that matches no real option leaves selection empty, not broken', async () => {
+    mockCatalog.getProduct.mockResolvedValue(baseProduct);
+    const { Wrapper } = createWrapper();
+    render(<ProductDetail id="p1" locale="en" initialSize="XXL" />, { wrapper: Wrapper });
+
+    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: 'Add to cart' })).toBeDisabled();
+    expect(screen.getByText('Select every option to add this to your cart.')).toBeInTheDocument();
+  });
+
   it('toggles the favourite button (guest path — no backend call, just the local slice)', async () => {
     mockCatalog.getProduct.mockResolvedValue(baseProduct);
     const { Wrapper } = createWrapper();

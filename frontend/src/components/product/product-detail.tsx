@@ -36,7 +36,23 @@ import {
   resolveVariant,
 } from '@/lib/product-variants';
 
-export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' }) {
+export function ProductDetail({
+  id,
+  locale,
+  initialColor,
+  initialSize,
+}: {
+  id: string;
+  locale: 'en' | 'ar';
+  /** Pre-select from a deep/shared link's `?color=&size=` (fix-list.md #20,
+   *  resolves 3.7) — applied as the initial selection, same as a real click.
+   *  A value that doesn't match any of this product's real options (wrong
+   *  case, stale link, typo) just resolves to no matching variant — the
+   *  same graceful "select every option" state as if nothing were
+   *  pre-selected, not an error. */
+  initialColor?: string;
+  initialSize?: string;
+}) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
@@ -53,8 +69,8 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
   const sizeOptions = useMemo(() => getSizeOptions(variants), [variants]);
   const colorOptions = useMemo(() => getColorOptions(variants), [variants]);
 
-  const [size, setSize] = useState<string | null>(null);
-  const [color, setColor] = useState<string | null>(null);
+  const [size, setSize] = useState<string | null>(initialSize ?? null);
+  const [color, setColor] = useState<string | null>(initialColor ?? null);
   const [activeImage, setActiveImage] = useState(0);
   // Naturalwidth/Height of the currently-shown main photo, once decoded —
   // drives --pdp-main-ratio (globals.css) so .pdp__main-media's box takes
