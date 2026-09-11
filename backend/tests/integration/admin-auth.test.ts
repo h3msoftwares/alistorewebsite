@@ -297,5 +297,48 @@ describe('POST /api/auth/ali-admin-login', () => {
         .set('Cookie', customerSession.headers['set-cookie']);
       expect(adminEndpointWithCustomerCookie.status).toBe(401);
     });
+
+    it('same-browser session independence: a customer session survives an admin login in the same cookie jar, untouched (the actual 2.6 scenario)', async () => {
+      // One agent = one cookie jar = one real browser, holding whatever both
+      // logins below set. The bug this guards against: logging into the
+      // admin panel used to silently overwrite the customer's refreshToken
+      // cookie (same name, same path), so the customer tab's own next
+      // silent refresh would come back as the admin's identity instead.
+      const agent = request.agent(app);
+
+      const customerLogin = await agent
+        .post('/api/auth/login')
+        .send({ identifier: CUSTOMER_EMAIL, password: PASSWORD });
+      expect(customerLogin.status).toBe(200);
+
+      // Same browser then also signs into the admin panel.
+      const adminLoginRes = await agent
+        .post('/api/auth/ali-admin-login')
+        .send({ identifier: ADMIN_EMAIL, password: PASSWORD });
+      expect(adminLoginRes.status).toBe(200);
+
+      // The customer's OWN silent refresh, from that same browser, after the
+      // admin login — must still come back as the customer, not the admin.
+      // This is the part the earlier "vice versa" test above does not cover:
+      // that one checks each session's cookie in isolation (obtained from
+      // two separate, non-shared logins); this one checks that both cookies
+      // genuinely coexist in one real cookie jar without either clobbering
+      // the other.
+      const customerRefresh = await agent.post('/api/auth/refresh');
+      expect(customerRefresh.status).toBe(200);
+      const customerPayload = JSON.parse(
+        Buffer.from(customerRefresh.body.accessToken.split('.')[1], 'base64url').toString()
+      );
+      expect(customerPayload.role).toBe('CUSTOMER');
+
+      // And the admin's own session, from that same browser, still works
+      // too — proving real coexistence, not just "the customer survived".
+      const adminRefresh = await agent.post('/api/admin/auth/refresh');
+      expect(adminRefresh.status).toBe(200);
+      const adminPayload = JSON.parse(
+        Buffer.from(adminRefresh.body.accessToken.split('.')[1], 'base64url').toString()
+      );
+      expect(adminPayload.role).toBe('ADMIN');
+    });
   });
 });
