@@ -163,6 +163,33 @@ describe('Catalog archive / restore / permanent delete', () => {
       expect(after.status).toBe(404);
     });
 
+    it('a category 404s at its own slug URL when only its parent collection is archived, not the category itself (fix-list.md #22, resolves category-reachable-parent-archived)', async () => {
+      const col = await makeCollection({ slug: 'outerwear' });
+      const cat = await makeCategory(col.id, { slug: 'jackets' });
+
+      const before = await request(app).get('/api/categories/slug/jackets');
+      expect(before.status).toBe(200);
+
+      await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken));
+
+      // The category's own row is untouched — archiving a collection never
+      // writes to its categories (see 12.3) — but its slug URL must still
+      // 404 now, consistent with the collection-archived and
+      // category-archived cases above, instead of staying reachable at a
+      // correctly-empty-but-confusing 200.
+      const stillActive = await prisma.category.findUniqueOrThrow({ where: { id: cat.id } });
+      expect(stillActive.isActive).toBe(true);
+      expect(stillActive.archivedAt).toBeNull();
+
+      const after = await request(app).get('/api/categories/slug/jackets');
+      expect(after.status).toBe(404);
+
+      // Restoring the collection brings the category's slug URL back.
+      await request(app).post(`/api/collections/${col.id}/restore`).set(bearer(adminToken));
+      const restored = await request(app).get('/api/categories/slug/jackets');
+      expect(restored.status).toBe(200);
+    });
+
     it('a product under an archived category drops out of the public listing/search (fix-list.md #8, resolves 12.6)', async () => {
       const p = await makeProduct(collectionId, categoryId, { over: { nameEn: 'Findable Widget' } });
 
