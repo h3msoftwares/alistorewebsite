@@ -17,6 +17,8 @@
     "seed": "tsx prisma/seed.ts",
     "seed:empty": "tsx prisma/seed-empty.ts",
     "seed:large": "tsx prisma/seed-large.ts",
+    "qa:reset": "tsx scripts/qa-reset.ts",
+    "qa:reset-fixtures": "npm run seed && tsx scripts/qa-seed-fixtures.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "vitest run tests/integration/e2e-journeys.test.ts",
