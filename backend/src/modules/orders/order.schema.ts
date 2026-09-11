@@ -37,6 +37,14 @@ export const checkoutSchema = z.object({
   // Optional coupon code. If present it must resolve to an active, in-window
   // coupon (checked in order.service.ts) or the checkout is rejected.
   couponCode: z.string().trim().min(1).max(40).optional(),
+  // The merchandise subtotal the client's cart view last showed the shopper
+  // (GET /api/cart's own `subtotal`, same lineUnitPrice computation as here).
+  // Optional — omitted by direct API callers — but when present,
+  // order.service.ts rejects checkout on a mismatch instead of silently
+  // charging whatever price is live now (e.g. an admin edited it moments
+  // ago). Not itself trusted as the charged price; the server always
+  // recomputes the real total independently.
+  expectedSubtotal: z.number().nonnegative().optional(),
 });
 
 // GET /api/orders/delivery-quote?region=... — a live fee estimate for the

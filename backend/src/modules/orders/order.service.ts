@@ -56,6 +56,11 @@ interface CheckoutInput {
   emailVerifyToken?: string;
   /** Optional coupon code; must resolve to an active, in-window coupon. */
   couponCode?: string;
+  /** The merchandise subtotal the client's cart view last showed the
+   *  shopper. When present, checked against the freshly-computed subtotal
+   *  below and the checkout rejected on mismatch — see the comment at that
+   *  check for why. */
+  expectedSubtotal?: number;
   /** req.ip at checkout time — used for the blacklist check and the
    *  order-velocity flag below. Undefined only in tests that call the
    *  service directly without going through the HTTP layer. */
@@ -77,6 +82,16 @@ const VELOCITY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const VELOCITY_PHONE_MAX = 3;
 const VELOCITY_EMAIL_MAX = 3;
 const VELOCITY_IP_MAX = 5;
+
+// Hard cap on top of the soft flag above — crossing one of these actually
+// refuses the order instead of just marking it for review. Set well above
+// the flag thresholds so a normal repeat shopper (or a family sharing one
+// phone/IP) only ever gets flagged, never blocked; a burst of automated or
+// bad-faith orders past this point gets refused before it can tie up any
+// more real stock.
+const VELOCITY_BLOCK_PHONE_MAX = 6;
+const VELOCITY_BLOCK_EMAIL_MAX = 6;
+const VELOCITY_BLOCK_IP_MAX = 10;
 
 // Checkout is the heaviest transaction in the app (address check, cart load,
 // discount resolution, order + N line items, velocity counts, per-line stock
@@ -351,14 +366,20 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       : [];
     if (cartItems.length === 0) throw new AppError('VALIDATION_ERROR', 'Cart is empty');
 
-    // Preliminary, non-authoritative stock check — fast-fails with a friendly
-    // per-line message in the common case. The ACTUAL guard is the atomic
-    // conditional decrement after the order is created (see below): two
-    // concurrent checkouts for the last unit would both pass this read-check
-    // (READ COMMITTED), so it must not be the only gate.
+    // Preliminary, non-authoritative checks — fast-fail with a friendly
+    // per-line message in the common case. The ACTUAL guards are the atomic
+    // conditional decrement after the order is created (see below), which
+    // re-checks both stock AND that the product is still active/undeleted:
+    // two concurrent checkouts for the last unit would both pass a plain
+    // read-check (READ COMMITTED), and a product can be archived or hard-
+    // deleted at any point up to that same instant, so neither can be the
+    // only gate.
     for (const item of cartItems) {
+      const label = [item.variant.size, item.variant.color].filter(Boolean).join('/') || 'one size';
+      if (item.variant.product.deletedAt || !item.variant.product.isActive) {
+        throw new AppError('OUT_OF_STOCK', `${item.variant.product.nameEn} (${label}) is no longer available`);
+      }
       if (item.variant.stockQuantity < item.quantity) {
-        const label = [item.variant.size, item.variant.color].filter(Boolean).join('/') || 'one size';
         throw new AppError('OUT_OF_STOCK', `Not enough stock for ${item.variant.product.nameEn} (${label})`);
       }
     }
@@ -372,6 +393,22 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     const subtotal = round2(
       cartItems.reduce((sum, i) => sum + unitPriceFor(i) * i.quantity, 0)
     );
+
+    // If the client told us what subtotal its cart view last showed the
+    // shopper, and that no longer matches what we'd actually charge (e.g. an
+    // admin edited a price, or a sale/discount started or ended, between
+    // "add to cart" and "place order"), refuse rather than silently charging
+    // the new number — the shopper gets a clear signal to review and
+    // re-confirm instead of finding out on their bank/cash total. Never
+    // trusted as the charged price either way: `subtotal` above is always
+    // recomputed live from the DB.
+    if (input.expectedSubtotal != null && round2(input.expectedSubtotal) !== subtotal) {
+      throw new AppError(
+        'CONFLICT',
+        'Prices in your cart changed since you last viewed it. Please review your order and try again.',
+        { reason: 'PRICE_CHANGED', expectedSubtotal: input.expectedSubtotal, actualSubtotal: subtotal }
+      );
+    }
 
     // Coupon: applied to the post-discount merchandise subtotal. A code that
     // was supplied but isn't valid right now rejects the checkout rather than
@@ -453,6 +490,22 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     const flaggedForReview = flagReasons.length > 0;
     const flaggedReason = flaggedForReview ? flagReasons.join(',') : null;
 
+    // Hard cap: past this point it's no longer "flag for review", it's
+    // "refuse outright" — see the constants' comment above. Checked after
+    // the flag (so a blocked attempt would have been flagged too, had it
+    // gotten further) but before the order is created, so a blocked burst
+    // never touches stock at all.
+    if (
+      phoneCount + 1 >= VELOCITY_BLOCK_PHONE_MAX ||
+      (contactEmail && emailCount + 1 >= VELOCITY_BLOCK_EMAIL_MAX) ||
+      (input.ipAddress && ipCount + 1 >= VELOCITY_BLOCK_IP_MAX)
+    ) {
+      throw new AppError(
+        'RATE_LIMITED',
+        'Too many orders placed recently. Please try again later or contact support.'
+      );
+    }
+
     const order = await tx.order.create({
       data: {
         orderNumber: await generateUniqueOrderNumber(tx),
@@ -528,13 +581,22 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       // matched row for the rest of the transaction. If another concurrent
       // checkout already took the last unit, `count` is 0 here and we roll
       // the whole order back — stock can never go negative, never oversell.
+      // The `product: { isActive, deletedAt }` predicate is the authoritative
+      // twin of the preliminary check above: an admin archiving or
+      // hard-deleting the product in the instant between that check and this
+      // claim fails the same way a stock race does, instead of completing
+      // the sale of a product that no longer (visibly) exists.
       const claimed = await tx.productVariant.updateMany({
-        where: { id: item.variantID, stockQuantity: { gte: item.quantity } },
+        where: {
+          id: item.variantID,
+          stockQuantity: { gte: item.quantity },
+          product: { isActive: true, deletedAt: null },
+        },
         data: { stockQuantity: { decrement: item.quantity } },
       });
       if (claimed.count === 0) {
         const label = [item.variant.size, item.variant.color].filter(Boolean).join('/') || 'one size';
-        throw new AppError('OUT_OF_STOCK', `Not enough stock for ${item.variant.product.nameEn} (${label})`);
+        throw new AppError('OUT_OF_STOCK', `${item.variant.product.nameEn} (${label}) is no longer available`);
       }
       await tx.stockMovement.create({
         data: {
@@ -619,19 +681,54 @@ export async function getOrderById(id: string, userID?: string) {
   return order;
 }
 
+/** Restores stock for every line of a cancelled/returned order — one
+ *  incremented ProductVariant + one RETURN StockMovement per line, symmetric
+ *  with checkout's SALE-type decrement. Shared by performCancellation and the
+ *  RETURNED path in updateOrderStatus() below. */
+async function restoreStock(
+  tx: Prisma.TransactionClient,
+  items: OrderItem[],
+  orderNumber: string,
+  verb: string
+): Promise<void> {
+  for (const item of items) {
+    await tx.productVariant.update({
+      where: { id: item.variantID },
+      data: { stockQuantity: { increment: item.quantity } },
+    });
+    await tx.stockMovement.create({
+      data: {
+        variantID: item.variantID,
+        quantity: item.quantity,
+        type: 'RETURN',
+        orderID: item.orderID,
+        reason: `Order ${orderNumber} ${verb}`,
+      },
+    });
+  }
+}
+
 /**
- * The one place that actually cancels an order: restores stock (one
- * incremented ProductVariant + one RETURN StockMovement per line, symmetric
- * with checkout's SALE-type decrement) and flips status to CANCELLED, all in
- * one transaction. Every caller — the customer's own cancel button, a
- * guest's token-based cancel, and the admin status dropdown when the target
- * status is CANCELLED — routes through this, so there is exactly one
- * cancellation implementation instead of several.
+ * The one place that actually cancels an order: restores stock and flips
+ * status to CANCELLED, all in one transaction. Every caller — the customer's
+ * own cancel button, a guest's token-based cancel, and the admin status
+ * dropdown when the target status is CANCELLED — routes through this, so
+ * there is exactly one cancellation implementation instead of several.
  *
  * `enforceCancellableGate` is what actually differs between them: a
  * customer/guest can only cancel PENDING/CONFIRMED orders (before SHIPPED);
  * an admin can force-cancel from any non-CANCELLED status (e.g. a
  * return-to-sender after shipping), so the admin path passes `false`.
+ *
+ * The status flip is an atomic conditional UPDATE (status predicate + write
+ * in one statement) rather than a read-then-write — the same shape as
+ * checkout()'s stock claim. Without this, a customer's cancel could read
+ * PENDING, block on Postgres's row lock while an admin's concurrent "mark
+ * SHIPPED" commits, then — once unblocked — write CANCELLED anyway using
+ * that now-stale read, bypassing CANCELLABLE_STATUSES and restoring stock
+ * for a unit that's already with the courier. The conditional UPDATE re-checks
+ * the *current* status at the instant it actually writes, so that race now
+ * fails closed (0 rows updated ⇒ reject) instead of succeeding silently.
  */
 async function performCancellation(
   id: string,
@@ -643,31 +740,30 @@ async function performCancellation(
     if (existing.status === 'CANCELLED') {
       throw new AppError('CONFLICT', 'This order is already cancelled');
     }
+    // RETURNED already restored this order's stock (see the RETURNED branch
+    // of updateOrderStatus below) — cancelling it too would restore the same
+    // units a second time.
+    if (existing.status === 'RETURNED') {
+      throw new AppError('CONFLICT', 'This order has already been returned and cannot be cancelled');
+    }
     if (opts.enforceCancellableGate && !CANCELLABLE_STATUSES.includes(existing.status)) {
       throw new AppError('CONFLICT', 'This order can no longer be cancelled');
     }
 
-    for (const item of existing.items) {
-      await tx.productVariant.update({
-        where: { id: item.variantID },
-        data: { stockQuantity: { increment: item.quantity } },
-      });
-      await tx.stockMovement.create({
-        data: {
-          variantID: item.variantID,
-          quantity: item.quantity,
-          type: 'RETURN',
-          orderID: existing.id,
-          reason: `Order ${existing.orderNumber} cancelled`,
-        },
-      });
+    const claim = await tx.order.updateMany({
+      where: {
+        id,
+        status: opts.enforceCancellableGate ? { in: CANCELLABLE_STATUSES } : { notIn: ['CANCELLED', 'RETURNED'] },
+      },
+      data: { status: 'CANCELLED' },
+    });
+    if (claim.count === 0) {
+      throw new AppError('CONFLICT', 'This order can no longer be cancelled');
     }
 
-    const order = await tx.order.update({
-      where: { id },
-      data: { status: 'CANCELLED' },
-      include: { items: true },
-    });
+    await restoreStock(tx, existing.items, existing.orderNumber, 'cancelled');
+
+    const order = await tx.order.findUniqueOrThrow({ where: { id }, include: { items: true } });
     return { order, previousStatus: existing.status };
   });
 }
@@ -796,27 +892,95 @@ export async function updateOrderStatus(
     return order;
   }
 
-  const order = await prisma.order.findUnique({ where: { id } });
-  if (!order) throw new AppError('NOT_FOUND', 'Order not found');
+  // RETURNED needs the same stock-restoring treatment as CANCELLED — a
+  // returned unit is back on the shelf, not still sold. Previously this fell
+  // through to the plain status write below with no inventory side effect at
+  // all (the RETURN StockMovement type existed but nothing ever wrote one for
+  // this transition). Guarded the same way against a double-restore from
+  // re-selecting RETURNED on an already-returned order.
+  if (status === 'RETURNED') {
+    const { order, previousStatus } = await prisma.$transaction(async (tx) => {
+      const existing = await tx.order.findUnique({ where: { id }, include: { items: true } });
+      if (!existing) throw new AppError('NOT_FOUND', 'Order not found');
+      if (existing.status === 'RETURNED') {
+        throw new AppError('CONFLICT', 'This order has already been marked returned');
+      }
+      // CANCELLED already restored this order's stock — marking it RETURNED
+      // too would restore the same units a second time.
+      if (existing.status === 'CANCELLED') {
+        throw new AppError('CONFLICT', 'This order was cancelled and cannot be marked returned');
+      }
 
-  const updated = await prisma.order.update({
-    where: { id },
+      const claim = await tx.order.updateMany({
+        where: { id, status: { notIn: ['RETURNED', 'CANCELLED'] } },
+        data: {
+          status: 'RETURNED',
+          ...(opts.estimatedDeliveryDays !== undefined
+            ? { estimatedDeliveryDays: opts.estimatedDeliveryDays }
+            : {}),
+        },
+      });
+      if (claim.count === 0) {
+        throw new AppError('CONFLICT', 'This order has already been marked returned or cancelled');
+      }
+
+      await restoreStock(tx, existing.items, existing.orderNumber, 'returned');
+
+      const updated = await tx.order.findUniqueOrThrow({ where: { id }, include: { items: true } });
+      return { order: updated, previousStatus: existing.status };
+    });
+    await recordAudit({
+      entityType: 'order',
+      entityID: id,
+      action: 'order.status_changed',
+      actorID: actorId,
+      metadata: {
+        orderNumber: order.orderNumber,
+        from: previousStatus,
+        to: 'RETURNED',
+        ...(opts.estimatedDeliveryDays !== undefined
+          ? { estimatedDeliveryDays: opts.estimatedDeliveryDays }
+          : {}),
+      },
+    });
+    return order;
+  }
+
+  const existing = await prisma.order.findUnique({ where: { id } });
+  if (!existing) throw new AppError('NOT_FOUND', 'Order not found');
+
+  // Atomic conditional write, same discipline as the CANCELLED/RETURNED
+  // branches above: once an order has been cancelled or returned, its stock
+  // has already been restored, so a concurrent "mark shipped" (or any other
+  // plain status change) that read the order *before* that happened must not
+  // be able to blindly stamp over it afterward — that would leave the order
+  // looking SHIPPED (or whatever) while the unit it represents is already
+  // back in inventory. This is the other half of the cancel-vs-ship race:
+  // performCancellation() now guards its own write against a stale read of
+  // *this* path; this guards this path's write against a stale read racing
+  // performCancellation().
+  const claim = await prisma.order.updateMany({
+    where: { id, status: { notIn: ['CANCELLED', 'RETURNED'] } },
     data: {
       status,
       ...(opts.estimatedDeliveryDays !== undefined
         ? { estimatedDeliveryDays: opts.estimatedDeliveryDays }
         : {}),
     },
-    include: { items: true },
   });
+  if (claim.count === 0) {
+    throw new AppError('CONFLICT', 'This order has already been cancelled or returned and its status can no longer be changed');
+  }
+
+  const updated = await prisma.order.findUniqueOrThrow({ where: { id }, include: { items: true } });
   await recordAudit({
     entityType: 'order',
     entityID: id,
     action: 'order.status_changed',
     actorID: actorId,
     metadata: {
-      orderNumber: order.orderNumber,
-      from: order.status,
+      orderNumber: existing.orderNumber,
+      from: existing.status,
       to: status,
       ...(opts.estimatedDeliveryDays !== undefined
         ? { estimatedDeliveryDays: opts.estimatedDeliveryDays }
@@ -827,7 +991,7 @@ export async function updateOrderStatus(
   // Email the customer the first time an order enters SHIPPED (not on a
   // re-select of the same status). Fire-and-forget, after commit, never
   // throws — same discipline as the order-placed / cancelled notifications.
-  if (status === 'SHIPPED' && order.status !== 'SHIPPED') {
+  if (status === 'SHIPPED' && existing.status !== 'SHIPPED') {
     void sendOrderShippedNotifications(updated).catch((err) => {
       console.error('[order.service] failed to send order-shipped notification', err);
     });

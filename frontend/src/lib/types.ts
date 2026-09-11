@@ -377,6 +377,10 @@ export interface CheckoutBody {
   emailVerifyToken?: string;
   /** Optional coupon code; rejected at checkout if not currently valid. */
   couponCode?: string;
+  /** The cart's own `subtotal` as last fetched — lets the server detect a
+   *  price change (e.g. an admin edit) since this was shown and reject
+   *  instead of silently charging the new number. */
+  expectedSubtotal?: number;
 }
 
 /** `GET /api/orders/delivery-quote?region=...` — a live fee estimate for the

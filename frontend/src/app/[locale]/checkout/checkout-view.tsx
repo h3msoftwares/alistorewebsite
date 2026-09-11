@@ -285,9 +285,22 @@ export function CheckoutView({ locale }: { locale: Locale }) {
   const place = async (body: CheckoutBody) => {
     setError(null);
     try {
-      setPlaced(await checkout.mutateAsync(body));
+      setPlaced(await checkout.mutateAsync({ ...body, expectedSubtotal: subtotal }));
     } catch (e) {
       if (isApiError(e)) {
+        if (e.code === 'CONFLICT' && (e.meta as { reason?: string } | undefined)?.reason === 'PRICE_CHANGED') {
+          // A price moved since the cart was last fetched — refresh it so the
+          // summary (and the expectedSubtotal on the next attempt) reflects
+          // reality, rather than repeating the same rejected request.
+          await cart.refetch();
+          setError(
+            t(
+              'Prices changed since you added these items. Review your order below and place it again.',
+              'تغيّرت الأسعار منذ إضافة هذه العناصر. راجع طلبك أدناه ثم أعد تأكيده.'
+            )
+          );
+          return;
+        }
         const detail = e.issues.map((i) => i.message).join(' · ');
         setError(detail || e.message);
       } else {
