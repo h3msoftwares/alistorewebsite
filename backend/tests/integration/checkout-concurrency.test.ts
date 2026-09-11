@@ -69,9 +69,12 @@ describe('checkout concurrency / data integrity', () => {
 
     expect(created).toHaveLength(1);
     expect(rejected).toHaveLength(N - 1);
-    // every rejection is a clean 409 OUT_OF_STOCK, never a 5xx
+    // every rejection is a clean 409 OUT_OF_STOCK, never a 5xx. The atomic
+    // race-guard's message covers both "sold out" and "archived/deleted
+    // concurrently" (fix-list.md #8/#15/#16), so it reads "no longer
+    // available" rather than naming stock specifically.
     expect(rejected.every((r) => r.status === 409)).toBe(true);
-    expect(rejected.every((r) => /stock/i.test(r.body?.error?.message ?? ''))).toBe(true);
+    expect(rejected.every((r) => /stock|no longer available/i.test(r.body?.error?.message ?? ''))).toBe(true);
     expect(results.filter((r) => r.status >= 500)).toHaveLength(0);
 
     const v = await prisma.productVariant.findUnique({ where: { id: variantId } });
