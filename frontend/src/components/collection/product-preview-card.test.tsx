@@ -75,3 +75,34 @@ describe('ProductPreviewCard out-of-stock cross-axis check', () => {
     expect(screen.getByRole('button', { name: 'Colour: Blue' })).not.toBeDisabled();
   });
 });
+
+describe('ProductPreviewCard image selection (fix-list.md #7 broader scope)', () => {
+  const productWithImages: Product = {
+    ...product,
+    images: [
+      { id: 'img1', productID: 'p1', url: 'https://example.com/generic.jpg', altEn: 'Front (generic)', altAr: null, sortOrder: 0, color: null },
+      { id: 'img2', productID: 'p1', url: 'https://example.com/red.jpg', altEn: 'Red colourway', altAr: null, sortOrder: 1, color: 'Red' },
+    ],
+  };
+
+  it('shows the generic photo before any swatch is clicked, not the first variant\'s colour', () => {
+    // firstVariant is Red — the old `effectiveColor` (defaulted from
+    // firstVariant.color for pricing) was also used to filter the card's
+    // image, unconditionally, so the generic/lead shot never showed for any
+    // product whose first variant had a colour, even before a click.
+    const { Wrapper } = createWrapper();
+    render(<ProductPreviewCard product={productWithImages} locale="en" />, { wrapper: Wrapper });
+
+    expect(screen.getByRole('img', { name: 'Front (generic)' })).toBeInTheDocument();
+  });
+
+  it('swaps to the colour-tagged photo once that swatch is actually clicked', async () => {
+    const { Wrapper } = createWrapper();
+    const user = userEvent.setup();
+    render(<ProductPreviewCard product={productWithImages} locale="en" />, { wrapper: Wrapper });
+
+    await user.click(screen.getByRole('button', { name: 'Colour: Red' }));
+
+    expect(screen.getByRole('img', { name: 'Red colourway' })).toBeInTheDocument();
+  });
+});

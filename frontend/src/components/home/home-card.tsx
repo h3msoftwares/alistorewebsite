@@ -55,7 +55,14 @@ export function HomeProductCard({
   const [hovering, setHovering] = useState(false);
 
   const activeColor = selectedColor ?? colors[0] ?? null;
-  const gallery = pickGallery(product.images, activeColor);
+  // The gallery filters against `selectedColor` (the shopper's own click),
+  // not `activeColor` — `activeColor` defaults to the first swatch purely so
+  // it renders as visually "selected" before any click, and using that same
+  // default for the gallery meant the generic/lead shot was excluded the
+  // instant a product had any colour-tagged photo at all, unconditionally,
+  // before the shopper touched anything (fix-list.md #7's broader-scope
+  // finding).
+  const gallery = pickGallery(product.images, selectedColor);
 
   const image = gallery[frame % gallery.length] ?? product.images[0];
   const salePrice = product.onSale ? product.effectivePrice : null;
