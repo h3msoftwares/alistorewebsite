@@ -64,4 +64,18 @@ export function refresh() {
   return api.post<{ accessToken: string }>('/api/auth/refresh', undefined, { auth: false });
 }
 
+/** Admin-session twin of `logout` — clears the `adminRefreshToken` cookie
+ *  (scoped to /api/admin/auth) instead of the customer session's cookie.
+ *  Not wired to any UI yet (no admin logout button exists today), kept here
+ *  for symmetry with the rest of the admin session API and any future one. */
+export function adminLogout() {
+  return api.post<void>('/api/admin/auth/logout', undefined, { auth: false });
+}
+
+/** Admin-session twin of `refresh` — see `client.ts`'s `refreshAccessToken`,
+ *  which picks this vs. `refresh` based on the current route. */
+export function adminRefresh() {
+  return api.post<{ accessToken: string }>('/api/admin/auth/refresh', undefined, { auth: false });
+}
+
 export type { AuthUser };

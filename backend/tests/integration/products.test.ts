@@ -434,6 +434,40 @@ describe('Products API', () => {
         .set(bearer(adminToken));
       expect(blocked.status).toBe(409);
     });
+
+    it('409s deleting a product\'s last remaining variant (fix-list.md #17)', async () => {
+      const p = await makeProduct(collectionId, categoryId, {
+        variants: [{ sku: 'only', size: 'M', color: 'Black' }],
+      });
+      const res = await request(app)
+        .delete(`/api/products/${p.id}/variants/${p.variants[0].id}`)
+        .set(bearer(adminToken));
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toMatch(/last variant/i);
+
+      // untouched — still exactly one variant
+      const stillThere = await prisma.productVariant.findUnique({ where: { id: p.variants[0].id } });
+      expect(stillThere).not.toBeNull();
+    });
+
+    it('allows deleting down to exactly one variant, then blocks the last one', async () => {
+      const p = await makeProduct(collectionId, categoryId, {
+        variants: [
+          { sku: 'a', size: 'M', color: 'Black' },
+          { sku: 'b', size: 'L', color: 'Black' },
+        ],
+      });
+      const first = await request(app)
+        .delete(`/api/products/${p.id}/variants/${p.variants[1].id}`)
+        .set(bearer(adminToken));
+      expect(first.status).toBe(204);
+
+      const second = await request(app)
+        .delete(`/api/products/${p.id}/variants/${p.variants[0].id}`)
+        .set(bearer(adminToken));
+      expect(second.status).toBe(409);
+      expect(second.body.error.message).toMatch(/last variant/i);
+    });
   });
 
   describe('Product images (admin sub-resource)', () => {

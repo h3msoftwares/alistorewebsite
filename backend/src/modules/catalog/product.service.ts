@@ -549,6 +549,16 @@ export async function deleteVariant(productId: string, variantId: string) {
   if (inOrder > 0) {
     throw new AppError('CONFLICT', 'Cannot delete a variant that appears in past orders');
   }
+  // Every product is created with ≥1 variant (createProductSchema requires
+  // it) and cart/checkout are variant-keyed throughout — a product with zero
+  // variants isn't "sold out", it's structurally unpurchasable, with no
+  // existing UI message that explains why (see fix-list.md #17). Block the
+  // deletion that would create that state instead of allowing it one delete
+  // at a time with no warning.
+  const variantCount = await prisma.productVariant.count({ where: { productID: productId } });
+  if (variantCount <= 1) {
+    throw new AppError('CONFLICT', "Cannot delete a product's last variant. Delete the product instead, or add another variant first.");
+  }
   await prisma.productVariant.delete({ where: { id: variantId } });
 }
 

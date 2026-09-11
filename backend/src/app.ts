@@ -9,7 +9,7 @@ import { csrfProtection } from './middleware/csrf.middleware';
 import { env } from './config/env';
 
 import authRoutes from './modules/auth/auth.routes';
-import { adminAuthRoutes } from './modules/auth/admin-auth.routes';
+import { adminAuthRoutes, adminSessionRoutes } from './modules/auth/admin-auth.routes';
 import { passwordResetRoutes } from './modules/auth/password-reset.routes';
 import { changePasswordRoutes } from './modules/auth/change-password.routes';
 import { stepUpRoutes } from './modules/auth/step-up.routes';
@@ -162,6 +162,10 @@ export function buildApp(
     '/api/auth',
     adminAuthRoutes({ rateLimit: opts.adminLoginRateLimit ?? env.NODE_ENV !== 'test' })
   );
+  // Admin session (refresh/logout) — its own prefix so the adminRefreshToken
+  // cookie (scoped to this same path) stays fully separate from the customer
+  // session's /api/auth (fix-list.md #13, resolves 2.6).
+  app.use('/api/admin/auth', adminSessionRoutes());
   // Forgot/reset-password — shared across every role, not role-specific.
   app.use(
     '/api/auth',

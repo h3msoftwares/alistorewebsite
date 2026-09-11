@@ -167,6 +167,24 @@ describe('api client', () => {
     expect(replayInit.headers?.Authorization).toBe('Bearer fresh');
   });
 
+  it('on an admin route, a 401 refreshes via /api/admin/auth/refresh instead (fix-list.md #13)', async () => {
+    window.history.pushState({}, '', '/en/admin/orders');
+    try {
+      setAccessToken('stale');
+      fetchMock
+        .mockResolvedValueOnce(res(401, { error: { code: 'UNAUTHORIZED', message: 'expired' } }))
+        .mockResolvedValueOnce(res(200, { accessToken: 'fresh-admin' })) // POST /api/admin/auth/refresh
+        .mockResolvedValueOnce(res(200, { orders: [] })); // replay
+
+      const out = await apiRequest('GET', '/api/admin/orders');
+      expect(out).toEqual({ orders: [] });
+      expect(getAccessToken()).toBe('fresh-admin');
+      expect(fetchMock.mock.calls[1][0]).toBe(`${API_URL}/api/admin/auth/refresh`);
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
+  });
+
   it('when the refresh fails it clears the token and surfaces the 401', async () => {
     setAccessToken('stale');
     fetchMock
