@@ -8,18 +8,6 @@ const isDev = process.env.NODE_ENV !== 'production';
 // runtime; needed here so `connect-src` can name it.
 const apiOrigin = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/+$/, '');
 
-// Optional: the ImageKit CDN host, if the owner has wired one up. Falls back
-// to ImageKit's shared domain so product images load before a custom
-// endpoint is configured.
-let imagekitOrigin = 'https://ik.imagekit.io';
-try {
-  if (process.env.NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT) {
-    imagekitOrigin = new URL(process.env.NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT).origin;
-  }
-} catch {
-  // malformed env → keep the default
-}
-
 // The admin image uploader (lib/imagekit-upload.ts) POSTs files straight from
 // the browser to ImageKit's upload endpoint, so `connect-src` must name it.
 // This is a fixed ImageKit host, independent of any custom CDN endpoint.
@@ -31,12 +19,6 @@ const imagekitUploadOrigin = 'https://upload.imagekit.io';
 //  - hCaptcha — the checkout bot gate (script + iframe challenge + verify XHR).
 const GA = ['https://www.googletagmanager.com', 'https://www.google-analytics.com'];
 const HCAPTCHA = ['https://hcaptcha.com', 'https://*.hcaptcha.com'];
-
-// Placeholder product photos come from the Unsplash CDN in the seed scripts
-// (prisma/seed*.ts). Dev-only: a real deployment uploads photos to ImageKit
-// and the stored URLs are all on `imagekitOrigin`, so production `img-src`
-// stays locked down exactly as the security baseline sets it.
-const SEED_IMG_HOSTS = isDev ? ['https://images.unsplash.com'] : [];
 
 /**
  * Content-Security-Policy.
@@ -56,6 +38,17 @@ const SEED_IMG_HOSTS = isDev ? ['https://images.unsplash.com'] : [];
  *
  * `'unsafe-eval'` and `ws:` are added in dev only (React Fast Refresh / HMR);
  * neither is present in a production build.
+ *
+ * A third relaxation, on `img-src`: it allows any `https:` source, not just
+ * ImageKit's own host. Product/story/review photos are routinely sourced
+ * from outside CDNs (Unsplash and similar stock-photo services) as well as
+ * ImageKit uploads, so `img-src` needs to accept "any HTTPS image host" for
+ * those to render at all — this is also what lets the seed scripts'
+ * Unsplash placeholder photos (prisma/seed*.ts) load without a separate
+ * dev-only carve-out. This directive only controls what `<img>` / CSS
+ * `background-image` may load; it grants no script execution and doesn't
+ * touch `script-src`/`connect-src`/`object-src` — the directives that
+ * actually carry this policy's XSS defence.
  */
 function contentSecurityPolicy() {
   const directives = {
@@ -72,7 +65,7 @@ function contentSecurityPolicy() {
       ...HCAPTCHA,
     ],
     'style-src': ["'self'", "'unsafe-inline'", ...HCAPTCHA],
-    'img-src': ["'self'", 'data:', 'blob:', imagekitOrigin, ...GA, ...HCAPTCHA, ...SEED_IMG_HOSTS],
+    'img-src': ["'self'", 'data:', 'blob:', 'https:'],
     'font-src': ["'self'", 'data:', ...HCAPTCHA],
     'connect-src': [
       "'self'",
