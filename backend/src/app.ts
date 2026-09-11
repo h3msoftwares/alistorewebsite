@@ -47,6 +47,10 @@ export function buildApp(
     orderTrackRateLimit?: boolean;
     orderLookupRateLimit?: boolean;
     orderCheckoutRateLimit?: boolean;
+    // The app-wide per-IP baseline limiter (skips GET/HEAD/OPTIONS — see
+    // below). Same on/off-under-test convention as the others; a focused
+    // test passes `true`.
+    globalRateLimit?: boolean;
     // Double-submit-cookie CSRF check. Defaults ON everywhere except tests
     // (where the suites don't carry the header); a focused test passes `true`.
     csrf?: boolean;
@@ -126,8 +130,27 @@ export function buildApp(
   // First (before CSRF), so even a request that is about to fail the CSRF
   // check still counts against the per-IP budget. Disabled under test so
   // suites can fire many requests without tripping it.
-  if (env.NODE_ENV !== 'test') {
-    app.use(rateLimit({ windowMs: 60 * 1000, max: env.RATE_LIMIT_MAX }));
+  //
+  // Skips safe (GET/HEAD/OPTIONS) requests (fix-list.md #12, resolves
+  // 8.1/8.2/8.4): this bucket was previously shared by every request
+  // regardless of method, so ordinary read-heavy storefront browsing
+  // (product listings, a popular product page during a spike) from behind
+  // any shared IP — an office network, mobile carrier NAT, a CDN edge, or
+  // just a real concurrent-traffic burst — blew through 300 req/min almost
+  // immediately and got 429'd, measured at 0% DB CPU the whole time: the
+  // limiter was the bottleneck, not real capacity. State-changing requests
+  // (POST/PUT/PATCH/DELETE) still count against this budget — those are
+  // exactly the actions with real backend cost and abuse potential, and the
+  // ones genuinely risky endpoints (login, checkout, coupon redemption, …)
+  // already layer their own tighter, purpose-built limiters on top of.
+  if (opts.globalRateLimit ?? env.NODE_ENV !== 'test') {
+    app.use(
+      rateLimit({
+        windowMs: 60 * 1000,
+        max: env.RATE_LIMIT_MAX,
+        skip: (req) => req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS',
+      })
+    );
   }
 
   // CSRF: sets/reads the `csrfToken` cookie and requires a matching

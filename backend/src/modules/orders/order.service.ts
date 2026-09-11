@@ -100,7 +100,19 @@ const VELOCITY_BLOCK_IP_MAX = 10;
 // checkout in line can wait well past Prisma's default 5s ceiling — which would
 // surface as a 500 rather than an orderly "sold out". These give that queue
 // real headroom without letting a genuinely stuck transaction hang forever.
-const CHECKOUT_TX_OPTIONS = { timeout: 20_000, maxWait: 10_000 } as const;
+//
+// `timeout` raised from 20s (fix-list.md #11, resolves 1.8): live-tested a
+// 50-concurrent-buyer burst against one 10-unit variant (paired with the
+// connection_limit bump — see .env.example) and 20s still wasn't enough
+// headroom — Prisma killed every one of the 50 with P2028 ("transaction
+// already closed") right around the 20s mark, even though the failure was
+// genuinely the row-lock queue for the stock claim draining, not a stuck or
+// runaway transaction. 45s gave the same 50-buyer burst room to fully drain
+// cleanly (10 succeed, 40 clean 409 OUT_OF_STOCK, 0 errors) — see
+// reports/batch6-log.md for the before/after numbers. `maxWait` (time to
+// acquire a pooled connection at all) is unaffected by this — a separate
+// concern from the connection pool size, not this timeout.
+const CHECKOUT_TX_OPTIONS = { timeout: 45_000, maxWait: 10_000 } as const;
 
 // A customer (or a guest bearing a valid access token) may cancel their own
 // order up to — but not including — SHIPPED. An admin isn't bound by this;
@@ -388,7 +400,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     // active catalog discount. Snapshotted onto each OrderItem below so the
     // order stays correct even if a discount later ends. `tx` — same pool
     // reason as the blacklist check above.
-    const discounts = await activeDiscounts(undefined, tx);
+    const discounts = await activeDiscounts(new Date(), tx);
     const unitPriceFor = (i: (typeof cartItems)[number]) => lineUnitPrice(i.variant, discounts);
     const subtotal = round2(
       cartItems.reduce((sum, i) => sum + unitPriceFor(i) * i.quantity, 0)
@@ -417,7 +429,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     let discountAmount = 0;
     let couponToRedeem: { id: string; maxRedemptions: number | null } | null = null;
     if (input.couponCode) {
-      const coupon = await resolveCoupon(input.couponCode, undefined, tx);
+      const coupon = await resolveCoupon(input.couponCode, new Date(), tx);
       if (!coupon) throw new AppError('VALIDATION_ERROR', 'That coupon code is not valid.');
 
       // Per-customer cap (V2b). `maxPerCustomer` defaults to 1 (single use

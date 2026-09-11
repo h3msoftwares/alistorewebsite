@@ -94,12 +94,12 @@ export interface ResolvedCoupon {
 /** Looks up an active, in-window coupon by code (case-insensitive). Returns
  *  null when the code is unknown, disabled, outside its date window, or has
  *  already hit its global redemption cap. Per-customer caps need the caller's
- *  identity and are enforced at checkout. */
-export async function resolveCoupon(
-  rawCode: string,
-  at: Date = new Date(),
-  db: Db = prisma
-): Promise<ResolvedCoupon | null> {
+ *  identity and are enforced at checkout.
+ *
+ *  `db` defaults to the plain client for the discount-preview controller;
+ *  checkout() passes its `tx` explicitly (fix-list.md #11, resolves 1.8) —
+ *  same extra-pool-pressure fix as activeDiscounts()/isBlacklisted(). */
+export async function resolveCoupon(rawCode: string, at: Date = new Date(), db: Db = prisma): Promise<ResolvedCoupon | null> {
   const code = rawCode.trim().toUpperCase();
   if (!code) return null;
   const c = await db.coupon.findUnique({ where: { code } });

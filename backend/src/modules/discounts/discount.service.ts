@@ -126,11 +126,15 @@ export async function deleteDiscount(id: string) {
 // ---- Read-side: the discounts in force right now ----
 
 /** Every discount that is active and within its time window at `at`. Small
- *  table, no cache — called once per product-listing / cart / checkout. */
-export async function activeDiscounts(
-  at: Date = new Date(),
-  db: Db = prisma
-): Promise<DiscountCandidate[]> {
+ *  table, no cache — called once per product-listing / cart / checkout.
+ *
+ *  `db` defaults to the plain client for every read-only caller (product
+ *  listings, cart, favourites); checkout() passes its `tx` explicitly
+ *  (fix-list.md #11, resolves 1.8) — without that, this call from inside
+ *  checkout()'s transaction reached into the pool for its own separate
+ *  connection on top of the one the transaction already held, the same
+ *  extra-pool-pressure pattern found and fixed in isBlacklisted(). */
+export async function activeDiscounts(at: Date = new Date(), db: Db = prisma): Promise<DiscountCandidate[]> {
   const rows = await db.discount.findMany({
     where: {
       isActive: true,
