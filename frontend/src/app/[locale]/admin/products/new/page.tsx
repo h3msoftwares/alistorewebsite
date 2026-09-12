@@ -86,7 +86,7 @@ export default function NewProductPage() {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
-        <ProductCoreFields register={register} errors={errors} busy={busy} locale={locale} />
+        <ProductCoreFields register={register} control={control} errors={errors} busy={busy} locale={locale} />
 
         <div className="admin-form__section">
           <p className="admin-form__section-title">{t('Variants', 'المقاسات والألوان')}</p>

@@ -43,6 +43,7 @@ export default function EditProductPage() {
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<ProductCoreValues>({
@@ -208,7 +209,7 @@ export default function EditProductPage() {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
-        <ProductCoreFields register={register} errors={errors} busy={busy} locale={locale} />
+        <ProductCoreFields register={register} control={control} errors={errors} busy={busy} locale={locale} />
 
         {error && <Alert tone="danger">{error}</Alert>}
 

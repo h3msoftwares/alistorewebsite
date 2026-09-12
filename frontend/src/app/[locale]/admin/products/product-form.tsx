@@ -1,8 +1,8 @@
 'use client';
 
-import type { FieldErrors, UseFormRegister } from 'react-hook-form';
+import { Controller, type Control, type FieldErrors, type UseFormRegister } from 'react-hook-form';
 import { z } from 'zod';
-import { Field, Input, Select, Textarea } from '@/components/ui';
+import { CheckList, Field, Input, Select, Textarea } from '@/components/ui';
 import { useAdminCategories, useCollections } from '@/hooks/use-catalog';
 
 // Optional money fields are kept as strings in the form (not z.coerce.number
@@ -72,11 +72,13 @@ export const productCoreDefaults: ProductCoreValues = {
  *  variants as independent line items below this). */
 export function ProductCoreFields<T extends ProductCoreValues>({
   register,
+  control,
   errors,
   busy,
   locale,
 }: {
   register: UseFormRegister<T>;
+  control: Control<T>;
   errors: FieldErrors<T>;
   busy: boolean;
   locale: 'en' | 'ar';
@@ -129,24 +131,32 @@ export function ProductCoreFields<T extends ProductCoreValues>({
       <div className="admin-form__row">
         <Field
           label={t('Additional categories', 'فئات إضافية')}
-          hint={t('Optional — other places this product also appears (ctrl/cmd-click to select several)', 'اختياري — أماكن أخرى يظهر فيها المنتج أيضًا (اضغط ctrl/cmd للاختيار المتعدد)')}
+          hint={t('Optional — other places this product also appears', 'اختياري — أماكن أخرى يظهر فيها المنتج أيضًا')}
         >
           {(p) => (
-            <select
-              {...p}
-              multiple
-              {...register('additionalCategoryIds' as never)}
-              disabled={busy}
-              className="input"
-              size={Math.min(6, Math.max(3, (categories ?? []).length))}
-            >
-              {(categories ?? []).map((c) => (
-                <option key={c.id} value={c.id} disabled={Boolean(c.isEffectivelyArchived)}>
-                  {'—'.repeat(c.depth)} {isAr ? c.nameAr : c.nameEn}
-                  {c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}
-                </option>
-              ))}
-            </select>
+            <Controller
+              control={control}
+              name={'additionalCategoryIds' as never}
+              render={({ field }) => (
+                <CheckList
+                  {...p}
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                  disabled={busy}
+                  emptyLabel={t('No categories yet', 'لا توجد فئات بعد')}
+                  items={(categories ?? []).map((c) => ({
+                    id: c.id,
+                    disabled: Boolean(c.isEffectivelyArchived),
+                    label: (
+                      <>
+                        {'—'.repeat(c.depth)} {isAr ? c.nameAr : c.nameEn}
+                        {c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}
+                      </>
+                    ),
+                  }))}
+                />
+              )}
+            />
           )}
         </Field>
         <Field
@@ -154,21 +164,29 @@ export function ProductCoreFields<T extends ProductCoreValues>({
           hint={t('Optional — manual merchandising groups (Sale, New Arrivals)', 'اختياري — مجموعات تسويقية يدوية (تخفيضات، وصل حديثاً)')}
         >
           {(p) => (
-            <select
-              {...p}
-              multiple
-              {...register('collectionIds' as never)}
-              disabled={busy}
-              className="input"
-              size={Math.min(6, Math.max(3, (collections ?? []).length))}
-            >
-              {(collections ?? []).map((c) => (
-                <option key={c.id} value={c.id} disabled={Boolean(c.archivedAt)}>
-                  {isAr ? c.nameAr : c.nameEn}
-                  {c.archivedAt ? t(' (archived)', ' (مؤرشفة)') : ''}
-                </option>
-              ))}
-            </select>
+            <Controller
+              control={control}
+              name={'collectionIds' as never}
+              render={({ field }) => (
+                <CheckList
+                  {...p}
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                  disabled={busy}
+                  emptyLabel={t('No collections yet', 'لا توجد مجموعات بعد')}
+                  items={(collections ?? []).map((c) => ({
+                    id: c.id,
+                    disabled: Boolean(c.archivedAt),
+                    label: (
+                      <>
+                        {isAr ? c.nameAr : c.nameEn}
+                        {c.archivedAt ? t(' (archived)', ' (مؤرشفة)') : ''}
+                      </>
+                    ),
+                  }))}
+                />
+              )}
+            />
           )}
         </Field>
       </div>

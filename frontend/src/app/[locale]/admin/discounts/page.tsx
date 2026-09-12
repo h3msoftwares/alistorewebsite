@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
   Alert,
   Button,
+  CheckList,
   Choice,
   DataTable,
   EmptyState,
@@ -219,48 +220,48 @@ function PromotionsPanel({ isAr }: { isAr: boolean }) {
 
           {!appliesToAll && (
             <>
-              <Field
-                label={t('Products', 'المنتجات')}
-                hint={t('Optional (ctrl/cmd-click to select several)', 'اختياري (اضغط ctrl/cmd للاختيار المتعدد)')}
-              >
+              <Field label={t('Products', 'المنتجات')} hint={t('Optional', 'اختياري')}>
                 {(p) => (
-                  <select
-                    {...p}
-                    multiple
-                    {...register('productIds')}
-                    disabled={busy}
-                    className="input"
-                    size={Math.min(6, Math.max(3, (products?.items ?? []).length))}
-                  >
-                    {(products?.items ?? []).map((prod) => (
-                      <option key={prod.id} value={prod.id}>
-                        {isAr ? prod.nameAr : prod.nameEn}
-                      </option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={control}
+                    name="productIds"
+                    render={({ field }) => (
+                      <CheckList
+                        {...p}
+                        value={field.value}
+                        onChange={field.onChange}
+                        disabled={busy}
+                        emptyLabel={t('No products yet', 'لا توجد منتجات بعد')}
+                        items={(products?.items ?? []).map((prod) => ({
+                          id: prod.id,
+                          label: isAr ? prod.nameAr : prod.nameEn,
+                        }))}
+                      />
+                    )}
+                  />
                 )}
               </Field>
 
               <div className="admin-form__row">
-                <Field
-                  label={t('Categories', 'الفئات')}
-                  hint={t('Optional (ctrl/cmd-click to select several)', 'اختياري (اضغط ctrl/cmd للاختيار المتعدد)')}
-                >
+                <Field label={t('Categories', 'الفئات')} hint={t('Optional', 'اختياري')}>
                   {(p) => (
-                    <select
-                      {...p}
-                      multiple
-                      {...register('categoryIds')}
-                      disabled={busy}
-                      className="input"
-                      size={Math.min(6, Math.max(3, (categories ?? []).length))}
-                    >
-                      {(categories ?? []).map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {isAr ? c.nameAr : c.nameEn}
-                        </option>
-                      ))}
-                    </select>
+                    <Controller
+                      control={control}
+                      name="categoryIds"
+                      render={({ field }) => (
+                        <CheckList
+                          {...p}
+                          value={field.value}
+                          onChange={field.onChange}
+                          disabled={busy}
+                          emptyLabel={t('No categories yet', 'لا توجد فئات بعد')}
+                          items={(categories ?? []).map((c) => ({
+                            id: c.id,
+                            label: isAr ? c.nameAr : c.nameEn,
+                          }))}
+                        />
+                      )}
+                    />
                   )}
                 </Field>
                 <Choice
@@ -271,25 +272,25 @@ function PromotionsPanel({ isAr }: { isAr: boolean }) {
                 />
               </div>
 
-              <Field
-                label={t('Collections', 'المجموعات')}
-                hint={t('Optional (ctrl/cmd-click to select several)', 'اختياري (اضغط ctrl/cmd للاختيار المتعدد)')}
-              >
+              <Field label={t('Collections', 'المجموعات')} hint={t('Optional', 'اختياري')}>
                 {(p) => (
-                  <select
-                    {...p}
-                    multiple
-                    {...register('collectionIds')}
-                    disabled={busy}
-                    className="input"
-                    size={Math.min(6, Math.max(3, (collections ?? []).length))}
-                  >
-                    {(collections ?? []).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {isAr ? c.nameAr : c.nameEn}
-                      </option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={control}
+                    name="collectionIds"
+                    render={({ field }) => (
+                      <CheckList
+                        {...p}
+                        value={field.value}
+                        onChange={field.onChange}
+                        disabled={busy}
+                        emptyLabel={t('No collections yet', 'لا توجد مجموعات بعد')}
+                        items={(collections ?? []).map((c) => ({
+                          id: c.id,
+                          label: isAr ? c.nameAr : c.nameEn,
+                        }))}
+                      />
+                    )}
+                  />
                 )}
               </Field>
               {errors.appliesToAll && <Alert tone="danger">{errors.appliesToAll.message}</Alert>}

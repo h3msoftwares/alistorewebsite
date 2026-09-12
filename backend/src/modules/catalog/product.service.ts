@@ -24,7 +24,7 @@ import {
   archivedCategoryIds,
   productCategoryPaths,
   productCollectionIds,
-  productInCategoryFilter,
+  productInCategoryPathFilter,
   productInCollectionFilter,
   productReachableFilter,
 } from './category-tree';
@@ -226,7 +226,17 @@ export async function listProducts(query: ListProductsQuery) {
   // one's `OR` key instead of narrowing the results.
   const and: Prisma.ProductWhereInput[] = [await productStatusWhere(query)];
   if (query.collectionId) and.push(productInCollectionFilter(query.collectionId));
-  if (query.categoryId) and.push(productInCategoryFilter(query.categoryId));
+  if (query.categoryId) {
+    // Browsing a category means browsing its whole subtree (a root like
+    // "Women" has no products placed on it directly — they live on its leaf
+    // categories) — path-based, inclusive of the category itself, same
+    // fragment Promotion/CollectionRule category targeting already uses.
+    const category = await prisma.category.findUnique({
+      where: { id: query.categoryId },
+      select: { path: true },
+    });
+    and.push(category ? productInCategoryPathFilter(category.path, true) : { id: { in: [] } });
+  }
   const searchFilter = query.search ? buildSearchFilter(query.search) : null;
   if (searchFilter) and.push(searchFilter);
   if (query.minPrice || query.maxPrice) {

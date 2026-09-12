@@ -45,18 +45,6 @@ export async function isCategoryEffectivelyArchived(categoryId: string): Promise
   return rows[0]?.archived ?? false;
 }
 
-/** Prisma where-fragment: "this product is placed in (one of) the given
- *  category id(s), as its primary category or one of its additional ones."
- *  The one implementation of category membership — category listings, the
- *  onSale category-coverage filter, and CATEGORY-scoped discount matching
- *  all go through this instead of each re-deriving it. */
-export function productInCategoryFilter(categoryId: string | string[]): Prisma.ProductWhereInput {
-  const ids = Array.isArray(categoryId) ? categoryId : [categoryId];
-  return {
-    OR: [{ primaryCategoryID: { in: ids } }, { categoryLinks: { some: { categoryID: { in: ids } } } }],
-  };
-}
-
 /** Prisma where-fragment: "this product is manually placed in (one of) the
  *  given collection id(s)." */
 export function productInCollectionFilter(collectionId: string | string[]): Prisma.ProductWhereInput {

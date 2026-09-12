@@ -105,6 +105,30 @@ describe('Categories API', () => {
       const res = await request(app).get(`/api/categories/${UNKNOWN}/products`);
       expect(res.status).toBe(404);
     });
+
+    // Regression: browsing a category means browsing its whole subtree — a
+    // root like "Women" typically has no products placed on it directly,
+    // only on its leaf categories (Lingerie, Nightwear, ...). The listing
+    // used to match category id EXACTLY (primary or additional placement),
+    // so a root category page came back empty even though its descendants
+    // were full of products.
+    it('includes products placed on descendant categories, not just the category itself', async () => {
+      const root = await makeCategory({ nameEn: 'Root', slug: 'desc-root' });
+      const child = await makeCategory({ nameEn: 'Child', slug: 'desc-child', parentID: root.id });
+      const grandchild = await makeCategory({ nameEn: 'Grandchild', slug: 'desc-grandchild', parentID: child.id });
+      await makeProduct(grandchild.id, { over: { nameEn: 'Deep product' } });
+      // an unrelated sibling subtree must not leak in
+      const other = await makeCategory({ nameEn: 'Other root', slug: 'desc-other' });
+      await makeProduct(other.id, { over: { nameEn: 'Unrelated product' } });
+
+      const res = await request(app).get(`/api/categories/${root.id}/products`);
+      expect(res.status).toBe(200);
+      expect(res.body.items.map((p: { nameEn: string }) => p.nameEn)).toEqual(['Deep product']);
+
+      // Browsing the intermediate child also finds the grandchild's product.
+      const childRes = await request(app).get(`/api/categories/${child.id}/products`);
+      expect(childRes.body.items.map((p: { nameEn: string }) => p.nameEn)).toEqual(['Deep product']);
+    });
   });
 
   describe('GET /api/categories/:id', () => {
