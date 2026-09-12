@@ -56,6 +56,9 @@ ones that **must** be set per environment:
 | `SEED_ADMIN_PASSWORD` | ≥ 8 chars; the seeded ADMIN account's password |
 | `GA_*` (optional) | Google Analytics 4 service account for `/admin/analytics` visitor + funnel reports |
 | `NODE_ENV=production` | enables Secure cookies + the global rate limiter |
+| `BACKEND_URL` | **this API's own public URL** (e.g. `https://api.yourdomain.com`) — builds the Google Drive OAuth callback redirect_uri for the admin panel's "Connect Google Drive" button. Must exactly match an Authorized redirect URI registered on the "Web application" OAuth client in Google Cloud Console (path: `/api/admin/backup/drive/callback`) — see security/operations.md §3. |
+| `GOOGLE_DRIVE_WEB_CLIENT_ID` / `_SECRET` | the "Web application" OAuth client backing "Connect Google Drive". Required for that button to work at all in this environment. |
+| `GOOGLE_DRIVE_CLIENT_ID` / `_SECRET` / `_REFRESH_TOKEN` / `_BACKUP_FOLDER_ID` (optional) | the original "Desktop app" client + its refresh token — bootstrap path for the scheduled GitHub Actions backup and the fallback until an admin connects via the panel. Not required if the panel connect is used instead (see below). |
 
 ### Frontend
 
@@ -174,3 +177,24 @@ curl -fsS "$API/api/settings" | jq .settings.id     # 1
 - [ ] Neon backups verified (take one, restore it to a scratch branch).
 - [ ] `main` branch protection: require the `backend` + `frontend` CI checks.
 - [ ] GA4 service account + measurement ID set if analytics is wanted.
+- [ ] **Google Drive backups (modules/backup)** — see security/operations.md §3
+      for full detail:
+  - [ ] `BACKEND_URL` set to the real backend URL (not `localhost`).
+  - [ ] The production callback — `${BACKEND_URL}/api/admin/backup/drive/callback`
+        — added as an Authorized redirect URI on the "Web application" OAuth
+        client in Google Cloud Console (keep the existing entries, add this
+        one alongside them).
+  - [ ] `GOOGLE_DRIVE_WEB_CLIENT_ID` / `_SECRET` set on the backend host —
+        without these "Connect Google Drive" 500s in production even though
+        it may have worked in dev.
+  - [ ] Both Google Cloud OAuth clients' consent screens are published
+        "In production", not "Testing" (Testing silently expires refresh
+        tokens after 7 days).
+  - [ ] `.github/workflows/backup.yml`'s repo secrets set: `DATABASE_URL`
+        (the **production** database), `GOOGLE_DRIVE_CLIENT_ID/_SECRET/_REFRESH_TOKEN/_BACKUP_FOLDER_ID`
+        (bootstrap path), and `GOOGLE_DRIVE_WEB_CLIENT_ID/_SECRET` too if an
+        admin has connected (or will connect) via the panel — that job shares
+        the production database, so once a `DriveCredential` row exists there
+        it needs the matching client credentials to redeem it.
+  - [ ] After first deploy: sign in as ADMIN, open the Backups page, confirm
+        "Connect Google Drive" completes and a manual "Back up now" succeeds.

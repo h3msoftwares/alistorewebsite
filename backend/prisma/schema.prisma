@@ -1005,3 +1005,29 @@ model AnnouncementLine {
   @@index([settingID])
   @@map("announcementline")
 }
+
+// Singleton row (id fixed to 1, same pattern as SiteSetting) holding the
+// Google Drive OAuth connection for modules/backup, when it was established
+// via the admin panel's "Connect Google Drive" flow rather than the
+// GOOGLE_DRIVE_REFRESH_TOKEN env var (see drive.client.ts's
+// getEffectiveRefreshToken — a row here, once it exists, takes priority over
+// the env var, including a disconnected row with refreshToken: null).
+// Deliberately its own table, NOT a SiteSetting column: SiteSetting is
+// returned whole by the public GET /api/settings, and a refresh token must
+// never be serialized into a public response.
+model DriveCredential {
+  id             Int       @id @default(1)
+  refreshToken   String?
+  connectedEmail String?
+  connectedAt    DateTime?
+  // Drive folder id for THIS connected account's backups — found-or-created
+  // (by name; see drive.client.ts's ensureAppFolder) at connect time, not a
+  // fixed id shared across every account. A folder id from GOOGLE_DRIVE_
+  // BACKUP_FOLDER_ID belongs to whichever account created it; a different
+  // connected account has no access to it, so the tool must not assume one
+  // shared folder works for "connect any Drive account".
+  folderId       String?
+  updatedAt      DateTime  @updatedAt
+
+  @@map("drivecredential")
+}

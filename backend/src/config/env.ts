@@ -114,6 +114,69 @@ const envSchema = z.object({
   // A contact URI required by the Web Push protocol (RFC 8292) — sent to the
   // push service so it can reach the sender if this key pair misbehaves.
   VAPID_SUBJECT: z.string().default('mailto:admin@example.com'),
+
+  // Google Drive database backups (modules/backup) — a dependency-free REST
+  // OAuth client (no googleapis package), modeled on the H3M backup tool.
+  // Same "boots without it" pattern as SMTP_HOST/IMAGEKIT_PRIVATE_KEY: left
+  // unset, the backup endpoints 503 with a clear "not configured" message
+  // instead of failing to boot.
+  //
+  // TWO separate Google Cloud OAuth clients, because a "Desktop app" client
+  // (below) only supports Google's fixed loopback redirect — it cannot use a
+  // custom callback path, so it can't back the admin panel's browser-based
+  // "Connect Google Drive" flow:
+  //   - GOOGLE_DRIVE_CLIENT_ID/_SECRET: the original "Desktop app" client
+  //     (redirect_uri http://localhost). Refresh token minted once via
+  //     `npm run backup:token` (backend/scripts/generate-drive-refresh-token.ts)
+  //     into GOOGLE_DRIVE_REFRESH_TOKEN — still what GitHub Actions' scheduled
+  //     backup uses, and the fallback until an admin connects via the panel.
+  //   - GOOGLE_DRIVE_WEB_CLIENT_ID/_SECRET: a "Web application" client whose
+  //     Authorized redirect URIs include
+  //     `${BACKEND_URL}/api/admin/backup/drive/callback` (see drive.client.ts's
+  //     buildAuthUrl/completeConnection). Its refresh tokens are stored in the
+  //     `DriveCredential` DB row, not an env var — see getEffectiveCredential.
+  // A refresh token must be redeemed with the SAME client id/secret that
+  // issued it — Google rejects a mismatched pair — so these two credential
+  // pairs are never interchangeable and drive.client.ts tracks which one
+  // goes with the currently-active token.
+  // Both Cloud project's OAuth consent screen must be published "In
+  // production" — left in "Testing", Google silently expires refresh tokens
+  // after 7 days.
+  GOOGLE_DRIVE_CLIENT_ID: z.string().default(''),
+  GOOGLE_DRIVE_CLIENT_SECRET: z.string().default(''),
+  GOOGLE_DRIVE_REFRESH_TOKEN: z.string().default(''),
+  GOOGLE_DRIVE_WEB_CLIENT_ID: z.string().default(''),
+  GOOGLE_DRIVE_WEB_CLIENT_SECRET: z.string().default(''),
+  // The Drive folder backups are uploaded into, for the env-var/Desktop-
+  // client bootstrap path ONLY: create it once in Drive (under the same
+  // account backup:token authorized) and paste its id (the segment after
+  // /folders/ in the folder's URL). NOT used for an admin-panel "Connect"
+  // — a folder id belongs to whichever account created it, so it can't be
+  // shared across "connect any Drive account"; that path instead
+  // finds-or-creates its own folder per connected account (see
+  // drive.client.ts's ensureAppFolder) and stores its id on the
+  // DriveCredential row.
+  GOOGLE_DRIVE_BACKUP_FOLDER_ID: z.string().default(''),
+  // Name of the folder ensureAppFolder finds-or-creates in a newly-connected
+  // account. Generic by design — this is a reusable tool, not branded to one
+  // client's store name.
+  GOOGLE_DRIVE_FOLDER_NAME: z.string().default('Database Backups'),
+  // Rolling retention: how many of this tool's own dumps to keep on Drive:
+  // after each successful upload, older ones beyond this count are deleted.
+  BACKUP_RETENTION_COUNT: z.coerce.number().int().positive().default(7),
+  // pg_dump/pg_restore binaries — default to PATH lookup (true in the
+  // production Docker image and on GitHub Actions runners once
+  // postgresql-client is installed); override locally if they're not on PATH.
+  PG_DUMP_BIN: z.string().default('pg_dump'),
+  PG_RESTORE_BIN: z.string().default('pg_restore'),
+  // This API's own publicly-reachable base URL — used only to build the
+  // Google Drive OAuth callback redirect_uri
+  // (`${BACKEND_URL}/api/admin/backup/drive/callback`) for the admin panel's
+  // "Connect Google Drive" button. That exact URL must be added as an
+  // Authorized redirect URI on the "h3m-buckups" OAuth client in Google
+  // Cloud Console (alongside the existing `http://localhost`, which
+  // `backup:token`'s one-time CLI flow still uses) — see security/operations.md.
+  BACKEND_URL: z.string().default('http://localhost:4000'),
 });
 
 export const env = envSchema.parse(process.env);

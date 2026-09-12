@@ -1,0 +1,56 @@
+name: Database backup
+
+on:
+  schedule:
+    # 03:00 UTC daily — off-peak for every timezone this store ships to.
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+# Least-privilege default: this job only checks out the repo and calls out to
+# Postgres/Google Drive — it never needs to write back to the repository or
+# call the GitHub API, so the default broad GITHUB_TOKEN scope is unneeded.
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: pg_dump -> Google Drive
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      # ubuntu-latest ships an old/mismatched client by default; install one
+      # that matches the project's Postgres major version.
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+      - name: Run backup
+        run: npm run backup:run
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
+          GOOGLE_DRIVE_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_CLIENT_SECRET }}
+          GOOGLE_DRIVE_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_BACKUP_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_BACKUP_FOLDER_ID }}
+          # Only needed once someone has used the admin panel's "Connect
+          # Google Drive" at least once in production — that creates a
+          # DriveCredential DB row, which (since this job shares the same
+          # DATABASE_URL) then takes priority over GOOGLE_DRIVE_REFRESH_TOKEN
+          # above and must be redeemed with THESE credentials instead — see
+          # drive.client.ts's getEffectiveConnection. Safe to leave unset
+          # until then.
+          GOOGLE_DRIVE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_WEB_CLIENT_ID }}
+          GOOGLE_DRIVE_WEB_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_WEB_CLIENT_SECRET }}
+          # env.ts requires these to boot even though this run never serves
+          # HTTP traffic — any 32+ char value works, it's never used here.
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET || 'unused-in-backup-job-unused-in-backup-job' }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET || 'also-unused-in-backup-job-also-unused-xx' }}
