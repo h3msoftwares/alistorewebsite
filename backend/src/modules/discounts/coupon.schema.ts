@@ -2,14 +2,16 @@ import { z } from 'zod';
 import { discountTypeSchema } from './discount.schema';
 
 // Code: letters/digits/-/_ , stored upper-cased. Value bounds (PERCENT 0–100)
-// checked in the service.
+// checked in the service. Omitted on create = the service auto-generates a
+// unique 12-digit, dash-separated code (see coupon.service.ts).
 const baseCoupon = z.object({
   code: z
     .string()
     .trim()
     .min(2)
     .max(40)
-    .regex(/^[A-Za-z0-9_-]+$/, 'Letters, digits, - and _ only'),
+    .regex(/^[A-Za-z0-9_-]+$/, 'Letters, digits, - and _ only')
+    .optional(),
   type: discountTypeSchema,
   value: z.number().positive().max(1_000_000),
   isActive: z.boolean().default(true),

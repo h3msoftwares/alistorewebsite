@@ -246,7 +246,8 @@ export interface Coupon {
 }
 
 export interface CouponBody {
-  code: string;
+  /** Omit on create to have the server auto-generate a unique code. */
+  code?: string;
   type: DiscountType;
   value: number;
   isActive?: boolean;
