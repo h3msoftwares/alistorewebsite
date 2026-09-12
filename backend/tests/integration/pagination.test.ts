@@ -11,13 +11,14 @@ let categoryId: string;
 // 7 products in one category — enough to exercise multi-page boundaries.
 beforeEach(async () => {
   const col = await makeCollection({ slug: 'pg-col' });
-  const cat = await makeCategory(col.id, { slug: 'pg-cat' });
+  const cat = await makeCategory({ slug: 'pg-cat' });
   collectionId = col.id;
   categoryId = cat.id;
   for (let i = 0; i < 7; i++) {
-    await makeProduct(col.id, cat.id, {
+    await makeProduct(cat.id, {
       over: { nameEn: `PG Product ${i}`, price: 10 + i },
       variants: [{ sku: `pg-${i}`, stockQuantity: 5 }],
+      collectionIds: [col.id],
     });
   }
 });
@@ -88,8 +89,8 @@ describe('GET /api/categories/:id/products — pagination boundaries', () => {
 
   it('the collectionId filter narrows the total consistently', async () => {
     const other = await makeCollection({ slug: 'pg-col-2' });
-    const otherCat = await makeCategory(other.id, { slug: 'pg-cat-2' });
-    await makeProduct(other.id, otherCat.id, { variants: [{ sku: 'pg-other', stockQuantity: 1 }] });
+    const otherCat = await makeCategory({ slug: 'pg-cat-2' });
+    await makeProduct(otherCat.id, { variants: [{ sku: 'pg-other', stockQuantity: 1 }], collectionIds: [other.id] });
 
     const scoped = await request(app).get(`/api/products?collectionId=${collectionId}&pageSize=60`);
     expect(scoped.body.total).toBe(7); // the 8th product is in the other collection

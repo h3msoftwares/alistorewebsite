@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useForm, useWatch } from 'react-hook-form';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
   Alert,
   Button,
+  CheckList,
   Choice,
   DataTable,
   EmptyState,
@@ -16,20 +17,20 @@ import {
   ProductGridSkeleton,
   Select,
 } from '@/components/ui';
-import { useAdminCollections, useAdminCategories } from '@/hooks/use-catalog';
+import { useAdminCollections, useAdminCategories, useProducts } from '@/hooks/use-catalog';
 import {
   useCoupons,
   useCreateCoupon,
-  useCreateDiscount,
+  useCreatePromotion,
   useDeleteCoupon,
-  useDeleteDiscount,
-  useDiscounts,
+  useDeletePromotion,
+  usePromotions,
   useUpdateCoupon,
-  useUpdateDiscount,
+  useUpdatePromotion,
 } from '@/hooks/use-discounts';
-import type { Coupon, Discount } from '@/lib/types';
+import type { Coupon, Promotion } from '@/lib/types';
 
-type Tab = 'discounts' | 'coupons';
+type Tab = 'promotions' | 'coupons';
 
 // <input type="datetime-local"> <-> ISO 8601 (what the API takes / returns).
 function toLocalInput(iso: string | null): string {
@@ -44,19 +45,24 @@ function fromLocalInput(local: string): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-// ---------------------------------------------------------------- discounts ----
+// --------------------------------------------------------------- promotions ----
 
-const discountSchema = z
+const promotionSchema = z
   .object({
     nameEn: z.string().trim().min(1, 'Required'),
     nameAr: z.string().trim().min(1, 'Required'),
-    scope: z.enum(['ALL', 'COLLECTION', 'CATEGORY']),
-    collectionId: z.string(),
-    categoryId: z.string(),
     type: z.enum(['PERCENT', 'AMOUNT']),
     value: z.number({ message: 'Enter a number' }).positive('Must be more than 0'),
-    stacking: z.enum(['STACK', 'OVERRIDE']),
-    isActive: z.boolean(),
+    priority: z.number({ message: 'Enter a number' }).int(),
+    stackable: z.boolean(),
+    appliesToAll: z.boolean(),
+    // Plain string arrays: a native multi-select's value (same pattern as
+    // the product form's additionalCategoryIds / collectionIds).
+    productIds: z.array(z.string()),
+    categoryIds: z.array(z.string()),
+    includeDescendants: z.boolean(),
+    collectionIds: z.array(z.string()),
+    status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'ENDED']),
     startsAt: z.string(),
     endsAt: z.string(),
   })
@@ -64,62 +70,73 @@ const discountSchema = z
     if (v.type === 'PERCENT' && v.value > 100) {
       ctx.addIssue({ code: 'custom', path: ['value'], message: 'A percentage is 0–100' });
     }
-    if (v.scope === 'COLLECTION' && !v.collectionId) {
-      ctx.addIssue({ code: 'custom', path: ['collectionId'], message: 'Pick a collection' });
-    }
-    if (v.scope === 'CATEGORY' && !v.categoryId) {
-      ctx.addIssue({ code: 'custom', path: ['categoryId'], message: 'Pick a category' });
+    if (
+      !v.appliesToAll &&
+      v.productIds.length === 0 &&
+      v.categoryIds.length === 0 &&
+      v.collectionIds.length === 0
+    ) {
+      ctx.addIssue({ code: 'custom', path: ['appliesToAll'], message: 'Pick at least one target, or apply to all items' });
     }
     if (v.startsAt && v.endsAt && new Date(v.endsAt) <= new Date(v.startsAt)) {
       ctx.addIssue({ code: 'custom', path: ['endsAt'], message: 'Must be after the start' });
     }
   });
-type DiscountForm = z.infer<typeof discountSchema>;
+type PromotionForm = z.infer<typeof promotionSchema>;
 
-const BLANK_DISCOUNT: DiscountForm = {
+const BLANK_PROMOTION: PromotionForm = {
   nameEn: '',
   nameAr: '',
-  scope: 'ALL',
-  collectionId: '',
-  categoryId: '',
   type: 'PERCENT',
   value: 10,
-  stacking: 'STACK',
-  isActive: true,
+  priority: 0,
+  stackable: true,
+  appliesToAll: false,
+  productIds: [],
+  categoryIds: [],
+  includeDescendants: true,
+  collectionIds: [],
+  status: 'DRAFT',
   startsAt: '',
   endsAt: '',
 };
 
-function DiscountsPanel({ isAr }: { isAr: boolean }) {
+function PromotionsPanel({ isAr }: { isAr: boolean }) {
   const t = (en: string, ar: string) => (isAr ? ar : en);
-  const { data: discounts, isPending, isError, refetch } = useDiscounts();
+  const { data: promotions, isPending, isError, refetch } = usePromotions();
+  const { data: products } = useProducts({ status: 'all', pageSize: 500 }, { keepPreviousData: false });
   const { data: collections } = useAdminCollections({ status: 'all' });
   const { data: categories } = useAdminCategories({ status: 'all' });
-  const create = useCreateDiscount();
-  const update = useUpdateDiscount();
-  const remove = useDeleteDiscount();
+  const create = useCreatePromotion();
+  const update = useUpdatePromotion();
+  const remove = useDeletePromotion();
 
-  const [editing, setEditing] = useState<Discount | null>(null);
+  const [editing, setEditing] = useState<Promotion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const busy = create.isPending || update.isPending || remove.isPending;
 
-  const values: DiscountForm = useMemo(
+  const values: PromotionForm = useMemo(
     () =>
       editing
         ? {
             nameEn: editing.nameEn,
             nameAr: editing.nameAr,
-            scope: editing.scope,
-            collectionId: editing.collectionID ?? '',
-            categoryId: editing.categoryID ?? '',
             type: editing.type,
             value: Number(editing.value),
-            stacking: editing.stacking,
-            isActive: editing.isActive,
+            priority: editing.priority,
+            stackable: editing.stackable,
+            appliesToAll: editing.appliesToAll,
+            productIds: editing.products.map((p) => p.productID),
+            categoryIds: editing.categories.map((c) => c.categoryID),
+            // One shared flag for the whole form — every target the admin
+            // picks for this promotion uses the same includeDescendants.
+            includeDescendants: editing.categories[0]?.includeDescendants ?? true,
+            collectionIds: editing.collections.map((c) => c.collectionID),
+            status: editing.status,
             startsAt: toLocalInput(editing.startsAt),
             endsAt: toLocalInput(editing.endsAt),
           }
-        : BLANK_DISCOUNT,
+        : BLANK_PROMOTION,
     [editing]
   );
 
@@ -129,21 +146,25 @@ function DiscountsPanel({ isAr }: { isAr: boolean }) {
     handleSubmit,
     reset,
     formState: { errors },
-  } = useForm<DiscountForm>({ resolver: zodResolver(discountSchema), values });
-  const scope = useWatch({ control, name: 'scope' });
+  } = useForm<PromotionForm>({ resolver: zodResolver(promotionSchema), values });
+  const appliesToAll = useWatch({ control, name: 'appliesToAll' });
 
-  const onSubmit = async (form: DiscountForm) => {
+  const onSubmit = async (form: PromotionForm) => {
     setError(null);
     const body = {
       nameEn: form.nameEn,
       nameAr: form.nameAr,
-      scope: form.scope,
-      collectionId: form.scope === 'COLLECTION' ? form.collectionId : null,
-      categoryId: form.scope === 'CATEGORY' ? form.categoryId : null,
       type: form.type,
       value: form.value,
-      stacking: form.stacking,
-      isActive: form.isActive,
+      priority: form.priority,
+      stackable: form.stackable,
+      appliesToAll: form.appliesToAll,
+      productIds: form.appliesToAll ? [] : form.productIds,
+      categoryTargets: form.appliesToAll
+        ? []
+        : form.categoryIds.map((categoryId) => ({ categoryId, includeDescendants: form.includeDescendants })),
+      collectionIds: form.appliesToAll ? [] : form.collectionIds,
+      status: form.status,
       startsAt: fromLocalInput(form.startsAt),
       endsAt: fromLocalInput(form.endsAt),
     };
@@ -151,25 +172,35 @@ function DiscountsPanel({ isAr }: { isAr: boolean }) {
       if (editing) await update.mutateAsync({ id: editing.id, body });
       else await create.mutateAsync(body);
       setEditing(null);
-      reset(BLANK_DISCOUNT);
+      reset(BLANK_PROMOTION);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Save failed', 'فشل الحفظ'));
     }
   };
 
-  const targetLabel = (d: Discount) =>
-    d.scope === 'ALL'
-      ? t('All items', 'كل المنتجات')
-      : d.scope === 'COLLECTION'
-        ? (isAr ? d.collection?.nameAr : d.collection?.nameEn) ?? '—'
-        : (isAr ? d.category?.nameAr : d.category?.nameEn) ?? '—';
+  const targetLabel = (p: Promotion) => {
+    if (p.appliesToAll) return t('All items', 'كل المنتجات');
+    const parts: string[] = [];
+    if (p.products.length) parts.push(t(`${p.products.length} product(s)`, `${p.products.length} منتج`));
+    if (p.categories.length) parts.push(t(`${p.categories.length} categor(y/ies)`, `${p.categories.length} فئة`));
+    if (p.collections.length) parts.push(t(`${p.collections.length} collection(s)`, `${p.collections.length} مجموعة`));
+    return parts.join(', ') || '—';
+  };
+
+  const statusLabel = (s: Promotion['status']) =>
+    ({
+      DRAFT: t('Draft', 'مسودة'),
+      ACTIVE: t('Active', 'مُفعَّل'),
+      PAUSED: t('Paused', 'موقوف مؤقتًا'),
+      ENDED: t('Ended', 'منتهٍ'),
+    })[s];
 
   return (
     <div className="section--tight">
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
         <div className="admin-form__section">
           <p className="admin-form__section-title">
-            {editing ? t('Edit discount', 'تعديل الخصم') : t('New discount', 'خصم جديد')}
+            {editing ? t('Edit promotion', 'تعديل العرض') : t('New promotion', 'عرض جديد')}
           </p>
           <div className="admin-form__row">
             <Field label={t('Name (English)', 'الاسم (إنجليزي)')} error={errors.nameEn?.message} required>
@@ -180,45 +211,91 @@ function DiscountsPanel({ isAr }: { isAr: boolean }) {
             </Field>
           </div>
 
-          <div className="admin-form__row">
-            <Field label={t('Applies to', 'يطبَّق على')}>
-              {(p) => (
-                <Select {...p} {...register('scope')} disabled={busy}>
-                  <option value="ALL">{t('All items', 'كل المنتجات')}</option>
-                  <option value="COLLECTION">{t('A collection', 'مجموعة')}</option>
-                  <option value="CATEGORY">{t('A category', 'فئة')}</option>
-                </Select>
-              )}
-            </Field>
-            {scope === 'COLLECTION' && (
-              <Field label={t('Collection', 'المجموعة')} error={errors.collectionId?.message}>
+          <Choice
+            type="checkbox"
+            label={t('Applies to all items', 'يُطبَّق على كل المنتجات')}
+            {...register('appliesToAll')}
+            disabled={busy}
+          />
+
+          {!appliesToAll && (
+            <>
+              <Field label={t('Products', 'المنتجات')} hint={t('Optional', 'اختياري')}>
                 {(p) => (
-                  <Select {...p} {...register('collectionId')} disabled={busy}>
-                    <option value="">{t('Choose…', 'اختر…')}</option>
-                    {(collections ?? []).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {isAr ? c.nameAr : c.nameEn}
-                      </option>
-                    ))}
-                  </Select>
+                  <Controller
+                    control={control}
+                    name="productIds"
+                    render={({ field }) => (
+                      <CheckList
+                        {...p}
+                        value={field.value}
+                        onChange={field.onChange}
+                        disabled={busy}
+                        emptyLabel={t('No products yet', 'لا توجد منتجات بعد')}
+                        items={(products?.items ?? []).map((prod) => ({
+                          id: prod.id,
+                          label: isAr ? prod.nameAr : prod.nameEn,
+                        }))}
+                      />
+                    )}
+                  />
                 )}
               </Field>
-            )}
-            {scope === 'CATEGORY' && (
-              <Field label={t('Category', 'الفئة')} error={errors.categoryId?.message}>
+
+              <div className="admin-form__row">
+                <Field label={t('Categories', 'الفئات')} hint={t('Optional', 'اختياري')}>
+                  {(p) => (
+                    <Controller
+                      control={control}
+                      name="categoryIds"
+                      render={({ field }) => (
+                        <CheckList
+                          {...p}
+                          value={field.value}
+                          onChange={field.onChange}
+                          disabled={busy}
+                          emptyLabel={t('No categories yet', 'لا توجد فئات بعد')}
+                          items={(categories ?? []).map((c) => ({
+                            id: c.id,
+                            label: isAr ? c.nameAr : c.nameEn,
+                          }))}
+                        />
+                      )}
+                    />
+                  )}
+                </Field>
+                <Choice
+                  type="checkbox"
+                  label={t('Include subcategories', 'شمول الفئات الفرعية')}
+                  {...register('includeDescendants')}
+                  disabled={busy}
+                />
+              </div>
+
+              <Field label={t('Collections', 'المجموعات')} hint={t('Optional', 'اختياري')}>
                 {(p) => (
-                  <Select {...p} {...register('categoryId')} disabled={busy}>
-                    <option value="">{t('Choose…', 'اختر…')}</option>
-                    {(categories ?? []).map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {isAr ? c.nameAr : c.nameEn}
-                      </option>
-                    ))}
-                  </Select>
+                  <Controller
+                    control={control}
+                    name="collectionIds"
+                    render={({ field }) => (
+                      <CheckList
+                        {...p}
+                        value={field.value}
+                        onChange={field.onChange}
+                        disabled={busy}
+                        emptyLabel={t('No collections yet', 'لا توجد مجموعات بعد')}
+                        items={(collections ?? []).map((c) => ({
+                          id: c.id,
+                          label: isAr ? c.nameAr : c.nameEn,
+                        }))}
+                      />
+                    )}
+                  />
                 )}
               </Field>
-            )}
-          </div>
+              {errors.appliesToAll && <Alert tone="danger">{errors.appliesToAll.message}</Alert>}
+            </>
+          )}
 
           <div className="admin-form__row">
             <Field label={t('Type', 'النوع')}>
@@ -243,20 +320,41 @@ function DiscountsPanel({ isAr }: { isAr: boolean }) {
             </Field>
           </div>
 
-          <Field
-            label={t('When a product already has its own sale', 'عندما يكون للمنتج تخفيض خاص به')}
-            hint={t(
-              'Stack: apply the product sale first, then this discount off the reduced price. Override: this discount off the original price; the product sale is ignored.',
-              'تراكمي: يُطبَّق تخفيض المنتج أولاً ثم هذا الخصم على السعر المخفَّض. استبدال: هذا الخصم على السعر الأصلي، ويُتجاهَل تخفيض المنتج.'
+          <div className="admin-form__row">
+            <Field
+              label={t('Priority', 'الأولوية')}
+              hint={t(
+                'When more than one promotion covers a product, the highest priority wins outright — promotions never combine.',
+                'عند تطابق أكثر من عرض على منتج واحد، يفوز الأعلى أولويةً بالكامل — لا تتراكم العروض فيما بينها.'
+              )}
+              error={errors.priority?.message}
+            >
+              {(p) => <Input {...p} type="number" step="1" {...register('priority', { valueAsNumber: true })} disabled={busy} />}
+            </Field>
+            <Field label={t('Status', 'الحالة')}>
+              {(p) => (
+                <Select {...p} {...register('status')} disabled={busy}>
+                  <option value="DRAFT">{t('Draft', 'مسودة')}</option>
+                  <option value="ACTIVE">{t('Active', 'مُفعَّل')}</option>
+                  <option value="PAUSED">{t('Paused', 'موقوف مؤقتًا')}</option>
+                  <option value="ENDED">{t('Ended', 'منتهٍ')}</option>
+                </Select>
+              )}
+            </Field>
+          </div>
+
+          <Choice
+            type="checkbox"
+            label={t('Stackable with the product’s own sale', 'يتراكم مع تخفيض المنتج الخاص')}
+            {...register('stackable')}
+            disabled={busy}
+          />
+          <p className="admin-form__hint">
+            {t(
+              'On: apply the product sale first, then this promotion off the reduced price. Off: this promotion off the original price; the product sale is ignored.',
+              'مفعّل: يُطبَّق تخفيض المنتج أولاً ثم هذا العرض على السعر المخفَّض. مطفأ: هذا العرض على السعر الأصلي، ويُتجاهَل تخفيض المنتج.'
             )}
-          >
-            {(p) => (
-              <Select {...p} {...register('stacking')} disabled={busy}>
-                <option value="STACK">{t('Stack (add up to it)', 'تراكمي')}</option>
-                <option value="OVERRIDE">{t('Override the product sale', 'استبدال تخفيض المنتج')}</option>
-              </Select>
-            )}
-          </Field>
+          </p>
 
           <div className="admin-form__row">
             <Field label={t('Starts', 'يبدأ')} hint={t('Blank = now', 'فارغ = الآن')} error={errors.startsAt?.message}>
@@ -267,13 +365,11 @@ function DiscountsPanel({ isAr }: { isAr: boolean }) {
             </Field>
           </div>
 
-          <Choice type="checkbox" label={t('Active', 'مُفعَّل')} {...register('isActive')} disabled={busy} />
-
           {error && <Alert tone="danger" className="stack">{error}</Alert>}
 
           <div className="admin-form__actions">
             <Button type="submit" loading={busy}>
-              {editing ? t('Save changes', 'حفظ التغييرات') : t('Add discount', 'إضافة الخصم')}
+              {editing ? t('Save changes', 'حفظ التغييرات') : t('Add promotion', 'إضافة العرض')}
             </Button>
             {editing && (
               <Button type="button" variant="ghost" onClick={() => setEditing(null)} disabled={busy}>
@@ -289,11 +385,11 @@ function DiscountsPanel({ isAr }: { isAr: boolean }) {
       ) : isError ? (
         <EmptyState
           tone="alert"
-          title={t("Couldn't load discounts", 'تعذّر تحميل الخصومات')}
+          title={t("Couldn't load promotions", 'تعذّر تحميل العروض')}
           action={<Button variant="primary" onClick={() => refetch()}>{t('Retry', 'إعادة المحاولة')}</Button>}
         />
-      ) : (discounts ?? []).length === 0 ? (
-        <EmptyState title={t('No discounts yet', 'لا توجد خصومات بعد')} />
+      ) : (promotions ?? []).length === 0 ? (
+        <EmptyState title={t('No promotions yet', 'لا توجد عروض بعد')} />
       ) : (
         <DataTable responsive>
           <thead>
@@ -301,41 +397,41 @@ function DiscountsPanel({ isAr }: { isAr: boolean }) {
               <th>{t('Name', 'الاسم')}</th>
               <th>{t('Applies to', 'يطبَّق على')}</th>
               <th>{t('Discount', 'الخصم')}</th>
-              <th>{t('Stacking', 'التراكم')}</th>
+              <th>{t('Priority', 'الأولوية')}</th>
+              <th>{t('Stackable', 'يتراكم')}</th>
               <th>{t('Window', 'المدة')}</th>
               <th>{t('Status', 'الحالة')}</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {(discounts ?? []).map((d) => (
-              <tr key={d.id}>
-                <td data-label={t('Name', 'الاسم')}>{isAr ? d.nameAr : d.nameEn}</td>
-                <td data-label={t('Applies to', 'يطبَّق على')}>{targetLabel(d)}</td>
+            {(promotions ?? []).map((p) => (
+              <tr key={p.id}>
+                <td data-label={t('Name', 'الاسم')}>{isAr ? p.nameAr : p.nameEn}</td>
+                <td data-label={t('Applies to', 'يطبَّق على')}>{targetLabel(p)}</td>
                 <td data-label={t('Discount', 'الخصم')}>
-                  {d.type === 'PERCENT' ? `${Number(d.value)}%` : `$${Number(d.value).toFixed(2)}`}
+                  {p.type === 'PERCENT' ? `${Number(p.value)}%` : `$${Number(p.value).toFixed(2)}`}
                 </td>
-                <td data-label={t('Stacking', 'التراكم')}>
-                  {d.stacking === 'STACK' ? t('Stack', 'تراكمي') : t('Override', 'استبدال')}
+                <td data-label={t('Priority', 'الأولوية')}>{p.priority}</td>
+                <td data-label={t('Stackable', 'يتراكم')}>
+                  {p.stackable ? t('Yes', 'نعم') : t('No', 'لا')}
                 </td>
                 <td data-label={t('Window', 'المدة')}>
-                  {d.startsAt || d.endsAt
-                    ? `${d.startsAt ? new Date(d.startsAt).toLocaleDateString() : '…'} – ${d.endsAt ? new Date(d.endsAt).toLocaleDateString() : '…'}`
+                  {p.startsAt || p.endsAt
+                    ? `${p.startsAt ? new Date(p.startsAt).toLocaleDateString() : '…'} – ${p.endsAt ? new Date(p.endsAt).toLocaleDateString() : '…'}`
                     : t('Always', 'دائمًا')}
                 </td>
-                <td data-label={t('Status', 'الحالة')}>
-                  {d.isActive ? t('Active', 'مُفعَّل') : t('Off', 'موقوف')}
-                </td>
+                <td data-label={t('Status', 'الحالة')}>{statusLabel(p.status)}</td>
                 <td>
                   <span className="admin-row-actions">
-                    <Button variant="ghost" size="sm" onClick={() => setEditing(d)} disabled={busy}>
+                    <Button variant="ghost" size="sm" onClick={() => setEditing(p)} disabled={busy}>
                       {t('Edit', 'تعديل')}
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        if (confirm(t('Delete this discount?', 'حذف هذا الخصم؟'))) remove.mutate(d.id);
+                        if (confirm(t('Delete this promotion?', 'حذف هذا العرض؟'))) remove.mutate(p.id);
                       }}
                       disabled={busy}
                     >
@@ -603,7 +699,7 @@ export default function AdminDiscountsPage() {
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
-  const [tab, setTab] = useState<Tab>('discounts');
+  const [tab, setTab] = useState<Tab>('promotions');
 
   return (
     <div className="section--tight">
@@ -615,11 +711,11 @@ export default function AdminDiscountsPage() {
         <button
           type="button"
           className="admin-nav__link"
-          data-active={tab === 'discounts' ? '' : undefined}
-          aria-pressed={tab === 'discounts'}
-          onClick={() => setTab('discounts')}
+          data-active={tab === 'promotions' ? '' : undefined}
+          aria-pressed={tab === 'promotions'}
+          onClick={() => setTab('promotions')}
         >
-          {t('Catalog discounts', 'خصومات الكتالوج')}
+          {t('Promotions', 'العروض')}
         </button>
         <button
           type="button"
@@ -632,7 +728,7 @@ export default function AdminDiscountsPage() {
         </button>
       </nav>
 
-      {tab === 'discounts' ? <DiscountsPanel isAr={isAr} /> : <CouponsPanel isAr={isAr} />}
+      {tab === 'promotions' ? <PromotionsPanel isAr={isAr} /> : <CouponsPanel isAr={isAr} />}
     </div>
   );
 }

@@ -2807,6 +2807,41 @@ a.home-card__name:hover { text-decoration: underline; }
   cursor: pointer;
 }
 
+/* Checkbox-list multi-picker — replaces a native <select multiple> (ctrl/cmd
+   -click to pick several, undiscoverable) with checkable rows. */
+.check-list {
+  max-height: 12rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+.check-list[data-disabled] { background: var(--color-surface-sunken); }
+.check-list__empty { margin: 0; padding: var(--space-2); font-size: var(--fs-sm); color: var(--color-text-muted); }
+.check-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.check-list__row:hover { background: var(--color-surface-sunken); }
+.check-list__row[data-disabled] { color: var(--color-text-disabled); cursor: not-allowed; }
+.check-list__row input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+.check-list__row[data-disabled] input { cursor: not-allowed; }
+
 /* ---- 5.7 Size chips (text, not a dropdown — Saxon) ---- */
 .chip-group { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 

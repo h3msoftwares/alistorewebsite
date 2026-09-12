@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { ArrowRight } from 'lucide-react';
 import { Icon } from '@/components/ui';
 import { useSettings } from '@/hooks/use-settings';
-import { useNavCollections } from '@/hooks/use-catalog';
+import { useNavCategories } from '@/hooks/use-catalog';
 import { useReveal } from '@/hooks/use-reveal';
 
 /**
@@ -32,7 +32,7 @@ export function Hero({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { data: settings } = useSettings();
-  const { data: navCollections } = useNavCollections();
+  const { data: navCategories } = useNavCategories();
 
   const [leadRef, leadClass, leadStyle] = useReveal(0);
   const [mediaRef, mediaClass, mediaStyle] = useReveal(80);
@@ -87,7 +87,7 @@ export function Hero({ locale }: { locale: string }) {
     : t('Discover', 'اكتشف الآن');
 
   // Admin-set CTA collection, else the first nav collection, else the seeded /women.
-  const ctaSlug = settings?.heroCtaCollection?.slug ?? navCollections?.[0]?.slug ?? 'women';
+  const ctaSlug = settings?.heroCtaCollection?.slug ?? navCategories?.[0]?.slug ?? 'women';
 
   return (
     <section ref={ref} className="hero" data-home-hero aria-labelledby="hero-title">

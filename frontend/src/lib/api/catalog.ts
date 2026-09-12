@@ -69,9 +69,16 @@ export function permanentDeleteCollection(id: UUID) {
   return api.del(`/api/collections/${id}/permanent`);
 }
 
-export function linkCategoriesToCollection(id: UUID, categoryIds: UUID[]) {
+/** A collection's manually-curated products (`GET /api/collections/:id/products`). */
+export function listCollectionProducts(id: UUID) {
+  return api.get<{ products: Product[] }>(`/api/collections/${id}/products`).then((r) => r.products);
+}
+
+/** Replace a collection's manual product membership wholesale (Stage 1:
+ *  manual membership only, no rules). */
+export function setCollectionProducts(id: UUID, productIds: UUID[]) {
   return api
-    .post<{ collection: Collection }>(`/api/collections/${id}/categories`, { categoryIds })
+    .put<{ collection: Collection }>(`/api/collections/${id}/products`, { productIds })
     .then((r) => r.collection);
 }
 
@@ -93,24 +100,24 @@ export function deleteCollectionImage(id: UUID, imageId: UUID) {
 
 // ---- Categories (public) ----
 
-export function listCategories(params?: UUID | (CatalogListQuery & { collectionId?: UUID })) {
-  // Back-compat: a bare string arg is still treated as a collectionId filter.
-  const q = typeof params === 'string' ? { collectionId: params } : (params ?? {});
+export function listCategories(params?: UUID | (CatalogListQuery & { parentId?: UUID })) {
+  // Back-compat: a bare string arg is still treated as a parentId filter.
+  const q = typeof params === 'string' ? { parentId: params } : (params ?? {});
   return api
     .get<{ categories: Category[] }>('/api/categories', {
-      query: { collectionId: q.collectionId, search: q.search, status: q.status },
+      query: { parentId: q.parentId, search: q.search, status: q.status },
     })
     .then((r) => r.categories);
 }
 
-/** Categories attached to no collection (`GET /api/categories?standalone=true`). */
-export function listStandaloneCategories() {
+/** Root categories — no parent (`GET /api/categories?topLevel=true`). */
+export function listTopLevelCategories() {
   return api
-    .get<{ categories: Category[] }>('/api/categories', { query: { standalone: true } })
+    .get<{ categories: Category[] }>('/api/categories', { query: { topLevel: true } })
     .then((r) => r.categories);
 }
 
-/** Categories promoted to their own home-page row, across every collection
+/** Categories promoted to their own home-page row, across the whole tree
  *  (`GET /api/categories?showOnHome=true`). */
 export function listFeaturedCategories() {
   return api

@@ -27,7 +27,7 @@ vi.mock('@/lib/api', async (importActual) => {
     catalogApi: {
       ...actual.catalogApi,
       listProducts: vi.fn(),
-      listCollections: vi.fn().mockResolvedValue([]),
+      listTopLevelCategories: vi.fn().mockResolvedValue([]),
     },
   };
 });
@@ -222,15 +222,15 @@ describe('<SearchOverlay> — recent-search suggestions', () => {
 });
 
 describe('<SearchOverlay> — popular-search suggestions', () => {
-  const navCollections = [
+  const navCategories = [
     { id: 'w', slug: 'women', nameEn: 'Women', nameAr: 'نساء', showInNav: true, sortOrder: 1 },
     { id: 'm', slug: 'men', nameEn: 'Men', nameAr: 'رجال', showInNav: true, sortOrder: 2 },
     { id: 'h', slug: 'hidden', nameEn: 'Hidden', nameAr: 'مخفي', showInNav: false, sortOrder: 3 },
   ];
 
-  it('offers the nav collections as popular searches while the box is empty', async () => {
+  it('offers the nav categories as popular searches while the box is empty', async () => {
     const user = userEvent.setup();
-    mock.listCollections.mockResolvedValue(navCollections as never);
+    mock.listTopLevelCategories.mockResolvedValue(navCategories as never);
     mock.listProducts.mockResolvedValue(result([makeProduct()]) as never);
     renderOverlay();
 
@@ -246,7 +246,7 @@ describe('<SearchOverlay> — popular-search suggestions', () => {
   });
 
   it('lists recent searches above popular searches, without duplicating', async () => {
-    mock.listCollections.mockResolvedValue(navCollections as never);
+    mock.listTopLevelCategories.mockResolvedValue(navCategories as never);
     window.localStorage.setItem(RECENT_KEY, JSON.stringify(['women', 'linen shirt']));
     renderOverlay();
 

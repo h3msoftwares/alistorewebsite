@@ -28,7 +28,7 @@ describe('cleanupCatalogImageIfOrphaned', () => {
 
   it('does not delete the ImageKit file while another row still references the same fileId', async () => {
     const col = await makeCollection();
-    const cat = await makeCategory(col.id);
+    const cat = await makeCategory();
     await prisma.categoryImage.create({
       data: { categoryID: cat.id, url: 'https://ik.imagekit.io/demo/x.jpg', fileId: 'shared-file-2' },
     });
@@ -40,8 +40,8 @@ describe('cleanupCatalogImageIfOrphaned', () => {
 
   it('checks across all three catalog tables, not just one', async () => {
     const col = await makeCollection();
-    const cat = await makeCategory(col.id);
-    const product = await makeProduct(col.id, cat.id);
+    const cat = await makeCategory();
+    const product = await makeProduct(cat.id);
     await prisma.productImage.create({
       data: { productID: product.id, url: 'https://ik.imagekit.io/demo/y.jpg', fileId: 'shared-file-3' },
     });

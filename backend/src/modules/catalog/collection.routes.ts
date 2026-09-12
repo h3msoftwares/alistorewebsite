@@ -11,18 +11,21 @@ import {
   collectionImageParamSchema,
   createCollectionSchema,
   updateCollectionSchema,
-  linkCategoriesSchema,
+  setCollectionProductsSchema,
+  setCollectionRulesSchema,
 } from './collection.schema';
 import {
   listCollectionsHandler,
   getCollectionHandler,
   getCollectionBySlugHandler,
+  listCollectionProductsHandler,
   createCollectionHandler,
   updateCollectionHandler,
   archiveCollectionHandler,
   restoreCollectionHandler,
   deleteCollectionHandler,
-  linkCategoriesHandler,
+  setCollectionProductsHandler,
+  setCollectionRulesHandler,
   addCollectionImageHandler,
   updateCollectionImageHandler,
   deleteCollectionImageHandler,
@@ -45,6 +48,13 @@ router.get(
   asyncHandler(getCollectionBySlugHandler)
 );
 router.get('/:id', validate({ params: collectionIdParamSchema }), asyncHandler(getCollectionHandler));
+// Live product listing — manual, automated, or hybrid depending on the
+// collection's `type` (see collection-rules.ts).
+router.get(
+  '/:id/products',
+  validate({ params: collectionIdParamSchema }),
+  asyncHandler(listCollectionProductsHandler)
+);
 
 // ---- Admin (STAFF/ADMIN only) ----
 router.post('/', ...admin, validate({ body: createCollectionSchema }), asyncHandler(createCollectionHandler));
@@ -75,12 +85,20 @@ router.delete(
   asyncHandler(deleteCollectionHandler)
 );
 
-// Link existing categories into this collection (moves them here).
-router.post(
-  '/:id/categories',
+// Replace this collection's manual product membership wholesale (MANUAL/HYBRID).
+router.put(
+  '/:id/products',
   ...admin,
-  validate({ params: collectionIdParamSchema, body: linkCategoriesSchema }),
-  asyncHandler(linkCategoriesHandler)
+  validate({ params: collectionIdParamSchema, body: setCollectionProductsSchema }),
+  asyncHandler(setCollectionProductsHandler)
+);
+
+// Replace this collection's rules wholesale (AUTOMATED/HYBRID).
+router.put(
+  '/:id/rules',
+  ...admin,
+  validate({ params: collectionIdParamSchema, body: setCollectionRulesSchema }),
+  asyncHandler(setCollectionRulesHandler)
 );
 
 // ---- Images ----

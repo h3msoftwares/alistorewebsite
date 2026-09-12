@@ -33,9 +33,9 @@ const router = Router();
 const admin = [requireAuth, requireRole('STAFF', 'ADMIN'), requirePermission('categories:manage')];
 
 // ---- Storefront (public) ----
-// Optional ?collectionId= filters to one collection; ?standalone=true returns
-// only categories attached to no collection. The storefront nav renders the
-// returned parent/children tree client-side.
+// Optional ?parentId= filters to one category's direct children;
+// ?topLevel=true returns only root categories. The storefront nav renders
+// the returned parent/children tree client-side.
 router.get(
   '/',
   optionalAuth,

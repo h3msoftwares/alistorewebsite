@@ -14,19 +14,17 @@ let adminToken: string;
 
 beforeEach(async () => {
   const col = await makeCollection({ slug: 'root' });
-  const cat = await makeCategory(col.id);
+  const cat = await makeCategory();
   collectionId = col.id;
   categoryId = cat.id;
   adminToken = (await createAdmin()).token;
 });
 
-// No collectionId — the product's collection is derived server-side from its
-// category (the denormalized mirror).
 const productBody = (over: Record<string, unknown> = {}) => ({
   sku: 'SKU-1',
   nameEn: 'Tee',
   nameAr: 'تيشيرت',
-  categoryId,
+  primaryCategoryId: categoryId,
   price: 20,
   variants: [{ sku: 'SKU-1-M', size: 'M', color: 'Black', stockQuantity: 5 }],
   ...over,
@@ -35,8 +33,8 @@ const productBody = (over: Record<string, unknown> = {}) => ({
 describe('Products API', () => {
   describe('GET /api/products (list + filters)', () => {
     it('returns active products with pagination envelope', async () => {
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Alpha', price: 10 } });
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Beta', price: 30 } });
+      await makeProduct(categoryId, { over: { nameEn: 'Alpha', price: 10 } });
+      await makeProduct(categoryId, { over: { nameEn: 'Beta', price: 30 } });
 
       const res = await request(app).get('/api/products?pageSize=1&page=1');
       expect(res.status).toBe(200);
@@ -45,9 +43,9 @@ describe('Products API', () => {
     });
 
     it('filters by price range and sorts', async () => {
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Cheap', price: 5 } });
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Mid', price: 25 } });
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Pricey', price: 90 } });
+      await makeProduct(categoryId, { over: { nameEn: 'Cheap', price: 5 } });
+      await makeProduct(categoryId, { over: { nameEn: 'Mid', price: 25 } });
+      await makeProduct(categoryId, { over: { nameEn: 'Pricey', price: 90 } });
 
       const res = await request(app).get('/api/products?minPrice=10&maxPrice=50&sort=price_desc');
       expect(res.body.items.map((p: { nameEn: string }) => p.nameEn)).toEqual(['Mid']);
@@ -60,7 +58,7 @@ describe('Products API', () => {
       // tiebreaker column).
       const ids = new Set<string>();
       for (let i = 0; i < 6; i++) {
-        const p = await makeProduct(collectionId, categoryId, { over: { nameEn: `Tied ${i}`, price: 20 } });
+        const p = await makeProduct(categoryId, { over: { nameEn: `Tied ${i}`, price: 20 } });
         ids.add(p.id);
       }
 
@@ -80,8 +78,8 @@ describe('Products API', () => {
     });
 
     it('filters by search term and by variant size', async () => {
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Red Hoodie' } });
-      await makeProduct(collectionId, categoryId, {
+      await makeProduct(categoryId, { over: { nameEn: 'Red Hoodie' } });
+      await makeProduct(categoryId, {
         over: { nameEn: 'Blue Cap' },
         variants: [{ size: 'L', color: 'Blue', stockQuantity: 2 }],
       });
@@ -91,7 +89,7 @@ describe('Products API', () => {
     });
 
     it('hides soft-deleted products from the public list', async () => {
-      const p = await makeProduct(collectionId, categoryId);
+      const p = await makeProduct(categoryId);
       await prisma.product.update({
         where: { id: p.id },
         data: { isActive: false, deletedAt: new Date() },
@@ -102,7 +100,7 @@ describe('Products API', () => {
 
     it('sort=best_selling ranks by units sold in the last 90 days, cancelled orders excluded', async () => {
       const mk = (name: string) =>
-        makeProduct(collectionId, categoryId, {
+        makeProduct(categoryId, {
           over: { nameEn: name },
           variants: [{ sku: `${name}-v`, size: 'M', color: 'Black', stockQuantity: 50 }],
         });
@@ -153,9 +151,9 @@ describe('Products API', () => {
     });
 
     it('sort=best_selling falls back to newest when nothing has sold', async () => {
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'First' } });
+      await makeProduct(categoryId, { over: { nameEn: 'First' } });
       await new Promise((r) => setTimeout(r, 10));
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Second' } });
+      await makeProduct(categoryId, { over: { nameEn: 'Second' } });
       const res = await request(app).get('/api/products?sort=best_selling');
       expect(res.status).toBe(200);
       expect(res.body.items.map((p: { nameEn: string }) => p.nameEn)).toEqual(['Second', 'First']);
@@ -168,13 +166,13 @@ describe('Products API', () => {
       res.body.items.map((p) => p.nameEn).sort();
 
     beforeEach(async () => {
-      await makeProduct(collectionId, categoryId, {
+      await makeProduct(categoryId, {
         over: { nameEn: 'Satin Nightgown', nameAr: 'قميص نوم ساتان' },
       });
-      await makeProduct(collectionId, categoryId, {
+      await makeProduct(categoryId, {
         over: { nameEn: 'Satin Robe', nameAr: 'روب ساتان' },
       });
-      await makeProduct(collectionId, categoryId, {
+      await makeProduct(categoryId, {
         over: { nameEn: 'Cotton Boxer 3-Pack', nameAr: 'بوكسر قطن' },
       });
     });
@@ -202,7 +200,7 @@ describe('Products API', () => {
     });
 
     it('never surfaces a soft-deleted product in results', async () => {
-      const gone = await makeProduct(collectionId, categoryId, { over: { nameEn: 'Satin Wrap' } });
+      const gone = await makeProduct(categoryId, { over: { nameEn: 'Satin Wrap' } });
       await prisma.product.update({
         where: { id: gone.id },
         data: { isActive: false, deletedAt: new Date() },
@@ -217,7 +215,7 @@ describe('Products API', () => {
     });
 
     it('ignores punctuation and spacing: "tshirt" / "t shirt" find "T-Shirt"', async () => {
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Classic T-Shirt', nameAr: 'تيشيرت كلاسيكي' } });
+      await makeProduct(categoryId, { over: { nameEn: 'Classic T-Shirt', nameAr: 'تيشيرت كلاسيكي' } });
       for (const term of ['tshirt', 't-shirt', 't shirt', 'T-SHIRT']) {
         expect(names(await request(app).get(`/api/products?search=${encodeURIComponent(term)}`))).toEqual(
           ['Classic T-Shirt'],
@@ -226,21 +224,21 @@ describe('Products API', () => {
     });
 
     it('matches across singular/plural ("tshirts" → "T-Shirt", "boxer" → "…Boxer 3-Pack")', async () => {
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Classic T-Shirt', nameAr: 'تيشيرت' } });
+      await makeProduct(categoryId, { over: { nameEn: 'Classic T-Shirt', nameAr: 'تيشيرت' } });
       expect(names(await request(app).get('/api/products?search=tshirts'))).toEqual(['Classic T-Shirt']);
       expect(names(await request(app).get('/api/products?search=boxers'))).toEqual(['Cotton Boxer 3-Pack']);
     });
 
     it('matches "by meaning" via apparel synonyms ("tee" → "T-Shirt", "pants" → "Trousers")', async () => {
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Classic T-Shirt', nameAr: 'تيشيرت' } });
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Chino Trousers', nameAr: 'بنطلون تشينو' } });
+      await makeProduct(categoryId, { over: { nameEn: 'Classic T-Shirt', nameAr: 'تيشيرت' } });
+      await makeProduct(categoryId, { over: { nameEn: 'Chino Trousers', nameAr: 'بنطلون تشينو' } });
       expect(names(await request(app).get('/api/products?search=tee'))).toEqual(['Classic T-Shirt']);
       expect(names(await request(app).get('/api/products?search=pants'))).toEqual(['Chino Trousers']);
     });
 
     it('still narrows on every word — "red hoodie" excludes a blue one', async () => {
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Red Hoodie', nameAr: 'هودي أحمر' } });
-      await makeProduct(collectionId, categoryId, { over: { nameEn: 'Blue Hoodie', nameAr: 'هودي أزرق' } });
+      await makeProduct(categoryId, { over: { nameEn: 'Red Hoodie', nameAr: 'هودي أحمر' } });
+      await makeProduct(categoryId, { over: { nameEn: 'Blue Hoodie', nameAr: 'هودي أزرق' } });
       expect(names(await request(app).get('/api/products?search=red%20hoodie'))).toEqual(['Red Hoodie']);
     });
 
@@ -252,16 +250,16 @@ describe('Products API', () => {
   });
 
   describe('GET /api/products/:id', () => {
-    it('returns a product with variants/images/category/collection', async () => {
-      const p = await makeProduct(collectionId, categoryId);
+    it('returns a product with variants/images/primaryCategory', async () => {
+      const p = await makeProduct(categoryId);
       const res = await request(app).get(`/api/products/${p.id}`);
       expect(res.status).toBe(200);
       expect(res.body.product.variants).toHaveLength(1);
-      expect(res.body.product.collection.slug).toBe('root');
+      expect(res.body.product.primaryCategory.id).toBe(categoryId);
     });
 
     it('404s the public on an inactive product but an admin can still fetch it', async () => {
-      const p = await makeProduct(collectionId, categoryId);
+      const p = await makeProduct(categoryId);
       await prisma.product.update({
         where: { id: p.id },
         data: { isActive: false, deletedAt: new Date() },
@@ -282,31 +280,109 @@ describe('Products API', () => {
       ).toBe(403);
     });
 
-    it('creates a product with variants and derives its collection from the category', async () => {
+    it('creates a product with variants under its primary category', async () => {
       const res = await request(app)
         .post('/api/products')
         .set(bearer(adminToken))
         .send(productBody());
       expect(res.status).toBe(201);
       expect(res.body.product.variants).toHaveLength(1);
-      expect(res.body.product.collectionID).toBe(collectionId);
-      expect(res.body.product.collection.slug).toBe('root');
+      expect(res.body.product.primaryCategoryID).toBe(categoryId);
+      expect(res.body.product.primaryCategory.slug).toBe(
+        (await prisma.category.findUniqueOrThrow({ where: { id: categoryId } })).slug
+      );
     });
 
-    it('creates a product under a standalone category with a null collection', async () => {
-      const free = await makeCategory(null, { slug: 'free-cat' });
+    // The core Stage 1 catalog-redesign capability: one primary category
+    // (canonical URL/breadcrumbs/reporting) plus additional, non-canonical
+    // placements — see robust-ecommerce-catalog-architecture.md's "Why a
+    // primary category matters".
+    it('creates a product with a primary category plus additional category placements', async () => {
+      const additional1 = await makeCategory({ slug: 'also-here-1' });
+      const additional2 = await makeCategory({ slug: 'also-here-2' });
       const res = await request(app)
         .post('/api/products')
         .set(bearer(adminToken))
-        .send(productBody({ sku: 'SKU-FREE', categoryId: free.id }));
+        .send(productBody({ additionalCategoryIds: [additional1.id, additional2.id] }));
       expect(res.status).toBe(201);
-      expect(res.body.product.collectionID).toBeNull();
-      expect(res.body.product.collection).toBeNull();
+      expect(res.body.product.primaryCategoryID).toBe(categoryId);
+      const linkedIds = res.body.product.categoryLinks.map((l: { categoryID: string }) => l.categoryID).sort();
+      expect(linkedIds).toEqual([additional1.id, additional2.id].sort());
+
+      // The category page for an ADDITIONAL placement also lists the product
+      // (not just the primary one) — that's the whole point of the link.
+      const viaAdditional = await request(app).get(`/api/categories/${additional1.id}/products`);
+      expect(viaAdditional.body.items.map((p: { id: string }) => p.id)).toContain(res.body.product.id);
     });
 
-    it('moving a product to another category re-derives its collection', async () => {
-      const other = await makeCollection({ slug: 'other-col' });
-      const otherCat = await makeCategory(other.id);
+    it('silently dedupes an additionalCategoryIds entry that repeats the primary category', async () => {
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody({ additionalCategoryIds: [categoryId] }));
+      expect(res.status).toBe(201);
+      expect(res.body.product.categoryLinks).toHaveLength(0);
+    });
+
+    it('creates a product with manual collection membership', async () => {
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody({ collectionIds: [collectionId] }));
+      expect(res.status).toBe(201);
+      expect(res.body.product.collectionLinks.map((l: { collectionID: string }) => l.collectionID)).toEqual([
+        collectionId,
+      ]);
+    });
+
+    it('409s assigning a product to an archived category', async () => {
+      await request(app).delete(`/api/categories/${categoryId}`).set(bearer(adminToken));
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody());
+      expect(res.status).toBe(409);
+    });
+
+    it('409s assigning a product to an archived collection', async () => {
+      await request(app).delete(`/api/collections/${collectionId}`).set(bearer(adminToken));
+      const res = await request(app)
+        .post('/api/products')
+        .set(bearer(adminToken))
+        .send(productBody({ collectionIds: [collectionId] }));
+      expect(res.status).toBe(409);
+    });
+
+    it('PATCH replaces additionalCategoryIds/collectionIds wholesale, leaving them untouched when omitted', async () => {
+      const additional = await makeCategory({ slug: 'orig-additional' });
+      const created = (
+        await request(app)
+          .post('/api/products')
+          .set(bearer(adminToken))
+          .send(productBody({ additionalCategoryIds: [additional.id], collectionIds: [collectionId] }))
+      ).body.product;
+
+      // Omitting both fields entirely leaves the existing placements alone.
+      const untouched = await request(app)
+        .patch(`/api/products/${created.id}`)
+        .set(bearer(adminToken))
+        .send({ nameEn: 'Renamed Only' });
+      expect(untouched.status).toBe(200);
+      expect(untouched.body.product.categoryLinks).toHaveLength(1);
+      expect(untouched.body.product.collectionLinks).toHaveLength(1);
+
+      // Explicitly sending an empty array clears them.
+      const cleared = await request(app)
+        .patch(`/api/products/${created.id}`)
+        .set(bearer(adminToken))
+        .send({ additionalCategoryIds: [], collectionIds: [] });
+      expect(cleared.status).toBe(200);
+      expect(cleared.body.product.categoryLinks).toHaveLength(0);
+      expect(cleared.body.product.collectionLinks).toHaveLength(0);
+    });
+
+    it('moving a product to another primary category updates primaryCategoryID', async () => {
+      const otherCat = await makeCategory();
       const created = (
         await request(app).post('/api/products').set(bearer(adminToken)).send(productBody())
       ).body.product;
@@ -314,16 +390,16 @@ describe('Products API', () => {
       const res = await request(app)
         .patch(`/api/products/${created.id}`)
         .set(bearer(adminToken))
-        .send({ categoryId: otherCat.id });
+        .send({ primaryCategoryId: otherCat.id });
       expect(res.status).toBe(200);
-      expect(res.body.product.collectionID).toBe(other.id);
+      expect(res.body.product.primaryCategoryID).toBe(otherCat.id);
     });
 
-    it('404s when category/collection do not exist', async () => {
+    it('404s when the primary category does not exist', async () => {
       const res = await request(app)
         .post('/api/products')
         .set(bearer(adminToken))
-        .send(productBody({ categoryId: UNKNOWN }));
+        .send(productBody({ primaryCategoryId: UNKNOWN }));
       expect(res.status).toBe(404);
     });
 
@@ -362,7 +438,7 @@ describe('Products API', () => {
 
   describe('PATCH / DELETE /api/products/:id (admin)', () => {
     it('updates a product', async () => {
-      const p = await makeProduct(collectionId, categoryId);
+      const p = await makeProduct(categoryId);
       const res = await request(app)
         .patch(`/api/products/${p.id}`)
         .set(bearer(adminToken))
@@ -373,7 +449,7 @@ describe('Products API', () => {
     });
 
     it('without expectedLastEdit, a second concurrent edit still silently wins (unchanged, backward-compatible default)', async () => {
-      const p = await makeProduct(collectionId, categoryId, { over: { price: 10 } });
+      const p = await makeProduct(categoryId, { over: { price: 10 } });
       const tabA = await request(app).patch(`/api/products/${p.id}`).set(bearer(adminToken)).send({ price: 50 });
       const tabB = await request(app).patch(`/api/products/${p.id}`).set(bearer(adminToken)).send({ price: 60 });
       expect(tabA.status).toBe(200);
@@ -383,7 +459,7 @@ describe('Products API', () => {
     });
 
     it('409s a concurrent edit when expectedLastEdit is stale (fix-list.md #14, resolves 1.5)', async () => {
-      const p = await makeProduct(collectionId, categoryId, { over: { price: 10 } });
+      const p = await makeProduct(categoryId, { over: { price: 10 } });
       const fetched = await request(app).get(`/api/products/${p.id}`);
       const staleLastEdit = fetched.body.product.lastEdit;
 
@@ -408,7 +484,7 @@ describe('Products API', () => {
     });
 
     it('accepts the write when expectedLastEdit is fresh (re-fetched after the conflict)', async () => {
-      const p = await makeProduct(collectionId, categoryId, { over: { price: 10 } });
+      const p = await makeProduct(categoryId, { over: { price: 10 } });
       const first = await request(app)
         .get(`/api/products/${p.id}`);
       await request(app)
@@ -427,7 +503,7 @@ describe('Products API', () => {
     });
 
     it('soft-deletes a product', async () => {
-      const p = await makeProduct(collectionId, categoryId);
+      const p = await makeProduct(categoryId);
       const res = await request(app).delete(`/api/products/${p.id}`).set(bearer(adminToken));
       expect(res.status).toBe(204);
       const row = await prisma.product.findUnique({ where: { id: p.id } });
@@ -438,7 +514,7 @@ describe('Products API', () => {
 
   describe('Product variants (admin sub-resource)', () => {
     it('adds a variant and writes an INITIAL stock movement', async () => {
-      const p = await makeProduct(collectionId, categoryId);
+      const p = await makeProduct(categoryId);
       const res = await request(app)
         .post(`/api/products/${p.id}/variants`)
         .set(bearer(adminToken))
@@ -450,7 +526,7 @@ describe('Products API', () => {
     });
 
     it('409s a duplicate size/colour combo on the same product', async () => {
-      const p = await makeProduct(collectionId, categoryId, {
+      const p = await makeProduct(categoryId, {
         variants: [{ sku: 'a', size: 'M', color: 'Black' }],
       });
       const res = await request(app)
@@ -461,7 +537,7 @@ describe('Products API', () => {
     });
 
     it('updates a variant stock and logs an ADJUSTMENT', async () => {
-      const p = await makeProduct(collectionId, categoryId, {
+      const p = await makeProduct(categoryId, {
         variants: [{ sku: 'a', size: 'M', color: 'Black', stockQuantity: 4 }],
       });
       const variantId = p.variants[0].id;
@@ -475,7 +551,7 @@ describe('Products API', () => {
     });
 
     it('deletes a variant, but 409s when it is referenced by an order', async () => {
-      const p = await makeProduct(collectionId, categoryId, {
+      const p = await makeProduct(categoryId, {
         variants: [
           { sku: 'a', size: 'M', color: 'Black' },
           { sku: 'b', size: 'L', color: 'Black' },
@@ -516,7 +592,7 @@ describe('Products API', () => {
     });
 
     it('409s deleting a product\'s last remaining variant (fix-list.md #17)', async () => {
-      const p = await makeProduct(collectionId, categoryId, {
+      const p = await makeProduct(categoryId, {
         variants: [{ sku: 'only', size: 'M', color: 'Black' }],
       });
       const res = await request(app)
@@ -531,7 +607,7 @@ describe('Products API', () => {
     });
 
     it('allows deleting down to exactly one variant, then blocks the last one', async () => {
-      const p = await makeProduct(collectionId, categoryId, {
+      const p = await makeProduct(categoryId, {
         variants: [
           { sku: 'a', size: 'M', color: 'Black' },
           { sku: 'b', size: 'L', color: 'Black' },
@@ -552,7 +628,7 @@ describe('Products API', () => {
 
   describe('Product images (admin sub-resource)', () => {
     it('adds / updates / deletes an image', async () => {
-      const p = await makeProduct(collectionId, categoryId);
+      const p = await makeProduct(categoryId);
       const add = await request(app)
         .post(`/api/products/${p.id}/images`)
         .set(bearer(adminToken))
@@ -610,7 +686,7 @@ describe('Products API', () => {
     });
 
     it('a product with no sale reports effectivePrice === price and onSale false', async () => {
-      const p = await makeProduct(collectionId, categoryId, { over: { price: 12 } });
+      const p = await makeProduct(categoryId, { over: { price: 12 } });
       const res = await request(app).get(`/api/products/${p.id}`);
       expect(Number(res.body.product.effectivePrice)).toBe(12);
       expect(res.body.product.onSale).toBe(false);
@@ -708,7 +784,7 @@ describe('Products API', () => {
     });
 
     it('POST /variants and PATCH /variants/:id accept and clear a price override', async () => {
-      const p = await makeProduct(collectionId, categoryId);
+      const p = await makeProduct(categoryId);
       const added = await request(app)
         .post(`/api/products/${p.id}/variants`)
         .set(bearer(adminToken))
@@ -725,7 +801,7 @@ describe('Products API', () => {
     });
 
     it('a product image can be tagged with a colour, and cleared back to generic', async () => {
-      const p = await makeProduct(collectionId, categoryId);
+      const p = await makeProduct(categoryId);
       const add = await request(app)
         .post(`/api/products/${p.id}/images`)
         .set(bearer(adminToken))

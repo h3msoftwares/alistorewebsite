@@ -2,19 +2,110 @@
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Archive, RotateCcw, Trash2 } from 'lucide-react';
-import { Button, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
+import { Archive, RotateCcw, Trash2, X } from 'lucide-react';
+import { Button, EmptyState, Icon, Input, ProductGridSkeleton } from '@/components/ui';
 import { ImageGallery } from '@/components/admin/image-gallery';
 import {
   useAddCollectionImage,
   useCollection,
+  useCollectionProducts,
   useDeleteCollection,
   useDeleteCollectionImage,
   usePermanentDeleteCollection,
+  useProducts,
   useRestoreCollection,
+  useSetCollectionProducts,
   useUpdateCollection,
 } from '@/hooks/use-catalog';
 import { CollectionForm, type CollectionFormValues } from '../collection-form';
+
+/** Manual product membership (Stage 1: manual only, no rules) — search the
+ *  catalog and add/remove products; every change replaces the whole
+ *  membership set (same "replace-all on save" convention used elsewhere). */
+function CollectionProductsPanel({ id, locale }: { id: string; locale: 'en' | 'ar' }) {
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
+  const { data: linked, isPending } = useCollectionProducts(id);
+  const setProducts = useSetCollectionProducts();
+  const [search, setSearch] = useState('');
+  const { data: results } = useProducts({ search, pageSize: 10 }, { enabled: search.trim().length >= 2 });
+
+  const linkedIds = (linked ?? []).map((p) => p.id);
+  const addProduct = (productId: string) => {
+    if (linkedIds.includes(productId)) return;
+    setProducts.mutate({ id, productIds: [...linkedIds, productId] });
+  };
+  const removeProduct = (productId: string) => {
+    setProducts.mutate({ id, productIds: linkedIds.filter((pid) => pid !== productId) });
+  };
+
+  return (
+    <div className="admin-form" style={{ marginTop: 'var(--space-7)' }}>
+      <p className="admin-form__section-title">{t('Products', 'المنتجات')}</p>
+
+      {isPending ? (
+        <ProductGridSkeleton count={3} />
+      ) : (linked ?? []).length === 0 ? (
+        <p className="admin-form__hint">{t('No products in this collection yet.', 'لا توجد منتجات في هذه المجموعة بعد.')}</p>
+      ) : (
+        <ul role="list" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 'var(--space-2)' }}>
+          {(linked ?? []).map((p) => (
+            <li
+              key={p.id}
+              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', justifyContent: 'space-between' }}
+            >
+              <span style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                <span>{isAr ? p.nameAr : p.nameEn}</span>
+                <span style={{ color: 'var(--color-text-muted)' }}>{p.sku}</span>
+              </span>
+              <button
+                type="button"
+                className="icon-btn icon-btn--bordered"
+                aria-label={t('Remove', 'إزالة')}
+                title={t('Remove', 'إزالة')}
+                onClick={() => removeProduct(p.id)}
+                disabled={setProducts.isPending}
+              >
+                <Icon as={X} size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div style={{ marginTop: 'var(--space-4)' }}>
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t('Search products to add…', 'ابحث عن منتجات لإضافتها…')}
+        />
+        {results && results.items.length > 0 && (
+          <ul
+            role="list"
+            style={{ listStyle: 'none', padding: 0, margin: 'var(--space-2) 0 0', display: 'grid', gap: 'var(--space-2)' }}
+          >
+            {results.items
+              .filter((p) => !linkedIds.includes(p.id))
+              .map((p) => (
+                <li
+                  key={p.id}
+                  style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', justifyContent: 'space-between' }}
+                >
+                  <span style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                    <span>{isAr ? p.nameAr : p.nameEn}</span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>{p.sku}</span>
+                  </span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => addProduct(p.id)} disabled={setProducts.isPending}>
+                    {t('Add', 'إضافة')}
+                  </Button>
+                </li>
+              ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function EditCollectionPage() {
   const params = useParams();
@@ -47,14 +138,6 @@ export default function EditCollectionPage() {
           descriptionEn: values.descriptionEn || undefined,
           descriptionAr: values.descriptionAr || undefined,
           isActive: values.isActive,
-          showInNav: values.showInNav,
-          showOnHome: values.showOnHome,
-          showOnHomeAsImage: values.showOnHomeAsImage,
-          sortOrder: values.sortOrder,
-          homeSortOrder: values.homeSortOrder,
-          accentColor: values.accentColor ? values.accentColor : null,
-          homeImageCtaEn: values.homeImageCtaEn || null,
-          homeImageCtaAr: values.homeImageCtaAr || null,
         },
       });
     } catch (e) {
@@ -166,14 +249,6 @@ export default function EditCollectionPage() {
           descriptionEn: collection.descriptionEn ?? '',
           descriptionAr: collection.descriptionAr ?? '',
           isActive: collection.isActive,
-          showInNav: collection.showInNav,
-          showOnHome: collection.showOnHome,
-          showOnHomeAsImage: collection.showOnHomeAsImage,
-          sortOrder: collection.sortOrder,
-          homeSortOrder: collection.homeSortOrder,
-          accentColor: collection.accentColor ?? '',
-          homeImageCtaEn: collection.homeImageCtaEn ?? '',
-          homeImageCtaAr: collection.homeImageCtaAr ?? '',
         }}
         onSubmit={onSubmit}
         submitLabel={t('Save changes', 'حفظ التغييرات')}
@@ -198,6 +273,8 @@ export default function EditCollectionPage() {
           isDeleting={(imageId) => deleteImageId === imageId && deleteImage.isPending}
         />
       </div>
+
+      <CollectionProductsPanel id={id} locale={locale} />
     </div>
   );
 }

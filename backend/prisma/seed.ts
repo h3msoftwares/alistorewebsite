@@ -180,13 +180,17 @@ async function main() {
     },
   });
 
-  // ---- Collections (replace the old Department enum; owner-editable) ----
-  // showOnHome demos the home page's featured row: women + men get their own
-  // "collection row" (name + horizontal scroll of categories). kids opts into
-  // showOnHomeAsImage instead — a full-width image banner (coloured panel with
-  // the description + CTA, and the photo), slotted in by sortOrder — to demo
-  // that treatment.
-  const collectionDefs = [
+  // ---- Categories (the permanent navigation tree — see
+  // robust-ecommerce-catalog-architecture.md's "core idea") ----
+  // Root categories carry the storefront chrome (nav placement + full-bleed
+  // home banner) that used to live on Collection: Stage 1 of the catalog
+  // redesign decouples Category from Collection entirely, so Women/Men/Kids
+  // become top-level Categories and inherit that role (see
+  // catalog-redesign-implementation-plan.md's nav/banner decision). women +
+  // men get their own home "row" (showOnHome); kids demos the full-width
+  // image-banner treatment (showOnHomeAsImage) instead — a coloured panel
+  // with the description + CTA, and the photo.
+  const rootCategoryDefs = [
     { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, homeSortOrder: 10, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#a65a7e' },
     { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, homeSortOrder: 20, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#38455c' },
     {
@@ -209,28 +213,31 @@ async function main() {
   // Seed is authoritative for curation: clear every nav / home flag first, then
   // the upserts below set only the intended ones back on. Keeps re-runs
   // converging instead of accumulating stale "on home" rows from old seeds.
-  await prisma.collection.updateMany({
+  await prisma.category.updateMany({
     data: { showInNav: false, showOnHome: false, showOnHomeAsImage: false },
   });
-  await prisma.category.updateMany({ data: { showOnHome: false } });
 
-  const collections = new Map<string, { id: string }>();
-  for (const c of collectionDefs) {
+  // Roots first — a child's `parent: { connect }` needs the parent row to
+  // already exist (the path/depth trigger looks up the parent's current
+  // path/depth — see migration 20260912000000).
+  const categories = new Map<string, { id: string }>();
+  for (const c of rootCategoryDefs) {
     const { slug, ...rest } = c;
-    const col = await prisma.collection.upsert({
+    const cat = await prisma.category.upsert({
       where: { slug },
       update: rest,
       create: c,
     });
-    collections.set(c.slug, { id: col.id });
+    categories.set(c.slug, { id: cat.id });
 
-    // One base image per collection so the home image-grid tile (and the admin
-    // list thumbnail) has a picture. Replace-all keeps reseeding idempotent.
-    await prisma.collectionImage.deleteMany({ where: { collectionID: col.id } });
-    await prisma.collectionImage.create({
+    // One base image per root category so the home image-grid tile (and the
+    // admin list thumbnail) has a picture. Replace-all keeps reseeding
+    // idempotent.
+    await prisma.categoryImage.deleteMany({ where: { categoryID: cat.id } });
+    await prisma.categoryImage.create({
       data: {
-        collectionID: col.id,
-        url: clothImage(`collection-${c.slug}`, clothTopicFor(c.slug)),
+        categoryID: cat.id,
+        url: clothImage(`category-${c.slug}`, clothTopicFor(c.slug)),
         altEn: c.nameEn,
         altAr: c.nameAr,
         sortOrder: 0,
@@ -238,26 +245,25 @@ async function main() {
     });
   }
 
-  // ---- Categories (bilingual, each linked to one collection) ----
+  // ---- Subcategories (bilingual, each nested under one root category) ----
   // kids-pajamas is individually featured too, to demo a category getting its
-  // own "product row" on the home page independent of its collection.
-  const categoryDefs = [
-    { collectionSlug: 'women', nameEn: 'Lingerie', nameAr: 'ملابس داخلية نسائية', slug: 'women-lingerie', sortOrder: 1 },
-    { collectionSlug: 'women', nameEn: 'Nightwear', nameAr: 'ملابس النوم النسائية', slug: 'women-nightwear', sortOrder: 2 },
-    { collectionSlug: 'men', nameEn: "Men's Shirts", nameAr: 'قمصان رجالي', slug: 'men-shirts', sortOrder: 1 },
-    { collectionSlug: 'men', nameEn: "Men's Underwear", nameAr: 'ملابس داخلية رجالية', slug: 'men-underwear', sortOrder: 2 },
-    { collectionSlug: 'kids', nameEn: "Kids' Pajamas", nameAr: 'بيجامات أطفال', slug: 'kids-pajamas', sortOrder: 4, homeSortOrder: 30, showOnHome: true },
-    { collectionSlug: 'kids', nameEn: "Kids' Everyday", nameAr: 'ملابس أطفال يومية', slug: 'kids-everyday', sortOrder: 2 },
+  // own "product row" on the home page independent of its parent.
+  const subcategoryDefs = [
+    { parentSlug: 'women', nameEn: 'Lingerie', nameAr: 'ملابس داخلية نسائية', slug: 'women-lingerie', sortOrder: 1 },
+    { parentSlug: 'women', nameEn: 'Nightwear', nameAr: 'ملابس النوم النسائية', slug: 'women-nightwear', sortOrder: 2 },
+    { parentSlug: 'men', nameEn: "Men's Shirts", nameAr: 'قمصان رجالي', slug: 'men-shirts', sortOrder: 1 },
+    { parentSlug: 'men', nameEn: "Men's Underwear", nameAr: 'ملابس داخلية رجالية', slug: 'men-underwear', sortOrder: 2 },
+    { parentSlug: 'kids', nameEn: "Kids' Pajamas", nameAr: 'بيجامات أطفال', slug: 'kids-pajamas', sortOrder: 4, homeSortOrder: 30, showOnHome: true },
+    { parentSlug: 'kids', nameEn: "Kids' Everyday", nameAr: 'ملابس أطفال يومية', slug: 'kids-everyday', sortOrder: 2 },
   ];
 
-  const categories = new Map<string, { id: string; collectionID: string }>();
-  for (const c of categoryDefs) {
-    const collectionID = collections.get(c.collectionSlug)!.id;
+  for (const c of subcategoryDefs) {
+    const parentID = categories.get(c.parentSlug)!.id;
     const data = {
       nameEn: c.nameEn,
       nameAr: c.nameAr,
       slug: c.slug,
-      collectionID,
+      parentID,
       sortOrder: c.sortOrder,
       showOnHome: c.showOnHome ?? false,
       homeSortOrder: 'homeSortOrder' in c ? c.homeSortOrder : 0,
@@ -267,7 +273,7 @@ async function main() {
       update: data,
       create: data,
     });
-    categories.set(c.slug, { id: cat.id, collectionID });
+    categories.set(c.slug, { id: cat.id });
   }
 
   // ---- Products + variants ----
@@ -1626,8 +1632,7 @@ async function main() {
         nameAr: p.nameAr,
         descriptionEn: p.descriptionEn,
         descriptionAr: p.descriptionAr,
-        categoryID: category.id,
-        collectionID: category.collectionID,
+        primaryCategoryID: category.id,
         price: p.price,
         compareAtPrice: p.compareAtPrice ?? null,
         saleType: p.saleType ?? null,
@@ -1639,8 +1644,7 @@ async function main() {
         nameAr: p.nameAr,
         descriptionEn: p.descriptionEn,
         descriptionAr: p.descriptionAr,
-        categoryID: category.id,
-        collectionID: category.collectionID,
+        primaryCategoryID: category.id,
         price: p.price,
         compareAtPrice: p.compareAtPrice ?? undefined,
         saleType: p.saleType,
@@ -1709,6 +1713,110 @@ async function main() {
     await prisma.productImage.createMany({ data: images });
   }
 
+  // ---- Additional category placements (Stage 1: primary + additional — see
+  // ProductCategory) ----
+  // A couple of deliberate cross-listings within the same root, so a product
+  // with a primary category plus one more additional placement exists in the
+  // seed data (not just in tests). Cross-listing across Women/Men would be
+  // unrealistic for this gendered-apparel catalog, unlike the architecture
+  // doc's unisex-shoe example — a same-branch cross-listing (a lingerie piece
+  // also shown under Nightwear, and vice versa) is the realistic analog.
+  const crossListings: [sku: string, additionalCategorySlug: string][] = [
+    ['WOM-LNG-001', 'women-nightwear'],
+    ['WOM-NGT-001', 'women-lingerie'],
+  ];
+  for (const [sku, categorySlug] of crossListings) {
+    const product = await prisma.product.findUnique({ where: { sku }, select: { id: true } });
+    const category = categories.get(categorySlug);
+    if (product && category) {
+      await prisma.productCategory.upsert({
+        where: { productID_categoryID: { productID: product.id, categoryID: category.id } },
+        update: {},
+        create: { productID: product.id, categoryID: category.id },
+      });
+    }
+  }
+
+  // ---- Collections (Stage 1: flat, manual merchandising groups, unrelated
+  // to the category tree — see robust-ecommerce-catalog-architecture.md's
+  // "core idea") ----
+  // Only two, deliberately: Sale and New Arrivals. Women/Men/Kids are
+  // Categories now (the permanent navigation tree, above); Collection is
+  // reserved for this kind of cross-cutting, hand-picked grouping instead —
+  // documented in catalog-redesign-implementation-plan.md's Stage 1 scope,
+  // not an implicit side effect of the restructuring.
+  //
+  // Stage 2: Sale is now AUTOMATED — "whatever currently has an active
+  // Promotion", computed by CollectionRule (HAS_ACTIVE_PROMOTION EXISTS)
+  // rather than a hand-picked, manually-maintained product list. New
+  // Arrivals stays MANUAL; there's no rule that means "recently added" in a
+  // way an admin would actually want automated (it would need re-curating
+  // as soon as anything new ships anyway).
+  const sale = await prisma.collection.upsert({
+    where: { slug: 'sale' },
+    update: { nameEn: 'Sale', nameAr: 'تخفيضات', isActive: true, type: 'AUTOMATED' },
+    create: { slug: 'sale', nameEn: 'Sale', nameAr: 'تخفيضات', type: 'AUTOMATED' },
+  });
+  const newArrivals = await prisma.collection.upsert({
+    where: { slug: 'new-arrivals' },
+    update: { nameEn: 'New Arrivals', nameAr: 'وصل حديثاً', isActive: true },
+    create: { slug: 'new-arrivals', nameEn: 'New Arrivals', nameAr: 'وصل حديثاً' },
+  });
+
+  await prisma.collectionProduct.deleteMany({ where: { collectionID: sale.id } });
+  await prisma.collectionRule.deleteMany({ where: { collectionID: sale.id } });
+  await prisma.collectionRule.create({
+    data: { collectionID: sale.id, groupNumber: 0, field: 'HAS_ACTIVE_PROMOTION', operator: 'EXISTS' },
+  });
+
+  // The products that used to be hand-picked into Sale (their own
+  // Product.saleType is set) are what the seeded Promotion below targets, so
+  // the AUTOMATED collection ends up showing the same, familiar slice.
+  const onSaleProducts = await prisma.product.findMany({
+    where: { saleType: { not: null } },
+    select: { id: true },
+    orderBy: { sku: 'asc' },
+    take: 12,
+  });
+  const sitePromotion = await prisma.promotion.upsert({
+    where: { id: '00000000-0000-0000-0000-0000000000f1' },
+    update: {
+      nameEn: 'Seasonal Promo',
+      nameAr: 'عرض الموسم',
+      status: 'ACTIVE',
+      type: 'PERCENT',
+      value: 15,
+      priority: 1,
+      stackable: true,
+      appliesToAll: false,
+    },
+    create: {
+      id: '00000000-0000-0000-0000-0000000000f1',
+      nameEn: 'Seasonal Promo',
+      nameAr: 'عرض الموسم',
+      status: 'ACTIVE',
+      type: 'PERCENT',
+      value: 15,
+      priority: 1,
+      stackable: true,
+      appliesToAll: false,
+    },
+  });
+  await prisma.promotionProduct.deleteMany({ where: { promotionID: sitePromotion.id } });
+  await prisma.promotionProduct.createMany({
+    data: onSaleProducts.map((p) => ({ promotionID: sitePromotion.id, productID: p.id })),
+  });
+
+  const newestProducts = await prisma.product.findMany({
+    select: { id: true },
+    orderBy: [{ dateCreated: 'desc' }, { sku: 'desc' }],
+    take: 12,
+  });
+  await prisma.collectionProduct.deleteMany({ where: { collectionID: newArrivals.id } });
+  await prisma.collectionProduct.createMany({
+    data: newestProducts.map((p, i) => ({ collectionID: newArrivals.id, productID: p.id, sortOrder: i })),
+  });
+
   // Site settings singleton (id 1) + the default announcement lines. Idempotent:
   // upsert the row, and only seed the lines when there are none yet so a run
   // doesn't stomp on owner edits.
@@ -1754,7 +1862,9 @@ async function main() {
     });
   }
 
-  console.log(`[seed] done — ${productDefs.length} products across ${categoryDefs.length} categories.`);
+  console.log(
+    `[seed] done — ${productDefs.length} products across ${rootCategoryDefs.length + subcategoryDefs.length} categories.`
+  );
 }
 
 main()

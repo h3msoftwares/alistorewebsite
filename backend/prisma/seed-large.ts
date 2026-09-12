@@ -56,8 +56,8 @@ function clothImage(seed: string, topic: string, w = 800, h = 1000): string {
   return `https://images.unsplash.com/photo-${id}?w=${w}&h=${h}&fit=crop&q=80`;
 }
 
-/** Garment keyword for a collection's home banner image. */
-const COLLECTION_TOPIC: Record<string, string> = { women: 'dress', men: 'menswear', kids: 'clothing' };
+/** Garment keyword for a root category's home banner image. */
+const ROOT_CATEGORY_TOPIC: Record<string, string> = { women: 'dress', men: 'menswear', kids: 'clothing' };
 
 /** Tiny deterministic PRNG (mulberry32) so a given SKU always generates the
  *  same product — price, colours, stock — across runs. */
@@ -125,7 +125,11 @@ const colorSlug = (c: string) => c.toLowerCase().replace(/\s+/g, '-');
 const PER_CATEGORY = Math.max(1, Number(process.env.SEED_LARGE_PER_CATEGORY) || 50);
 const IMAGES_PER_COLOR = 3;
 
-const collectionDefs = [
+// Root categories (Stage 1: Women/Men/Kids are top-level Categories, not
+// Collections — see seed.ts's comment on the same restructuring). These
+// carry the storefront nav/home-banner fields that moved from Collection to
+// Category with that redesign.
+const rootCategoryDefs = [
   { slug: 'women', nameEn: 'Women', nameAr: 'نساء', sortOrder: 1, homeSortOrder: 10, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#a65a7e' },
   { slug: 'men', nameEn: 'Men', nameAr: 'رجال', sortOrder: 2, homeSortOrder: 20, showInNav: true, showOnHome: true, showOnHomeAsImage: false, accentColor: '#38455c' },
   {
@@ -145,8 +149,8 @@ const collectionDefs = [
   },
 ];
 
-// 5 categories per collection → 15 categories → 15 * PER_CATEGORY products.
-// Tuple: [collectionSlug, slug, nameEn, nameAr, sortOrder, showOnHome, homeSortOrder]
+// 5 subcategories per root → 15 categories → 15 * PER_CATEGORY products.
+// Tuple: [parentSlug, slug, nameEn, nameAr, sortOrder, showOnHome, homeSortOrder]
 const categoryDefs = [
   ['women', 'wmn-tops', 'Tops', 'بلايز', 1, true, 12],
   ['women', 'wmn-dresses', 'Dresses', 'فساتين', 2, false, 0],
@@ -184,22 +188,21 @@ async function main() {
 
   // Seed is authoritative for curation: clear every nav / home flag first so
   // re-runs converge instead of accumulating stale "on home" rows.
-  await prisma.collection.updateMany({
+  await prisma.category.updateMany({
     data: { showInNav: false, showOnHome: false, showOnHomeAsImage: false },
   });
-  await prisma.category.updateMany({ data: { showOnHome: false } });
 
-  // ---- Collections (+ one base image each) ----
-  const collectionId = new Map<string, string>();
-  for (const c of collectionDefs) {
+  // ---- Root categories (+ one base image each) ----
+  const rootCategoryId = new Map<string, string>();
+  for (const c of rootCategoryDefs) {
     const { slug, ...rest } = c;
-    const col = await prisma.collection.upsert({ where: { slug }, update: rest, create: c });
-    collectionId.set(slug, col.id);
-    await prisma.collectionImage.deleteMany({ where: { collectionID: col.id } });
-    await prisma.collectionImage.create({
+    const cat = await prisma.category.upsert({ where: { slug }, update: rest, create: c });
+    rootCategoryId.set(slug, cat.id);
+    await prisma.categoryImage.deleteMany({ where: { categoryID: cat.id } });
+    await prisma.categoryImage.create({
       data: {
-        collectionID: col.id,
-        url: clothImage(`collection-${slug}`, COLLECTION_TOPIC[slug] ?? 'clothing'),
+        categoryID: cat.id,
+        url: clothImage(`category-${slug}`, ROOT_CATEGORY_TOPIC[slug] ?? 'clothing'),
         altEn: c.nameEn,
         altAr: c.nameAr,
         sortOrder: 0,
@@ -207,14 +210,14 @@ async function main() {
     });
   }
 
-  // ---- Categories ----
+  // ---- Subcategories ----
   const categoryId = new Map<string, string>();
-  for (const [colSlug, slug, nameEn, nameAr, sortOrder, showOnHome, homeSortOrder] of categoryDefs) {
+  for (const [parentSlug, slug, nameEn, nameAr, sortOrder, showOnHome, homeSortOrder] of categoryDefs) {
     const data = {
       nameEn,
       nameAr,
       slug,
-      collectionID: collectionId.get(colSlug)!,
+      parentID: rootCategoryId.get(parentSlug)!,
       sortOrder,
       showOnHome,
       homeSortOrder,
@@ -230,7 +233,6 @@ async function main() {
   for (const cd of categoryDefs) {
     const catSlug = cd[1];
     const catId = categoryId.get(catSlug)!;
-    const colId = collectionId.get(catSlug.startsWith('wmn') ? 'women' : catSlug.startsWith('men') ? 'men' : 'kids')!;
 
     for (let i = 1; i <= PER_CATEGORY; i++) {
       const sku = `LG-${catSlug.toUpperCase()}-${String(i).padStart(3, '0')}`;
@@ -257,15 +259,14 @@ async function main() {
 
       const product = await prisma.product.upsert({
         where: { sku },
-        update: { nameEn, nameAr, categoryID: catId, collectionID: colId, price, compareAtPrice, saleType, saleValue },
+        update: { nameEn, nameAr, primaryCategoryID: catId, price, compareAtPrice, saleType, saleValue },
         create: {
           sku,
           nameEn,
           nameAr,
           descriptionEn: `${adjEn} ${nounEn.toLowerCase()} — part of the large demo catalogue.`,
           descriptionAr: `${nounAr} ${adjAr} — من كتالوج العرض الكبير.`,
-          categoryID: catId,
-          collectionID: colId,
+          primaryCategoryID: catId,
           price,
           compareAtPrice,
           saleType,
@@ -349,7 +350,7 @@ async function main() {
   }
 
   console.log(
-    `[seed:large] done — ${productCount} products across ${categoryDefs.length} categories, ${imageCount} images (every product has some).`
+    `[seed:large] done — ${productCount} products across ${rootCategoryDefs.length + categoryDefs.length} categories, ${imageCount} images (every product has some).`
   );
 }
 

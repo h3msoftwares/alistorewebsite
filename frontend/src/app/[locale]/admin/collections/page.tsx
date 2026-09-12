@@ -127,9 +127,6 @@ export default function AdminCollectionsPage() {
                 <th>{t('Name', 'الاسم')}</th>
                 <th>{t('Slug', 'الرابط')}</th>
                 <th>{t('Status', 'الحالة')}</th>
-                <th>{t('Nav', 'التنقل')}</th>
-                <th>{t('Home', 'الرئيسية')}</th>
-                <th className="is-numeric">{t('Categories', 'الفئات')}</th>
                 <th className="is-numeric">{t('Products', 'المنتجات')}</th>
                 <th aria-hidden="true" />
               </tr>
@@ -154,11 +151,6 @@ export default function AdminCollectionsPage() {
                     ) : (
                       <Badge variant="low-stock">{t('Hidden', 'مخفية')}</Badge>
                     )}
-                  </td>
-                  <td data-label={t('Nav', 'التنقل')}>{c.showInNav ? t('Yes', 'نعم') : '—'}</td>
-                  <td data-label={t('Home', 'الرئيسية')}>{c.showOnHome ? t('Yes', 'نعم') : '—'}</td>
-                  <td className="is-numeric" data-label={t('Categories', 'الفئات')}>
-                    {c._count?.categories ?? 0}
                   </td>
                   <td className="is-numeric" data-label={t('Products', 'المنتجات')}>
                     {c._count?.products ?? 0}

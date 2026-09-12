@@ -22,8 +22,8 @@ describe('Catalog image ImageKit cleanup (admin sub-resource routes)', () => {
   it('product image: stores fileId on add, deletes the ImageKit file on remove', async () => {
     const { token } = await createAdmin();
     const col = await makeCollection();
-    const cat = await makeCategory(col.id);
-    const product = await makeProduct(col.id, cat.id);
+    const cat = await makeCategory();
+    const product = await makeProduct(cat.id);
 
     const add = await request(app)
       .post(`/api/products/${product.id}/images`)
@@ -42,8 +42,8 @@ describe('Catalog image ImageKit cleanup (admin sub-resource routes)', () => {
   it('product image without a fileId (legacy/manual) deletes cleanly with no ImageKit call', async () => {
     const { token } = await createAdmin();
     const col = await makeCollection();
-    const cat = await makeCategory(col.id);
-    const product = await makeProduct(col.id, cat.id);
+    const cat = await makeCategory();
+    const product = await makeProduct(cat.id);
 
     const add = await request(app)
       .post(`/api/products/${product.id}/images`)
@@ -61,7 +61,7 @@ describe('Catalog image ImageKit cleanup (admin sub-resource routes)', () => {
   it('category image delete cleans up its ImageKit file', async () => {
     const { token } = await createAdmin();
     const col = await makeCollection();
-    const cat = await makeCategory(col.id);
+    const cat = await makeCategory();
 
     const add = await request(app)
       .post(`/api/categories/${cat.id}/images`)
@@ -75,7 +75,7 @@ describe('Catalog image ImageKit cleanup (admin sub-resource routes)', () => {
   it('permanently deleting an (empty) category cascades ImageKit cleanup for all its images', async () => {
     const { token } = await createAdmin();
     const col = await makeCollection();
-    const cat = await makeCategory(col.id);
+    const cat = await makeCategory();
 
     await request(app)
       .post(`/api/categories/${cat.id}/images`)
@@ -124,8 +124,8 @@ describe('Catalog image ImageKit cleanup (admin sub-resource routes)', () => {
   it('deleting a product (soft delete) does not touch its images or call ImageKit', async () => {
     const { token } = await createAdmin();
     const col = await makeCollection();
-    const cat = await makeCategory(col.id);
-    const product = await makeProduct(col.id, cat.id);
+    const cat = await makeCategory();
+    const product = await makeProduct(cat.id);
 
     await request(app)
       .post(`/api/products/${product.id}/images`)

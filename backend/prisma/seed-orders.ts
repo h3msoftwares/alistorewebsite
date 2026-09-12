@@ -68,7 +68,7 @@ async function main() {
   console.log(`[seed:orders]   ${customerIds.length} customers ready (pw: ${LOAD_CUSTOMER_PASSWORD})`);
 
   // ---- 2. Infinite-stock checkout product ----------------------------------
-  const anyCategory = await prisma.category.findFirst({ select: { id: true, collectionID: true } });
+  const anyCategory = await prisma.category.findFirst({ select: { id: true } });
   if (!anyCategory) throw new Error('No categories — run `npm run seed:large` first.');
   const checkoutProduct = await prisma.product.upsert({
     where: { sku: LOAD_CHECKOUT_SKU },
@@ -77,7 +77,7 @@ async function main() {
       sku: LOAD_CHECKOUT_SKU,
       nameEn: 'Load Test Checkout Item', nameAr: 'عنصر اختبار الحمل',
       descriptionEn: 'Synthetic product for checkout load testing. Not for sale.',
-      categoryID: anyCategory.id, collectionID: anyCategory.collectionID,
+      primaryCategoryID: anyCategory.id,
       price: 10, quantity: 1_000_000_000,
     },
     select: { id: true },

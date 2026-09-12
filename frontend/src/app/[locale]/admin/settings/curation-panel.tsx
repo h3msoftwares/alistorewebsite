@@ -4,12 +4,7 @@ import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Alert, Choice, DataTable, EmptyState, Icon, Input, ProductGridSkeleton } from '@/components/ui';
 import { ReorderList, type ReorderItem } from '@/components/admin/reorder-list';
-import {
-  useAdminCategories,
-  useAdminCollections,
-  useUpdateCategory,
-  useUpdateCollection,
-} from '@/hooks/use-catalog';
+import { useAdminCategories, useUpdateCategory } from '@/hooks/use-catalog';
 import { useSettings, useUpdateSettings } from '@/hooks/use-settings';
 import type { HomeShowcase, ShowcaseType } from '@/lib/types';
 
@@ -38,20 +33,23 @@ type HomeItem = {
  *
  *  - "Home page order" and "Nav order" are drag-to-reorder lists — the list
  *    order IS the on-page order (persisted as `homeSortOrder` / `sortOrder`).
- *  - The two are completely independent: a collection can be in the nav AND on
- *    the home page, positioned differently in each. Membership is the toggles
- *    in the Collections / Categories tables; the ✕ on a home row just removes
- *    it from the home page.
+ *  - The two are completely independent: a root category can be in the nav
+ *    AND on the home page, positioned differently in each. Membership is the
+ *    toggles in the categories tables below; the ✕ on a home row just
+ *    removes it from the home page.
+ *
+ * Nav/home-banner curation moved from Collection to (top-level) Category
+ * with the Stage 1 catalog redesign — Women/Men/Kids are Categories now, and
+ * Collection (Sale, New Arrivals) has no nav/home-banner role at all. See
+ * catalog-redesign-implementation-plan.md's nav/banner decision.
  */
 export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const nameOf = (o: { nameEn: string; nameAr: string }) => (isAr ? o.nameAr : o.nameEn);
 
-  const collections = useAdminCollections({ status: 'all' });
   const categories = useAdminCategories({ status: 'all' });
   const { data: settings } = useSettings();
-  const updateCollection = useUpdateCollection();
   const updateCategory = useUpdateCategory();
   const updateSettings = useUpdateSettings();
   const [error, setError] = useState<string | null>(null);
@@ -59,10 +57,6 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
   const onErr = (e: unknown) =>
     setError(e instanceof Error ? e.message : t('Update failed', 'فشل التحديث'));
 
-  const patchCollection = (id: string, body: Record<string, unknown>) => {
-    setError(null);
-    updateCollection.mutate({ id, body }, { onError: onErr });
-  };
   const patchCategory = (id: string, body: Record<string, unknown>) => {
     setError(null);
     updateCategory.mutate({ id, body }, { onError: onErr });
@@ -90,32 +84,36 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
     );
   };
 
-  const cols = collections.data ?? [];
   const cats = categories.data ?? [];
+  const topCats = cats.filter((c) => !c.parentID);
+  // Non-root categories only — a root's own home-row/banner membership is
+  // managed by the "Top-level categories" table below instead, so it isn't
+  // controlled from two places at once.
+  const subCats = cats.filter((c) => c.parentID);
 
   // ---- Home page order (drag list) ----
   const homeItems: HomeItem[] = [
-    ...cols
+    ...topCats
       .filter((c) => c.showOnHomeAsImage)
       .map((c): HomeItem => ({
         key: `banner-${c.id}`,
         kindLabel: { en: 'Image banner', ar: 'شريط صورة' },
         name: nameOf(c),
         order: c.homeSortOrder,
-        setOrder: (n) => patchCollection(c.id, { homeSortOrder: n }),
-        remove: () => patchCollection(c.id, { showOnHome: false, showOnHomeAsImage: false }),
+        setOrder: (n) => patchCategory(c.id, { homeSortOrder: n }),
+        remove: () => patchCategory(c.id, { showOnHome: false, showOnHomeAsImage: false }),
       })),
-    ...cols
+    ...topCats
       .filter((c) => c.showOnHome && !c.showOnHomeAsImage)
       .map((c): HomeItem => ({
-        key: `col-${c.id}`,
-        kindLabel: { en: 'Collection row', ar: 'صف مجموعة' },
+        key: `top-${c.id}`,
+        kindLabel: { en: 'Top category row', ar: 'صف فئة رئيسية' },
         name: nameOf(c),
         order: c.homeSortOrder,
-        setOrder: (n) => patchCollection(c.id, { homeSortOrder: n }),
-        remove: () => patchCollection(c.id, { showOnHome: false }),
+        setOrder: (n) => patchCategory(c.id, { homeSortOrder: n }),
+        remove: () => patchCategory(c.id, { showOnHome: false }),
       })),
-    ...cats
+    ...subCats
       .filter((c) => c.showOnHome)
       .map((c): HomeItem => ({
         key: `cat-${c.id}`,
@@ -167,12 +165,12 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
   };
 
   // ---- Nav order (drag list) ----
-  const navCols = cols
+  const navCats = topCats
     .filter((c) => c.showInNav)
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
-  const navRows: ReorderItem[] = navCols.map((c) => ({
+  const navRows: ReorderItem[] = navCats.map((c) => ({
     key: c.id,
     content: <span className="reorder-list__name">{nameOf(c)}</span>,
   }));
@@ -180,13 +178,13 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
   const reorderNav = (ids: string[]) => {
     setError(null);
     ids.forEach((id, i) => {
-      const c = navCols.find((x) => x.id === id);
+      const c = navCats.find((x) => x.id === id);
       const next = (i + 1) * STEP;
-      if (c && c.sortOrder !== next) patchCollection(id, { sortOrder: next });
+      if (c && c.sortOrder !== next) patchCategory(id, { sortOrder: next });
     });
   };
 
-  const loading = collections.isPending || categories.isPending;
+  const loading = categories.isPending;
 
   return (
     <section className="admin-form">
@@ -223,14 +221,14 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
       </p>
       <p className="admin-form__hint">
         {t(
-          'The collections in the top nav, left to right. Drag to reorder — independent of the home page. Add or remove collections with the "In nav" toggle below.',
-          'مجموعات شريط التنقل من اليسار لليمين. اسحب لإعادة الترتيب — مستقل عن الصفحة الرئيسية. أضف أو أزل المجموعات عبر خيار "في التنقل" أدناه.'
+          'The top-level categories in the top nav, left to right. Drag to reorder — independent of the home page. Add or remove them with the "In nav" toggle below.',
+          'الفئات الرئيسية في شريط التنقل من اليسار لليمين. اسحب لإعادة الترتيب — مستقل عن الصفحة الرئيسية. أضف أو أزل عبر خيار "في التنقل" أدناه.'
         )}
       </p>
       {loading ? (
         <ProductGridSkeleton count={1} />
       ) : navRows.length === 0 ? (
-        <EmptyState title={t('No collections in the nav yet', 'لا توجد مجموعات في التنقل بعد')} />
+        <EmptyState title={t('No categories in the nav yet', 'لا توجد فئات في التنقل بعد')} />
       ) : (
         <ReorderList
           items={navRows}
@@ -240,11 +238,11 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
         />
       )}
 
-      {/* -------- Collections: membership toggles -------- */}
+      {/* -------- Top-level categories: nav/home membership toggles -------- */}
       <p className="admin-form__section-title" style={{ marginTop: 'var(--space-5)' }}>
-        {t('Collections', 'المجموعات')}
+        {t('Top-level categories', 'الفئات الرئيسية')}
       </p>
-      {collections.isPending ? (
+      {categories.isPending ? (
         <ProductGridSkeleton count={2} />
       ) : (
         <DataTable responsive>
@@ -257,7 +255,7 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
             </tr>
           </thead>
           <tbody>
-            {cols.map((c) => (
+            {topCats.map((c) => (
               <tr key={c.id}>
                 <td data-label={t('Name', 'الاسم')}>
                   {nameOf(c)}
@@ -270,7 +268,7 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
                     type="checkbox"
                     label={<span className="visually-hidden">{t('In nav', 'في التنقل')}</span>}
                     checked={c.showInNav}
-                    onChange={(e) => patchCollection(c.id, { showInNav: e.target.checked })}
+                    onChange={(e) => patchCategory(c.id, { showInNav: e.target.checked })}
                   />
                 </td>
                 <td data-label={t('Home row', 'صف الرئيسية')}>
@@ -279,7 +277,7 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
                     label={<span className="visually-hidden">{t('Home row', 'صف الرئيسية')}</span>}
                     checked={c.showOnHome}
                     disabled={c.showOnHomeAsImage}
-                    onChange={(e) => patchCollection(c.id, { showOnHome: e.target.checked })}
+                    onChange={(e) => patchCategory(c.id, { showOnHome: e.target.checked })}
                   />
                 </td>
                 <td data-label={t('Image banner', 'شريط صورة')}>
@@ -287,7 +285,7 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
                     type="checkbox"
                     label={<span className="visually-hidden">{t('Image banner', 'شريط صورة')}</span>}
                     checked={c.showOnHomeAsImage}
-                    onChange={(e) => patchCollection(c.id, { showOnHomeAsImage: e.target.checked })}
+                    onChange={(e) => patchCategory(c.id, { showOnHomeAsImage: e.target.checked })}
                   />
                 </td>
               </tr>
@@ -297,14 +295,14 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
       )}
       <p className="admin-form__hint">
         {t(
-          '"In nav" and the home-page toggles are independent. "Image banner" replaces "Home row"; a collection shows as one or the other.',
+          '"In nav" and the home-page toggles are independent. "Image banner" replaces "Home row"; a category shows as one or the other.',
           '"في التنقل" وخيارات الرئيسية مستقلة. "شريط صورة" يحل محل "صف الرئيسية".'
         )}
       </p>
 
-      {/* -------- Categories: home membership -------- */}
+      {/* -------- Other categories: home membership -------- */}
       <p className="admin-form__section-title" style={{ marginTop: 'var(--space-5)' }}>
-        {t('Categories', 'الفئات')}
+        {t('Other categories', 'فئات أخرى')}
       </p>
       {categories.isPending ? (
         <ProductGridSkeleton count={2} />
@@ -313,12 +311,12 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
           <thead>
             <tr>
               <th>{t('Name', 'الاسم')}</th>
-              <th>{t('Collection', 'المجموعة')}</th>
+              <th>{t('Parent', 'الفئة الأصل')}</th>
               <th>{t('Home row', 'صف الرئيسية')}</th>
             </tr>
           </thead>
           <tbody>
-            {cats.map((c) => (
+            {subCats.map((c) => (
               <tr key={c.id}>
                 <td data-label={t('Name', 'الاسم')}>
                   {nameOf(c)}
@@ -326,9 +324,7 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
                     <span style={{ color: 'var(--color-text-muted)' }}> · {t('archived', 'مؤرشفة')}</span>
                   )}
                 </td>
-                <td data-label={t('Collection', 'المجموعة')}>
-                  {c.collection ? nameOf(c.collection) : t('Standalone', 'مستقلة')}
-                </td>
+                <td data-label={t('Parent', 'الفئة الأصل')}>{c.parent ? nameOf(c.parent) : '—'}</td>
                 <td data-label={t('Home row', 'صف الرئيسية')}>
                   <Choice
                     type="checkbox"

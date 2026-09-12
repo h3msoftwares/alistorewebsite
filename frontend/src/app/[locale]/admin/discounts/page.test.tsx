@@ -7,10 +7,10 @@ vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en' }) }));
 
 vi.mock('@/lib/api', () => ({
   discountsApi: {
-    listDiscounts: vi.fn(),
-    createDiscount: vi.fn(),
-    updateDiscount: vi.fn(),
-    deleteDiscount: vi.fn(),
+    listPromotions: vi.fn(),
+    createPromotion: vi.fn(),
+    updatePromotion: vi.fn(),
+    deletePromotion: vi.fn(),
     listCoupons: vi.fn(),
     createCoupon: vi.fn(),
     updateCoupon: vi.fn(),
@@ -21,6 +21,7 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/hooks/use-catalog', () => ({
   useAdminCollections: () => ({ data: [] }),
   useAdminCategories: () => ({ data: [] }),
+  useProducts: () => ({ data: { items: [], total: 0, page: 1, pageSize: 500 } }),
 }));
 
 import { discountsApi } from '@/lib/api';
@@ -28,20 +29,22 @@ import AdminDiscountsPage from './page';
 
 const mock = vi.mocked(discountsApi, true);
 
-const discount = {
-  id: 'd1',
+const promotion = {
+  id: 'p1',
   nameEn: 'Summer sale',
   nameAr: 'تخفيضات',
-  scope: 'ALL' as const,
-  collectionID: null,
-  categoryID: null,
+  status: 'ACTIVE' as const,
   type: 'PERCENT' as const,
   value: 15,
-  stacking: 'STACK' as const,
-  isActive: true,
+  priority: 0,
+  stackable: true,
+  appliesToAll: true,
   startsAt: null,
   endsAt: null,
   dateCreated: '2026-09-01T00:00:00.000Z',
+  products: [],
+  categories: [],
+  collections: [],
 };
 const coupon = {
   id: 'c1',
@@ -61,13 +64,13 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mock.listDiscounts.mockResolvedValue([discount] as never);
+  mock.listPromotions.mockResolvedValue([promotion] as never);
   mock.listCoupons.mockResolvedValue([coupon] as never);
-  mock.createDiscount.mockResolvedValue(discount as never);
+  mock.createPromotion.mockResolvedValue(promotion as never);
 });
 
 describe('AdminDiscountsPage', () => {
-  it('lists catalog discounts on the first tab', async () => {
+  it('lists promotions on the first tab', async () => {
     renderPage();
     expect(await screen.findByText('Summer sale')).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '15%' })).toBeInTheDocument();
@@ -84,20 +87,34 @@ describe('AdminDiscountsPage', () => {
     expect(screen.getByText('$10.00')).toBeInTheDocument();
   });
 
-  it('submits a new discount', async () => {
+  it('submits a new promotion that applies to all items', async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('Summer sale');
 
     await user.type(screen.getByLabelText(/Name \(English\)/), 'Flash');
     await user.type(screen.getByLabelText(/Name \(Arabic\)/), 'فلاش');
-    await user.click(screen.getByRole('button', { name: 'Add discount' }));
+    await user.click(screen.getByLabelText('Applies to all items'));
+    await user.click(screen.getByRole('button', { name: 'Add promotion' }));
 
-    await waitFor(() => expect(mock.createDiscount).toHaveBeenCalled());
-    expect(mock.createDiscount.mock.calls[0][0]).toMatchObject({
+    await waitFor(() => expect(mock.createPromotion).toHaveBeenCalled());
+    expect(mock.createPromotion.mock.calls[0][0]).toMatchObject({
       nameEn: 'Flash',
-      scope: 'ALL',
+      appliesToAll: true,
       type: 'PERCENT',
     });
+  });
+
+  it('rejects a promotion with no target and not applying to all items', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('Summer sale');
+
+    await user.type(screen.getByLabelText(/Name \(English\)/), 'Flash');
+    await user.type(screen.getByLabelText(/Name \(Arabic\)/), 'فلاش');
+    await user.click(screen.getByRole('button', { name: 'Add promotion' }));
+
+    expect(await screen.findByText(/Pick at least one target/)).toBeInTheDocument();
+    expect(mock.createPromotion).not.toHaveBeenCalled();
   });
 });

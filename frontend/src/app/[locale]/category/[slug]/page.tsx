@@ -46,13 +46,17 @@ export default async function CategoryPage({
   const isAr = locale === 'ar';
   const name = isAr ? cat.nameAr : cat.nameEn;
   const children = cat.children ?? [];
-  const parentCollection = cat.collection ?? null;
+  // Root ancestor of this category (itself, if already a root) — plays the
+  // old "parent Collection" role for page-header accent theming, since
+  // Women/Men/Kids are top-level Categories now, not Collections.
+  let root = cat;
+  while (root.parent) root = root.parent;
 
   return (
     <div
       className="collection-page"
-      data-collection={parentCollection?.slug}
-      style={accentStyle(parentCollection?.accentColor)}
+      data-collection={root.slug}
+      style={accentStyle(root.accentColor)}
     >
       {children.length > 0 && (
         <section className="container section--tight" aria-label={isAr ? 'الفئات الفرعية' : 'Subcategories'}>
@@ -78,11 +82,7 @@ export default async function CategoryPage({
         categoryId={cat.id}
         locale={locale}
         name={name}
-        collection={
-          parentCollection
-            ? { slug: parentCollection.slug, name: isAr ? parentCollection.nameAr : parentCollection.nameEn }
-            : null
-        }
+        collection={root.id !== cat.id ? { slug: root.slug, name: isAr ? root.nameAr : root.nameEn } : null}
       />
     </div>
   );

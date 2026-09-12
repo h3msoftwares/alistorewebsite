@@ -14,7 +14,7 @@ vi.mock('next/link', () => ({
 
 const auth = { isAuthenticated: false };
 vi.mock('@/hooks/use-auth', () => ({ useAuth: () => auth }));
-vi.mock('@/hooks/use-catalog', () => ({ useNavCollections: () => ({ data: [], isPending: false }) }));
+vi.mock('@/hooks/use-catalog', () => ({ useNavCategories: () => ({ data: [], isPending: false }) }));
 vi.mock('@/hooks/use-settings', () => ({ useSettings: () => ({ data: null }) }));
 
 const renderFooter = () => {

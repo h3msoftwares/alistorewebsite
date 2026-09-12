@@ -1,9 +1,9 @@
 'use client';
 
-import type { FieldErrors, UseFormRegister } from 'react-hook-form';
+import { Controller, type Control, type FieldErrors, type UseFormRegister } from 'react-hook-form';
 import { z } from 'zod';
-import { Field, Input, Select, Textarea } from '@/components/ui';
-import { useCategories } from '@/hooks/use-catalog';
+import { CheckList, Field, Input, Select, Textarea } from '@/components/ui';
+import { useAdminCategories, useCollections } from '@/hooks/use-catalog';
 
 // Optional money fields are kept as strings in the form (not z.coerce.number
 // — an empty box would coerce to NaN, which Zod can't cleanly validate as
@@ -31,7 +31,12 @@ export const productCoreObjectSchema = z.object({
   nameAr: z.string().min(1, 'Required'),
   descriptionEn: z.string(),
   descriptionAr: z.string(),
-  categoryId: z.string().min(1, 'Required'),
+  primaryCategoryId: z.string().min(1, 'Required'),
+  // Zero or more ADDITIONAL (non-canonical) category placements, and manual
+  // collection memberships — Stage 1 catalog redesign (see ProductCategory /
+  // CollectionProduct). Plain string arrays: a native multi-select's value.
+  additionalCategoryIds: z.array(z.string()),
+  collectionIds: z.array(z.string()),
   price: z.number().positive('Must be greater than 0'),
   compareAtPrice: priceStringSchema,
   saleType: z.enum(['', 'PERCENT', 'AMOUNT']),
@@ -52,7 +57,9 @@ export const productCoreDefaults: ProductCoreValues = {
   nameAr: '',
   descriptionEn: '',
   descriptionAr: '',
-  categoryId: '',
+  primaryCategoryId: '',
+  additionalCategoryIds: [],
+  collectionIds: [],
   price: 0,
   compareAtPrice: '',
   saleType: '',
@@ -65,18 +72,21 @@ export const productCoreDefaults: ProductCoreValues = {
  *  variants as independent line items below this). */
 export function ProductCoreFields<T extends ProductCoreValues>({
   register,
+  control,
   errors,
   busy,
   locale,
 }: {
   register: UseFormRegister<T>;
+  control: Control<T>;
   errors: FieldErrors<T>;
   busy: boolean;
   locale: 'en' | 'ar';
 }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
-  const { data: categories } = useCategories();
+  const { data: categories } = useAdminCategories();
+  const { data: collections } = useCollections({ includeInactive: true });
 
   return (
     <>
@@ -93,27 +103,90 @@ export function ProductCoreFields<T extends ProductCoreValues>({
         <Field label={t('SKU', 'رمز المنتج')} error={errors.sku?.message as string | undefined} required>
           {(p) => <Input {...p} {...register('sku' as never)} disabled={busy} />}
         </Field>
-        <Field label={t('Category', 'الفئة')} error={errors.categoryId?.message as string | undefined} required>
+        <Field
+          label={t('Primary category', 'الفئة الأساسية')}
+          hint={t('Canonical placement — breadcrumbs, URL, reporting', 'الموضع الأساسي — مسار التصفح والرابط والتقارير')}
+          error={errors.primaryCategoryId?.message as string | undefined}
+          required
+        >
           {(p) => (
-            <Select {...p} {...register('categoryId' as never)} disabled={busy}>
+            <Select {...p} {...register('primaryCategoryId' as never)} disabled={busy}>
               <option value="">{t('Select a category', 'اختر فئة')}</option>
               {(categories ?? []).map((c) => (
-                // useCategories() already excludes an archived CATEGORY, but
-                // not one whose parent COLLECTION is archived — it can't,
-                // structurally, since it only checks the category's own
-                // status. A category under an archived collection used to
-                // appear as a completely normal, selectable option here
-                // (fix-list.md #15, resolves 12.2's second half). Flagged,
-                // not excluded — the category itself is still live/valid,
-                // just currently unreachable via browsing under that
-                // collection.
-                <option key={c.id} value={c.id}>
-                  {isAr ? c.nameAr : c.nameEn}
-                  {c.collection ? ` — ${isAr ? c.collection.nameAr : c.collection.nameEn}` : ''}
-                  {c.collection?.archivedAt ? t(' (collection archived)', ' (المجموعة مؤرشفة)') : ''}
+                // Flagged, not excluded, when this category (or an ancestor)
+                // is archived — the category row itself may still be
+                // perfectly valid, just currently unreachable on the
+                // storefront (fix-list.md #15's principle, carried onto the
+                // tree — see category-tree.ts's archivedCategoryIds()).
+                <option key={c.id} value={c.id} disabled={Boolean(c.isEffectivelyArchived)}>
+                  {'—'.repeat(c.depth)} {isAr ? c.nameAr : c.nameEn}
+                  {c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}
                 </option>
               ))}
             </Select>
+          )}
+        </Field>
+      </div>
+
+      <div className="admin-form__row">
+        <Field
+          label={t('Additional categories', 'فئات إضافية')}
+          hint={t('Optional — other places this product also appears', 'اختياري — أماكن أخرى يظهر فيها المنتج أيضًا')}
+        >
+          {(p) => (
+            <Controller
+              control={control}
+              name={'additionalCategoryIds' as never}
+              render={({ field }) => (
+                <CheckList
+                  {...p}
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                  disabled={busy}
+                  emptyLabel={t('No categories yet', 'لا توجد فئات بعد')}
+                  items={(categories ?? []).map((c) => ({
+                    id: c.id,
+                    disabled: Boolean(c.isEffectivelyArchived),
+                    label: (
+                      <>
+                        {'—'.repeat(c.depth)} {isAr ? c.nameAr : c.nameEn}
+                        {c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}
+                      </>
+                    ),
+                  }))}
+                />
+              )}
+            />
+          )}
+        </Field>
+        <Field
+          label={t('Collections', 'المجموعات')}
+          hint={t('Optional — manual merchandising groups (Sale, New Arrivals)', 'اختياري — مجموعات تسويقية يدوية (تخفيضات، وصل حديثاً)')}
+        >
+          {(p) => (
+            <Controller
+              control={control}
+              name={'collectionIds' as never}
+              render={({ field }) => (
+                <CheckList
+                  {...p}
+                  value={field.value ?? []}
+                  onChange={field.onChange}
+                  disabled={busy}
+                  emptyLabel={t('No collections yet', 'لا توجد مجموعات بعد')}
+                  items={(collections ?? []).map((c) => ({
+                    id: c.id,
+                    disabled: Boolean(c.archivedAt),
+                    label: (
+                      <>
+                        {isAr ? c.nameAr : c.nameEn}
+                        {c.archivedAt ? t(' (archived)', ' (مؤرشفة)') : ''}
+                      </>
+                    ),
+                  }))}
+                />
+              )}
+            />
           )}
         </Field>
       </div>
