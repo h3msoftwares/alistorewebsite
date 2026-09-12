@@ -311,14 +311,14 @@ describe('GET /api/admin/backup/drive/callback — no auth (state-gated)', () =>
     vi.mocked(completeDriveConnection).mockReset();
   });
 
-  it('completes the connection for a valid, freshly-signed state and redirects with drive=connected', async () => {
+  it('completes the connection for a valid, freshly-signed state and redirects with result=connected', async () => {
     const { user } = await createAdmin();
     const state = signConnectState(user.id);
     vi.mocked(completeDriveConnection).mockResolvedValue({ email: 'owner@example.com' });
 
     const res = await request(app).get('/api/admin/backup/drive/callback').query({ code: 'auth-code', state });
     expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('drive=connected');
+    expect(res.headers.location).toContain('result=connected');
     expect(completeDriveConnection).toHaveBeenCalledWith('auth-code', expect.stringContaining('/drive/callback'));
 
     const audit = await prisma.auditLog.findFirst({
@@ -333,25 +333,25 @@ describe('GET /api/admin/backup/drive/callback — no auth (state-gated)', () =>
       .get('/api/admin/backup/drive/callback')
       .query({ code: 'auth-code', state: 'not-a-real-token' });
     expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('drive=error');
+    expect(res.headers.location).toContain('result=error');
     expect(completeDriveConnection).not.toHaveBeenCalled();
   });
 
-  it('redirects with drive=error when Google itself reports an error (user declined consent)', async () => {
+  it('redirects with result=error when Google itself reports an error (user declined consent)', async () => {
     const res = await request(app).get('/api/admin/backup/drive/callback').query({ error: 'access_denied' });
     expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('drive=error');
+    expect(res.headers.location).toContain('result=error');
     expect(completeDriveConnection).not.toHaveBeenCalled();
   });
 
-  it('audit-logs a failed exchange and still redirects with drive=error', async () => {
+  it('audit-logs a failed exchange and still redirects with result=error', async () => {
     const { user } = await createAdmin();
     const state = signConnectState(user.id);
     vi.mocked(completeDriveConnection).mockRejectedValue(new Error('Google Drive connect failed: invalid_grant'));
 
     const res = await request(app).get('/api/admin/backup/drive/callback').query({ code: 'auth-code', state });
     expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('drive=error');
+    expect(res.headers.location).toContain('result=error');
 
     const audit = await prisma.auditLog.findFirst({
       where: { entityType: 'Backup', action: 'backup.drive.connect.failed', actorID: user.id },

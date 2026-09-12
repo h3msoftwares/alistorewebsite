@@ -8,10 +8,15 @@ const DRIVE_CALLBACK_PATH = '/api/admin/backup/drive/callback';
 function driveRedirectUri(): string {
   return `${env.BACKEND_URL}${DRIVE_CALLBACK_PATH}`;
 }
-// No locale prefix needed — proxy.ts redirects a bare path to the default
-// locale automatically.
-function driveSettingsPageUrl(): string {
-  return `${env.FRONTEND_URL}/admin/backup`;
+// A tiny page — deliberately OUTSIDE the /admin subtree, so it never goes
+// through AdminLayout's own auth bootstrap/role redirect — that posts the
+// result to `window.opener` and closes itself (see useConnectDrive on the
+// frontend). Runs in the popup this whole OAuth round-trip happens in, never
+// in the admin's main tab, so nothing about the admin's own session/page
+// state is ever disturbed by it. No locale prefix needed — proxy.ts
+// redirects a bare path to the default locale automatically.
+function drivePopupCloserUrl(result: 'connected' | 'error'): string {
+  return `${env.FRONTEND_URL}/drive-connect-result?result=${result}`;
 }
 
 export async function runBackupHandler(req: Request, res: Response) {
@@ -78,9 +83,11 @@ export async function driveStatusHandler(_req: Request, res: Response) {
   res.json(await backupService.getDriveStatus());
 }
 
-/** Returns the Google consent URL — the frontend navigates the whole tab to
- *  it (`window.location.href`), it can't be fetched/XHR'd since the consent
- *  screen must be a top-level page. */
+/** Returns the Google consent URL — the frontend opens it in a popup window
+ *  (`window.open`), not the main tab: the consent screen must be a top-level
+ *  page, but it doesn't have to be THIS page, and keeping it out of the main
+ *  tab means the admin's own session/SPA state is never disturbed by the
+ *  round-trip (see useConnectDrive on the frontend). */
 export async function driveConnectHandler(req: Request, res: Response) {
   const state = signConnectState(req.user!.id);
   const url = backupService.buildDriveAuthUrl(driveRedirectUri(), state);
@@ -89,17 +96,19 @@ export async function driveConnectHandler(req: Request, res: Response) {
 
 /** Google redirects here after consent — a plain top-level GET with no auth
  *  header, so this route is intentionally NOT behind requireAuth/requireRole
- *  (see backup.routes.ts); `state` is the actual gate (drive-state.ts).
- *  Either way, always ends by sending the browser back to the admin page. */
+ *  (see backup.routes.ts); `state` is the actual gate (drive-state.ts). This
+ *  request happens inside the popup opened by useConnectDrive, never the
+ *  admin's main tab — it always ends by sending the popup to a tiny page
+ *  that reports the result back via postMessage and closes itself. */
 export async function driveCallbackHandler(req: Request, res: Response) {
   const { code, state, error } = req.query as { code?: string; state?: string; error?: string };
-  const back = (query: string) => res.redirect(`${driveSettingsPageUrl()}?${query}`);
+  const closePopup = (result: 'connected' | 'error') => res.redirect(drivePopupCloserUrl(result));
 
-  if (error) return back('drive=error');
-  if (typeof code !== 'string' || typeof state !== 'string') return back('drive=error');
+  if (error) return closePopup('error');
+  if (typeof code !== 'string' || typeof state !== 'string') return closePopup('error');
 
   const adminId = verifyConnectState(state);
-  if (!adminId) return back('drive=error');
+  if (!adminId) return closePopup('error');
 
   try {
     const { email } = await backupService.completeDriveConnection(code, driveRedirectUri());
@@ -110,7 +119,7 @@ export async function driveCallbackHandler(req: Request, res: Response) {
       actorID: adminId,
       metadata: { email },
     });
-    return back('drive=connected');
+    return closePopup('connected');
   } catch (err) {
     await recordAudit({
       entityType: 'Backup',
@@ -119,7 +128,7 @@ export async function driveCallbackHandler(req: Request, res: Response) {
       actorID: adminId,
       metadata: { error: (err as Error).message },
     });
-    return back('drive=error');
+    return closePopup('error');
   }
 }
 

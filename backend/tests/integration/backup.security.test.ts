@@ -41,7 +41,7 @@ describe('backup — Drive callback state-token hardening (forgery attacks)', ()
 
     const res = await request(app).get('/api/admin/backup/drive/callback').query({ code: 'auth-code', state });
     expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('drive=connected');
+    expect(res.headers.location).toContain('result=connected');
   });
 
   it('rejects an unsigned "alg:none" state', async () => {
@@ -49,7 +49,7 @@ describe('backup — Drive callback state-token hardening (forgery attacks)', ()
     const forged = jwt.sign({ sub: user.id, purpose: 'backup-drive-connect' }, '', { algorithm: 'none' });
 
     const res = await request(app).get('/api/admin/backup/drive/callback').query({ code: 'auth-code', state: forged });
-    expect(res.headers.location).toContain('drive=error');
+    expect(res.headers.location).toContain('result=error');
     expect(completeDriveConnection).not.toHaveBeenCalled();
   });
 
@@ -61,7 +61,7 @@ describe('backup — Drive callback state-token hardening (forgery attacks)', ()
     });
 
     const res = await request(app).get('/api/admin/backup/drive/callback').query({ code: 'auth-code', state: forged });
-    expect(res.headers.location).toContain('drive=error');
+    expect(res.headers.location).toContain('result=error');
     expect(completeDriveConnection).not.toHaveBeenCalled();
   });
 
@@ -75,7 +75,7 @@ describe('backup — Drive callback state-token hardening (forgery attacks)', ()
     });
 
     const res = await request(app).get('/api/admin/backup/drive/callback').query({ code: 'auth-code', state: forged });
-    expect(res.headers.location).toContain('drive=error');
+    expect(res.headers.location).toContain('result=error');
     expect(completeDriveConnection).not.toHaveBeenCalled();
   });
 
@@ -88,7 +88,7 @@ describe('backup — Drive callback state-token hardening (forgery attacks)', ()
     const forged = `${h}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.${s}`;
 
     const res = await request(app).get('/api/admin/backup/drive/callback').query({ code: 'auth-code', state: forged });
-    expect(res.headers.location).toContain('drive=error');
+    expect(res.headers.location).toContain('result=error');
     expect(completeDriveConnection).not.toHaveBeenCalled();
   });
 
@@ -100,7 +100,7 @@ describe('backup — Drive callback state-token hardening (forgery attacks)', ()
     });
 
     const res = await request(app).get('/api/admin/backup/drive/callback').query({ code: 'auth-code', state: expired });
-    expect(res.headers.location).toContain('drive=error');
+    expect(res.headers.location).toContain('result=error');
     expect(completeDriveConnection).not.toHaveBeenCalled();
   });
 
@@ -109,15 +109,15 @@ describe('backup — Drive callback state-token hardening (forgery attacks)', ()
     const res = await request(app)
       .get('/api/admin/backup/drive/callback')
       .query({ code: 'auth-code', state: customerAccessToken });
-    expect(res.headers.location).toContain('drive=error');
+    expect(res.headers.location).toContain('result=error');
     expect(completeDriveConnection).not.toHaveBeenCalled();
   });
 
   it('rejects a missing code or state without ever calling the service', async () => {
     const r1 = await request(app).get('/api/admin/backup/drive/callback').query({ state: 'whatever' });
     const r2 = await request(app).get('/api/admin/backup/drive/callback').query({ code: 'auth-code' });
-    expect(r1.headers.location).toContain('drive=error');
-    expect(r2.headers.location).toContain('drive=error');
+    expect(r1.headers.location).toContain('result=error');
+    expect(r2.headers.location).toContain('result=error');
     expect(completeDriveConnection).not.toHaveBeenCalled();
   });
 
@@ -129,7 +129,7 @@ describe('backup — Drive callback state-token hardening (forgery attacks)', ()
     // No Authorization header at all.
     const res = await request(app).get('/api/admin/backup/drive/callback').query({ code: 'auth-code', state });
     expect(res.status).toBe(302);
-    expect(res.headers.location).toContain('drive=connected');
+    expect(res.headers.location).toContain('result=connected');
   });
 });
 

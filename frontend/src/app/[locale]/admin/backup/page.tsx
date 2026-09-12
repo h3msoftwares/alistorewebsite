@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { CalendarClock, Cloud, CloudOff, DatabaseBackup, RotateCcw } from 'lucide-react';
 import { Alert, Button, DataTable, EmptyState, Field, Icon, Input, Modal, ProductGridSkeleton, Select } from '@/components/ui';
@@ -200,26 +200,16 @@ function DriveConnectionCard({ locale }: { locale: 'en' | 'ar' }) {
   const connect = useConnectDrive();
   const disconnect = useDisconnectDrive();
 
-  // Plain browser APIs, not next/navigation's useSearchParams — this value
-  // only ever matters for the one page load right after Google's redirect,
-  // and reading it this way avoids forcing the whole page out of static
-  // rendering just for a one-off query param. Lazy initializer (read once,
-  // at mount) rather than an effect + setState.
-  const [redirectResult] = useState<string | null>(() =>
-    typeof window === 'undefined' ? null : new URL(window.location.href).searchParams.get('drive')
-  );
-  // Separate effect purely for the side effect of tidying the URL — no
-  // setState here, `redirectResult` above already has the value.
-  useEffect(() => {
-    if (!redirectResult) return;
-    const url = new URL(window.location.href);
-    url.searchParams.delete('drive');
-    window.history.replaceState(null, '', url.pathname + url.search);
-    // Runs once on mount — redirectResult itself never changes after init.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const busy = connect.isPending || disconnect.isPending;
+
+  function handleConnect() {
+    // Opened synchronously, in direct response to the click — doing this
+    // after an `await` risks the browser's popup blocker treating it as
+    // unrelated to the user gesture. The URL is filled in once the mutation
+    // fetches it; see useConnectDrive.
+    const popup = window.open('about:blank', 'h3m-drive-connect', 'width=520,height=680');
+    connect.mutate(popup);
+  }
 
   return (
     <div className="list-item">
@@ -229,10 +219,10 @@ function DriveConnectionCard({ locale }: { locale: 'en' | 'ar' }) {
       <div className="list-item-body">
         <h3 className="list-item-title">{t('Google Drive connection', 'اتصال Google Drive')}</h3>
 
-        {redirectResult === 'connected' && (
+        {connect.isSuccess && connect.data === 'connected' && (
           <Alert tone="success">{t('Google Drive connected.', 'تم الاتصال بـ Google Drive.')}</Alert>
         )}
-        {redirectResult === 'error' && (
+        {(connect.isError || connect.data === 'error') && (
           <Alert tone="danger">
             {t('Could not connect Google Drive. Try again.', 'تعذّر الاتصال بـ Google Drive. حاول مجددًا.')}
           </Alert>
@@ -264,13 +254,7 @@ function DriveConnectionCard({ locale }: { locale: 'en' | 'ar' }) {
               {t('Disconnect', 'قطع الاتصال')}
             </Button>
           ) : (
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => connect.mutate()}
-              loading={connect.isPending}
-              disabled={busy}
-            >
+            <Button type="button" size="sm" onClick={handleConnect} loading={connect.isPending} disabled={busy}>
               {t('Connect Google Drive', 'ربط Google Drive')}
             </Button>
           )}
