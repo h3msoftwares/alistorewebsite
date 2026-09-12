@@ -17,6 +17,11 @@ FROM node:20-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
+# postgresql-client — pg_dump for the admin-triggered database backup
+# (modules/backup), matching the postgres:16 used everywhere else.
+RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client \
+  && rm -rf /var/lib/apt/lists/*
+
 # prod dependencies only
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force

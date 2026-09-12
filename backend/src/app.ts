@@ -27,6 +27,7 @@ import userRoutes from './modules/account/user.routes';
 import uploadRoutes from './modules/uploads/upload.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import { discountRoutes } from './modules/discounts/discount.routes';
+import { backupRoutes } from './modules/backup/backup.routes';
 
 export function buildApp(
   opts: {
@@ -47,6 +48,7 @@ export function buildApp(
     orderTrackRateLimit?: boolean;
     orderLookupRateLimit?: boolean;
     orderCheckoutRateLimit?: boolean;
+    backupRunRateLimit?: boolean;
     // The app-wide per-IP baseline limiter (skips GET/HEAD/OPTIONS — see
     // below). Same on/off-under-test convention as the others; a focused
     // test passes `true`.
@@ -238,6 +240,18 @@ export function buildApp(
   );
   app.use('/api/addresses', addressRoutes);
   app.use('/api/users', userRoutes);
+  // Standalone from adminRoutes on purpose: that router gates on STAFF-or-
+  // ADMIN + per-route permissions, but backups are ADMIN-only, full stop —
+  // and its Drive OAuth callback has no auth header at all (Google's own
+  // redirect). Mounted BEFORE the broader '/api/admin' prefix: Express tries
+  // app.use() mounts in registration order, and adminRoutes' blanket
+  // requireAuth (no path filter of its own) would otherwise intercept every
+  // /api/admin/backup/* request — including the callback — before it ever
+  // reaches this router.
+  app.use(
+    '/api/admin/backup',
+    backupRoutes({ rateLimit: opts.backupRunRateLimit ?? env.NODE_ENV !== 'test' })
+  );
   app.use('/api/admin', adminRoutes);
   app.use('/api/uploads', uploadRoutes);
   app.use('/api/settings', settingsRoutes);

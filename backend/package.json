@@ -17,6 +17,8 @@
     "seed": "tsx prisma/seed.ts",
     "seed:empty": "tsx prisma/seed-empty.ts",
     "seed:large": "tsx prisma/seed-large.ts",
+    "backup:token": "tsx scripts/generate-drive-refresh-token.ts",
+    "backup:run": "tsx scripts/run-backup.ts",
     "qa:reset": "tsx scripts/qa-reset.ts",
     "qa:reset-fixtures": "npm run seed && tsx scripts/qa-seed-fixtures.ts",
     "test": "vitest run",

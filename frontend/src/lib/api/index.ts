@@ -12,6 +12,7 @@ export * as pushApi from './push';
 export * as discountsApi from './discounts';
 export * as rbacApi from './rbac';
 export * as customersApi from './customers';
+export * as backupApi from './backup';
 
 export { api, apiRequest, API_URL, refreshAccessToken } from './client';
 export { ApiError, isApiError } from './errors';

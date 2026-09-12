@@ -162,6 +162,19 @@ export function useChangePassword() {
   });
 }
 
+/** Re-verifies the password to unlock a step-up-protected action (backend
+ *  `requireFreshAuth` — order status changes, stock edits, database restore).
+ *  On success, swaps in the fresh access token; the caller retries its
+ *  original request. */
+export function useStepUp() {
+  return useMutation({
+    mutationFn: async (password: string) => {
+      const { accessToken } = await authApi.stepUp(password);
+      setAccessToken(accessToken);
+    },
+  });
+}
+
 export function useLogout() {
   const dispatch = useAppDispatch();
   const qc = useQueryClient();

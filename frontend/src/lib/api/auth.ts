@@ -55,6 +55,13 @@ export function changePassword(body: ChangePasswordBody) {
   return api.post<{ accessToken: string }>('/api/auth/change-password', body);
 }
 
+/** Re-verifies the signed-in user's password to unlock a step-up-protected
+ *  action (see backend `requireFreshAuth`). Returns a fresh access token with
+ *  a new `auth_time` — swap it in, then retry the original request. */
+export function stepUp(password: string) {
+  return api.post<{ accessToken: string }>('/api/auth/step-up', { password });
+}
+
 export function logout() {
   return api.post<void>('/api/auth/logout', undefined, { auth: false });
 }
