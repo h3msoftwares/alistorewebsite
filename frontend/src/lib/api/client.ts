@@ -73,15 +73,32 @@ export function resetCsrfToken(): void {
   csrfToken = null;
 }
 
+// Admin pages live under /<locale>/admin — e.g. /en/admin/orders. Checked as
+// a path *segment*, not a substring, so a hypothetical future route like
+// /en/administration wouldn't false-positive. This is how refreshAccessToken
+// below decides which session's refresh endpoint/cookie to use: the two
+// sessions have distinct cookies (adminRefreshToken @ /api/admin/auth vs.
+// refreshToken @ /api/auth — see fix-list.md #13), and the current route is
+// the only reliable signal available at this layer for which one applies —
+// there's no access token to decode from yet on first load (that's the
+// whole point of this call), and this same function also serves the mid-
+// session 401-retry path below, where using the current route is equally
+// correct and keeps both callers on one code path instead of two.
+function isAdminRoute(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.pathname.split('/').includes('admin');
+}
+
 // A single in-flight refresh shared by every 401'd request, so a burst of
-// parallel calls triggers exactly one POST /api/auth/refresh.
+// parallel calls triggers exactly one POST to the refresh endpoint.
 let refreshInFlight: Promise<boolean> | null = null;
 
 async function refreshAccessToken(): Promise<boolean> {
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/auth/refresh`, {
+        const refreshPath = isAdminRoute() ? '/api/admin/auth/refresh' : '/api/auth/refresh';
+        const res = await fetch(`${API_URL}${refreshPath}`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },

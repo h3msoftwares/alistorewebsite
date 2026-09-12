@@ -53,6 +53,32 @@ describe('Products API', () => {
       expect(res.body.items.map((p: { nameEn: string }) => p.nameEn)).toEqual(['Mid']);
     });
 
+    it('paginates a tied sort key stably — every row appears exactly once across pages, none repeated or skipped (fix-list.md #19, resolves 11.6)', async () => {
+      // 6 products, all the same price — the exact shape that used to have
+      // no deterministic order at all (Postgres doesn't guarantee stable
+      // row order across repeated queries for tied sort keys without a
+      // tiebreaker column).
+      const ids = new Set<string>();
+      for (let i = 0; i < 6; i++) {
+        const p = await makeProduct(collectionId, categoryId, { over: { nameEn: `Tied ${i}`, price: 20 } });
+        ids.add(p.id);
+      }
+
+      const page1 = await request(app).get('/api/products?sort=price_asc&page=1&pageSize=3');
+      const page2 = await request(app).get('/api/products?sort=price_asc&page=2&pageSize=3');
+      const seen = [...page1.body.items, ...page2.body.items].map((p: { id: string }) => p.id);
+
+      expect(seen).toHaveLength(6);
+      expect(new Set(seen)).toEqual(ids); // every row exactly once — none skipped, none repeated
+
+      // Re-fetching the same two pages again returns identical order —
+      // stability across repeated requests, not just within one.
+      const page1Again = await request(app).get('/api/products?sort=price_asc&page=1&pageSize=3');
+      expect(page1Again.body.items.map((p: { id: string }) => p.id)).toEqual(
+        page1.body.items.map((p: { id: string }) => p.id)
+      );
+    });
+
     it('filters by search term and by variant size', async () => {
       await makeProduct(collectionId, categoryId, { over: { nameEn: 'Red Hoodie' } });
       await makeProduct(collectionId, categoryId, {
@@ -346,6 +372,60 @@ describe('Products API', () => {
       expect(Number(res.body.product.price)).toBe(99);
     });
 
+    it('without expectedLastEdit, a second concurrent edit still silently wins (unchanged, backward-compatible default)', async () => {
+      const p = await makeProduct(collectionId, categoryId, { over: { price: 10 } });
+      const tabA = await request(app).patch(`/api/products/${p.id}`).set(bearer(adminToken)).send({ price: 50 });
+      const tabB = await request(app).patch(`/api/products/${p.id}`).set(bearer(adminToken)).send({ price: 60 });
+      expect(tabA.status).toBe(200);
+      expect(tabB.status).toBe(200);
+      const final = await prisma.product.findUniqueOrThrow({ where: { id: p.id } });
+      expect(Number(final.price)).toBe(60);
+    });
+
+    it('409s a concurrent edit when expectedLastEdit is stale (fix-list.md #14, resolves 1.5)', async () => {
+      const p = await makeProduct(collectionId, categoryId, { over: { price: 10 } });
+      const fetched = await request(app).get(`/api/products/${p.id}`);
+      const staleLastEdit = fetched.body.product.lastEdit;
+
+      // Tab A saves first, using the same lastEdit both tabs loaded with.
+      const tabA = await request(app)
+        .patch(`/api/products/${p.id}`)
+        .set(bearer(adminToken))
+        .send({ price: 50, expectedLastEdit: staleLastEdit });
+      expect(tabA.status).toBe(200);
+
+      // Tab B still has the OLD lastEdit (never refetched) — its save must
+      // be rejected instead of silently overwriting tab A's change.
+      const tabB = await request(app)
+        .patch(`/api/products/${p.id}`)
+        .set(bearer(adminToken))
+        .send({ price: 60, expectedLastEdit: staleLastEdit });
+      expect(tabB.status).toBe(409);
+      expect(tabB.body.error.code).toBe('CONFLICT');
+
+      const final = await prisma.product.findUniqueOrThrow({ where: { id: p.id } });
+      expect(Number(final.price)).toBe(50); // tab A's write stands, not silently overwritten
+    });
+
+    it('accepts the write when expectedLastEdit is fresh (re-fetched after the conflict)', async () => {
+      const p = await makeProduct(collectionId, categoryId, { over: { price: 10 } });
+      const first = await request(app)
+        .get(`/api/products/${p.id}`);
+      await request(app)
+        .patch(`/api/products/${p.id}`)
+        .set(bearer(adminToken))
+        .send({ price: 50, expectedLastEdit: first.body.product.lastEdit });
+
+      // Re-fetch, as the frontend does after a 409, then retry with the now-current lastEdit.
+      const refetched = await request(app).get(`/api/products/${p.id}`);
+      const res = await request(app)
+        .patch(`/api/products/${p.id}`)
+        .set(bearer(adminToken))
+        .send({ price: 70, expectedLastEdit: refetched.body.product.lastEdit });
+      expect(res.status).toBe(200);
+      expect(Number(res.body.product.price)).toBe(70);
+    });
+
     it('soft-deletes a product', async () => {
       const p = await makeProduct(collectionId, categoryId);
       const res = await request(app).delete(`/api/products/${p.id}`).set(bearer(adminToken));
@@ -433,6 +513,40 @@ describe('Products API', () => {
         .delete(`/api/products/${p.id}/variants/${p.variants[0].id}`)
         .set(bearer(adminToken));
       expect(blocked.status).toBe(409);
+    });
+
+    it('409s deleting a product\'s last remaining variant (fix-list.md #17)', async () => {
+      const p = await makeProduct(collectionId, categoryId, {
+        variants: [{ sku: 'only', size: 'M', color: 'Black' }],
+      });
+      const res = await request(app)
+        .delete(`/api/products/${p.id}/variants/${p.variants[0].id}`)
+        .set(bearer(adminToken));
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toMatch(/last variant/i);
+
+      // untouched — still exactly one variant
+      const stillThere = await prisma.productVariant.findUnique({ where: { id: p.variants[0].id } });
+      expect(stillThere).not.toBeNull();
+    });
+
+    it('allows deleting down to exactly one variant, then blocks the last one', async () => {
+      const p = await makeProduct(collectionId, categoryId, {
+        variants: [
+          { sku: 'a', size: 'M', color: 'Black' },
+          { sku: 'b', size: 'L', color: 'Black' },
+        ],
+      });
+      const first = await request(app)
+        .delete(`/api/products/${p.id}/variants/${p.variants[1].id}`)
+        .set(bearer(adminToken));
+      expect(first.status).toBe(204);
+
+      const second = await request(app)
+        .delete(`/api/products/${p.id}/variants/${p.variants[0].id}`)
+        .set(bearer(adminToken));
+      expect(second.status).toBe(409);
+      expect(second.body.error.message).toMatch(/last variant/i);
     });
   });
 

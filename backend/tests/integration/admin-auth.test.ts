@@ -24,8 +24,8 @@ const adminLogin = (body: Record<string, unknown>) =>
   request(app).post('/api/auth/ali-admin-login').send(body);
 
 /** The Set-Cookie flags, minus the token value, for comparison. */
-const cookieFlags = (setCookie: string[] | undefined) => {
-  const c = (setCookie ?? []).find((x) => x.startsWith('refreshToken='));
+const cookieFlags = (setCookie: string[] | undefined, cookieName: string) => {
+  const c = (setCookie ?? []).find((x) => x.startsWith(`${cookieName}=`));
   if (!c) return null;
   return c
     .split(';')
@@ -48,11 +48,14 @@ describe('POST /api/auth/ali-admin-login', () => {
     expect(res.status).toBe(404);
   });
 
-  it('valid ADMIN credentials → 200 with an access token + refresh cookie', async () => {
+  it('valid ADMIN credentials → 200 with an access token + admin-scoped refresh cookie', async () => {
     const res = await adminLogin({ identifier: ADMIN_EMAIL, password: PASSWORD });
     expect(res.status).toBe(200);
     expect(res.body.accessToken).toBeTypeOf('string');
-    expect(res.headers['set-cookie'].join(';')).toContain('refreshToken=');
+    // adminRefreshToken, not the customer's refreshToken — see fix-list.md #13
+    // (resolves 2.6: the two sessions used to share one cookie slot).
+    expect(res.headers['set-cookie'].join(';')).toContain('adminRefreshToken=');
+    expect(res.headers['set-cookie'].join(';')).not.toContain('refreshToken='); // case-sensitive: "adminRefreshToken=" doesn't match this
   });
 
   it('valid STAFF credentials → 200 (staff may use the admin panel)', async () => {
@@ -61,18 +64,27 @@ describe('POST /api/auth/ali-admin-login', () => {
     expect(res.body.accessToken).toBeTypeOf('string');
   });
 
-  it('the refresh cookie carries the same flags as customer login (httpOnly / SameSite=Strict / Path=/api/auth, no Secure in dev)', async () => {
+  it('the admin refresh cookie carries the same security flags as the customer one but a distinct name + path (fix-list.md #13)', async () => {
     const adminRes = await adminLogin({ identifier: ADMIN_EMAIL, password: PASSWORD });
     const customerRes = await request(app)
       .post('/api/auth/login')
       .send({ identifier: CUSTOMER_EMAIL, password: PASSWORD });
 
-    const flags = cookieFlags(adminRes.headers['set-cookie']);
-    expect(flags).toEqual(cookieFlags(customerRes.headers['set-cookie']));
-    expect(flags).toContain('HttpOnly');
-    expect(flags).toContain('SameSite=Strict');
-    expect(flags).toContain('Path=/api/auth');
-    expect(flags).not.toContain('Secure'); // NODE_ENV=test → not production
+    const adminFlags = cookieFlags(adminRes.headers['set-cookie'], 'adminRefreshToken');
+    const customerFlags = cookieFlags(customerRes.headers['set-cookie'], 'refreshToken');
+
+    // Security posture matches (both httpOnly / SameSite=Strict / no Secure
+    // in dev) — only the scoping (name, path) is deliberately different, so
+    // the two sessions can coexist in one browser without colliding.
+    expect(adminFlags).toContain('HttpOnly');
+    expect(adminFlags).toContain('SameSite=Strict');
+    expect(adminFlags).not.toContain('Secure'); // NODE_ENV=test → not production
+    expect(customerFlags).toContain('HttpOnly');
+    expect(customerFlags).toContain('SameSite=Strict');
+    expect(customerFlags).not.toContain('Secure');
+
+    expect(adminFlags).toContain('Path=/api/admin/auth');
+    expect(customerFlags).toContain('Path=/api/auth');
   });
 
   it('valid password but non-admin role → 401 "Invalid credentials", no cookie', async () => {
@@ -257,13 +269,76 @@ describe('POST /api/auth/ali-admin-login', () => {
       expect(ttl(staff.body.accessToken)).toBe(5 * 60);
     });
 
-    it('silent refresh of an admin session keeps issuing short-lived tokens', async () => {
+    it('silent refresh of an admin session (via /api/admin/auth/refresh) keeps issuing short-lived tokens', async () => {
       const login = await adminLogin({ identifier: ADMIN_EMAIL, password: PASSWORD });
       const cookie = login.headers['set-cookie'];
 
-      const refreshed = await request(app).post('/api/auth/refresh').set('Cookie', cookie);
+      const refreshed = await request(app).post('/api/admin/auth/refresh').set('Cookie', cookie);
       expect(refreshed.status).toBe(200);
       expect(ttl(refreshed.body.accessToken)).toBe(5 * 60);
+    });
+
+    it("the admin's refresh cookie does nothing at the customer refresh endpoint, and vice versa (sessions no longer share a slot)", async () => {
+      const adminSession = await adminLogin({ identifier: ADMIN_EMAIL, password: PASSWORD });
+      const customerSession = await request(app)
+        .post('/api/auth/login')
+        .send({ identifier: CUSTOMER_EMAIL, password: PASSWORD });
+
+      // Admin's cookie carries no `refreshToken`, so the customer endpoint
+      // sees no token at all — a clean 401, not "refreshed as the wrong role".
+      const customerEndpointWithAdminCookie = await request(app)
+        .post('/api/auth/refresh')
+        .set('Cookie', adminSession.headers['set-cookie']);
+      expect(customerEndpointWithAdminCookie.status).toBe(401);
+
+      // Same in reverse: customer's cookie carries no `adminRefreshToken`.
+      const adminEndpointWithCustomerCookie = await request(app)
+        .post('/api/admin/auth/refresh')
+        .set('Cookie', customerSession.headers['set-cookie']);
+      expect(adminEndpointWithCustomerCookie.status).toBe(401);
+    });
+
+    it('same-browser session independence: a customer session survives an admin login in the same cookie jar, untouched (the actual 2.6 scenario)', async () => {
+      // One agent = one cookie jar = one real browser, holding whatever both
+      // logins below set. The bug this guards against: logging into the
+      // admin panel used to silently overwrite the customer's refreshToken
+      // cookie (same name, same path), so the customer tab's own next
+      // silent refresh would come back as the admin's identity instead.
+      const agent = request.agent(app);
+
+      const customerLogin = await agent
+        .post('/api/auth/login')
+        .send({ identifier: CUSTOMER_EMAIL, password: PASSWORD });
+      expect(customerLogin.status).toBe(200);
+
+      // Same browser then also signs into the admin panel.
+      const adminLoginRes = await agent
+        .post('/api/auth/ali-admin-login')
+        .send({ identifier: ADMIN_EMAIL, password: PASSWORD });
+      expect(adminLoginRes.status).toBe(200);
+
+      // The customer's OWN silent refresh, from that same browser, after the
+      // admin login — must still come back as the customer, not the admin.
+      // This is the part the earlier "vice versa" test above does not cover:
+      // that one checks each session's cookie in isolation (obtained from
+      // two separate, non-shared logins); this one checks that both cookies
+      // genuinely coexist in one real cookie jar without either clobbering
+      // the other.
+      const customerRefresh = await agent.post('/api/auth/refresh');
+      expect(customerRefresh.status).toBe(200);
+      const customerPayload = JSON.parse(
+        Buffer.from(customerRefresh.body.accessToken.split('.')[1], 'base64url').toString()
+      );
+      expect(customerPayload.role).toBe('CUSTOMER');
+
+      // And the admin's own session, from that same browser, still works
+      // too — proving real coexistence, not just "the customer survived".
+      const adminRefresh = await agent.post('/api/admin/auth/refresh');
+      expect(adminRefresh.status).toBe(200);
+      const adminPayload = JSON.parse(
+        Buffer.from(adminRefresh.body.accessToken.split('.')[1], 'base64url').toString()
+      );
+      expect(adminPayload.role).toBe('ADMIN');
     });
   });
 });

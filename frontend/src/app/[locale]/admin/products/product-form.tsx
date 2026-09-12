@@ -16,6 +16,15 @@ const priceStringSchema = z.string().regex(/^$|^\d+(\.\d{1,2})?$/, 'Must be empt
 // ZodEffects, which can't be extended, so the refine is applied last, by
 // both this schema and the create page's extended one, via the same
 // `saleNeedsValue` check below.
+//
+// No `quantity` field here on purpose (fix-list.md #16) — `Product.quantity`
+// is a dead, free-standing DB column never derived from or validated against
+// variant stock, and every real product always has ≥1 variant (creation
+// requires it; deleteVariant() blocks going to zero — fix-list.md #17), so
+// editing it here could only ever mislead an admin into thinking it affects
+// availability. Left unset server-side, which keeps its schema default (0).
+// The list page shows a computed sum of variant stock in its place instead —
+// see admin/products/page.tsx.
 export const productCoreObjectSchema = z.object({
   sku: z.string().min(1, 'Required'),
   nameEn: z.string().min(1, 'Required'),
@@ -25,8 +34,6 @@ export const productCoreObjectSchema = z.object({
   categoryId: z.string().min(1, 'Required'),
   price: z.number().positive('Must be greater than 0'),
   compareAtPrice: priceStringSchema,
-  // Free-standing signed quantity — may be 0 or negative, unrelated to isActive.
-  quantity: z.number().int(),
   saleType: z.enum(['', 'PERCENT', 'AMOUNT']),
   saleValue: priceStringSchema,
 });
@@ -48,7 +55,6 @@ export const productCoreDefaults: ProductCoreValues = {
   categoryId: '',
   price: 0,
   compareAtPrice: '',
-  quantity: 0,
   saleType: '',
   saleValue: '',
 };
@@ -92,9 +98,19 @@ export function ProductCoreFields<T extends ProductCoreValues>({
             <Select {...p} {...register('categoryId' as never)} disabled={busy}>
               <option value="">{t('Select a category', 'اختر فئة')}</option>
               {(categories ?? []).map((c) => (
+                // useCategories() already excludes an archived CATEGORY, but
+                // not one whose parent COLLECTION is archived — it can't,
+                // structurally, since it only checks the category's own
+                // status. A category under an archived collection used to
+                // appear as a completely normal, selectable option here
+                // (fix-list.md #15, resolves 12.2's second half). Flagged,
+                // not excluded — the category itself is still live/valid,
+                // just currently unreachable via browsing under that
+                // collection.
                 <option key={c.id} value={c.id}>
                   {isAr ? c.nameAr : c.nameEn}
                   {c.collection ? ` — ${isAr ? c.collection.nameAr : c.collection.nameEn}` : ''}
+                  {c.collection?.archivedAt ? t(' (collection archived)', ' (المجموعة مؤرشفة)') : ''}
                 </option>
               ))}
             </Select>
@@ -125,14 +141,6 @@ export function ProductCoreFields<T extends ProductCoreValues>({
           {(p) => <Input {...p} type="text" inputMode="decimal" placeholder="0.00" {...register('compareAtPrice' as never)} disabled={busy} />}
         </Field>
       </div>
-
-      <Field
-        label={t('Quantity', 'الكمية')}
-        hint={t('May be 0 or negative — independent of active status', 'قد تكون 0 أو سالبة — مستقلة عن حالة التفعيل')}
-        error={errors.quantity?.message as string | undefined}
-      >
-        {(p) => <Input {...p} type="number" step="1" {...register('quantity' as never, { valueAsNumber: true })} disabled={busy} />}
-      </Field>
 
       <div className="admin-form__row">
         <Field label={t('Sale type', 'نوع التخفيض')}>

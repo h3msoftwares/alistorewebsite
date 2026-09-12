@@ -84,12 +84,21 @@ export function ProductPreviewCard({
   // Colour-tagged photo takes over when that colour is selected; otherwise
   // the generic (untagged) shots; falling back to whatever's first if a
   // product only has colour-tagged photos and none match yet.
+  //
+  // Filters against `selectedColor` (the shopper's own click), NOT
+  // `effectiveColor` — `effectiveColor` defaults to `firstVariant?.color`
+  // purely for pricing/variant-resolution before any click (same reasoning
+  // as the comment on sizeSoldOut/colorSoldOut below), and using that same
+  // default here meant the card's generic/lead photo was excluded the
+  // instant a product had any colour-tagged variant at all, unconditionally,
+  // before the shopper touched anything (fix-list.md #7's broader-scope
+  // finding, alongside 3.3's product-page version of the same bug).
   const image = useMemo(() => {
-    const forColor = effectiveColor ? product.images.filter((img) => img.color === effectiveColor) : [];
+    const forColor = selectedColor ? product.images.filter((img) => img.color === selectedColor) : [];
     if (forColor.length > 0) return forColor[0];
     const generic = product.images.find((img) => !img.color);
     return generic ?? product.images[0];
-  }, [product, effectiveColor]);
+  }, [product, selectedColor]);
 
   // Two-axis-aware: a size is only "in stock" if a variant exists with that
   // size AND whatever colour is currently selected (and vice versa) — the

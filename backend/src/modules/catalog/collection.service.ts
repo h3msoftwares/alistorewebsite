@@ -68,9 +68,15 @@ export async function getCollectionById(id: string) {
   return collection;
 }
 
+// Public storefront lookup — unlike getCollectionById (admin-only, used by
+// the edit form), this is what /[locale]/[collection] resolves through, so
+// it must respect the same "active" gate listCollections() defaults to.
+// Previously had none at all: an archived (or merely inactive) collection's
+// direct slug URL stayed fully live, the one reachability path the admin's
+// "archive" action doesn't actually close (fix-list.md #8, resolves 12.1).
 export async function getCollectionBySlug(slug: string) {
-  const collection = await prisma.collection.findUnique({
-    where: { slug },
+  const collection = await prisma.collection.findFirst({
+    where: { slug, ...statusWhere('active') },
     include: { images: imageOrder, categories: categoryTree },
   });
   if (!collection) throw new AppError('NOT_FOUND', 'Collection not found');

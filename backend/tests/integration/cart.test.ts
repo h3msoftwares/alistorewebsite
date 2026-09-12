@@ -53,6 +53,31 @@ describe('Cart API', () => {
     expect(get.body.items[0].quantity).toBe(4);
   });
 
+  // fix-list.md #18, resolves 1.6: same logged-in user, two tabs, both add
+  // the same fresh line at once — used to both read "no existing row" (READ
+  // COMMITTED), both attempt a create, and the DB's own unique constraint on
+  // (cartID, variantID) correctly rejected the second one, but uncaught, so
+  // it surfaced as a raw 500 on one of the two tabs instead of the
+  // quantities merging to 2. A logged-in user (not a guest) on purpose: a
+  // brand-new *guest* has its own separate, unrelated race (two concurrent
+  // requests from a client with no session cookie yet each independently
+  // mint their own new guest-cart id, so they don't collide on the same
+  // cart at all — an identity race, not a write race, and out of this
+  // fix's scope) — inherent to the guest-cart cookie's own "mint on first
+  // touch" design, not something an atomic upsert at the DB layer can fix.
+  it('two concurrent adds of the same fresh line merge quantities instead of one 500ing', async () => {
+    const customer = await createCustomer();
+    const [ra, rb] = await Promise.all([
+      request(app).post('/api/cart/items').set(bearer(customer.token)).send({ variantId, quantity: 1 }),
+      request(app).post('/api/cart/items').set(bearer(customer.token)).send({ variantId, quantity: 1 }),
+    ]);
+    expect([ra.status, rb.status]).toEqual([201, 201]);
+
+    const get = await request(app).get('/api/cart').set(bearer(customer.token));
+    expect(get.body.items).toHaveLength(1);
+    expect(get.body.items[0].quantity).toBe(2);
+  });
+
   it('rejects adding more than available stock', async () => {
     const agent = request.agent(app);
     const res = await agent.post('/api/cart/items').send({ variantId: lowStockVariantId, quantity: 5 });

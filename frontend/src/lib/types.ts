@@ -124,7 +124,7 @@ export interface Category {
   /** Present on `GET /categories` (one level of nesting). */
   children?: Category[];
   /** `null` for a standalone category. */
-  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug' | 'accentColor'> | null;
+  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug' | 'accentColor' | 'archivedAt'> | null;
 }
 
 export interface ProductVariant {
@@ -176,6 +176,10 @@ export interface Product {
   isActive: boolean;
   /** Set when the product is archived (soft-deleted) from the admin. */
   deletedAt?: string | null;
+  /** Bumped on every write (Prisma @updatedAt). Sent back as `expectedLastEdit`
+   *  on the next PATCH so the server can detect (and reject) a concurrent
+   *  edit instead of silently overwriting it — see updateProduct(). */
+  lastEdit: IsoDateTime;
   dateCreated: IsoDateTime;
   images: ProductImage[];
   variants: ProductVariant[];
@@ -377,6 +381,10 @@ export interface CheckoutBody {
   emailVerifyToken?: string;
   /** Optional coupon code; rejected at checkout if not currently valid. */
   couponCode?: string;
+  /** The cart's own `subtotal` as last fetched — lets the server detect a
+   *  price change (e.g. an admin edit) since this was shown and reject
+   *  instead of silently charging the new number. */
+  expectedSubtotal?: number;
 }
 
 /** `GET /api/orders/delivery-quote?region=...` — a live fee estimate for the

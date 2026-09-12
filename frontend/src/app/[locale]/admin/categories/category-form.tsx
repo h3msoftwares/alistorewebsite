@@ -87,8 +87,16 @@ export function CategoryForm({
           <Select {...p} {...register('collectionId')} disabled={busy}>
             <option value="">{t('Standalone (no collection)', 'مستقلة (بدون مجموعة)')}</option>
             {(collections ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
+              // Archived collections stay in this list (this category might
+              // already be assigned to one) but are visually flagged and
+              // blocked from being picked as a NEW assignment — previously
+              // indistinguishable from an active one (fix-list.md #15,
+              // resolves 12.2). A native <option> can't carry richer
+              // styling than plain text, so the label suffix is the only
+              // available signal.
+              <option key={c.id} value={c.id} disabled={Boolean(c.archivedAt)}>
                 {isAr ? c.nameAr : c.nameEn}
+                {c.archivedAt ? t(' (archived)', ' (مؤرشفة)') : ''}
               </option>
             ))}
           </Select>

@@ -169,7 +169,22 @@ function productStatusWhere(query: ListProductsQuery): Prisma.ProductWhereInput 
   const status = query.status ?? (query.includeInactive ? 'all' : 'active');
   if (status === 'archived') return { deletedAt: { not: null } };
   if (status === 'all') return {};
-  return { isActive: true, deletedAt: null };
+  // Storefront default: the product's own active/undeleted state, AND its
+  // parent category's/collection's — archiving a category or collection is
+  // the admin's real "hide everything under this" action, but nothing here
+  // previously enforced that at the listing/search level, so a product
+  // stayed fully searchable/browsable under an archived parent (fix-list.md
+  // #8, resolves 12.6). `collection` is optional on Category (a standalone
+  // category has none), hence the OR.
+  return {
+    isActive: true,
+    deletedAt: null,
+    category: {
+      archivedAt: null,
+      isActive: true,
+      OR: [{ collectionID: null }, { collection: { archivedAt: null, isActive: true } }],
+    },
+  };
 }
 
 export async function listProducts(query: ListProductsQuery) {
@@ -220,12 +235,21 @@ export async function listProducts(query: ListProductsQuery) {
     return bestSellingPage(where, query, discounts);
   }
 
-  const orderBy: Prisma.ProductOrderByWithRelationInput =
+  // `id` as a secondary key (fix-list.md #19, resolves 11.6): the primary
+  // key alone doesn't uniquely order rows — `price_asc`/`price_desc` tie
+  // whenever two products share a price (27 tied price groups in the
+  // current catalog), and even `dateCreated` could tie in principle
+  // (millisecond timestamps, bulk-imported data, …). Without a tiebreaker,
+  // Postgres doesn't guarantee the same row order across repeated paginated
+  // queries for tied rows — a product can silently shift page, or be
+  // skipped or repeated, between one page fetch and the next. `id` is
+  // arbitrary but stable, which is all a tiebreaker needs to be.
+  const orderBy: Prisma.ProductOrderByWithRelationInput[] =
     query.sort === 'price_asc'
-      ? { price: 'asc' }
+      ? [{ price: 'asc' }, { id: 'asc' }]
       : query.sort === 'price_desc'
-        ? { price: 'desc' }
-        : { dateCreated: 'desc' };
+        ? [{ price: 'desc' }, { id: 'asc' }]
+        : [{ dateCreated: 'desc' }, { id: 'asc' }];
 
   const [items, total] = await Promise.all([
     prisma.product.findMany({
@@ -292,7 +316,7 @@ async function bestSellingPage(
     const [rows, total] = await Promise.all([
       prisma.product.findMany({
         where,
-        orderBy: { dateCreated: 'desc' },
+        orderBy: [{ dateCreated: 'desc' }, { id: 'asc' }], // same tiebreaker as above
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
         include: productInclude,
@@ -379,7 +403,7 @@ export async function createProduct(input: CreateProductInput) {
 export async function updateProduct(id: string, input: UpdateProductInput) {
   const existing = await prisma.product.findUnique({
     where: { id },
-    select: { saleType: true, saleValue: true },
+    select: { saleType: true, saleValue: true, lastEdit: true },
   });
   if (!existing) throw new AppError('NOT_FOUND', 'Product not found');
 
@@ -395,28 +419,46 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
     input.saleValue !== undefined ? (input.saleValue ?? null) : existing.saleValue;
   assertValidSale(nextSaleType, nextSaleValue);
 
+  const data: Prisma.ProductUpdateInput = {
+    ...(input.sku !== undefined ? { sku: input.sku } : {}),
+    ...(input.nameEn !== undefined ? { nameEn: input.nameEn } : {}),
+    ...(input.nameAr !== undefined ? { nameAr: input.nameAr } : {}),
+    ...(input.descriptionEn !== undefined ? { descriptionEn: input.descriptionEn } : {}),
+    ...(input.descriptionAr !== undefined ? { descriptionAr: input.descriptionAr } : {}),
+    ...(input.categoryId !== undefined
+      ? { categoryID: input.categoryId, collectionID: nextCollectionID ?? null }
+      : {}),
+    ...(input.price !== undefined ? { price: input.price } : {}),
+    ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice } : {}),
+    ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
+    ...(input.saleType !== undefined ? { saleType: input.saleType ?? null } : {}),
+    ...(input.saleValue !== undefined ? { saleValue: input.saleValue ?? null } : {}),
+  };
+
   try {
-    const updated = await prisma.product.update({
-      where: { id },
-      data: {
-        ...(input.sku !== undefined ? { sku: input.sku } : {}),
-        ...(input.nameEn !== undefined ? { nameEn: input.nameEn } : {}),
-        ...(input.nameAr !== undefined ? { nameAr: input.nameAr } : {}),
-        ...(input.descriptionEn !== undefined ? { descriptionEn: input.descriptionEn } : {}),
-        ...(input.descriptionAr !== undefined ? { descriptionAr: input.descriptionAr } : {}),
-        ...(input.categoryId !== undefined
-          ? { categoryID: input.categoryId, collectionID: nextCollectionID ?? null }
-          : {}),
-        ...(input.price !== undefined ? { price: input.price } : {}),
-        ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice } : {}),
-        ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
-        ...(input.saleType !== undefined ? { saleType: input.saleType ?? null } : {}),
-        ...(input.saleValue !== undefined ? { saleValue: input.saleValue ?? null } : {}),
-      },
-      include: productInclude,
-    });
+    if (input.expectedLastEdit !== undefined) {
+      // Atomic conditional update — same shape as the stock/status claims
+      // elsewhere in this codebase (order.service.ts): the row's current
+      // `lastEdit` is re-checked at the instant of the write itself, not in
+      // a separate earlier read, so a genuinely concurrent second edit can't
+      // slip through between the check and the write.
+      const claim = await prisma.product.updateMany({
+        where: { id, lastEdit: input.expectedLastEdit },
+        data,
+      });
+      if (claim.count === 0) {
+        throw new AppError(
+          'CONFLICT',
+          'This product was changed by someone else since you loaded it. Refresh and try again.'
+        );
+      }
+    } else {
+      await prisma.product.update({ where: { id }, data });
+    }
+    const updated = await prisma.product.findUniqueOrThrow({ where: { id }, include: productInclude });
     return withPricing(updated);
   } catch (e) {
+    if (e instanceof AppError) throw e;
     throw mapPrismaError(e);
   }
 }
@@ -548,6 +590,16 @@ export async function deleteVariant(productId: string, variantId: string) {
   const inOrder = await prisma.orderItem.count({ where: { variantID: variantId } });
   if (inOrder > 0) {
     throw new AppError('CONFLICT', 'Cannot delete a variant that appears in past orders');
+  }
+  // Every product is created with ≥1 variant (createProductSchema requires
+  // it) and cart/checkout are variant-keyed throughout — a product with zero
+  // variants isn't "sold out", it's structurally unpurchasable, with no
+  // existing UI message that explains why (see fix-list.md #17). Block the
+  // deletion that would create that state instead of allowing it one delete
+  // at a time with no warning.
+  const variantCount = await prisma.productVariant.count({ where: { productID: productId } });
+  if (variantCount <= 1) {
+    throw new AppError('CONFLICT', "Cannot delete a product's last variant. Delete the product instead, or add another variant first.");
   }
   await prisma.productVariant.delete({ where: { id: variantId } });
 }

@@ -2,13 +2,16 @@
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Button, EmptyState, ProductGridSkeleton } from '@/components/ui';
+import { Archive, RotateCcw, Trash2 } from 'lucide-react';
+import { Button, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
 import { ImageGallery } from '@/components/admin/image-gallery';
 import {
   useAddCategoryImage,
   useCategory,
   useDeleteCategory,
   useDeleteCategoryImage,
+  usePermanentDeleteCategory,
+  useRestoreCategory,
   useUpdateCategory,
 } from '@/hooks/use-catalog';
 import { CategoryForm, type CategoryFormValues } from '../category-form';
@@ -23,7 +26,9 @@ export default function EditCategoryPage() {
 
   const { data: category, isPending, isError, refetch } = useCategory(id);
   const updateCategory = useUpdateCategory();
-  const deleteCategory = useDeleteCategory();
+  const archiveCategory = useDeleteCategory();
+  const restoreCategory = useRestoreCategory();
+  const permanentDeleteCategory = usePermanentDeleteCategory();
   const addImage = useAddCategoryImage();
   const deleteImage = useDeleteCategoryImage();
 
@@ -50,12 +55,42 @@ export default function EditCategoryPage() {
     }
   };
 
-  const onDeleteCategory = async () => {
+  // Three distinct actions, matching the list page (admin/categories/page.tsx)
+  // — see the identical comment in admin/collections/[id]/page.tsx
+  // (fix-list.md #15, resolves 12.8).
+  const onArchiveCategory = async () => {
     if (!category) return;
     const name = isAr ? category.nameAr : category.nameEn;
-    if (!window.confirm(t(`Delete "${name}"? This can't be undone.`, `حذف "${name}"؟ لا يمكن التراجع عن هذا.`))) return;
+    if (
+      !window.confirm(
+        t(
+          `Archive "${name}"? It will be hidden from the storefront but kept.`,
+          `أرشفة "${name}"؟ ستُخفى من المتجر مع الاحتفاظ بها.`
+        )
+      )
+    )
+      return;
     try {
-      await deleteCategory.mutateAsync(id);
+      await archiveCategory.mutateAsync(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('Archive failed', 'فشلت الأرشفة'));
+    }
+  };
+
+  const onRestoreCategory = async () => {
+    try {
+      await restoreCategory.mutateAsync(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('Restore failed', 'فشلت الاستعادة'));
+    }
+  };
+
+  const onPermanentDeleteCategory = async () => {
+    if (!category) return;
+    const name = isAr ? category.nameAr : category.nameEn;
+    if (!window.confirm(t(`Permanently delete "${name}"? This cannot be undone.`, `حذف "${name}" نهائيًا؟ لا يمكن التراجع.`))) return;
+    try {
+      await permanentDeleteCategory.mutateAsync(id);
       router.push(`/${locale}/admin/categories`);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Delete failed', 'فشل الحذف'));
@@ -90,9 +125,25 @@ export default function EditCategoryPage() {
     <div className="section--tight">
       <div className="admin-page__head">
         <h1>{isAr ? category.nameAr : category.nameEn}</h1>
-        <Button variant="danger" onClick={onDeleteCategory} loading={deleteCategory.isPending}>
-          {t('Delete category', 'حذف الفئة')}
-        </Button>
+        <span className="admin-row-actions">
+          {category.archivedAt ? (
+            <>
+              <Button variant="outline" onClick={onRestoreCategory} loading={restoreCategory.isPending}>
+                <Icon as={RotateCcw} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                {t('Restore', 'استعادة')}
+              </Button>
+              <Button variant="danger" onClick={onPermanentDeleteCategory} loading={permanentDeleteCategory.isPending}>
+                <Icon as={Trash2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                {t('Delete permanently', 'حذف نهائي')}
+              </Button>
+            </>
+          ) : (
+            <Button variant="danger" onClick={onArchiveCategory} loading={archiveCategory.isPending}>
+              <Icon as={Archive} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+              {t('Archive category', 'أرشفة الفئة')}
+            </Button>
+          )}
+        </span>
       </div>
 
       <CategoryForm

@@ -7,3 +7,7 @@ dist/
 # local .env backups (may hold secrets) — never commit
 .env.bak
 .env*.bak
+
+# QA-only: minted access tokens for the flash-sale load-test fixtures
+# (scripts/qa-mint-flash-tokens.ts) — live bearer tokens, never commit.
+flash-tokens.json

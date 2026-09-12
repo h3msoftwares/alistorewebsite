@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { round2 } from '../../lib/money';
@@ -11,13 +12,38 @@ interface CartOwner {
 
 // Resolve the single Cart row for this owner, creating it on first use.
 // `userID` and `sessionID` are both unique on Cart.
+//
+// Found alongside fix-list.md #18 while verifying it, same read-then-create
+// race one level up: a brand-new owner's first-ever concurrent add-to-cart
+// calls (e.g. two tabs opened at once) used to both read "no cart exists
+// yet", both attempt `cart.create()`, and the unique constraint on
+// `userID`/`sessionID` would reject the second — uncaught, same raw-500
+// shape as the CartItem race #18 fixes below.
+//
+// `prisma.cart.upsert()` was tried first and, empirically, is NOT safe here
+// under genuine concurrent execution — live-tested and it still threw the
+// same `P2002` on `userID` under a real concurrent race (Prisma's upsert
+// doesn't always compile to a single atomic `INSERT ... ON CONFLICT` for
+// every model shape). Catching the create's own conflict and recovering by
+// re-reading the now-existing row (created by whichever request won) is the
+// pattern that's actually verified safe: proven by the new concurrency test
+// below, not just reasoned about.
 async function getOrCreateCart(owner: CartOwner) {
-  if (!owner.userID && !owner.sessionID) {
+  const where = owner.userID ? { userID: owner.userID } : owner.sessionID ? { sessionID: owner.sessionID } : null;
+  if (!where) {
     throw new AppError('VALIDATION_ERROR', 'No cart owner (user or guest session) provided');
   }
-  const where = owner.userID ? { userID: owner.userID } : { sessionID: owner.sessionID! };
   const existing = await prisma.cart.findUnique({ where });
-  return existing ?? prisma.cart.create({ data: where });
+  if (existing) return existing;
+  try {
+    return await prisma.cart.create({ data: where });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      // Lost the race to create — the winner's row exists now; use it.
+      return prisma.cart.findUniqueOrThrow({ where });
+    }
+    throw e;
+  }
 }
 
 export async function getCart(owner: CartOwner) {
@@ -64,12 +90,32 @@ export async function addItem(owner: CartOwner, variantId: string, quantity: num
     throw new AppError('OUT_OF_STOCK', 'Not enough stock for this variant');
   }
 
-  if (existing) {
-    return prisma.cartItem.update({ where: { id: existing.id }, data: { quantity: nextQuantity } });
+  // Create-then-recover-on-conflict (fix-list.md #18, resolves 1.6) instead
+  // of the plain update-or-create branch this replaced: two concurrent adds
+  // of the same line used to both read `existing = null` (READ COMMITTED),
+  // both take the `create` branch, and the DB's own unique constraint on
+  // (cartID, variantID) correctly rejected the second one — but uncaught, so
+  // it surfaced as a raw 500 instead of the two quantities merging.
+  // `prisma.cartItem.upsert()` was tried first here too and rejected for the
+  // same reason as `getOrCreateCart()` above (verified unsafe under real
+  // concurrency, not just theorised) — catching the create's own conflict
+  // and recovering with an atomic increment is what's actually proven safe.
+  // The `existing`/stock check above is unchanged and still only a friendly
+  // early signal (same "preliminary, non-authoritative" role as checkout()'s
+  // own pre-checks — cart-level stock enforcement was never the
+  // authoritative gate, checkout's atomic claim is).
+  try {
+    return await prisma.cartItem.create({ data: { cartID: cart.id, variantID: variantId, quantity } });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      // Lost the race to create — merge into the winner's row instead.
+      return prisma.cartItem.update({
+        where: { cartID_variantID: { cartID: cart.id, variantID: variantId } },
+        data: { quantity: { increment: quantity } },
+      });
+    }
+    throw e;
   }
-  return prisma.cartItem.create({
-    data: { cartID: cart.id, variantID: variantId, quantity },
-  });
 }
 
 interface UpdateItemChanges {

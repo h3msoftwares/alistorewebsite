@@ -38,14 +38,36 @@ describe('Collections API', () => {
       await makeCollection({ slug: 'a-col' });
       await makeCollection({ slug: 'b-col', isActive: false });
 
+      // 401, not 403 (fix-list.md #5, resolves admin-list-403): no token at
+      // all is the textbook 401 case, and it's the code the frontend's
+      // refresh-and-retry logic watches for — see list-access.ts.
       const anon = await request(app).get('/api/collections?includeInactive=true');
-      expect(anon.status).toBe(403);
+      expect(anon.status).toBe(401);
+
+      // A real, valid session that just isn't staff — genuinely a 403, no
+      // retry would ever fix this one.
+      const asCustomer = await request(app)
+        .get('/api/collections?includeInactive=true')
+        .set(bearer(customerToken));
+      expect(asCustomer.status).toBe(403);
 
       const res = await request(app)
         .get('/api/collections?includeInactive=true')
         .set(bearer(adminToken));
       expect(res.status).toBe(200);
       expect(res.body.collections).toHaveLength(2);
+    });
+
+    it('an expired/invalid staff token is treated as no session (401), not a role denial (403)', async () => {
+      // optionalAuth swallows a bad token identically to no token at all —
+      // this is the actual admin-list-403 scenario: a staff member's
+      // short-lived access token quietly expiring mid-session. 401 here is
+      // what lets the frontend silently refresh and retry instead of the
+      // list just going empty with no explanation.
+      const res = await request(app)
+        .get('/api/collections?includeInactive=true')
+        .set(bearer('not-a-real-token'));
+      expect(res.status).toBe(401);
     });
 
     it('carries showInNav (false by default) + accentColor', async () => {

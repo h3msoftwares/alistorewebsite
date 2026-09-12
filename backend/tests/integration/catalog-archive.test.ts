@@ -32,8 +32,10 @@ describe('Catalog archive / restore / permanent delete', () => {
       const pub = await request(app).get('/api/products');
       expect(pub.body.items.map((x: { id: string }) => x.id)).not.toContain(p.id);
 
+      // 401, not 403 (fix-list.md #5) — no token at all is the textbook 401
+      // case, and lets the frontend's existing refresh-and-retry logic fire.
       const anon = await request(app).get('/api/products?status=archived');
-      expect(anon.status).toBe(403);
+      expect(anon.status).toBe(401);
 
       const asCustomer = await request(app)
         .get('/api/products?status=archived')
@@ -117,10 +119,16 @@ describe('Catalog archive / restore / permanent delete', () => {
       expect(pub.body.collections.map((c: { id: string }) => c.id)).not.toContain(col.id);
     });
 
-    it('anon cannot request status=archived / status=all', async () => {
-      expect((await request(app).get('/api/collections?status=archived')).status).toBe(403);
-      expect((await request(app).get('/api/collections?status=all')).status).toBe(403);
-      expect((await request(app).get('/api/categories?status=all')).status).toBe(403);
+    it('anon cannot request status=archived / status=all (401 — fix-list.md #5)', async () => {
+      expect((await request(app).get('/api/collections?status=archived')).status).toBe(401);
+      expect((await request(app).get('/api/collections?status=all')).status).toBe(401);
+      expect((await request(app).get('/api/categories?status=all')).status).toBe(401);
+    });
+
+    it('a logged-in customer (valid session, wrong role) still gets 403, not 401', async () => {
+      expect(
+        (await request(app).get('/api/collections?status=archived').set(bearer(customerToken))).status
+      ).toBe(403);
     });
 
     it('search filters by name / slug (case-insensitive)', async () => {
@@ -131,6 +139,98 @@ describe('Catalog archive / restore / permanent delete', () => {
       const slugs = res.body.collections.map((c: { slug: string }) => c.slug);
       expect(slugs).toContain('winter-warmers');
       expect(slugs).not.toContain('beachwear');
+    });
+
+    it('an archived collection 404s at its own direct slug URL (fix-list.md #8, resolves 12.1)', async () => {
+      const col = await makeCollection({ slug: 'summer' });
+      const before = await request(app).get('/api/collections/slug/summer');
+      expect(before.status).toBe(200);
+
+      await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken));
+
+      const after = await request(app).get('/api/collections/slug/summer');
+      expect(after.status).toBe(404);
+    });
+
+    it('an archived category 404s at its own direct slug URL (fix-list.md #8, resolves 12.1)', async () => {
+      const cat = await makeCategory(collectionId, { slug: 'lingerie' });
+      const before = await request(app).get('/api/categories/slug/lingerie');
+      expect(before.status).toBe(200);
+
+      await request(app).delete(`/api/categories/${cat.id}`).set(bearer(adminToken));
+
+      const after = await request(app).get('/api/categories/slug/lingerie');
+      expect(after.status).toBe(404);
+    });
+
+    it('a category 404s at its own slug URL when only its parent collection is archived, not the category itself (fix-list.md #22, resolves category-reachable-parent-archived)', async () => {
+      const col = await makeCollection({ slug: 'outerwear' });
+      const cat = await makeCategory(col.id, { slug: 'jackets' });
+
+      const before = await request(app).get('/api/categories/slug/jackets');
+      expect(before.status).toBe(200);
+
+      await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken));
+
+      // The category's own row is untouched — archiving a collection never
+      // writes to its categories (see 12.3) — but its slug URL must still
+      // 404 now, consistent with the collection-archived and
+      // category-archived cases above, instead of staying reachable at a
+      // correctly-empty-but-confusing 200.
+      const stillActive = await prisma.category.findUniqueOrThrow({ where: { id: cat.id } });
+      expect(stillActive.isActive).toBe(true);
+      expect(stillActive.archivedAt).toBeNull();
+
+      const after = await request(app).get('/api/categories/slug/jackets');
+      expect(after.status).toBe(404);
+
+      // Restoring the collection brings the category's slug URL back.
+      await request(app).post(`/api/collections/${col.id}/restore`).set(bearer(adminToken));
+      const restored = await request(app).get('/api/categories/slug/jackets');
+      expect(restored.status).toBe(200);
+    });
+
+    it('a product under an archived category drops out of the public listing/search (fix-list.md #8, resolves 12.6)', async () => {
+      const p = await makeProduct(collectionId, categoryId, { over: { nameEn: 'Findable Widget' } });
+
+      const before = await request(app).get('/api/products?search=Findable');
+      expect(before.body.items.map((x: { id: string }) => x.id)).toContain(p.id);
+
+      await request(app).delete(`/api/categories/${categoryId}`).set(bearer(adminToken));
+
+      const after = await request(app).get('/api/products?search=Findable');
+      expect(after.body.items.map((x: { id: string }) => x.id)).not.toContain(p.id);
+
+      // The product's own row is untouched — this is the parent's archival
+      // state being enforced at listing time, not the product itself.
+      const stillActive = await prisma.product.findUniqueOrThrow({ where: { id: p.id } });
+      expect(stillActive.isActive).toBe(true);
+      expect(stillActive.deletedAt).toBeNull();
+
+      // Restoring the category brings it back.
+      await request(app).post(`/api/categories/${categoryId}/restore`).set(bearer(adminToken));
+      const restored = await request(app).get('/api/products?search=Findable');
+      expect(restored.body.items.map((x: { id: string }) => x.id)).toContain(p.id);
+    });
+
+    it('a product under an archived collection (via its category) drops out of the public listing/search', async () => {
+      const p = await makeProduct(collectionId, categoryId, { over: { nameEn: 'Collection Widget' } });
+
+      const before = await request(app).get('/api/products?search=Collection Widget');
+      expect(before.body.items.map((x: { id: string }) => x.id)).toContain(p.id);
+
+      await request(app).delete(`/api/collections/${collectionId}`).set(bearer(adminToken));
+
+      const after = await request(app).get('/api/products?search=Collection Widget');
+      expect(after.body.items.map((x: { id: string }) => x.id)).not.toContain(p.id);
+    });
+
+    it('a product under a standalone (no-collection) category is unaffected by this check', async () => {
+      const standaloneCat = await makeCategory(null, { slug: 'standalone-cat' });
+      const p = await makeProduct(null, standaloneCat.id, { over: { nameEn: 'Standalone Widget' } });
+
+      const res = await request(app).get('/api/products?search=Standalone Widget');
+      expect(res.body.items.map((x: { id: string }) => x.id)).toContain(p.id);
     });
   });
 });

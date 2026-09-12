@@ -125,7 +125,7 @@ export default function AdminProductsPage() {
                 <th>{t('SKU', 'رمز المنتج')}</th>
                 <th>{t('Category', 'الفئة')}</th>
                 <th>{t('Price', 'السعر')}</th>
-                <th>{t('Quantity', 'الكمية')}</th>
+                <th>{t('Stock', 'المخزون')}</th>
                 <th>{t('Status', 'الحالة')}</th>
                 <th aria-hidden="true" />
               </tr>
@@ -153,7 +153,15 @@ export default function AdminProductsPage() {
                       String(p.price)
                     )}
                   </td>
-                  <td data-label={t('Quantity', 'الكمية')}>{p.quantity}</td>
+                  {/* Real per-variant stock summed here, not `p.quantity` —
+                      that field is a dead, free-standing column never
+                      derived from or validated against variant stock (it
+                      reads 0 for every product in this catalog); it used to
+                      render here unconditionally and looked like real
+                      inventory data, which it never was (fix-list.md #16). */}
+                  <td data-label={t('Stock', 'المخزون')}>
+                    {p.variants.reduce((sum, v) => sum + v.stockQuantity, 0)}
+                  </td>
                   <td data-label={t('Status', 'الحالة')}>
                     {p.deletedAt ? (
                       <Badge variant="low-stock" className="admin-status-badge--archived">

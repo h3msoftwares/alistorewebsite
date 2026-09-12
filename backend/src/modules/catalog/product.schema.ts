@@ -96,7 +96,15 @@ export const createProductSchema = z.object({
   variants: z.array(variantInputSchema).min(1).max(100),
 });
 
-export const updateProductSchema = createProductSchema.partial().omit({ variants: true });
+export const updateProductSchema = createProductSchema.partial().omit({ variants: true }).extend({
+  // Optimistic-concurrency guard (fix-list.md #14, resolves 1.5): the
+  // `lastEdit` the client's form last fetched. When present, updateProduct()
+  // only writes if the row's current `lastEdit` still matches — otherwise
+  // someone else's edit landed first and this one is rejected instead of
+  // silently overwriting it. Optional so existing callers that don't send
+  // it (scripts, older clients) keep today's last-write-wins behavior.
+  expectedLastEdit: z.coerce.date().optional(),
+});
 
 export const createVariantSchema = variantInputSchema;
 export const updateVariantSchema = variantInputSchema.partial();

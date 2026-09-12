@@ -32,6 +32,7 @@ const baseProduct: Product = {
   compareAtPrice: '49.00',
   isActive: true,
   dateCreated: '2026-01-01T00:00:00.000Z',
+  lastEdit: '2026-01-01T00:00:00.000Z',
   quantity: 20,
   // No active saleType/saleValue discount for the base fixture — just the
   // plain "was" price via compareAtPrice. effectivePrice mirrors price when
@@ -127,6 +128,37 @@ describe('ProductDetail', () => {
     await user.click(addToCartBtn);
 
     await waitFor(() => expect(mockCart.addCartItem).toHaveBeenCalledWith('v1', 1));
+  });
+
+  it('pre-selects the variant from a deep-linked ?size= (fix-list.md #20, resolves 3.7)', async () => {
+    mockCatalog.getProduct.mockResolvedValue(baseProduct);
+    mockCart.addCartItem.mockResolvedValue({ id: 'ci1' } as never);
+    const { Wrapper } = createWrapper();
+    const user = userEvent.setup();
+    render(<ProductDetail id="p1" locale="en" initialSize="M" />, { wrapper: Wrapper });
+
+    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+
+    // No click needed — Add to cart is already enabled and the deep-linked
+    // size chip already shows selected, exactly as if the shopper had just
+    // clicked it themselves.
+    expect(screen.getByRole('button', { name: 'M' })).toHaveAttribute('aria-pressed', 'true');
+    const addToCartBtn = screen.getByRole('button', { name: 'Add to cart' });
+    expect(addToCartBtn).not.toBeDisabled();
+
+    await user.click(addToCartBtn);
+    await waitFor(() => expect(mockCart.addCartItem).toHaveBeenCalledWith('v1', 1));
+  });
+
+  it('a deep-linked ?size= that matches no real option leaves selection empty, not broken', async () => {
+    mockCatalog.getProduct.mockResolvedValue(baseProduct);
+    const { Wrapper } = createWrapper();
+    render(<ProductDetail id="p1" locale="en" initialSize="XXL" />, { wrapper: Wrapper });
+
+    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: 'Add to cart' })).toBeDisabled();
+    expect(screen.getByText('Select every option to add this to your cart.')).toBeInTheDocument();
   });
 
   it('toggles the favourite button (guest path — no backend call, just the local slice)', async () => {
@@ -369,6 +401,90 @@ describe('ProductDetail', () => {
     // Filters down to Black's tagged photo; the generic shot drops out.
     await waitFor(() => expect(screen.getByRole('img', { name: 'Black colourway' })).toBeInTheDocument());
     expect(screen.queryByRole('img', { name: 'Front (generic)' })).not.toBeInTheDocument();
+  });
+
+  it('shows the generic photo for a single-colour product, not the colour-tagged one (fix-list.md #7 / 3.3)', async () => {
+    // Every variant shares the one colour — colorOptions.length === 1, so
+    // effectiveColor auto-defaults to it immediately for pricing/variant
+    // resolution purposes, with no click needed or possible to distinguish
+    // "auto-defaulted" from "chosen". Before the fix, the images useMemo
+    // used that same auto-default and filtered the generic shot out from
+    // the very first render — permanently, since a single-colour product
+    // never fires a real colour click to undo it.
+    mockCatalog.getProduct.mockResolvedValue({
+      ...baseProduct,
+      images: [
+        {
+          id: 'img1',
+          productID: 'p1',
+          url: 'https://example.com/generic.jpg',
+          altEn: 'Front (generic)',
+          altAr: null,
+          sortOrder: 0,
+          color: null,
+        },
+        {
+          id: 'img2',
+          productID: 'p1',
+          url: 'https://example.com/navy.jpg',
+          altEn: 'Navy colourway',
+          altAr: null,
+          sortOrder: 1,
+          color: 'Navy',
+        },
+      ],
+      variants: [
+        { id: 'v1', productID: 'p1', sku: 'SKU1-1', size: 'M', color: 'Navy', stockQuantity: 5 },
+        { id: 'v2', productID: 'p1', sku: 'SKU1-2', size: 'L', color: 'Navy', stockQuantity: 5 },
+      ],
+    });
+    const { Wrapper } = createWrapper();
+    render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
+
+    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+
+    expect(screen.getByRole('img', { name: 'Front (generic)' })).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: 'Navy colourway' })).not.toBeInTheDocument();
+  });
+
+  it('never deadlocks the size/colour pickers once both axes resolve to one existing pair (fix-list.md #6 / 3.1 / 3.2)', async () => {
+    // Only Red-S and Blue-M exist — no Red-M, no Blue-S. Reaching Blue-M from
+    // Red-S used to be impossible without a reload: once both axes resolved
+    // to the Red-S pair, both "M" (blocked by the live colour=Red) and
+    // "Blue" (blocked by the live size=S) were real disabled buttons, with
+    // no click able to reach the other valid pair.
+    mockCatalog.getProduct.mockResolvedValue({
+      ...baseProduct,
+      variants: [
+        { id: 'v1', productID: 'p1', sku: 'SKU1-1', size: 'S', color: 'Red', stockQuantity: 5 },
+        { id: 'v2', productID: 'p1', sku: 'SKU1-2', size: 'M', color: 'Blue', stockQuantity: 5 },
+      ],
+    });
+    mockCart.addCartItem.mockResolvedValue({ id: 'ci1' } as never);
+    const { Wrapper } = createWrapper();
+    const user = userEvent.setup();
+    render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
+
+    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: 'Colour: Red' }));
+    await user.click(screen.getByRole('button', { name: 'S' }));
+
+    // Resolved to Red-S — Add to cart enabled, confirming the pair applied.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add to cart' })).not.toBeDisabled());
+
+    // The only path to the other valid pair (Blue-M) must stay clickable.
+    const sizeM = screen.getByRole('button', { name: 'M' });
+    const swatchBlue = screen.getByRole('button', { name: 'Colour: Blue' });
+    expect(sizeM).not.toBeDisabled();
+    expect(swatchBlue).not.toBeDisabled();
+
+    await user.click(swatchBlue);
+    await user.click(sizeM);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add to cart' })).not.toBeDisabled());
+    await user.click(screen.getByRole('button', { name: 'Add to cart' }));
+    await waitFor(() => expect(mockCart.addCartItem).toHaveBeenCalledWith('v2', 1));
   });
 
   it('shows a "hidden from customers" notice only to an admin viewing an inactive product', async () => {

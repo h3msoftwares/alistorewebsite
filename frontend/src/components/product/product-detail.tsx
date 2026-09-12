@@ -36,7 +36,23 @@ import {
   resolveVariant,
 } from '@/lib/product-variants';
 
-export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' }) {
+export function ProductDetail({
+  id,
+  locale,
+  initialColor,
+  initialSize,
+}: {
+  id: string;
+  locale: 'en' | 'ar';
+  /** Pre-select from a deep/shared link's `?color=&size=` (fix-list.md #20,
+   *  resolves 3.7) — applied as the initial selection, same as a real click.
+   *  A value that doesn't match any of this product's real options (wrong
+   *  case, stale link, typo) just resolves to no matching variant — the
+   *  same graceful "select every option" state as if nothing were
+   *  pre-selected, not an error. */
+  initialColor?: string;
+  initialSize?: string;
+}) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
@@ -53,8 +69,8 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
   const sizeOptions = useMemo(() => getSizeOptions(variants), [variants]);
   const colorOptions = useMemo(() => getColorOptions(variants), [variants]);
 
-  const [size, setSize] = useState<string | null>(null);
-  const [color, setColor] = useState<string | null>(null);
+  const [size, setSize] = useState<string | null>(initialSize ?? null);
+  const [color, setColor] = useState<string | null>(initialColor ?? null);
   const [activeImage, setActiveImage] = useState(0);
   // Naturalwidth/Height of the currently-shown main photo, once decoded —
   // drives --pdp-main-ratio (globals.css) so .pdp__main-media's box takes
@@ -99,21 +115,30 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
   // fallback chain as ProductPreviewCard (this colour's tagged shots -> the
   // untagged/generic shots -> everything), adapted from a single photo slot
   // to a full gallery here.
+  //
+  // Filters against `color` (the shopper's own explicit pick), NOT
+  // `effectiveColor` — `effectiveColor` auto-defaults to the sole option for
+  // a single-colour product purely so its variant/price resolve without a
+  // redundant click, but using that same auto-default here excluded the
+  // untagged/generic shot (sortOrder 0) from ever showing on a single-colour
+  // product's page, unconditionally, before the shopper touched anything
+  // (fix-list.md #7 / 3.3). A real click still filters the gallery exactly
+  // as before.
   const images = useMemo(() => {
     const sorted = [...(product?.images ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
-    if (!effectiveColor) return sorted;
-    const forColor = sorted.filter((img) => img.color === effectiveColor);
+    if (!color) return sorted;
+    const forColor = sorted.filter((img) => img.color === color);
     if (forColor.length > 0) return forColor;
     const generic = sorted.filter((img) => !img.color);
     return generic.length > 0 ? generic : sorted;
-  }, [product, effectiveColor]);
+  }, [product, color]);
 
   // Reset to the first photo whenever the filtered set changes underneath
   // the shopper (a colour swap) so activeImage never points past a shorter
   // list — adjusted during render, same pattern as the stock clamp above.
-  const [lastGalleryColor, setLastGalleryColor] = useState(effectiveColor);
-  if (effectiveColor !== lastGalleryColor) {
-    setLastGalleryColor(effectiveColor);
+  const [lastGalleryColor, setLastGalleryColor] = useState(color);
+  if (color !== lastGalleryColor) {
+    setLastGalleryColor(color);
     setActiveImage(0);
   }
 
@@ -342,6 +367,19 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
 
           {description && <p className="prose pdp__description">{description}</p>}
 
+          {/* Each chip/swatch's `outOfStock` is checked against `null` for
+              the opposite axis (never the currently-selected value) — i.e.
+              "is this option ever purchasable in some colour/size", not "is
+              it purchasable with what's picked right now". Crossing against
+              the live selection used to let both axes end up mutually
+              disabling each other once they resolved to one existing pair
+              (e.g. only A-1 and B-2 exist: picking A then 1 left both chip 2
+              and swatch B — the only path to B-2 — simultaneously disabled,
+              a real HTML `disabled` with no click to escape it short of a
+              reload; fix-list.md #6 / 3.1 / 3.2). Picking an option now that
+              doesn't match the other axis's current value just leaves the
+              variant unresolved (the "select every option" note below
+              covers that) instead of locking the picker. */}
           <div className="pdp__options">
             {needsSize && (
               <div className="pdp__option-group">
@@ -351,7 +389,7 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
                     <SizeChip
                       key={s}
                       selected={effectiveSize === s}
-                      outOfStock={isOptionOutOfStock(variants, 'size', s, effectiveColor)}
+                      outOfStock={isOptionOutOfStock(variants, 'size', s, null)}
                       onClick={() => setSize(s)}
                     >
                       {s}
@@ -374,7 +412,7 @@ export function ProductDetail({ id, locale }: { id: string; locale: 'en' | 'ar' 
                       colorName={c}
                       swatchColor={colorNameToCss(c)}
                       selected={effectiveColor === c}
-                      outOfStock={isOptionOutOfStock(variants, 'color', c, effectiveSize)}
+                      outOfStock={isOptionOutOfStock(variants, 'color', c, null)}
                       onClick={() => setColor(c)}
                     />
                   ))}

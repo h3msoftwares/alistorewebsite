@@ -16,13 +16,19 @@ function normalize(type: BlacklistType, value: string): string {
   return type === 'EMAIL' ? trimmed.toLowerCase() : trimmed;
 }
 
-/** Checked at checkout-OTP request time and at order-creation time — see
- *  checkout-otp.service.ts and order.service.ts. */
-export async function isBlacklisted(
-  type: BlacklistType,
-  value: string,
-  db: Db = prisma
-): Promise<boolean> {
+/**
+ * Checked at checkout-OTP request time (outside any transaction — the
+ * default `db = prisma`) and at order-creation time, from inside
+ * checkout()'s transaction (fix-list.md #11, resolves 1.8) — the latter now
+ * passes `tx` explicitly. Before this, every call here hardcoded the plain
+ * `prisma` singleton regardless of caller, so each of checkout()'s up-to-3
+ * blacklist checks (phone/email/IP) reached into the pool for its own,
+ * separate connection *on top of* the one the enclosing transaction already
+ * held — quietly doubling a checkout's real pool demand under concurrency,
+ * and a real contributor to the pool exhausting well before the raw
+ * concurrent-transaction count would suggest.
+ */
+export async function isBlacklisted(type: BlacklistType, value: string, db: Db = prisma): Promise<boolean> {
   const entry = await db.blacklistEntry.findUnique({
     where: { type_value: { type, value: normalize(type, value) } },
     select: { id: true },

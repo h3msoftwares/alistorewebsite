@@ -2,13 +2,16 @@
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Button, EmptyState, ProductGridSkeleton } from '@/components/ui';
+import { Archive, RotateCcw, Trash2 } from 'lucide-react';
+import { Button, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
 import { ImageGallery } from '@/components/admin/image-gallery';
 import {
   useAddCollectionImage,
   useCollection,
   useDeleteCollection,
   useDeleteCollectionImage,
+  usePermanentDeleteCollection,
+  useRestoreCollection,
   useUpdateCollection,
 } from '@/hooks/use-catalog';
 import { CollectionForm, type CollectionFormValues } from '../collection-form';
@@ -23,7 +26,9 @@ export default function EditCollectionPage() {
 
   const { data: collection, isPending, isError, refetch } = useCollection(id);
   const updateCollection = useUpdateCollection();
-  const deleteCollection = useDeleteCollection();
+  const archiveCollection = useDeleteCollection();
+  const restoreCollection = useRestoreCollection();
+  const permanentDeleteCollection = usePermanentDeleteCollection();
   const addImage = useAddCollectionImage();
   const deleteImage = useDeleteCollectionImage();
 
@@ -57,12 +62,46 @@ export default function EditCollectionPage() {
     }
   };
 
-  const onDeleteCollection = async () => {
+  // Three distinct actions, matching the list page's (admin/collections/page.tsx)
+  // — a single "Delete" button here used to call the archive-only mutation
+  // while claiming "This can't be undone", the opposite of what actually
+  // happened (fix-list.md #15, resolves 12.8). Archive/Restore stay on this
+  // page (the mutations invalidate the collection-detail query, so the
+  // header re-renders with the new state); only the real permanent delete
+  // navigates away, since the collection no longer exists afterward.
+  const onArchiveCollection = async () => {
     if (!collection) return;
     const name = isAr ? collection.nameAr : collection.nameEn;
-    if (!window.confirm(t(`Delete "${name}"? This can't be undone.`, `حذف "${name}"؟ لا يمكن التراجع عن هذا.`))) return;
+    if (
+      !window.confirm(
+        t(
+          `Archive "${name}"? It will be hidden from the storefront but kept.`,
+          `أرشفة "${name}"؟ ستُخفى من المتجر مع الاحتفاظ بها.`
+        )
+      )
+    )
+      return;
     try {
-      await deleteCollection.mutateAsync(id);
+      await archiveCollection.mutateAsync(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('Archive failed', 'فشلت الأرشفة'));
+    }
+  };
+
+  const onRestoreCollection = async () => {
+    try {
+      await restoreCollection.mutateAsync(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('Restore failed', 'فشلت الاستعادة'));
+    }
+  };
+
+  const onPermanentDeleteCollection = async () => {
+    if (!collection) return;
+    const name = isAr ? collection.nameAr : collection.nameEn;
+    if (!window.confirm(t(`Permanently delete "${name}"? This cannot be undone.`, `حذف "${name}" نهائيًا؟ لا يمكن التراجع.`))) return;
+    try {
+      await permanentDeleteCollection.mutateAsync(id);
       router.push(`/${locale}/admin/collections`);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Delete failed', 'فشل الحذف'));
@@ -97,9 +136,25 @@ export default function EditCollectionPage() {
     <div className="section--tight">
       <div className="admin-page__head">
         <h1>{isAr ? collection.nameAr : collection.nameEn}</h1>
-        <Button variant="danger" onClick={onDeleteCollection} loading={deleteCollection.isPending}>
-          {t('Delete collection', 'حذف المجموعة')}
-        </Button>
+        <span className="admin-row-actions">
+          {collection.archivedAt ? (
+            <>
+              <Button variant="outline" onClick={onRestoreCollection} loading={restoreCollection.isPending}>
+                <Icon as={RotateCcw} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                {t('Restore', 'استعادة')}
+              </Button>
+              <Button variant="danger" onClick={onPermanentDeleteCollection} loading={permanentDeleteCollection.isPending}>
+                <Icon as={Trash2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                {t('Delete permanently', 'حذف نهائي')}
+              </Button>
+            </>
+          ) : (
+            <Button variant="danger" onClick={onArchiveCollection} loading={archiveCollection.isPending}>
+              <Icon as={Archive} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+              {t('Archive collection', 'أرشفة المجموعة')}
+            </Button>
+          )}
+        </span>
       </div>
 
       <CollectionForm

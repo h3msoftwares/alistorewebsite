@@ -17,9 +17,13 @@ const imageOrder = { orderBy: { sortOrder: 'asc' as const } };
 
 const categoryInclude = {
   images: imageOrder,
-  // `collection` is null for a standalone category.
+  // `collection` is null for a standalone category. `archivedAt` included so
+  // admin pickers can flag "this category's parent collection is archived"
+  // (fix-list.md #15, resolves 12.2) — previously not selected at all, so
+  // that state was invisible to the frontend regardless of what it tried to
+  // do with it.
   collection: {
-    select: { id: true, nameEn: true, nameAr: true, slug: true, accentColor: true },
+    select: { id: true, nameEn: true, nameAr: true, slug: true, accentColor: true, archivedAt: true },
   },
   children: {
     where: { isActive: true },
@@ -78,8 +82,31 @@ export async function getCategoryById(id: string) {
   return category;
 }
 
+// Public storefront lookup — same "active" gate as getCollectionBySlug, for
+// the same reason (fix-list.md #8, resolves 12.1). Previously unfiltered, so
+// an archived category's direct slug URL stayed fully live.
+//
+// Also chain-walks to the parent collection's own active status (fix-list.md
+// #22, resolves category-reachable-parent-archived) — found live while
+// verifying #8: archiving a collection never touches its categories'
+// `archivedAt`/`isActive` (by design, see 12.3), so a category's *own*
+// state stayed "active" even when its parent collection was archived,
+// leaving it reachable at its own slug URL (correctly listing zero
+// products, via `listProducts()`'s own parent-aware filter, but a
+// reachable `200` rather than a clean `404`). Mirrors the exact same
+// `OR: [{collectionID: null}, {collection: {...}}]` chain-walk
+// `productStatusWhere()` already does for products, for the same reason: a
+// standalone category has no collection to check, so it's ungated by this
+// half of the condition.
 export async function getCategoryBySlug(slug: string) {
-  const category = await prisma.category.findUnique({ where: { slug }, include: categoryInclude });
+  const category = await prisma.category.findFirst({
+    where: {
+      slug,
+      ...statusWhere('active'),
+      OR: [{ collectionID: null }, { collection: { archivedAt: null, isActive: true } }],
+    },
+    include: categoryInclude,
+  });
   if (!category) throw new AppError('NOT_FOUND', 'Category not found');
   return category;
 }
