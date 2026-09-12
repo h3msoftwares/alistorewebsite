@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Cloud, CloudOff, DatabaseBackup, RotateCcw } from 'lucide-react';
-import { Alert, Button, DataTable, EmptyState, Field, Icon, Input, Modal, ProductGridSkeleton } from '@/components/ui';
+import { CalendarClock, Cloud, CloudOff, DatabaseBackup, RotateCcw } from 'lucide-react';
+import { Alert, Button, DataTable, EmptyState, Field, Icon, Input, Modal, ProductGridSkeleton, Select } from '@/components/ui';
 import { useAuth, useStepUp } from '@/hooks/use-auth';
 import {
   useBackups,
@@ -12,9 +12,11 @@ import {
   useDriveStatus,
   useConnectDrive,
   useDisconnectDrive,
+  useBackupSettings,
+  useUpdateBackupSettings,
 } from '@/hooks/use-backup';
 import { isApiError } from '@/lib/api';
-import type { BackupItem } from '@/lib/api/backup';
+import type { BackupFrequency, BackupItem } from '@/lib/api/backup';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -85,16 +87,17 @@ function BackupPanel({ locale }: { locale: 'en' | 'ar' }) {
       </div>
 
       <DriveConnectionCard locale={locale} />
+      <BackupScheduleCard locale={locale} />
 
       <p className="admin-form__hint">
         {data
           ? t(
-              `A scheduled backup runs daily. The newest ${data.retentionCount} are kept on Google Drive — older ones are deleted automatically after each successful backup.`,
-              `يعمل نسخ احتياطي مجدول يوميًا. يُحتفظ بأحدث ${data.retentionCount} نسخ على Google Drive — وتُحذف الأقدم تلقائيًا بعد كل نسخ ناجح.`
+              `The newest ${data.retentionCount} backups are kept on Google Drive — older ones are deleted automatically after each successful backup.`,
+              `يُحتفظ بأحدث ${data.retentionCount} نسخ على Google Drive — وتُحذف الأقدم تلقائيًا بعد كل نسخ ناجح.`
             )
           : t(
-              'A scheduled backup runs daily and older copies are pruned automatically.',
-              'يعمل نسخ احتياطي مجدول يوميًا وتُحذف النسخ الأقدم تلقائيًا.'
+              'Older backup copies are pruned automatically once the retention limit is reached.',
+              'تُحذف النسخ الاحتياطية الأقدم تلقائيًا عند بلوغ حد الاحتفاظ.'
             )}
       </p>
 
@@ -272,6 +275,77 @@ function DriveConnectionCard({ locale }: { locale: 'en' | 'ar' }) {
             </Button>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+const FREQUENCIES: BackupFrequency[] = ['DAILY', 'WEEKLY', 'MONTHLY'];
+const FREQUENCY_LABEL: Record<BackupFrequency, [string, string]> = {
+  DAILY: ['Daily', 'يوميًا'],
+  WEEKLY: ['Weekly', 'أسبوعيًا'],
+  MONTHLY: ['Monthly', 'شهريًا'],
+};
+
+/**
+ * How often the scheduled GitHub Actions run actually produces a backup
+ * (default weekly) — that workflow fires daily regardless, but skips as a
+ * no-op until this interval has elapsed since the newest Drive backup (see
+ * backend/scripts/run-backup.ts). "Back up now" above is unaffected by this
+ * — it's always immediate, on demand.
+ */
+function BackupScheduleCard({ locale }: { locale: 'en' | 'ar' }) {
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
+
+  const { data: settings, isPending } = useBackupSettings();
+  const update = useUpdateBackupSettings();
+
+  const fmt = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString() : t('never', 'أبدًا'));
+  const nextDueLabel = settings?.lastBackupAt
+    ? fmt(settings.nextDueAt)
+    : t('as soon as the schedule runs', 'فور تشغيل الجدول');
+
+  return (
+    <div className="list-item">
+      <div className="stat-icon is-primary">
+        <Icon as={CalendarClock} size={20} />
+      </div>
+      <div className="list-item-body">
+        <h3 className="list-item-title">{t('Backup schedule', 'جدول النسخ الاحتياطي')}</h3>
+
+        <div className="field" style={{ marginTop: 'var(--space-2)', maxWidth: '12rem' }}>
+          <label className="label" htmlFor="backup-frequency">
+            {t('Frequency', 'التكرار')}
+          </label>
+          <Select
+            id="backup-frequency"
+            value={settings?.frequency ?? 'WEEKLY'}
+            disabled={isPending || update.isPending}
+            onChange={(e) => update.mutate(e.target.value as BackupFrequency)}
+          >
+            {FREQUENCIES.map((f) => (
+              <option key={f} value={f}>
+                {t(...FREQUENCY_LABEL[f])}
+              </option>
+            ))}
+          </Select>
+        </div>
+
+        {!isPending && (
+          <p className="text-sm text-secondary" style={{ marginTop: 'var(--space-2)' }}>
+            {t(
+              `Last automatic backup: ${fmt(settings?.lastBackupAt)}. Next due: ${nextDueLabel}.`,
+              `آخر نسخة تلقائية: ${fmt(settings?.lastBackupAt)}. التالية مستحقة: ${nextDueLabel}.`
+            )}
+          </p>
+        )}
+
+        {update.isError && (
+          <Alert tone="danger">
+            {t('Could not update the schedule.', 'تعذّر تحديث الجدول.')}
+          </Alert>
+        )}
       </div>
     </div>
   );

@@ -21,6 +21,9 @@ vi.mock('../../src/modules/backup/backup.service', () => ({
   buildDriveAuthUrl: vi.fn(),
   completeDriveConnection: vi.fn(),
   disconnectDrive: vi.fn(),
+  getBackupSettings: vi.fn(),
+  updateBackupSettings: vi.fn(),
+  isBackupDueNow: vi.fn(),
 }));
 import { completeDriveConnection } from '../../src/modules/backup/backup.service';
 

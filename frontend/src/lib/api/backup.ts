@@ -61,3 +61,23 @@ export function getDriveConnectUrl() {
 export function disconnectDrive() {
   return api.post<{ ok: true }>('/api/admin/backup/drive/disconnect');
 }
+
+export type BackupFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
+
+export interface BackupScheduleStatus {
+  due: boolean;
+  frequency: BackupFrequency;
+  lastBackupAt: string | null;
+  nextDueAt: string | null;
+}
+
+/** Current cadence plus schedule status — the scheduled GitHub Actions run
+ *  fires daily but only actually backs up once this interval has elapsed
+ *  since the newest Drive backup (default weekly). */
+export function getBackupSettings() {
+  return api.get<BackupScheduleStatus>('/api/admin/backup/settings');
+}
+
+export function updateBackupSettings(frequency: BackupFrequency) {
+  return api.patch<{ frequency: BackupFrequency }>('/api/admin/backup/settings', { frequency });
+}

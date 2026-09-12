@@ -78,11 +78,16 @@ enough.
 to a Google Drive folder. Implementation: `backend/src/modules/backup/`
 (`pg-dump.ts`, `drive.client.ts`, `retention.ts`, `backup.service.ts`).
 
-**Schedule:** `.github/workflows/backup.yml` — daily cron (03:00 UTC) plus a
-manual `workflow_dispatch` trigger from the Actions tab. Both invoke
-`npm run backup:run` (`backend/scripts/run-backup.ts`), which calls the exact
-same `runBackup()` used by the admin-triggered path below — one implementation,
-two triggers.
+**Schedule:** `.github/workflows/backup.yml` fires daily (03:00 UTC cron, plus
+manual `workflow_dispatch` from the Actions tab), but `backend/scripts/run-backup.ts`
+first checks `isBackupDueNow()` — the actual cadence is an admin-configurable
+setting (`GET`/`PATCH /api/admin/backup/settings`, **DAILY** / **WEEKLY**
+(default) / **MONTHLY**, shown and changed on the admin panel's Backups page),
+compared against the newest backup already on Drive. Most daily ticks are a
+no-op skip on anything less frequent than "daily"; when one IS due, it calls
+the exact same `runBackup()` used by the admin-triggered path below — one
+implementation, one schedule check, multiple triggers. Changing the frequency
+is audit-logged (`backup.settings.update`).
 
 **On-demand:** ADMIN-only (not STAFF — see `backup.routes.ts`) from the admin
 panel's **Backups** page, or directly: `POST /api/admin/backup` runs a backup
