@@ -53,7 +53,7 @@
   --color-surface-sunken: #e6e8f2;     /* skeletons, track backgrounds */
 
   /* ---- Text ---- */
-  --color-text: var(--navy);          /* ~17:1 on --color-bg — navy-tinted ink instead of generic warm black */
+  --color-text: var(--ink);           /* ~18.7:1 on --color-bg — near-black ink instead of navy (user-directed 2026-09-12) */
   --color-text-secondary: #3f3970;    /* ~10.3:1 on --color-bg */
   --color-text-muted: #5b5680;        /* ~6.8:1 on --color-bg — captions/meta; light bg only, never on an accent */
   --color-text-disabled: #a19dbd;     /* decorative only — never sole carrier of meaning */
@@ -69,7 +69,7 @@
   /* ---- Primary / secondary / accent ---- */
   --color-primary: var(--bright-gold); /* wordmark, primary CTA, announcement/offers strip */
   --color-primary-hover: #af7e2f;      /* darker gold, not a colour swap */
-  --color-on-primary: var(--navy);     /* white fails contrast on this gold (~2.4:1); navy gives ~7:1 and reads as the brand pairing */
+  --color-on-primary: var(--ink);      /* white fails contrast on this gold (~2.4:1); near-black ink instead of navy (user-directed 2026-09-12) */
 
   --color-secondary: var(--ink);       /* quiet emphasis, secondary buttons/badges, footer band — near-black from the home artwork */
   --color-secondary-hover: var(--ink-2);
@@ -77,7 +77,7 @@
 
   --color-accent: var(--yellow);       /* hot accent — used sparingly (sale, active state, emphasis); distinct from primary gold */
   --color-accent-hover: #e0d400;
-  --color-on-accent: var(--navy);      /* ~15.4:1 */
+  --color-on-accent: var(--ink);       /* near-black ink instead of navy (user-directed 2026-09-12) */
   --color-accent-soft: #fff6cf;        /* decorative fills / dividers — NON-TEXT only */
 
   /* ---- Semantic (each: solid / tint bg / on-tint text) — always paired with an icon ---- */
@@ -787,7 +787,7 @@ main > .container.section:first-child {
 /* On the dark home-hero header, flip to a light chip so it stays visible. */
 .site-header[data-on-dark='true'] .topbar__avatar {
   background: #fff;
-  color: var(--navy);
+  color: var(--ink);
 }
 .topbar__account-label {
   font-size: var(--fs-xs);
@@ -1002,7 +1002,14 @@ main > .container.section:first-child {
   margin: 0;
   max-width: min(42ch, 100%);
 }
-.hero__cta { text-decoration: none; align-self: flex-end; }
+.hero__cta {
+  text-decoration: none;
+  align-self: flex-end;
+  /* Near-black (footer band / home artwork field) instead of the navy
+     .btn--primary default (user-directed 2026-09-12) — same gold fill. */
+  border-color: var(--color-secondary);
+  color: var(--color-secondary);
+}
 [lang='ar'] .hero__cta { align-self: flex-start; }
 
 /* Discover CTA arrow: a gentle idle nudge toward the reading direction that
