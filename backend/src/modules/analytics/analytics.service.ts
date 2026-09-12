@@ -111,10 +111,13 @@ export async function sales(q: AnalyticsRangeQuery) {
 
   const [series, byCategory, byProduct, bySize, byColour] = await Promise.all([
     revenueSeries(from, to, q.granularity),
+    // Attributed to the product's PRIMARY category only — reporting is one of
+    // the stated reasons a primary category exists (see the Product model's
+    // doc comment) — not every additional placement it's also linked into.
     itemBreakdown(from, to, Prisma.sql`c."nameEn"`, Prisma.sql`
       JOIN "productvariant" v ON v."id" = oi."variantID"
       JOIN "product" p ON p."id" = v."productID"
-      JOIN "category" c ON c."id" = p."categoryID"
+      JOIN "category" c ON c."id" = p."primaryCategoryID"
     `),
     itemBreakdown(from, to, Prisma.sql`oi."productName"`, Prisma.empty),
     itemBreakdown(from, to, Prisma.sql`COALESCE(oi."size", '—')`, Prisma.empty),

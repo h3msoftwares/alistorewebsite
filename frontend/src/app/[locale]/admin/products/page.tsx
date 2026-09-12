@@ -141,7 +141,7 @@ export default function AdminProductsPage() {
                   </td>
                   <td data-label={t('SKU', 'رمز المنتج')}>{p.sku}</td>
                   <td data-label={t('Category', 'الفئة')}>
-                    {p.category ? (isAr ? p.category.nameAr : p.category.nameEn) : '—'}
+                    {p.primaryCategory ? (isAr ? p.primaryCategory.nameAr : p.primaryCategory.nameEn) : '—'}
                   </td>
                   <td data-label={t('Price', 'السعر')}>
                     {p.onSale ? (

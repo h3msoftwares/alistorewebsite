@@ -11,18 +11,19 @@ import {
   collectionImageParamSchema,
   createCollectionSchema,
   updateCollectionSchema,
-  linkCategoriesSchema,
+  setCollectionProductsSchema,
 } from './collection.schema';
 import {
   listCollectionsHandler,
   getCollectionHandler,
   getCollectionBySlugHandler,
+  listCollectionProductsHandler,
   createCollectionHandler,
   updateCollectionHandler,
   archiveCollectionHandler,
   restoreCollectionHandler,
   deleteCollectionHandler,
-  linkCategoriesHandler,
+  setCollectionProductsHandler,
   addCollectionImageHandler,
   updateCollectionImageHandler,
   deleteCollectionImageHandler,
@@ -45,6 +46,12 @@ router.get(
   asyncHandler(getCollectionBySlugHandler)
 );
 router.get('/:id', validate({ params: collectionIdParamSchema }), asyncHandler(getCollectionHandler));
+// Manually-curated product listing (Stage 1: manual membership only).
+router.get(
+  '/:id/products',
+  validate({ params: collectionIdParamSchema }),
+  asyncHandler(listCollectionProductsHandler)
+);
 
 // ---- Admin (STAFF/ADMIN only) ----
 router.post('/', ...admin, validate({ body: createCollectionSchema }), asyncHandler(createCollectionHandler));
@@ -75,12 +82,12 @@ router.delete(
   asyncHandler(deleteCollectionHandler)
 );
 
-// Link existing categories into this collection (moves them here).
-router.post(
-  '/:id/categories',
+// Replace this collection's manual product membership wholesale.
+router.put(
+  '/:id/products',
   ...admin,
-  validate({ params: collectionIdParamSchema, body: linkCategoriesSchema }),
-  asyncHandler(linkCategoriesHandler)
+  validate({ params: collectionIdParamSchema, body: setCollectionProductsSchema }),
+  asyncHandler(setCollectionProductsHandler)
 );
 
 // ---- Images ----

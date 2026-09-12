@@ -9,7 +9,7 @@ const product: Product = {
   sku: 'SKU1',
   nameEn: 'Test Shirt',
   nameAr: 'قميص',
-  categoryID: 'cat1',
+  primaryCategoryID: 'cat1',
   price: '30.00',
   quantity: 10,
   effectivePrice: 30,

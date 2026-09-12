@@ -29,7 +29,7 @@ describe('Catalog discounts', () => {
 
   it('creates an ALL / COLLECTION / CATEGORY discount and rejects bad shapes', async () => {
     const col = await makeCollection({ slug: 'd-col' });
-    const cat = await makeCategory(col.id, { slug: 'd-cat' });
+    const cat = await makeCategory({ slug: 'd-cat' });
 
     const all = await postAdmin('/api/discounts', {
       nameEn: 'Site-wide',
@@ -88,8 +88,8 @@ describe('Catalog discounts', () => {
 
   it('applies to product pricing: STACK compounds, OVERRIDE replaces the product sale', async () => {
     const col = await makeCollection({ slug: 'p-col' });
-    const cat = await makeCategory(col.id, { slug: 'p-cat' });
-    const product = await makeProduct(col.id, cat.id, {
+    const cat = await makeCategory({ slug: 'p-cat' });
+    const product = await makeProduct(cat.id, {
       over: { price: 100, saleType: 'PERCENT', saleValue: 20 }, // own sale → 80
       variants: [{ sku: 'pv1', stockQuantity: 5 }],
     });
@@ -113,10 +113,45 @@ describe('Catalog discounts', () => {
     expect(list.body.product.effectivePrice).toBe(90);
   });
 
+  // Spelled out explicitly per the Stage 1 catalog redesign: Product has no
+  // collectionID at all now (the old denormalized mirror is gone). A
+  // COLLECTION-scoped discount matches via a direct EXISTS check against the
+  // manual CollectionProduct membership — this is its own test, not folded
+  // into the CATEGORY-scoped one above, since the two now go through
+  // completely different code paths (primary/additional category links vs.
+  // manual collection membership — see category-tree.ts / pricing.ts).
+  it('a COLLECTION-scoped discount applies via manual CollectionProduct membership, not any category relationship', async () => {
+    const col = await makeCollection({ slug: 'sale-col' });
+    const cat = await makeCategory({ slug: 'col-scope-cat' });
+    const inCollection = await makeProduct(cat.id, {
+      over: { price: 100 },
+      variants: [{ sku: 'cs1', stockQuantity: 5 }],
+      collectionIds: [col.id],
+    });
+    const sameCategoryNotInCollection = await makeProduct(cat.id, {
+      over: { price: 100 },
+      variants: [{ sku: 'cs2', stockQuantity: 5 }],
+    });
+
+    await postAdmin('/api/discounts', {
+      nameEn: 'Collection sale', nameAr: 'تخفيض', scope: 'COLLECTION', collectionId: col.id, type: 'PERCENT', value: 20,
+    });
+
+    const inColRes = await request(app).get(`/api/products/${inCollection.id}`);
+    expect(inColRes.body.product.effectivePrice).toBe(80);
+    expect(inColRes.body.product.discount).toMatchObject({ type: 'PERCENT', value: 20 });
+
+    // Same category, but NOT manually placed in the collection — unaffected,
+    // proving the match is on CollectionProduct membership specifically.
+    const notInColRes = await request(app).get(`/api/products/${sameCategoryNotInCollection.id}`);
+    expect(notInColRes.body.product.effectivePrice).toBe(100);
+    expect(notInColRes.body.product.onSale).toBe(false);
+  });
+
   it('the most specific scope wins (CATEGORY over ALL)', async () => {
     const col = await makeCollection({ slug: 's-col' });
-    const cat = await makeCategory(col.id, { slug: 's-cat' });
-    const product = await makeProduct(col.id, cat.id, {
+    const cat = await makeCategory({ slug: 's-cat' });
+    const product = await makeProduct(cat.id, {
       over: { price: 100 },
       variants: [{ sku: 'sv1', stockQuantity: 5 }],
     });
@@ -130,8 +165,8 @@ describe('Catalog discounts', () => {
 
   it('an inactive or out-of-window discount does not apply', async () => {
     const col = await makeCollection({ slug: 'w-col' });
-    const cat = await makeCategory(col.id, { slug: 'w-cat' });
-    const product = await makeProduct(col.id, cat.id, {
+    const cat = await makeCategory({ slug: 'w-cat' });
+    const product = await makeProduct(cat.id, {
       over: { price: 100 },
       variants: [{ sku: 'wv1', stockQuantity: 5 }],
     });
@@ -149,19 +184,19 @@ describe('Catalog discounts', () => {
 });
 
 describe('onSale filter', () => {
-  it('returns only discounted products', async () => {
+  it('returns only discounted products, and can be scoped to a collection via manual membership', async () => {
     const col = await makeCollection({ slug: 'f-col' });
-    const cat = await makeCategory(col.id, { slug: 'f-cat' });
-    const otherCat = await makeCategory(col.id, { slug: 'f-cat-2' });
+    const cat = await makeCategory({ slug: 'f-cat' });
+    const otherCat = await makeCategory({ slug: 'f-cat-2' });
 
-    const plain = await makeProduct(col.id, otherCat.id, {
-      over: { price: 40 }, variants: [{ sku: 'fp1', stockQuantity: 3 }],
+    const plain = await makeProduct(otherCat.id, {
+      over: { price: 40 }, variants: [{ sku: 'fp1', stockQuantity: 3 }], collectionIds: [col.id],
     });
-    const ownSale = await makeProduct(col.id, otherCat.id, {
-      over: { price: 40, saleType: 'AMOUNT', saleValue: 10 }, variants: [{ sku: 'fp2', stockQuantity: 3 }],
+    const ownSale = await makeProduct(otherCat.id, {
+      over: { price: 40, saleType: 'AMOUNT', saleValue: 10 }, variants: [{ sku: 'fp2', stockQuantity: 3 }], collectionIds: [col.id],
     });
-    const viaDiscount = await makeProduct(col.id, cat.id, {
-      over: { price: 40 }, variants: [{ sku: 'fp3', stockQuantity: 3 }],
+    const viaDiscount = await makeProduct(cat.id, {
+      over: { price: 40 }, variants: [{ sku: 'fp3', stockQuantity: 3 }], collectionIds: [col.id],
     });
     await postAdmin('/api/discounts', {
       nameEn: 'cat', nameAr: 'c', scope: 'CATEGORY', categoryId: cat.id, type: 'PERCENT', value: 25,
@@ -208,8 +243,8 @@ describe('Coupons', () => {
 describe('Checkout with a coupon', () => {
   it('applies the coupon to the discounted subtotal and snapshots it on the order', async () => {
     const col = await makeCollection({ slug: 'co-col' });
-    const cat = await makeCategory(col.id, { slug: 'co-cat' });
-    const product = await makeProduct(col.id, cat.id, {
+    const cat = await makeCategory({ slug: 'co-cat' });
+    const product = await makeProduct(cat.id, {
       over: { price: 50 },
       variants: [{ sku: 'cov1', size: 'M', color: 'Black', stockQuantity: 10 }],
     });
@@ -247,8 +282,8 @@ describe('Checkout with a coupon', () => {
 
   it('rejects a checkout that names an unknown coupon', async () => {
     const col = await makeCollection({ slug: 'cx-col' });
-    const cat = await makeCategory(col.id, { slug: 'cx-cat' });
-    const product = await makeProduct(col.id, cat.id, {
+    const cat = await makeCategory({ slug: 'cx-cat' });
+    const product = await makeProduct(cat.id, {
       variants: [{ sku: 'cxv1', stockQuantity: 5 }],
     });
     const buyer = await createCustomer();

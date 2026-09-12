@@ -126,7 +126,7 @@ export default function AdminCategoriesPage() {
                 <th aria-hidden="true" />
                 <th>{t('Name', 'الاسم')}</th>
                 <th>{t('Slug', 'الرابط')}</th>
-                <th>{t('Collection', 'المجموعة')}</th>
+                <th>{t('Parent', 'الفئة الأصل')}</th>
                 <th>{t('Status', 'الحالة')}</th>
                 <th>{t('Home', 'الرئيسية')}</th>
                 <th aria-hidden="true" />
@@ -142,15 +142,24 @@ export default function AdminCategoriesPage() {
                     <Link href={`/${locale}/admin/categories/${c.id}`}>{name(c)}</Link>
                   </td>
                   <td data-label={t('Slug', 'الرابط')}>{c.slug}</td>
-                  <td data-label={t('Collection', 'المجموعة')}>
-                    {c.collection ? (isAr ? c.collection.nameAr : c.collection.nameEn) : (
-                      <span style={{ color: 'var(--color-text-muted)' }}>{t('Standalone', 'مستقلة')}</span>
+                  <td data-label={t('Parent', 'الفئة الأصل')}>
+                    {c.parent ? (isAr ? c.parent.nameAr : c.parent.nameEn) : (
+                      <span style={{ color: 'var(--color-text-muted)' }}>{t('Top level', 'المستوى الأعلى')}</span>
                     )}
                   </td>
                   <td data-label={t('Status', 'الحالة')}>
                     {c.archivedAt ? (
                       <Badge variant="low-stock" className="admin-status-badge--archived">
                         {t('Archived', 'مؤرشفة')}
+                      </Badge>
+                    ) : c.isEffectivelyArchived ? (
+                      // Not archived itself, but unreachable on the storefront
+                      // because an ancestor is — flagged distinctly so this
+                      // doesn't read as indistinguishable from a genuinely
+                      // active category (fix-list.md #15's principle, carried
+                      // onto the tree — see category-form.tsx's picker).
+                      <Badge variant="low-stock" className="admin-status-badge--archived">
+                        {t('Parent archived', 'الفئة الأصل مؤرشفة')}
                       </Badge>
                     ) : c.isActive ? (
                       <Badge variant="new">{t('Active', 'مفعّلة')}</Badge>

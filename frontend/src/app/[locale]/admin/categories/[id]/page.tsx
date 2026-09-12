@@ -44,7 +44,7 @@ export default function EditCategoryPage() {
           nameEn: values.nameEn,
           nameAr: values.nameAr,
           slug: values.slug,
-          collectionId: values.collectionId || null,
+          parentId: values.parentId || null,
           isActive: values.isActive,
           showOnHome: values.showOnHome,
           sortOrder: values.sortOrder,
@@ -148,11 +148,12 @@ export default function EditCategoryPage() {
 
       <CategoryForm
         locale={locale}
+        editingId={id}
         defaultValues={{
           nameEn: category.nameEn,
           nameAr: category.nameAr,
           slug: category.slug,
-          collectionId: category.collectionID ?? '',
+          parentId: category.parentID ?? '',
           isActive: category.isActive,
           showOnHome: category.showOnHome,
           sortOrder: category.sortOrder,

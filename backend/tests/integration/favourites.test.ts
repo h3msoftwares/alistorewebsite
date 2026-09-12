@@ -12,8 +12,8 @@ let otherProductId: string;
 
 beforeEach(async () => {
   const col = await makeCollection({ slug: 'c' });
-  const cat = await makeCategory(col.id);
-  const p = await makeProduct(col.id, cat.id, {
+  const cat = await makeCategory();
+  const p = await makeProduct(cat.id, {
     over: {
       nameEn: 'Silk Robe',
       nameAr: 'روب حرير',
@@ -23,7 +23,7 @@ beforeEach(async () => {
       images: { create: [{ url: 'https://img.test/robe.jpg', altEn: 'Silk Robe', sortOrder: 0 }] },
     },
   });
-  const p2 = await makeProduct(col.id, cat.id, { over: { nameEn: 'Wool Scarf' } });
+  const p2 = await makeProduct(cat.id, { over: { nameEn: 'Wool Scarf' } });
   productId = p.id;
   otherProductId = p2.id;
 });

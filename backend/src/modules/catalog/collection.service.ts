@@ -13,12 +13,6 @@ type UpdateCollectionInput = z.infer<typeof updateCollectionSchema>;
 // "base" image.
 const imageOrder = { orderBy: { sortOrder: 'asc' as const } };
 
-const categoryTree = {
-  where: { isActive: true },
-  orderBy: { sortOrder: 'asc' as const },
-  include: { images: imageOrder },
-};
-
 export type CatalogStatus = 'active' | 'archived' | 'all';
 
 export interface ListCollectionsOpts {
@@ -54,7 +48,7 @@ export async function listCollections(opts: ListCollectionsOpts = {}) {
     orderBy: { sortOrder: 'asc' },
     include: {
       images: imageOrder,
-      _count: { select: { categories: true, products: true } },
+      _count: { select: { products: true } },
     },
   });
 }
@@ -62,7 +56,7 @@ export async function listCollections(opts: ListCollectionsOpts = {}) {
 export async function getCollectionById(id: string) {
   const collection = await prisma.collection.findUnique({
     where: { id },
-    include: { images: imageOrder, categories: categoryTree },
+    include: { images: imageOrder },
   });
   if (!collection) throw new AppError('NOT_FOUND', 'Collection not found');
   return collection;
@@ -77,25 +71,38 @@ export async function getCollectionById(id: string) {
 export async function getCollectionBySlug(slug: string) {
   const collection = await prisma.collection.findFirst({
     where: { slug, ...statusWhere('active') },
-    include: { images: imageOrder, categories: categoryTree },
+    include: { images: imageOrder },
   });
   if (!collection) throw new AppError('NOT_FOUND', 'Collection not found');
   return collection;
 }
 
+/** A manually-curated collection's live product listing, newest-linked
+ *  first. Collection membership is orthogonal to the category tree (see
+ *  schema.prisma's Collection doc comment) — a product's own active/archived
+ *  state and category reachability still gate whether it shows up here;
+ *  this only adds the "is manually placed in this collection" filter. */
+export async function listCollectionProducts(id: string) {
+  await ensureExists(id);
+  const links = await prisma.collectionProduct.findMany({
+    where: { collectionID: id, product: { isActive: true, deletedAt: null } },
+    orderBy: { sortOrder: 'asc' },
+    include: {
+      product: {
+        include: { images: imageOrder, variants: true },
+      },
+    },
+  });
+  return links.map((l) => l.product);
+}
+
 // ---- Admin-side writes ----
 
 export async function createCollection(input: CreateCollectionInput) {
-  const { categoryIds, ...data } = input;
   try {
     return await prisma.collection.create({
-      data: {
-        ...data,
-        ...(categoryIds?.length
-          ? { categories: { connect: categoryIds.map((id) => ({ id })) } }
-          : {}),
-      },
-      include: { images: imageOrder, categories: categoryTree },
+      data: input,
+      include: { images: imageOrder },
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -111,7 +118,7 @@ export async function updateCollection(id: string, input: UpdateCollectionInput)
     return await prisma.collection.update({
       where: { id },
       data: input,
-      include: { images: imageOrder, categories: categoryTree },
+      include: { images: imageOrder },
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -128,7 +135,7 @@ export async function archiveCollection(id: string) {
   return prisma.collection.update({
     where: { id },
     data: { archivedAt: new Date(), isActive: false },
-    include: { images: imageOrder, categories: categoryTree },
+    include: { images: imageOrder },
   });
 }
 
@@ -137,20 +144,19 @@ export async function restoreCollection(id: string) {
   return prisma.collection.update({
     where: { id },
     data: { archivedAt: null, isActive: true },
-    include: { images: imageOrder, categories: categoryTree },
+    include: { images: imageOrder },
   });
 }
 
 // Permanent, irreversible delete — only once the collection is archived AND
-// empty of products (categories detach to standalone; images cascade + get
-// cleaned up from ImageKit).
+// empty of products (images cascade + get cleaned up from ImageKit).
 export async function deleteCollection(id: string) {
   const existing = await prisma.collection.findUnique({ where: { id }, select: { archivedAt: true } });
   if (!existing) throw new AppError('NOT_FOUND', 'Collection not found');
   if (!existing.archivedAt) {
     throw new AppError('CONFLICT', 'Archive the collection before deleting it permanently.');
   }
-  const productCount = await prisma.product.count({ where: { collectionID: id } });
+  const productCount = await prisma.collectionProduct.count({ where: { collectionID: id } });
   if (productCount > 0) {
     throw new AppError(
       'CONFLICT',
@@ -162,26 +168,21 @@ export async function deleteCollection(id: string) {
   await Promise.all(images.map((img) => cleanupCatalogImageIfOrphaned(img.fileId)));
 }
 
-// Link (move) existing categories into this collection.
-export async function linkCategories(id: string, categoryIds: string[]) {
+// Replace the collection's manual product membership wholesale — same
+// "replace-all on save" convention used elsewhere in this codebase.
+export async function setCollectionProducts(id: string, productIds: string[]) {
   await ensureExists(id);
-  const found = await prisma.category.findMany({
-    where: { id: { in: categoryIds } },
-    select: { id: true },
-  });
-  if (found.length !== categoryIds.length) {
-    throw new AppError('NOT_FOUND', 'One or more categories were not found');
+  const unique = [...new Set(productIds)];
+  const found = await prisma.product.findMany({ where: { id: { in: unique } }, select: { id: true } });
+  if (found.length !== unique.length) {
+    throw new AppError('NOT_FOUND', 'One or more products were not found');
   }
-  await prisma.category.updateMany({
-    where: { id: { in: categoryIds } },
-    data: { collectionID: id },
-  });
-  // Keep the denormalized Product.collectionID mirror in sync for every product
-  // in the moved categories.
-  await prisma.product.updateMany({
-    where: { categoryID: { in: categoryIds } },
-    data: { collectionID: id },
-  });
+  await prisma.$transaction([
+    prisma.collectionProduct.deleteMany({ where: { collectionID: id } }),
+    prisma.collectionProduct.createMany({
+      data: unique.map((productID, i) => ({ collectionID: id, productID, sortOrder: i })),
+    }),
+  ]);
   return getCollectionById(id);
 }
 

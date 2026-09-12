@@ -38,8 +38,8 @@ beforeEach(async () => {
   mockConfirmEmail.mockClear();
   mockSendOtp.mockClear();
   const col = await makeCollection({ slug: 'c' });
-  const cat = await makeCategory(col.id);
-  const p = await makeProduct(col.id, cat.id, {
+  const cat = await makeCategory();
+  const p = await makeProduct(cat.id, {
     over: { price: 20 },
     variants: [{ sku: 'v1', size: 'M', color: 'Black', stockQuantity: 10 }],
   });

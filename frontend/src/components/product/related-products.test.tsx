@@ -20,7 +20,7 @@ function makeProduct(id: string, overrides: Partial<Product> = {}): Product {
     sku: `SKU-${id}`,
     nameEn: `Product ${id}`,
     nameAr: `منتج ${id}`,
-    categoryID: 'cat1',
+    primaryCategoryID: 'cat1',
     price: '20.00',
     quantity: 10,
     effectivePrice: 20,

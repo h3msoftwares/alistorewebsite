@@ -5,16 +5,16 @@ import { resolveListStatus, type CatalogListStatus } from './list-access';
 
 export async function listCategoriesHandler(req: Request, res: Response) {
   const q = (req.validatedQuery ?? {}) as {
-    collectionId?: string;
-    standalone?: boolean;
+    parentId?: string;
+    topLevel?: boolean;
     showOnHome?: boolean;
     search?: string;
     status?: CatalogListStatus;
   };
   const status = resolveListStatus(req, q.status);
   const categories = await categoryService.listCategories({
-    collectionId: q.collectionId,
-    standalone: q.standalone,
+    parentId: q.parentId,
+    topLevel: q.topLevel,
     showOnHome: q.showOnHome,
     search: q.search,
     status,

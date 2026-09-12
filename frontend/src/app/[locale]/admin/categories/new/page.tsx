@@ -20,7 +20,7 @@ export default function NewCategoryPage() {
         nameEn: values.nameEn,
         nameAr: values.nameAr,
         slug: values.slug,
-        collectionId: values.collectionId || null,
+        parentId: values.parentId || null,
         isActive: values.isActive,
         showOnHome: values.showOnHome,
         sortOrder: values.sortOrder,

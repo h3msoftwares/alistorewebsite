@@ -32,6 +32,8 @@ const TABLES = [
   'refreshtoken',
   'productimage',
   'productvariant',
+  'productcategory',
+  'collectionproduct',
   'product',
   'categoryimage',
   'category',

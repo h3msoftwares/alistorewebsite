@@ -374,8 +374,8 @@ describe('Auth API', () => {
 
     it('merges a guest cart into the user on login', async () => {
       const col = await makeCollection({ slug: 'c' });
-      const cat = await makeCategory(col.id);
-      const p = await makeProduct(col.id, cat.id, {
+      const cat = await makeCategory();
+      const p = await makeProduct(cat.id, {
         variants: [{ sku: 'v', size: 'M', color: 'B', stockQuantity: 5 }],
       });
       await verifiedCustomer();

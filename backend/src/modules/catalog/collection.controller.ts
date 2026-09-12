@@ -24,6 +24,11 @@ export async function getCollectionBySlugHandler(req: Request, res: Response) {
   res.json({ collection });
 }
 
+export async function listCollectionProductsHandler(req: Request, res: Response) {
+  const products = await collectionService.listCollectionProducts(paramString(req.params.id));
+  res.json({ products });
+}
+
 // ---- Admin ----
 
 export async function createCollectionHandler(req: Request, res: Response) {
@@ -51,10 +56,10 @@ export async function deleteCollectionHandler(req: Request, res: Response) {
   res.status(204).send();
 }
 
-export async function linkCategoriesHandler(req: Request, res: Response) {
-  const collection = await collectionService.linkCategories(
+export async function setCollectionProductsHandler(req: Request, res: Response) {
+  const collection = await collectionService.setCollectionProducts(
     paramString(req.params.id),
-    req.body.categoryIds
+    req.body.productIds
   );
   res.json({ collection });
 }

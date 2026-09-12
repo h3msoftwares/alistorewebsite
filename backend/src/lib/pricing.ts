@@ -70,14 +70,25 @@ export function pricedWithDiscount(
  * (CATEGORY > COLLECTION > ALL); within that scope the one that yields the
  * lowest price for THIS product is chosen. `discounts` is expected to be
  * pre-filtered to those active right now (see discount.service.activeDiscounts).
+ *
+ * `categoryIDs`/`collectionIDs` are every category (primary + additional,
+ * see category-tree.ts productCategoryIds()) / collection the product is
+ * placed in — a product can match a CATEGORY or COLLECTION discount through
+ * any one of its placements, not just a single canonical id.
  */
 export function pickDiscount(
-  product: { price: Money; saleType: DiscountType | null; saleValue: Money | null; categoryID: string; collectionID: string | null },
+  product: {
+    price: Money;
+    saleType: DiscountType | null;
+    saleValue: Money | null;
+    categoryIDs: string[];
+    collectionIDs: string[];
+  },
   discounts: DiscountCandidate[]
 ): AppliedDiscount | null {
   const tiers: DiscountCandidate[][] = [
-    discounts.filter((d) => d.scope === 'CATEGORY' && d.categoryID === product.categoryID),
-    discounts.filter((d) => d.scope === 'COLLECTION' && d.collectionID != null && d.collectionID === product.collectionID),
+    discounts.filter((d) => d.scope === 'CATEGORY' && d.categoryID != null && product.categoryIDs.includes(d.categoryID)),
+    discounts.filter((d) => d.scope === 'COLLECTION' && d.collectionID != null && product.collectionIDs.includes(d.collectionID)),
     discounts.filter((d) => d.scope === 'ALL'),
   ];
   const winningTier = tiers.find((t) => t.length > 0);

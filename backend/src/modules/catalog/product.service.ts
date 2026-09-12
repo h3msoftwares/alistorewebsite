@@ -20,6 +20,14 @@ import {
   updateProductImageSchema,
 } from './product.schema';
 import { cleanupCatalogImageIfOrphaned } from './image-cleanup.service';
+import {
+  archivedCategoryIds,
+  productCategoryIds,
+  productCollectionIds,
+  productInCategoryFilter,
+  productInCollectionFilter,
+  productReachableFilter,
+} from './category-tree';
 
 type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
 type CreateProductInput = z.infer<typeof createProductSchema>;
@@ -32,8 +40,19 @@ type UpdateProductImageInput = z.infer<typeof updateProductImageSchema>;
 const productInclude = {
   images: { orderBy: { sortOrder: 'asc' as const } },
   variants: true,
-  category: true,
-  collection: { select: { id: true, nameEn: true, nameAr: true, slug: true } },
+  // Nested up to 4 levels of `parent` so the storefront can render a full
+  // breadcrumb (Men → Shoes → Sport Shoes → ...) for the canonical category,
+  // not just its own name — one of the stated reasons a primary category
+  // exists (canonical URL/breadcrumbs). Fixed depth, not recursive: the
+  // architecture doc's own UI guidance caps visible category depth around
+  // 3-4 levels regardless of how deep the tree can structurally go.
+  primaryCategory: { include: { parent: { include: { parent: { include: { parent: true } } } } } },
+  categoryLinks: {
+    include: { category: { select: { id: true, nameEn: true, nameAr: true, slug: true } } },
+  },
+  collectionLinks: {
+    include: { collection: { select: { id: true, nameEn: true, nameAr: true, slug: true } } },
+  },
 };
 
 // Attach the post-sale price so every product/variant read carries what a
@@ -43,12 +62,22 @@ type Priced = {
   price: Prisma.Decimal;
   saleType: DiscountType | null;
   saleValue: Prisma.Decimal | null;
-  categoryID: string;
-  collectionID: string | null;
+  primaryCategoryID: string;
+  categoryLinks?: { categoryID: string }[];
+  collectionLinks?: { collectionID: string }[];
   variants?: { price: Prisma.Decimal | null }[];
 };
 function withPricing<T extends Priced>(p: T, discounts: DiscountCandidate[] = []) {
-  const picked: AppliedDiscount | null = pickDiscount(p, discounts);
+  const picked: AppliedDiscount | null = pickDiscount(
+    {
+      price: p.price,
+      saleType: p.saleType,
+      saleValue: p.saleValue,
+      categoryIDs: productCategoryIds(p),
+      collectionIDs: productCollectionIds(p),
+    },
+    discounts
+  );
   // A variant with no price of its own falls back to the product's price;
   // the same discount applies on top of whichever base price is in play.
   const priceFor = (base: Prisma.Decimal | number) =>
@@ -165,53 +194,57 @@ function buildSearchFilter(raw: string): Prisma.ProductWhereInput | null {
 // `active` = live products; `archived` = soft-deleted only; `all` = both.
 // `includeInactive` is a deprecated alias for `all`. Non-active is admin-only
 // (gated in listProductsHandler).
-function productStatusWhere(query: ListProductsQuery): Prisma.ProductWhereInput {
+//
+// Storefront default: the product's own active/undeleted state, AND at least
+// one of its category placements (primary or additional) still reachable —
+// archiving a category is the admin's real "hide everything under this"
+// action (computed at read time via archivedCategoryIds(), which also
+// carries the effect of an archived ANCESTOR category, not just the
+// category's own flag — see category-tree.ts). Before Stage 1 this only
+// checked a single required category (fix-list.md #8/#22, resolves 12.6);
+// with a product now placed in several categories, one archived placement no
+// longer hides a product that's still properly reachable through another.
+async function productStatusWhere(query: ListProductsQuery): Promise<Prisma.ProductWhereInput> {
   const status = query.status ?? (query.includeInactive ? 'all' : 'active');
   if (status === 'archived') return { deletedAt: { not: null } };
   if (status === 'all') return {};
-  // Storefront default: the product's own active/undeleted state, AND its
-  // parent category's/collection's — archiving a category or collection is
-  // the admin's real "hide everything under this" action, but nothing here
-  // previously enforced that at the listing/search level, so a product
-  // stayed fully searchable/browsable under an archived parent (fix-list.md
-  // #8, resolves 12.6). `collection` is optional on Category (a standalone
-  // category has none), hence the OR.
+  const archivedIds = await archivedCategoryIds();
   return {
     isActive: true,
     deletedAt: null,
-    category: {
-      archivedAt: null,
-      isActive: true,
-      OR: [{ collectionID: null }, { collection: { archivedAt: null, isActive: true } }],
-    },
+    ...productReachableFilter(archivedIds),
   };
 }
 
 export async function listProducts(query: ListProductsQuery) {
-  const where: Prisma.ProductWhereInput = {
-    ...productStatusWhere(query),
-    ...(query.collectionId ? { collectionID: query.collectionId } : {}),
-    ...(query.categoryId ? { categoryID: query.categoryId } : {}),
-    ...(query.search ? (buildSearchFilter(query.search) ?? {}) : {}),
-    ...(query.minPrice || query.maxPrice
-      ? {
-          price: {
-            ...(query.minPrice ? { gte: query.minPrice } : {}),
-            ...(query.maxPrice ? { lte: query.maxPrice } : {}),
-          },
-        }
-      : {}),
-    ...(query.size || query.color
-      ? {
-          variants: {
-            some: {
-              ...(query.size ? { size: query.size } : {}),
-              ...(query.color ? { color: query.color } : {}),
-            },
-          },
-        }
-      : {}),
-  };
+  // Several of these fragments carry their own top-level `OR` (reachability,
+  // category placement, search) — combined as separate `AND` entries rather
+  // than object-spread, since spreading multiple `{ OR: [...] }` fragments
+  // into one object would have each later one silently clobber the previous
+  // one's `OR` key instead of narrowing the results.
+  const and: Prisma.ProductWhereInput[] = [await productStatusWhere(query)];
+  if (query.collectionId) and.push(productInCollectionFilter(query.collectionId));
+  if (query.categoryId) and.push(productInCategoryFilter(query.categoryId));
+  const searchFilter = query.search ? buildSearchFilter(query.search) : null;
+  if (searchFilter) and.push(searchFilter);
+  if (query.minPrice || query.maxPrice) {
+    and.push({
+      price: {
+        ...(query.minPrice ? { gte: query.minPrice } : {}),
+        ...(query.maxPrice ? { lte: query.maxPrice } : {}),
+      },
+    });
+  }
+  if (query.size || query.color) {
+    and.push({
+      variants: {
+        some: {
+          ...(query.size ? { size: query.size } : {}),
+          ...(query.color ? { color: query.color } : {}),
+        },
+      },
+    });
+  }
 
   // Load the discounts in force now — needed both for pricing every row and
   // (when `onSale=true`) to narrow the query to discounted products.
@@ -219,17 +252,20 @@ export async function listProducts(query: ListProductsQuery) {
   if (query.onSale) {
     const cov = discountCoverage(discounts);
     if (!cov.all) {
-      // A product is "on sale" if it has its own live sale, or its category /
-      // collection is covered by an active catalog discount.
+      // A product is "on sale" if it has its own live sale, or one of its
+      // category/collection placements is covered by an active catalog
+      // discount.
       const onSaleOr: Prisma.ProductWhereInput[] = [
         { saleType: { not: null }, saleValue: { gt: 0 } },
       ];
-      if (cov.categoryIds.length) onSaleOr.push({ categoryID: { in: cov.categoryIds } });
-      if (cov.collectionIds.length) onSaleOr.push({ collectionID: { in: cov.collectionIds } });
-      where.AND = [...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []), { OR: onSaleOr }];
+      if (cov.categoryIds.length) onSaleOr.push(productInCategoryFilter(cov.categoryIds));
+      if (cov.collectionIds.length) onSaleOr.push(productInCollectionFilter(cov.collectionIds));
+      and.push({ OR: onSaleOr });
     }
     // cov.all ⇒ every product is discounted; no extra restriction needed.
   }
+
+  const where: Prisma.ProductWhereInput = { AND: and };
 
   if (query.sort === 'best_selling') {
     return bestSellingPage(where, query, discounts);
@@ -361,10 +397,52 @@ export async function getProductById(id: string, includeInactive = false) {
 
 // ---- Admin-side writes ----
 
+// Integrity rule carried forward from the category tree itself (see
+// robust-ecommerce-catalog-architecture.md "Rules to enforce"): a product
+// can't be newly placed in a category that is archived, OR effectively
+// archived by descending from an archived ancestor — the tree-aware version
+// of the same rule, computed via archivedCategoryIds() rather than a plain
+// own-archivedAt check, so it holds at every depth, not just for a directly
+// archived category.
+async function assertCategoriesAssignable(categoryIds: string[]) {
+  if (categoryIds.length === 0) return;
+  const unique = [...new Set(categoryIds)];
+  const found = await prisma.category.findMany({ where: { id: { in: unique } }, select: { id: true } });
+  if (found.length !== unique.length) {
+    throw new AppError('NOT_FOUND', 'One or more categories were not found');
+  }
+  const archived = await archivedCategoryIds();
+  if (unique.some((id) => archived.has(id))) {
+    throw new AppError(
+      'CONFLICT',
+      'Cannot assign a product to an archived category (or one under an archived ancestor)'
+    );
+  }
+}
+
+// Same principle, one level over: a product can't be newly, manually placed
+// into an archived collection.
+async function assertCollectionsAssignable(collectionIds: string[]) {
+  if (collectionIds.length === 0) return;
+  const unique = [...new Set(collectionIds)];
+  const found = await prisma.collection.findMany({
+    where: { id: { in: unique } },
+    select: { id: true, archivedAt: true },
+  });
+  if (found.length !== unique.length) {
+    throw new AppError('NOT_FOUND', 'One or more collections were not found');
+  }
+  if (found.some((c) => c.archivedAt)) {
+    throw new AppError('CONFLICT', 'Cannot assign a product to an archived collection');
+  }
+}
+
 export async function createProduct(input: CreateProductInput) {
-  // The product's collection is the denormalized mirror of its category's
-  // collection (null when the category stands alone) — never client input.
-  const collectionID = await categoryCollectionId(input.categoryId);
+  // categoryLinks holds only ADDITIONAL placements — the primary category is
+  // never duplicated into it (see the ProductCategory doc comment).
+  const additionalCategoryIds = input.additionalCategoryIds.filter((id) => id !== input.primaryCategoryId);
+  await assertCategoriesAssignable([input.primaryCategoryId, ...additionalCategoryIds]);
+  await assertCollectionsAssignable(input.collectionIds);
   assertNoDuplicateVariants(input.variants);
   assertValidSale(input.saleType, input.saleValue);
   try {
@@ -375,8 +453,7 @@ export async function createProduct(input: CreateProductInput) {
         nameAr: input.nameAr,
         descriptionEn: input.descriptionEn,
         descriptionAr: input.descriptionAr,
-        categoryID: input.categoryId,
-        collectionID,
+        primaryCategoryID: input.primaryCategoryId,
         price: input.price,
         compareAtPrice: input.compareAtPrice,
         quantity: input.quantity,
@@ -391,6 +468,12 @@ export async function createProduct(input: CreateProductInput) {
             stockQuantity: v.stockQuantity,
           })),
         },
+        ...(additionalCategoryIds.length
+          ? { categoryLinks: { create: additionalCategoryIds.map((categoryID) => ({ categoryID })) } }
+          : {}),
+        ...(input.collectionIds.length
+          ? { collectionLinks: { create: input.collectionIds.map((collectionID) => ({ collectionID })) } }
+          : {}),
       },
       include: productInclude,
     });
@@ -403,14 +486,9 @@ export async function createProduct(input: CreateProductInput) {
 export async function updateProduct(id: string, input: UpdateProductInput) {
   const existing = await prisma.product.findUnique({
     where: { id },
-    select: { saleType: true, saleValue: true, lastEdit: true },
+    select: { saleType: true, saleValue: true, lastEdit: true, primaryCategoryID: true },
   });
   if (!existing) throw new AppError('NOT_FOUND', 'Product not found');
-
-  // Moving the product to another category re-derives its denormalized
-  // collection mirror from that category.
-  const nextCollectionID =
-    input.categoryId !== undefined ? await categoryCollectionId(input.categoryId) : undefined;
 
   // Validate the sale as it will be after this patch (input value or the
   // one already stored).
@@ -419,15 +497,32 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
     input.saleValue !== undefined ? (input.saleValue ?? null) : existing.saleValue;
   assertValidSale(nextSaleType, nextSaleValue);
 
+  // undefined ⇒ leave that placement set untouched; an array (including [])
+  // ⇒ replace it wholesale — same "replace-all on save" convention already
+  // used elsewhere in this codebase (SiteSettings' reviewImages/storeLocations).
+  // categoryLinks holds only ADDITIONAL placements, so the (possibly newly
+  // patched) primary category is filtered out of it either way.
+  const nextPrimaryCategoryId = input.primaryCategoryId ?? existing.primaryCategoryID;
+  const additionalCategoryIds = input.additionalCategoryIds?.filter(
+    (categoryId) => categoryId !== nextPrimaryCategoryId
+  );
+  if (input.primaryCategoryId !== undefined || additionalCategoryIds !== undefined) {
+    await assertCategoriesAssignable([
+      ...(input.primaryCategoryId !== undefined ? [input.primaryCategoryId] : []),
+      ...(additionalCategoryIds ?? []),
+    ]);
+  }
+  if (input.collectionIds !== undefined) {
+    await assertCollectionsAssignable(input.collectionIds);
+  }
+
   const data: Prisma.ProductUpdateInput = {
     ...(input.sku !== undefined ? { sku: input.sku } : {}),
     ...(input.nameEn !== undefined ? { nameEn: input.nameEn } : {}),
     ...(input.nameAr !== undefined ? { nameAr: input.nameAr } : {}),
     ...(input.descriptionEn !== undefined ? { descriptionEn: input.descriptionEn } : {}),
     ...(input.descriptionAr !== undefined ? { descriptionAr: input.descriptionAr } : {}),
-    ...(input.categoryId !== undefined
-      ? { categoryID: input.categoryId, collectionID: nextCollectionID ?? null }
-      : {}),
+    ...(input.primaryCategoryId !== undefined ? { primaryCategoryID: input.primaryCategoryId } : {}),
     ...(input.price !== undefined ? { price: input.price } : {}),
     ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice } : {}),
     ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
@@ -436,25 +531,54 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
   };
 
   try {
-    if (input.expectedLastEdit !== undefined) {
-      // Atomic conditional update — same shape as the stock/status claims
-      // elsewhere in this codebase (order.service.ts): the row's current
-      // `lastEdit` is re-checked at the instant of the write itself, not in
-      // a separate earlier read, so a genuinely concurrent second edit can't
-      // slip through between the check and the write.
-      const claim = await prisma.product.updateMany({
-        where: { id, lastEdit: input.expectedLastEdit },
-        data,
-      });
-      if (claim.count === 0) {
-        throw new AppError(
-          'CONFLICT',
-          'This product was changed by someone else since you loaded it. Refresh and try again.'
-        );
+    await prisma.$transaction(async (tx) => {
+      if (input.expectedLastEdit !== undefined) {
+        // Atomic conditional update — same shape as the stock/status claims
+        // elsewhere in this codebase (order.service.ts): the row's current
+        // `lastEdit` is re-checked at the instant of the write itself, not in
+        // a separate earlier read, so a genuinely concurrent second edit
+        // can't slip through between the check and the write. Kept as the
+        // FIRST statement in the transaction so a lost-update conflict rolls
+        // back the whole thing, including any category/collection relink
+        // below.
+        const claim = await tx.product.updateMany({
+          where: { id, lastEdit: input.expectedLastEdit },
+          data,
+        });
+        if (claim.count === 0) {
+          throw new AppError(
+            'CONFLICT',
+            'This product was changed by someone else since you loaded it. Refresh and try again.'
+          );
+        }
+      } else {
+        await tx.product.update({ where: { id }, data });
       }
-    } else {
-      await prisma.product.update({ where: { id }, data });
-    }
+
+      if (additionalCategoryIds !== undefined || input.collectionIds !== undefined) {
+        await tx.product.update({
+          where: { id },
+          data: {
+            ...(additionalCategoryIds !== undefined
+              ? {
+                  categoryLinks: {
+                    deleteMany: {},
+                    create: additionalCategoryIds.map((categoryID) => ({ categoryID })),
+                  },
+                }
+              : {}),
+            ...(input.collectionIds !== undefined
+              ? {
+                  collectionLinks: {
+                    deleteMany: {},
+                    create: input.collectionIds.map((collectionID) => ({ collectionID })),
+                  },
+                }
+              : {}),
+          },
+        });
+      }
+    });
     const updated = await prisma.product.findUniqueOrThrow({ where: { id }, include: productInclude });
     return withPricing(updated);
   } catch (e) {
@@ -668,17 +792,6 @@ async function ensureImageExists(productId: string, imageId: string) {
     throw new AppError('NOT_FOUND', 'Product image not found');
   }
   return img;
-}
-
-// Resolve a category's collection id (the denormalized value a product mirrors).
-// Returns null for a standalone category; throws if the category is unknown.
-async function categoryCollectionId(categoryId: string): Promise<string | null> {
-  const c = await prisma.category.findUnique({
-    where: { id: categoryId },
-    select: { collectionID: true },
-  });
-  if (!c) throw new AppError('NOT_FOUND', 'Category not found');
-  return c.collectionID;
 }
 
 // saleType + saleValue go together, and a PERCENT sale is bounded 0–100.

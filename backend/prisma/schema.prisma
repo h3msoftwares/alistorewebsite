@@ -265,9 +265,13 @@ model Address {
 
 // ============ CATALOG ============
 
-// Collections replace the old fixed Department enum. The owner can create any
-// number of collections (e.g. Women, Men, Kids, Summer Sale) from the admin UI
-// and attach categories to them. Hierarchy: Collection -> Category -> Product.
+// A flexible, flat merchandising grouping — cuts ACROSS the category tree
+// (e.g. "Sale", "New Arrivals"), not a level above it. Deliberately has no
+// relationship to Category at all: Category is the permanent navigation tree
+// (Men -> Shoes -> Sport Shoes), Collection is an orthogonal cross-cutting
+// group of products, membership is manual only (CollectionProduct) as of
+// Stage 1 of the catalog redesign — see catalog-redesign-implementation-plan.md.
+// Stage 2 adds CollectionRule for automated membership.
 model Collection {
   id                String    @id @default(uuid()) @db.Uuid
   nameEn            String
@@ -310,14 +314,30 @@ model Collection {
   lastEdit          DateTime  @default(now()) @updatedAt
 
   images      CollectionImage[]
-  categories  Category[]
-  products    Product[]
+  products    CollectionProduct[]
   siteHeroFor SiteSetting[]
   discounts   Discount[]
 
   @@index([isActive])
   @@index([archivedAt])
   @@map("collection")
+}
+
+// Manual collection membership — Stage 1 supports MANUAL only (an admin
+// explicitly picks products). No `membership` (INCLUDE/EXCLUDE) or rule-based
+// inclusion yet; that's Stage 2's CollectionRule / hybrid collections.
+model CollectionProduct {
+  collectionID String   @db.Uuid
+  productID    String   @db.Uuid
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  collection Collection @relation(fields: [collectionID], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productID], references: [id], onDelete: Cascade)
+
+  @@id([collectionID, productID])
+  @@index([productID])
+  @@map("collectionproduct")
 }
 
 // Same shape/behaviour as ProductImage — a gallery table (url + bilingual alt
@@ -342,40 +362,79 @@ model CollectionImage {
   @@map("collectionimage")
 }
 
+// The permanent navigation tree (Men -> Shoes -> Sport Shoes -> ...),
+// unlimited depth, self-referencing via `parentID`. Fully decoupled from
+// Collection — see the note there. `path`/`depth` are denormalized read
+// helpers maintained ONLY by the Postgres triggers in migration
+// 20260912000000_category_tree (never by application code — see that
+// migration's comment for why: a second, app-code-maintained source of truth
+// for a derived value is exactly the failure shape `Product.quantity` already
+// demonstrates in this codebase).
+//
+// Archived state is intentionally NEVER propagated onto children — it is
+// computed at read time by walking the `parentID` chain (or, in bulk, via the
+// `archivedCategoryClosure()` recursive query in category-tree.ts), so
+// restoring an archived ancestor makes every descendant reachable again with
+// zero writes to those descendant rows. See category-tree.ts.
 model Category {
-  id               String    @id @default(uuid()) @db.Uuid
-  // Nullable: a category may stand alone, unattached to any collection. Deleting
-  // a collection detaches its categories (SET NULL) rather than removing them.
-  collectionID     String?   @db.Uuid
-  nameEn           String
-  nameAr           String
-  slug             String    @unique
-  parentCategoryID String?   @db.Uuid
-  isActive         Boolean   @default(true)
+  id                String    @id @default(uuid()) @db.Uuid
+  parentID          String?   @db.Uuid
+  nameEn            String
+  nameAr            String
+  // Globally unique (not just per-sibling) — deliberate deviation from the
+  // architecture doc's literal per-sibling-unique example, to keep the
+  // existing flat /category/[slug] storefront route working unchanged.
+  // Per-sibling-unique slugs would require path-based routing, which is a
+  // frontend change out of Stage 1's scope.
+  slug              String    @unique
+  // Body copy for the full-bleed home banner (showOnHomeAsImage) — moved here
+  // with the rest of the storefront-chrome fields below. Category otherwise
+  // has no description surface (no category-page body copy today).
+  descriptionEn     String?
+  descriptionAr     String?
+  isActive          Boolean   @default(true)
   // Owner opts a category into the home page's featured row (own row: name +
-  // horizontal scroll of its products) — independent of its parent
-  // collection's own showOnHome.
-  showOnHome       Boolean   @default(false)
-  // Position among this category's siblings on their collection's page and in
-  // that collection's home row. NOT the home-page order.
-  sortOrder        Int       @default(0)
+  // horizontal scroll of its products). Any depth.
+  showOnHome        Boolean   @default(false)
+  // Position among this category's siblings. NOT the home-page order.
+  sortOrder         Int       @default(0)
   // Position of this category's OWN featured row on the home page — the same
   // shared key as Collection.homeSortOrder, so every home block orders in one
-  // list. Separate from sortOrder (sibling order within a collection).
-  homeSortOrder    Int       @default(0)
-  // See Collection.archivedAt — archive is the admin's primary "remove"
-  // action; permanent delete needs the category archived and empty first.
-  archivedAt       DateTime?
+  // list. Separate from sortOrder (sibling order).
+  homeSortOrder     Int       @default(0)
+  // ---- Storefront chrome (moved here from Collection with Women/Men/Kids —
+  // see catalog-redesign-implementation-plan.md's Stage 1 nav/banner
+  // decision): the top nav and full-bleed home banners are keyed off
+  // top-level Categories now, not Collection, since Collection no longer sits
+  // above Category in the tree. Meaningful at any depth in principle, but the
+  // storefront only expects these set on root categories in practice.
+  showInNav         Boolean   @default(false)
+  showOnHomeAsImage Boolean   @default(false)
+  accentColor       String?
+  homeImageCtaEn    String?
+  homeImageCtaAr    String?
+  // Admin's primary "remove" action — hidden from the storefront (itself and
+  // every descendant, computed at read time), kept in the DB, restorable.
+  // Permanent delete needs the category archived, and empty of both child
+  // categories and products (primary or additional), first.
+  archivedAt        DateTime?
+  // Trigger-maintained. Slug-based (e.g. "/men/shoes/sport-shoes/") so
+  // `WHERE path LIKE '/men/%'` finds every descendant of Men in one query.
+  path              String    @default("")
+  // Trigger-maintained. 0 for a root category.
+  depth             Int       @default(0)
 
-  collection Collection?     @relation(fields: [collectionID], references: [id], onDelete: SetNull)
-  parent     Category?       @relation("CategoryToSubcategory", fields: [parentCategoryID], references: [id], onDelete: SetNull)
-  children   Category[]      @relation("CategoryToSubcategory")
-  images     CategoryImage[]
-  products   Product[]
-  discounts  Discount[]
+  parent          Category?         @relation("CategoryTree", fields: [parentID], references: [id], onDelete: Restrict)
+  children        Category[]        @relation("CategoryTree")
+  images          CategoryImage[]
+  // A product's canonical category (breadcrumbs, canonical URL, reporting).
+  primaryProducts Product[]         @relation("PrimaryCategory")
+  // Additional (non-canonical) category placements — see ProductCategory.
+  productLinks    ProductCategory[]
+  discounts       Discount[]
 
-  @@index([collectionID])
-  @@index([parentCategoryID])
+  @@index([parentID, sortOrder])
+  @@index([path])
   @@index([archivedAt])
   @@map("category")
 }
@@ -399,43 +458,72 @@ model CategoryImage {
 }
 
 model Product {
-  id             String        @id @default(uuid()) @db.Uuid
-  sku            String        @unique
-  nameEn         String
-  nameAr         String
-  descriptionEn  String?
-  descriptionAr  String?
-  categoryID     String        @db.Uuid
-  collectionID   String?       @db.Uuid // denormalized mirror of Category.collectionID (null when the category stands alone); derived from the category in app code, never set directly
-  price          Decimal       @db.Decimal(12, 2)
-  compareAtPrice Decimal?      @db.Decimal(12, 2)
+  id                String        @id @default(uuid()) @db.Uuid
+  sku               String        @unique
+  nameEn            String
+  nameAr            String
+  descriptionEn     String?
+  descriptionAr     String?
+  // The canonical category — required, non-null (every product has exactly
+  // one canonical placement; deviates from the architecture doc's literal
+  // nullable+SetNull example on purpose, matching this codebase's existing
+  // convention of a required category and the existing "can't delete a
+  // non-empty category" guard, which now also covers this FK — see
+  // category.service.ts deleteCategory()). Zero or more ADDITIONAL
+  // placements live in ProductCategory.
+  primaryCategoryID String        @db.Uuid
+  price             Decimal       @db.Decimal(12, 2)
+  compareAtPrice    Decimal?      @db.Decimal(12, 2)
   // Active sale: PERCENT (0–100) or AMOUNT off `price`. Both null ⇒ no sale.
-  saleType       DiscountType?
-  saleValue      Decimal?      @db.Decimal(12, 2)
+  saleType          DiscountType?
+  saleValue         Decimal?      @db.Decimal(12, 2)
   // Product-level quantity. Free-standing signed integer — may be 0 or
-  // negative (e.g. oversold), and has no bearing on `isActive`.
-  quantity       Int           @default(0)
-  isActive       Boolean       @default(true)
-  dateCreated    DateTime      @default(now())
-  lastEdit       DateTime      @default(now()) @updatedAt
-  deletedAt      DateTime?
+  // negative (e.g. oversold), and has no bearing on `isActive`. Dead (never
+  // derived from variant stock — see product-form.tsx/products admin list);
+  // left untouched by the Stage 1 catalog redesign, which is scoped to
+  // category/collection restructuring only.
+  quantity          Int           @default(0)
+  isActive          Boolean       @default(true)
+  dateCreated       DateTime      @default(now())
+  lastEdit          DateTime      @default(now()) @updatedAt
+  deletedAt         DateTime?
   // Generated, READ-ONLY search haystack — Postgres computes it (see migration
   // 20260909180000_product_search_text): lower(nameEn + nameAr) plus a
   // punctuation/whitespace-stripped copy so "tshirt" matches "T-Shirt". It is
   // NOT NULL in the DB; typed optional here only so Prisma leaves it out of
   // every INSERT/UPDATE (a generated column rejects an explicit value). Never
   // write it from app code.
-  searchText     String?
+  searchText        String?
 
-  category   Category         @relation(fields: [categoryID], references: [id])
-  collection Collection?      @relation(fields: [collectionID], references: [id], onDelete: SetNull)
-  images     ProductImage[]
-  variants   ProductVariant[]
-  favorites  Favorite[]
+  primaryCategory Category            @relation("PrimaryCategory", fields: [primaryCategoryID], references: [id])
+  categoryLinks   ProductCategory[]
+  collectionLinks CollectionProduct[]
+  images          ProductImage[]
+  variants        ProductVariant[]
+  favorites       Favorite[]
 
-  @@index([categoryID])
-  @@index([collectionID])
+  @@index([primaryCategoryID])
   @@map("product")
+}
+
+// A product's ADDITIONAL (non-canonical) category placements — e.g. a
+// unisex shoe primarily under Men/.../Running, additionally linked into
+// Women/.../Running. "Is product P in category C" is `primaryCategoryID ==
+// C OR EXISTS a ProductCategory row` — see category-tree.ts's
+// productCategoryFilter(), used everywhere that predicate is needed
+// (category listing, discount matching) so it's expressed exactly once.
+model ProductCategory {
+  productID  String   @db.Uuid
+  categoryID String   @db.Uuid
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  product  Product  @relation(fields: [productID], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryID], references: [id], onDelete: Restrict)
+
+  @@id([productID, categoryID])
+  @@index([categoryID])
+  @@map("productcategory")
 }
 
 // A catalog-wide discount the admin runs over ALL products, one collection,
@@ -477,13 +565,13 @@ model Discount {
 // `startsAt` / `endsAt` (null ⇒ open-ended). No usage caps or per-customer
 // limits — the code just works while active and in-window.
 model Coupon {
-  id          String       @id @default(uuid()) @db.Uuid
-  code        String       @unique // stored upper-cased; compared case-insensitively
-  type        DiscountType
-  value       Decimal      @db.Decimal(12, 2) // PERCENT: 0–100; AMOUNT: currency off
-  isActive    Boolean      @default(true)
-  startsAt    DateTime?
-  endsAt      DateTime?
+  id             String       @id @default(uuid()) @db.Uuid
+  code           String       @unique // stored upper-cased; compared case-insensitively
+  type           DiscountType
+  value          Decimal      @db.Decimal(12, 2) // PERCENT: 0–100; AMOUNT: currency off
+  isActive       Boolean      @default(true)
+  startsAt       DateTime?
+  endsAt         DateTime?
   // Usage caps (enforced at checkout — see order.service.ts).
   //  `maxRedemptions` — total across all shoppers; null = unlimited.
   //  `maxPerCustomer` — per account / per guest-email; DEFAULTS TO 1 so a
@@ -492,8 +580,8 @@ model Coupon {
   maxRedemptions Int?
   maxPerCustomer Int?         @default(1)
   timesRedeemed  Int          @default(0)
-  dateCreated DateTime     @default(now())
-  lastEdit    DateTime     @default(now()) @updatedAt
+  dateCreated    DateTime     @default(now())
+  lastEdit       DateTime     @default(now()) @updatedAt
 
   redemptions CouponRedemption[]
 
@@ -674,28 +762,28 @@ model Order {
   deliveryRegion  String? // Lebanese governorate — set on every new checkout; null only on legacy rows
   deliveryNotes   String?
 
-  notes         String? // general order notes from the customer
+  notes                 String? // general order notes from the customer
   // Set by the admin when the order is shipped (or any later status change) —
   // the "arrives in about N days" estimate; also used in the shipped email.
   estimatedDeliveryDays Int?
-  subtotal      Decimal       @db.Decimal(12, 2) // merchandise after per-product sales + catalog discounts, before any coupon
-  couponCode    String? // the coupon applied at checkout, upper-cased; null if none
-  discountAmount Decimal      @default(0) @db.Decimal(12, 2) // amount the coupon took off the subtotal
-  deliveryFee   Decimal       @default(0) @db.Decimal(12, 2)
-  total         Decimal       @db.Decimal(12, 2) // subtotal - discountAmount + deliveryFee
-  currency      String        @default("USD")
-  paymentMethod PaymentMethod @default(COD)
-  paymentStatus PaymentStatus @default(PENDING)
-  status        OrderStatus   @default(PENDING)
-  dateCreated   DateTime      @default(now())
-  lastEdit      DateTime      @default(now()) @updatedAt
+  subtotal              Decimal       @db.Decimal(12, 2) // merchandise after per-product sales + catalog discounts, before any coupon
+  couponCode            String? // the coupon applied at checkout, upper-cased; null if none
+  discountAmount        Decimal       @default(0) @db.Decimal(12, 2) // amount the coupon took off the subtotal
+  deliveryFee           Decimal       @default(0) @db.Decimal(12, 2)
+  total                 Decimal       @db.Decimal(12, 2) // subtotal - discountAmount + deliveryFee
+  currency              String        @default("USD")
+  paymentMethod         PaymentMethod @default(COD)
+  paymentStatus         PaymentStatus @default(PENDING)
+  status                OrderStatus   @default(PENDING)
+  dateCreated           DateTime      @default(now())
+  lastEdit              DateTime      @default(now()) @updatedAt
 
-  user           User?              @relation(fields: [userID], references: [id], onDelete: SetNull)
-  address        Address?           @relation(fields: [addressID], references: [id], onDelete: SetNull)
-  items             OrderItem[]
-  stockMovements    StockMovement[]
-  accessTokens      OrderAccessToken[]
-  couponRedemption  CouponRedemption?
+  user             User?              @relation(fields: [userID], references: [id], onDelete: SetNull)
+  address          Address?           @relation(fields: [addressID], references: [id], onDelete: SetNull)
+  items            OrderItem[]
+  stockMovements   StockMovement[]
+  accessTokens     OrderAccessToken[]
+  couponRedemption CouponRedemption?
 
   @@index([userID])
   @@index([status])
@@ -851,20 +939,20 @@ model SiteSetting {
   // Optional "Our story" page. Title + body both null / "" in every language ⇒
   // the page and its footer link are hidden. Body is plain text; blank lines
   // separate paragraphs. An optional image sits beside the text.
-  storyTitleEn    String?
-  storyTitleAr    String?
-  storyBodyEn     String?
-  storyBodyAr     String?
-  storyImageUrl   String?
+  storyTitleEn     String?
+  storyTitleAr     String?
+  storyBodyEn      String?
+  storyBodyAr      String?
+  storyImageUrl    String?
   storyImageFileId String?
 
   // Footer links — null / "" ⇒ the link is hidden.
-  instagramUrl        String?
-  facebookUrl         String?
-  tiktokUrl           String?
-  whatsappUrl         String?
-  contactEmail        String?
-  contactPhone        String?
+  instagramUrl String?
+  facebookUrl  String?
+  tiktokUrl    String?
+  whatsappUrl  String?
+  contactEmail String?
+  contactPhone String?
 
   // Sender identity for outgoing customer/owner email (order confirmations,
   // shipped/cancelled notices, password reset, checkout OTP…) — admin-set here

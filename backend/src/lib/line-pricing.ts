@@ -1,5 +1,6 @@
 import type { DiscountType, Prisma } from '@prisma/client';
 import { pickDiscount, pricedWithDiscount, type DiscountCandidate } from './pricing';
+import { productCategoryIds, productCollectionIds } from '../modules/catalog/category-tree';
 
 type Money = Prisma.Decimal | number;
 
@@ -9,8 +10,9 @@ interface LineVariant {
     price: Money;
     saleType: DiscountType | null;
     saleValue: Money | null;
-    categoryID: string;
-    collectionID: string | null;
+    primaryCategoryID: string;
+    categoryLinks?: { categoryID: string }[];
+    collectionLinks?: { collectionID: string }[];
   };
 }
 
@@ -21,7 +23,10 @@ interface LineVariant {
  */
 export function lineUnitPrice(variant: LineVariant, discounts: DiscountCandidate[]): number {
   const p = variant.product;
-  const picked = pickDiscount(p, discounts);
+  const picked = pickDiscount(
+    { price: p.price, saleType: p.saleType, saleValue: p.saleValue, categoryIDs: productCategoryIds(p), collectionIDs: productCollectionIds(p) },
+    discounts
+  );
   const base = variant.price ?? p.price;
   return pricedWithDiscount(base, p.saleType, p.saleValue, picked);
 }

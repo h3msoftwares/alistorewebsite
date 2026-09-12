@@ -87,12 +87,17 @@ export default async function LocaleLayout({
 
   const skipLabel = locale === 'ar' ? 'تخطَّ إلى المحتوى' : 'Skip to content';
 
-  // Prime the collections list so the nav / footer / home showcase render with
-  // data on first paint instead of flashing skeletons. `prefetchQuery` never
-  // throws, and only successful queries dehydrate — a build with no backend
-  // just falls back to client fetching.
+  // Prime the top-level categories (Women/Men/Kids — nav/footer/home banner)
+  // and the collections list (Sale/New Arrivals) so they render with data on
+  // first paint instead of flashing skeletons. `prefetchQuery` never throws,
+  // and only successful queries dehydrate — a build with no backend just
+  // falls back to client fetching.
   const queryClient = makeQueryClient();
   await Promise.all([
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.categories.topLevel(),
+      queryFn: () => catalogApi.listTopLevelCategories(),
+    }),
     queryClient.prefetchQuery({
       queryKey: queryKeys.collections.list(false),
       queryFn: () => catalogApi.listCollections({ includeInactive: false }),

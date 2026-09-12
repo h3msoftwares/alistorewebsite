@@ -23,7 +23,11 @@ const slug = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be kebab-case (lowercase letters, digits, single dashes)')
   .refine((s) => !RESERVED_SLUGS.has(s), 'this slug is reserved by the storefront');
 
-const hexColor = z
+// Shared with category.schema.ts — Category also carries these fields now
+// (top-level categories took over the storefront nav/home-banner role from
+// Collection when Women/Men/Kids became categories — see the Stage 1
+// implementation plan's nav/banner decision).
+export const hexColor = z
   .string()
   .regex(/^#[0-9a-fA-F]{6}$/, 'accentColor must be a #rrggbb hex colour');
 
@@ -60,7 +64,7 @@ export const collectionImageParamSchema = z.object({
   imageId: z.string().uuid(),
 });
 
-const ctaLabel = z.string().trim().max(40);
+export const ctaLabel = z.string().trim().max(40);
 
 // Field shapes WITHOUT create-time defaults. The update schema partials over
 // these, so PATCHing one field never silently writes a `.default()` into the
@@ -105,14 +109,12 @@ export const createCollectionSchema = z.object({
   accentColor: hexColor.optional().nullable(),
   homeImageCtaEn: ctaLabel.or(z.literal('')).optional().nullable(),
   homeImageCtaAr: ctaLabel.or(z.literal('')).optional().nullable(),
-  // Optionally attach existing categories to the new collection on creation.
-  categoryIds: z.array(z.string().uuid()).max(500).optional(),
 });
 
 export const updateCollectionSchema = z.object(collectionShape).partial();
 
-// Body for POST /:id/categories — link one or more existing categories to this
-// collection (moves them; a category belongs to exactly one collection).
-export const linkCategoriesSchema = z.object({
-  categoryIds: z.array(z.string().uuid()).min(1).max(500),
+// Body for PUT /:id/products — replace this collection's manual product
+// membership wholesale (Stage 1: manual membership only, no rules).
+export const setCollectionProductsSchema = z.object({
+  productIds: z.array(z.string().uuid()).max(500),
 });

@@ -3,6 +3,7 @@ import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { round2, toNumber } from '../../lib/money';
 import { pickDiscount, pricedWithDiscount, type DiscountCandidate } from '../../lib/pricing';
+import { productCategoryIds, productCollectionIds } from '../catalog/category-tree';
 import { activeDiscounts } from '../discounts/discount.service';
 
 // Same hydrated product shape the catalog endpoints return (mirrors
@@ -13,20 +14,31 @@ import { activeDiscounts } from '../discounts/discount.service';
 const productInclude = {
   images: { orderBy: { sortOrder: 'asc' as const } },
   variants: true,
-  category: true,
-  collection: { select: { id: true, nameEn: true, nameAr: true, slug: true } },
+  primaryCategory: true,
+  categoryLinks: { select: { categoryID: true } },
+  collectionLinks: { select: { collectionID: true } },
 } satisfies Prisma.ProductInclude;
 
 type Priced = {
   price: Prisma.Decimal;
   saleType: DiscountType | null;
   saleValue: Prisma.Decimal | null;
-  categoryID: string;
-  collectionID: string | null;
+  primaryCategoryID: string;
+  categoryLinks?: { categoryID: string }[];
+  collectionLinks?: { collectionID: string }[];
 };
 
 function withPricing<T extends Priced>(p: T, discounts: DiscountCandidate[]) {
-  const picked = pickDiscount(p, discounts);
+  const picked = pickDiscount(
+    {
+      price: p.price,
+      saleType: p.saleType,
+      saleValue: p.saleValue,
+      categoryIDs: productCategoryIds(p),
+      collectionIDs: productCollectionIds(p),
+    },
+    discounts
+  );
   const price = pricedWithDiscount(p.price, p.saleType, p.saleValue, picked);
   return {
     ...p,

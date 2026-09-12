@@ -58,9 +58,11 @@ export type ProductImage = CatalogImage & {
 export type CollectionImage = CatalogImage & { collectionID: UUID };
 export type CategoryImage = CatalogImage & { categoryID: UUID };
 
-/** Owner-editable top-level grouping. Replaces the old fixed `Department`
- *  enum. The storefront's three primary doors (Women/Men/Kids) are the seeded
- *  collections — see `lib/collections.ts`. Hierarchy: Collection → Category → Product. */
+/** A flat, flexible merchandising grouping (Sale, New Arrivals) — cuts across
+ *  the category tree, not a level above it. Stage 1 of the catalog redesign:
+ *  membership is manual only (`CollectionProduct`), no rules yet. See
+ *  `Category` for the permanent navigation tree, which Collection has no
+ *  relationship to at all. */
 export interface Collection {
   id: UUID;
   nameEn: string;
@@ -69,62 +71,67 @@ export interface Collection {
   descriptionEn?: string | null;
   descriptionAr?: string | null;
   isActive: boolean;
-  /** Owner-picked: appears in the top nav / footer. Order reuses `sortOrder`. */
   showInNav: boolean;
-  /** Owner-picked: gets its own featured row on the home page (name + a
-   *  horizontal scroll of its categories). Independent of `showInNav`. */
   showOnHome: boolean;
-  /** Owner-picked: shown on the home page as a full-width image banner — its
-   *  base image on one side, a coloured panel (`accentColor`) with the
-   *  description and a CTA button on the other. Takes precedence over
-   *  `showOnHome`. */
   showOnHomeAsImage: boolean;
-  /** Position in the top nav (with `showInNav`). NOT the home-page order. */
   sortOrder: number;
-  /** Position on the home page — the shared ranking key for every home block
-   *  (featured collections, image banners, featured categories, smart rows). */
   homeSortOrder: number;
-  /** `#rrggbb` — drives the `--collection-accent*` CSS vars (see `accentStyle`),
-   *  and the background of the home-page image banner. */
   accentColor?: string | null;
-  /** CTA label on the home-page image banner. Empty ⇒ a generic "Shop <name>". */
   homeImageCtaEn?: string | null;
   homeImageCtaAr?: string | null;
   /** Set when archived from the admin — hidden from the storefront, restorable. */
   archivedAt?: string | null;
   images: CollectionImage[];
-  /** Present on `GET /api/collections/:id` and `/slug/:slug` — active categories,
-   *  one level of nesting, ordered by `sortOrder`. */
-  categories?: Category[];
-  _count?: { categories: number; products: number };
+  _count?: { products: number };
 }
 
+/** The permanent navigation tree (Men → Shoes → Sport Shoes → ...),
+ *  unlimited depth, self-referencing via `parentID`. Fully decoupled from
+ *  Collection. `path`/`depth` are read-only, server-computed (a Postgres
+ *  trigger — never write them). Women/Men/Kids are top-level categories and
+ *  carry the storefront nav/home-banner fields (moved here from Collection
+ *  in the Stage 1 redesign). */
 export interface Category {
   id: UUID;
-  /** Nullable — a category can stand alone, unattached to any collection. */
-  collectionID?: UUID | null;
+  parentID?: UUID | null;
   nameEn: string;
   nameAr: string;
   slug: string;
-  parentCategoryID?: UUID | null;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
   isActive: boolean;
   /** Owner-picked: gets its own featured row on the home page (name + a
-   *  horizontal scroll of its products), independent of its parent
-   *  collection's own `showOnHome`. */
+   *  horizontal scroll of its products). Any depth. */
   showOnHome: boolean;
-  /** Sibling order within a collection (its page + that collection's home row).
-   *  NOT the home-page order of this category's own featured row. */
+  /** Sibling order among categories with the same parent. NOT the home-page
+   *  order of this category's own featured row. */
   sortOrder: number;
-  /** Position of this category's own featured row on the home page (shared key
-   *  with `Collection.homeSortOrder`). */
+  /** Position of this category's own featured row on the home page (shared
+   *  key with `Collection.homeSortOrder`). */
   homeSortOrder: number;
-  /** Set when archived from the admin — hidden from the storefront, restorable. */
+  /** Storefront chrome — meaningful in practice only on top-level categories. */
+  showInNav: boolean;
+  showOnHomeAsImage: boolean;
+  accentColor?: string | null;
+  homeImageCtaEn?: string | null;
+  homeImageCtaAr?: string | null;
+  /** Set when archived from the admin — hidden from the storefront (itself
+   *  and every descendant, computed at read time), restorable. */
   archivedAt?: string | null;
+  /** Read-only, trigger-maintained. Slug-based, e.g. "/men/shoes/". */
+  path: string;
+  /** Read-only, trigger-maintained. 0 for a root category. */
+  depth: number;
   images: CategoryImage[];
   /** Present on `GET /categories` (one level of nesting). */
   children?: Category[];
-  /** `null` for a standalone category. */
-  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug' | 'accentColor' | 'archivedAt'> | null;
+  /** Present on a product's `primaryCategory` (nested up to 4 levels) — walk
+   *  this chain to render a full breadcrumb. `null`/absent at the root. */
+  parent?: Category | null;
+  /** Computed by the API: this category itself is archived, OR descends from
+   *  an archived ancestor. Never written to the row — an admin picker uses
+   *  this to flag an option instead of silently allowing (or hiding) it. */
+  isEffectivelyArchived?: boolean;
 }
 
 export interface ProductVariant {
@@ -154,10 +161,8 @@ export interface Product {
   nameAr: string;
   descriptionEn?: string | null;
   descriptionAr?: string | null;
-  categoryID: UUID;
-  /** Denormalized mirror of the category's collection (derived server-side).
-   *  `null` when the product's category stands alone. */
-  collectionID?: UUID | null;
+  /** The canonical category (breadcrumbs, canonical URL, reporting). */
+  primaryCategoryID: UUID;
   price: Decimalish;
   compareAtPrice?: Decimalish | null;
   /** Product-level quantity — free-standing signed int (may be 0 or negative). */
@@ -183,9 +188,11 @@ export interface Product {
   dateCreated: IsoDateTime;
   images: ProductImage[];
   variants: ProductVariant[];
-  category?: Category;
-  /** `null` when the product's category stands alone. */
-  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'> | null;
+  primaryCategory?: Category;
+  /** Additional (non-canonical) category placements. */
+  categoryLinks?: { categoryID: UUID; category: Pick<Category, 'id' | 'nameEn' | 'nameAr' | 'slug'> }[];
+  /** Manual collection memberships (Stage 1: manual only). */
+  collectionLinks?: { collectionID: UUID; collection: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'> }[];
 }
 
 // ---- Discounts & coupons ----
@@ -807,21 +814,26 @@ export interface CollectionBody {
   accentColor?: string | null;
   homeImageCtaEn?: string | null;
   homeImageCtaAr?: string | null;
-  categoryIds?: UUID[];
 }
 
 export interface CategoryBody {
-  /** Omit or `null` for a standalone category; `null` on update detaches an
-   *  existing category from its collection. */
-  collectionId?: UUID | null;
+  /** Omit or `null` for a root category; `null` on update makes an existing
+   *  category a root. */
+  parentId?: UUID | null;
   nameEn: string;
   nameAr: string;
   slug: string;
-  parentCategoryId?: UUID;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
   isActive?: boolean;
   showOnHome?: boolean;
   sortOrder?: number;
   homeSortOrder?: number;
+  showInNav?: boolean;
+  showOnHomeAsImage?: boolean;
+  accentColor?: string | null;
+  homeImageCtaEn?: string | null;
+  homeImageCtaAr?: string | null;
 }
 
 export interface VariantBody {
@@ -839,9 +851,11 @@ export interface ProductBody {
   nameAr: string;
   descriptionEn?: string;
   descriptionAr?: string;
-  categoryId: UUID;
-  // No collectionId: the product's collection is derived server-side from its
-  // category (a denormalized mirror), never sent by the client.
+  primaryCategoryId: UUID;
+  /** Additional (non-canonical) category placements. */
+  additionalCategoryIds?: UUID[];
+  /** Manual collection memberships (Stage 1: manual only). */
+  collectionIds?: UUID[];
   price: number;
   compareAtPrice?: number;
   /** May be 0 or negative; independent of `isActive`. Defaults to 0. */

@@ -201,8 +201,9 @@ async function loadCartSubtotal(db: DbClient, owner: CheckoutOwner): Promise<num
                 price: true,
                 saleType: true,
                 saleValue: true,
-                categoryID: true,
-                collectionID: true,
+                primaryCategoryID: true,
+                categoryLinks: { select: { categoryID: true } },
+                collectionLinks: { select: { collectionID: true } },
               },
             },
           },
@@ -372,7 +373,17 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       ? await tx.cartItem.findMany({
           where: { cartID: cart.id },
           include: {
-            variant: { include: { product: { include: { images: { orderBy: { sortOrder: 'asc' }, take: 1 } } } } },
+            variant: {
+            include: {
+              product: {
+                include: {
+                  images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+                  categoryLinks: { select: { categoryID: true } },
+                  collectionLinks: { select: { collectionID: true } },
+                },
+              },
+            },
+          },
           },
         })
       : [];

@@ -3,7 +3,7 @@ import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
 import { createAdmin, createCustomer, bearer } from '../helpers/auth';
-import { makeCollection, makeCategory } from '../helpers/factories';
+import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
 
 const app = buildApp();
 
@@ -29,7 +29,7 @@ describe('Collections API', () => {
       expect(res.status).toBe(200);
       expect(res.body.collections).toHaveLength(1);
       expect(res.body.collections[0]).toMatchObject({ nameEn: 'Active', slug: 'active-col' });
-      expect(res.body.collections[0]._count).toEqual({ categories: 0, products: 0 });
+      expect(res.body.collections[0]._count).toEqual({ products: 0 });
       expect(Array.isArray(res.body.collections[0].images)).toBe(true);
     });
 
@@ -78,13 +78,12 @@ describe('Collections API', () => {
   });
 
   describe('GET /api/collections/:id and /slug/:slug', () => {
-    it('returns a collection with nested active categories', async () => {
+    it('returns a collection by id and by slug', async () => {
       const col = await makeCollection({ slug: 'shoes' });
-      await makeCategory(col.id, { nameEn: 'Sneakers' });
 
       const byId = await request(app).get(`/api/collections/${col.id}`);
       expect(byId.status).toBe(200);
-      expect(byId.body.collection.categories).toHaveLength(1);
+      expect(byId.body.collection.slug).toBe('shoes');
 
       const bySlug = await request(app).get('/api/collections/slug/shoes');
       expect(bySlug.status).toBe(200);
@@ -121,21 +120,16 @@ describe('Collections API', () => {
       expect(res.status).toBe(403);
     });
 
-    it('creates a collection and can attach existing categories', async () => {
+    it('creates a collection (Stage 1: no category relationship at all — Collection is unrelated to the category tree)', async () => {
       await tokens();
-      const loose = await makeCollection({ slug: 'loose' });
-      const cat = await makeCategory(loose.id);
-
       const res = await request(app)
         .post('/api/collections')
         .set(bearer(adminToken))
-        .send({ nameEn: 'New', nameAr: 'جديد', slug: 'new-col', categoryIds: [cat.id] });
+        .send({ nameEn: 'New', nameAr: 'جديد', slug: 'new-col' });
 
       expect(res.status).toBe(201);
       expect(res.body.collection.slug).toBe('new-col');
-      expect(res.body.collection.categories).toHaveLength(1);
-      const moved = await prisma.category.findUnique({ where: { id: cat.id } });
-      expect(moved?.collectionID).toBe(res.body.collection.id);
+      expect(res.body.collection.categories).toBeUndefined();
     });
 
     it('409s a duplicate slug', async () => {
@@ -281,7 +275,6 @@ describe('Collections API', () => {
     it('archives the collection: hidden from the public list, kept in the DB', async () => {
       await tokens();
       const col = await makeCollection({ slug: 'del' });
-      await makeCategory(col.id);
 
       const res = await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken));
       expect(res.status).toBe(200);
@@ -320,10 +313,9 @@ describe('Collections API', () => {
       expect(res.status).toBe(409);
     });
 
-    it('permanently deletes an archived, empty collection and detaches its categories', async () => {
+    it('permanently deletes an archived, empty collection', async () => {
       await tokens();
       const col = await makeCollection({ slug: 'del-perm' });
-      const cat = await makeCategory(col.id);
       await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken)); // archive first
 
       const res = await request(app)
@@ -331,19 +323,13 @@ describe('Collections API', () => {
         .set(bearer(adminToken));
       expect(res.status).toBe(204);
       expect(await prisma.collection.findUnique({ where: { id: col.id } })).toBeNull();
-
-      const row = await prisma.category.findUnique({ where: { id: cat.id } });
-      expect(row).not.toBeNull();
-      expect(row?.collectionID).toBeNull();
     });
 
     it('409s when the archived collection still has products', async () => {
       await tokens();
       const col = await makeCollection({ slug: 'has-prod' });
-      const cat = await makeCategory(col.id);
-      await prisma.product.create({
-        data: { sku: 'P1', nameEn: 'P', nameAr: 'P', categoryID: cat.id, collectionID: col.id, price: 10 },
-      });
+      const cat = await makeCategory();
+      await makeProduct(cat.id, { collectionIds: [col.id] });
       await request(app).delete(`/api/collections/${col.id}`).set(bearer(adminToken)); // archive first
 
       const res = await request(app)
@@ -353,30 +339,41 @@ describe('Collections API', () => {
     });
   });
 
-  describe('POST /api/collections/:id/categories (link)', () => {
-    it('moves categories into the collection', async () => {
+  describe('GET/PUT /api/collections/:id/products (manual membership)', () => {
+    it('PUT replaces the collection\'s product membership wholesale', async () => {
       await tokens();
-      const a = await makeCollection({ slug: 'a' });
-      const b = await makeCollection({ slug: 'b' });
-      const cat = await makeCategory(a.id);
+      const col = await makeCollection({ slug: 'sale' });
+      const cat = await makeCategory();
+      const p1 = await makeProduct(cat.id, { over: { nameEn: 'P1' } });
+      const p2 = await makeProduct(cat.id, { over: { nameEn: 'P2' } });
 
       const res = await request(app)
-        .post(`/api/collections/${b.id}/categories`)
+        .put(`/api/collections/${col.id}/products`)
         .set(bearer(adminToken))
-        .send({ categoryIds: [cat.id] });
-
+        .send({ productIds: [p1.id, p2.id] });
       expect(res.status).toBe(200);
-      const moved = await prisma.category.findUnique({ where: { id: cat.id } });
-      expect(moved?.collectionID).toBe(b.id);
+
+      const list = await request(app).get(`/api/collections/${col.id}/products`);
+      expect(list.status).toBe(200);
+      expect(list.body.products.map((p: { id: string }) => p.id).sort()).toEqual([p1.id, p2.id].sort());
+
+      // Replacing again with a smaller set drops the one left out.
+      const replace = await request(app)
+        .put(`/api/collections/${col.id}/products`)
+        .set(bearer(adminToken))
+        .send({ productIds: [p1.id] });
+      expect(replace.status).toBe(200);
+      const list2 = await request(app).get(`/api/collections/${col.id}/products`);
+      expect(list2.body.products.map((p: { id: string }) => p.id)).toEqual([p1.id]);
     });
 
-    it('404s if a category id does not exist', async () => {
+    it('404s if a product id does not exist', async () => {
       await tokens();
       const col = await makeCollection({ slug: 'c' });
       const res = await request(app)
-        .post(`/api/collections/${col.id}/categories`)
+        .put(`/api/collections/${col.id}/products`)
         .set(bearer(adminToken))
-        .send({ categoryIds: ['00000000-0000-4000-8000-000000000000'] });
+        .send({ productIds: ['00000000-0000-4000-8000-000000000000'] });
       expect(res.status).toBe(404);
     });
   });

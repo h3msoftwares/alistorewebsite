@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui';
 import { useAuth } from '@/hooks/use-auth';
-import { useNavCollections } from '@/hooks/use-catalog';
+import { useNavCategories } from '@/hooks/use-catalog';
 import { useSettings } from '@/hooks/use-settings';
 import { openConsentSettings } from '@/lib/consent';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
@@ -35,7 +35,7 @@ export function SiteFooter({ locale }: { locale: string }) {
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const router = useRouter();
   const { isAuthenticated } = useAuth();
-  const { data: navCollections, isPending: navPending } = useNavCollections();
+  const { data: navCategories, isPending: navPending } = useNavCategories();
   const { data: settings } = useSettings();
 
   // The "newsletter" field is really an account sign-up teaser — Join carries
@@ -106,8 +106,8 @@ export function SiteFooter({ locale }: { locale: string }) {
               ? Array.from({ length: 3 }).map((_, i) => (
                   <Skeleton key={i} className="site-footer__link" style={{ width: '6rem' }} />
                 ))
-              : (navCollections ?? []).map((c) => (
-                  <Link key={c.id} className="site-footer__link" href={`/${locale}/${c.slug}`}>
+              : (navCategories ?? []).map((c) => (
+                  <Link key={c.id} className="site-footer__link" href={`/${locale}/category/${c.slug}`}>
                     {isAr ? c.nameAr : c.nameEn}
                   </Link>
                 ))}
