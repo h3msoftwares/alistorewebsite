@@ -2,7 +2,12 @@ name: Database backup
 
 on:
   schedule:
-    # 03:00 UTC daily — off-peak for every timezone this store ships to.
+    # Fires daily at 03:00 UTC (off-peak for every timezone this store ships
+    # to), but `npm run backup:run` checks isBackupDueNow() first and skips
+    # as a no-op unless the admin-configured cadence (daily/weekly/monthly,
+    # default weekly — GET/PATCH /api/admin/backup/settings) says a backup is
+    # actually due. A daily cron is simply the finest-grained "tick" that
+    # covers every possible cadence; it does not mean backups happen daily.
     - cron: '0 3 * * *'
   workflow_dispatch: {}
 

@@ -1031,3 +1031,23 @@ model DriveCredential {
 
   @@map("drivecredential")
 }
+
+enum BackupFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+// Singleton row (id fixed to 1, same pattern as DriveCredential/SiteSetting)
+// holding the admin-configurable automatic-backup cadence. Read by both the
+// admin panel (GET/PATCH /api/admin/backup/settings) and the scheduled
+// GitHub Actions run (backend/scripts/run-backup.ts), which fires daily but
+// only actually backs up when this interval has elapsed since the newest
+// Drive backup — see backend/src/modules/backup/schedule.ts.
+model BackupSettings {
+  id        Int             @id @default(1)
+  frequency BackupFrequency @default(WEEKLY)
+  updatedAt DateTime        @updatedAt
+
+  @@map("backupsettings")
+}

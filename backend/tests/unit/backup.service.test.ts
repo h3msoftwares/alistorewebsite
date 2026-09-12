@@ -22,7 +22,15 @@ vi.mock('../../src/modules/backup/drive.client', () => ({
 import { runPgDump } from '../../src/modules/backup/pg-dump';
 import { restoreFromFile } from '../../src/modules/backup/pg-restore';
 import * as drive from '../../src/modules/backup/drive.client';
-import { runBackup, listBackups, restoreBackup } from '../../src/modules/backup/backup.service';
+import { prisma } from '../../src/config/prisma';
+import {
+  runBackup,
+  listBackups,
+  restoreBackup,
+  getBackupSettings,
+  updateBackupSettings,
+  isBackupDueNow,
+} from '../../src/modules/backup/backup.service';
 
 function makeTempFile(content = 'fake dump bytes'): string {
   const p = path.join(os.tmpdir(), `backup-service-test-${Date.now()}-${Math.random().toString(36).slice(2)}.dump`);
@@ -173,5 +181,73 @@ describe('restoreBackup', () => {
     await expect(restoreBackup('real-id')).rejects.toThrow('not a valid archive');
     const usedPath = vi.mocked(restoreFromFile).mock.calls[0][0];
     expect(fs.existsSync(usedPath)).toBe(false);
+  });
+});
+
+describe('getBackupSettings / updateBackupSettings', () => {
+  it('defaults to WEEKLY when no row exists yet', async () => {
+    expect(await getBackupSettings()).toEqual({ frequency: 'WEEKLY' });
+  });
+
+  it('persists an updated frequency and reflects it on the next read', async () => {
+    const updated = await updateBackupSettings('DAILY');
+    expect(updated).toEqual({ frequency: 'DAILY' });
+    expect(await getBackupSettings()).toEqual({ frequency: 'DAILY' });
+
+    const row = await prisma.backupSettings.findUnique({ where: { id: 1 } });
+    expect(row?.frequency).toBe('DAILY');
+  });
+
+  it('updating twice overwrites rather than erroring on the existing row', async () => {
+    await updateBackupSettings('DAILY');
+    await updateBackupSettings('MONTHLY');
+    expect(await getBackupSettings()).toEqual({ frequency: 'MONTHLY' });
+  });
+});
+
+describe('isBackupDueNow', () => {
+  beforeEach(() => {
+    vi.mocked(drive.isConfigured).mockReset();
+    vi.mocked(drive.listBackups).mockReset();
+  });
+
+  it('reports due when Drive is not configured, without listing anything', async () => {
+    vi.mocked(drive.isConfigured).mockResolvedValue(false);
+    const result = await isBackupDueNow();
+    expect(result).toEqual({ due: true, frequency: 'WEEKLY', lastBackupAt: null, nextDueAt: null });
+    expect(drive.listBackups).not.toHaveBeenCalled();
+  });
+
+  it('is due with no backups yet, even though Drive is configured', async () => {
+    vi.mocked(drive.isConfigured).mockResolvedValue(true);
+    vi.mocked(drive.listBackups).mockResolvedValue([]);
+    const result = await isBackupDueNow();
+    expect(result.due).toBe(true);
+    expect(result.lastBackupAt).toBeNull();
+  });
+
+  it('uses the configured frequency and the newest backup to decide, and computes nextDueAt', async () => {
+    await updateBackupSettings('DAILY');
+    vi.mocked(drive.isConfigured).mockResolvedValue(true);
+    // Two backups — the function must pick the NEWEST, not just the first.
+    vi.mocked(drive.listBackups).mockResolvedValue([
+      driveFile('old.dump', '2020-01-01T00:00:00Z', 'old'),
+      driveFile('new.dump', new Date().toISOString(), 'new'),
+    ]);
+
+    const result = await isBackupDueNow();
+    expect(result.frequency).toBe('DAILY');
+    expect(result.due).toBe(false); // the newest backup was just "created" — not a day old yet
+    expect(result.lastBackupAt).not.toBeNull();
+    expect(result.nextDueAt).not.toBeNull();
+  });
+
+  it('is due once the newest backup is older than the configured interval', async () => {
+    await updateBackupSettings('DAILY');
+    vi.mocked(drive.isConfigured).mockResolvedValue(true);
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    vi.mocked(drive.listBackups).mockResolvedValue([driveFile('old.dump', twoDaysAgo, 'old')]);
+
+    expect((await isBackupDueNow()).due).toBe(true);
   });
 });

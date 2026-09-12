@@ -133,3 +133,24 @@ export async function driveDisconnectHandler(req: Request, res: Response) {
   });
   res.json({ ok: true });
 }
+
+// ---- Automatic-backup schedule ----
+
+/** Current frequency plus schedule status (last/next due) in one call — the
+ *  admin panel's "Backup schedule" card needs both. */
+export async function getBackupSettingsHandler(_req: Request, res: Response) {
+  res.json(await backupService.isBackupDueNow());
+}
+
+export async function updateBackupSettingsHandler(req: Request, res: Response) {
+  const { frequency } = req.body as { frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY' };
+  const settings = await backupService.updateBackupSettings(frequency);
+  await recordAudit({
+    entityType: 'Backup',
+    entityID: 'settings',
+    action: 'backup.settings.update',
+    actorID: req.user!.id,
+    metadata: { frequency: settings.frequency },
+  });
+  res.json(settings);
+}

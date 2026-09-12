@@ -6,7 +6,7 @@ import { requireRole } from '../../middleware/rbac.middleware';
 import { requireFreshAuth } from '../../middleware/step-up.middleware';
 import { validate } from '../../middleware/validate.middleware';
 import { RATE_LIMITED_BODY } from '../../lib/rate-limit';
-import { backupIdParamSchema } from './backup.schema';
+import { backupIdParamSchema, updateBackupSettingsSchema } from './backup.schema';
 import {
   runBackupHandler,
   listBackupsHandler,
@@ -15,6 +15,8 @@ import {
   driveConnectHandler,
   driveCallbackHandler,
   driveDisconnectHandler,
+  getBackupSettingsHandler,
+  updateBackupSettingsHandler,
 } from './backup.controller';
 
 const passThrough: RequestHandler = (_req, _res, next) => next();
@@ -39,6 +41,10 @@ const passThrough: RequestHandler = (_req, _res, next) => next();
  * bearer token at all (Google's own redirect) — a per-IP limit here is the
  * only rate-limit defense an anonymous caller can't route around by simply
  * not being logged in.
+ * GET/PATCH /settings: the automatic-backup cadence (daily/weekly/monthly,
+ * default weekly) — read by the admin panel and by the scheduled GitHub
+ * Actions run (scripts/run-backup.ts), which fires daily but only actually
+ * backs up once this interval has elapsed since the newest Drive backup.
  */
 export function backupRoutes(opts: { rateLimit?: boolean } = {}): Router {
   const router = Router();
@@ -102,6 +108,13 @@ export function backupRoutes(opts: { rateLimit?: boolean } = {}): Router {
   router.get('/drive/status', asyncHandler(driveStatusHandler));
   router.get('/drive/connect', driveActionLimiter, asyncHandler(driveConnectHandler));
   router.post('/drive/disconnect', driveActionLimiter, asyncHandler(driveDisconnectHandler));
+
+  router.get('/settings', asyncHandler(getBackupSettingsHandler));
+  router.patch(
+    '/settings',
+    validate({ body: updateBackupSettingsSchema }),
+    asyncHandler(updateBackupSettingsHandler)
+  );
 
   router.post('/', runLimiter, asyncHandler(runBackupHandler));
   router.get('/', asyncHandler(listBackupsHandler));

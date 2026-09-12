@@ -15,12 +15,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
 import { AppError } from '../../lib/AppError';
 import { runPgDump } from './pg-dump';
 import { restoreFromFile } from './pg-restore';
 import * as drive from './drive.client';
 import { selectForDeletion } from './retention';
+import { isDue, nextDueAt, type BackupFrequency } from './schedule';
+
+const BACKUP_SETTINGS_ID = 1;
 
 export interface BackupResult {
   ok: boolean;
@@ -128,4 +132,60 @@ export async function restoreBackup(id: string): Promise<RestoreResult> {
   } finally {
     fs.rmSync(tmpPath, { force: true });
   }
+}
+
+// ---- Automatic-backup schedule (admin-configurable; default weekly) ----
+
+export interface BackupSettingsView {
+  frequency: BackupFrequency;
+}
+
+export async function getBackupSettings(): Promise<BackupSettingsView> {
+  const row = await prisma.backupSettings.findUnique({ where: { id: BACKUP_SETTINGS_ID } });
+  return { frequency: row?.frequency ?? 'WEEKLY' };
+}
+
+export async function updateBackupSettings(frequency: BackupFrequency): Promise<BackupSettingsView> {
+  const row = await prisma.backupSettings.upsert({
+    where: { id: BACKUP_SETTINGS_ID },
+    create: { id: BACKUP_SETTINGS_ID, frequency },
+    update: { frequency },
+  });
+  return { frequency: row.frequency };
+}
+
+export interface DueCheck {
+  due: boolean;
+  frequency: BackupFrequency;
+  lastBackupAt: string | null;
+  nextDueAt: string | null;
+}
+
+/** Whether an automatic backup should run right now, per the configured
+ *  frequency and the newest backup already on Drive (Drive itself is the
+ *  "last run" record — nothing else to keep in sync). Used by the scheduled
+ *  GitHub Actions run (fires daily, only actually backs up when due) and by
+ *  the admin panel's "next scheduled backup" hint. When Drive isn't
+ *  configured yet this reports `due: true` — it defers to runBackup()'s own
+ *  clear "not configured" error rather than silently skipping forever. */
+export async function isBackupDueNow(): Promise<DueCheck> {
+  const { frequency } = await getBackupSettings();
+
+  if (!(await drive.isConfigured())) {
+    return { due: true, frequency, lastBackupAt: null, nextDueAt: null };
+  }
+
+  const backups = await drive.listBackups();
+  const newest = backups.reduce<string | null>(
+    (max, f) => (!max || f.createdTime > max ? f.createdTime : max),
+    null
+  );
+  const lastBackupAt = newest ? new Date(newest) : null;
+
+  return {
+    due: isDue(lastBackupAt, frequency),
+    frequency,
+    lastBackupAt: lastBackupAt?.toISOString() ?? null,
+    nextDueAt: nextDueAt(lastBackupAt, frequency)?.toISOString() ?? null,
+  };
 }

@@ -12,6 +12,9 @@ vi.mock('../../src/modules/backup/backup.service', () => ({
   buildDriveAuthUrl: vi.fn(),
   completeDriveConnection: vi.fn(),
   disconnectDrive: vi.fn(),
+  getBackupSettings: vi.fn(),
+  updateBackupSettings: vi.fn(),
+  isBackupDueNow: vi.fn(),
 }));
 import {
   runBackup,
@@ -21,6 +24,8 @@ import {
   buildDriveAuthUrl,
   completeDriveConnection,
   disconnectDrive,
+  updateBackupSettings,
+  isBackupDueNow,
 } from '../../src/modules/backup/backup.service';
 import { signConnectState } from '../../src/modules/backup/drive-state';
 
@@ -108,6 +113,38 @@ describe('backup endpoints — role gate', () => {
     const { token: staffToken } = await createStaff();
     expect(
       (await request(app).post('/api/admin/backup/drive/disconnect').set(bearer(staffToken))).status
+    ).toBe(403);
+  });
+
+  it('GET /api/admin/backup/settings: 401 anon, 403 customer, 403 staff', async () => {
+    expect((await request(app).get('/api/admin/backup/settings')).status).toBe(401);
+
+    const { token: customerToken } = await createCustomer();
+    expect(
+      (await request(app).get('/api/admin/backup/settings').set(bearer(customerToken))).status
+    ).toBe(403);
+
+    const { token: staffToken } = await createStaff();
+    expect(
+      (await request(app).get('/api/admin/backup/settings').set(bearer(staffToken))).status
+    ).toBe(403);
+  });
+
+  it('PATCH /api/admin/backup/settings: 401 anon, 403 customer, 403 staff', async () => {
+    expect(
+      (await request(app).patch('/api/admin/backup/settings').send({ frequency: 'DAILY' })).status
+    ).toBe(401);
+
+    const { token: customerToken } = await createCustomer();
+    expect(
+      (await request(app).patch('/api/admin/backup/settings').set(bearer(customerToken)).send({ frequency: 'DAILY' }))
+        .status
+    ).toBe(403);
+
+    const { token: staffToken } = await createStaff();
+    expect(
+      (await request(app).patch('/api/admin/backup/settings').set(bearer(staffToken)).send({ frequency: 'DAILY' }))
+        .status
     ).toBe(403);
   });
 });
@@ -321,5 +358,69 @@ describe('GET /api/admin/backup/drive/callback — no auth (state-gated)', () =>
       orderBy: { createdAt: 'desc' },
     });
     expect(audit).not.toBeNull();
+  });
+});
+
+describe('GET /api/admin/backup/settings — admin', () => {
+  it('returns the schedule status from the service', async () => {
+    const { token } = await createAdmin();
+    vi.mocked(isBackupDueNow).mockResolvedValue({
+      due: false,
+      frequency: 'WEEKLY',
+      lastBackupAt: '2026-01-01T00:00:00Z',
+      nextDueAt: '2026-01-08T00:00:00Z',
+    });
+
+    const res = await request(app).get('/api/admin/backup/settings').set(bearer(token));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      due: false,
+      frequency: 'WEEKLY',
+      lastBackupAt: '2026-01-01T00:00:00Z',
+      nextDueAt: '2026-01-08T00:00:00Z',
+    });
+  });
+});
+
+describe('PATCH /api/admin/backup/settings — admin', () => {
+  beforeEach(() => {
+    vi.mocked(updateBackupSettings).mockReset();
+  });
+
+  it('updates the frequency and audit-logs with the actor', async () => {
+    const { user, token } = await createAdmin();
+    vi.mocked(updateBackupSettings).mockResolvedValue({ frequency: 'DAILY' });
+
+    const res = await request(app)
+      .patch('/api/admin/backup/settings')
+      .set(bearer(token))
+      .send({ frequency: 'DAILY' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ frequency: 'DAILY' });
+    expect(updateBackupSettings).toHaveBeenCalledWith('DAILY');
+
+    const audit = await prisma.auditLog.findFirst({
+      where: { entityType: 'Backup', action: 'backup.settings.update', actorID: user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(audit).not.toBeNull();
+    expect((audit!.metadata as { frequency: string }).frequency).toBe('DAILY');
+  });
+
+  it('rejects an invalid frequency value (400, service never called)', async () => {
+    const { token } = await createAdmin();
+    const res = await request(app)
+      .patch('/api/admin/backup/settings')
+      .set(bearer(token))
+      .send({ frequency: 'HOURLY' });
+    expect(res.status).toBe(400);
+    expect(updateBackupSettings).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing frequency field (400)', async () => {
+    const { token } = await createAdmin();
+    const res = await request(app).patch('/api/admin/backup/settings').set(bearer(token)).send({});
+    expect(res.status).toBe(400);
+    expect(updateBackupSettings).not.toHaveBeenCalled();
   });
 });
