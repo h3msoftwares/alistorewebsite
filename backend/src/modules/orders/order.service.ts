@@ -10,9 +10,10 @@ import {
   sendOrderShippedNotifications,
 } from '../../lib/notifications/notification.service';
 import { isBlacklisted } from '../blacklist/blacklist.service';
-import { activeDiscounts } from '../discounts/discount.service';
+import { activePromotions } from '../discounts/promotion.service';
 import { resolveCoupon, couponAmountOff } from '../discounts/coupon.service';
 import { lineUnitPrice } from '../../lib/line-pricing';
+import { PROMOTION_PRODUCT_INCLUDE } from '../catalog/category-tree';
 import { round2 } from '../../lib/money';
 import {
   resolveDeliveryFee,
@@ -189,7 +190,7 @@ async function loadCartSubtotal(db: DbClient, owner: CheckoutOwner): Promise<num
     where: owner.userID ? { userID: owner.userID } : { sessionID: owner.sessionID! },
   });
   if (!cart) return 0;
-  const [items, discounts] = await Promise.all([
+  const [items, promotions] = await Promise.all([
     db.cartItem.findMany({
       where: { cartID: cart.id },
       include: {
@@ -198,21 +199,20 @@ async function loadCartSubtotal(db: DbClient, owner: CheckoutOwner): Promise<num
             price: true,
             product: {
               select: {
+                id: true,
                 price: true,
                 saleType: true,
                 saleValue: true,
-                primaryCategoryID: true,
-                categoryLinks: { select: { categoryID: true } },
-                collectionLinks: { select: { collectionID: true } },
+                ...PROMOTION_PRODUCT_INCLUDE,
               },
             },
           },
         },
       },
     }),
-    activeDiscounts(undefined, db),
+    activePromotions(undefined, db),
   ]);
-  return round2(items.reduce((sum, i) => sum + lineUnitPrice(i.variant, discounts) * i.quantity, 0));
+  return round2(items.reduce((sum, i) => sum + lineUnitPrice(i.variant, promotions) * i.quantity, 0));
 }
 
 /** Live delivery-fee estimate for the caller's current cart + a chosen
@@ -374,16 +374,15 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
           where: { cartID: cart.id },
           include: {
             variant: {
-            include: {
-              product: {
-                include: {
-                  images: { orderBy: { sortOrder: 'asc' }, take: 1 },
-                  categoryLinks: { select: { categoryID: true } },
-                  collectionLinks: { select: { collectionID: true } },
+              include: {
+                product: {
+                  include: {
+                    images: { orderBy: { sortOrder: 'asc' }, take: 1 },
+                    ...PROMOTION_PRODUCT_INCLUDE,
+                  },
                 },
               },
             },
-          },
           },
         })
       : [];
@@ -408,11 +407,11 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     }
 
     // Effective unit price per line = variant override → product sale → best
-    // active catalog discount. Snapshotted onto each OrderItem below so the
-    // order stays correct even if a discount later ends. `tx` — same pool
-    // reason as the blacklist check above.
-    const discounts = await activeDiscounts(new Date(), tx);
-    const unitPriceFor = (i: (typeof cartItems)[number]) => lineUnitPrice(i.variant, discounts);
+    // (single, priority-picked) active promotion. Snapshotted onto each
+    // OrderItem below so the order stays correct even if a promotion later
+    // ends. `tx` — same pool reason as the blacklist check above.
+    const promotions = await activePromotions(new Date(), tx);
+    const unitPriceFor = (i: (typeof cartItems)[number]) => lineUnitPrice(i.variant, promotions);
     const subtotal = round2(
       cartItems.reduce((sum, i) => sum + unitPriceFor(i) * i.quantity, 0)
     );

@@ -2,47 +2,47 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { discountsApi } from '@/lib/api';
-import type { CouponBody, DiscountBody, UUID } from '@/lib/types';
+import type { CouponBody, PromotionBody, UUID } from '@/lib/types';
 
-const DISCOUNTS_KEY = ['discounts'] as const;
+const PROMOTIONS_KEY = ['promotions'] as const;
 const COUPONS_KEY = ['coupons'] as const;
 
-// ---- Catalog discounts ----
+// ---- Promotions ----
 
-export function useDiscounts() {
-  return useQuery({ queryKey: DISCOUNTS_KEY, queryFn: discountsApi.listDiscounts });
+export function usePromotions() {
+  return useQuery({ queryKey: PROMOTIONS_KEY, queryFn: discountsApi.listPromotions });
 }
 
-export function useCreateDiscount() {
+export function useCreatePromotion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: DiscountBody) => discountsApi.createDiscount(body),
+    mutationFn: (body: PromotionBody) => discountsApi.createPromotion(body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: DISCOUNTS_KEY });
-      // Prices everywhere depend on active discounts.
+      qc.invalidateQueries({ queryKey: PROMOTIONS_KEY });
+      // Prices everywhere depend on active promotions.
       qc.invalidateQueries({ queryKey: ['products'] });
     },
   });
 }
 
-export function useUpdateDiscount() {
+export function useUpdatePromotion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: UUID; body: Partial<DiscountBody> }) =>
-      discountsApi.updateDiscount(id, body),
+    mutationFn: ({ id, body }: { id: UUID; body: Partial<PromotionBody> }) =>
+      discountsApi.updatePromotion(id, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: DISCOUNTS_KEY });
+      qc.invalidateQueries({ queryKey: PROMOTIONS_KEY });
       qc.invalidateQueries({ queryKey: ['products'] });
     },
   });
 }
 
-export function useDeleteDiscount() {
+export function useDeletePromotion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: UUID) => discountsApi.deleteDiscount(id),
+    mutationFn: (id: UUID) => discountsApi.deletePromotion(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: DISCOUNTS_KEY });
+      qc.invalidateQueries({ queryKey: PROMOTIONS_KEY });
       qc.invalidateQueries({ queryKey: ['products'] });
     },
   });

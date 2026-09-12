@@ -171,13 +171,13 @@ export interface Product {
   saleType?: DiscountType | null;
   saleValue?: Decimalish | null;
   /** Computed by the API: what the shopper pays after the product's own sale
-   *  AND the best active catalog discount (>= 0), and whether that price is
-   *  below the base price. */
+   *  AND the best (single, priority-picked) active promotion (>= 0), and
+   *  whether that price is below the base price. */
   effectivePrice: number;
   onSale: boolean;
-  /** The catalog discount (collection/category/all-items) currently applied
-   *  to this product, if any — for context on the storefront. */
-  discount?: AppliedDiscountInfo | null;
+  /** The promotion currently applied to this product, if any — for context
+   *  on the storefront. */
+  promotion?: AppliedPromotionInfo | null;
   isActive: boolean;
   /** Set when the product is archived (soft-deleted) from the admin. */
   deletedAt?: string | null;
@@ -195,49 +195,73 @@ export interface Product {
   collectionLinks?: { collectionID: UUID; collection: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'> }[];
 }
 
-// ---- Discounts & coupons ----
+// ---- Promotions & coupons ----
+// Stage 2 of the catalog redesign — Promotion replaces the old single-scope
+// Discount model outright (one promotion can target any mix of products,
+// categories — optionally including their descendants — and collections at
+// once). Coupon (a separate checkout-code discount) is untouched.
 
-/** A catalog discount as applied to one product (percentage or amount off,
- *  and how it combines with the product's own sale). */
-export interface AppliedDiscountInfo {
+/** A promotion as applied to one product (percentage or amount off, and
+ *  whether it combines with the product's own sale). */
+export interface AppliedPromotionInfo {
   type: DiscountType;
   value: number;
-  stacking: 'STACK' | 'OVERRIDE';
+  /** true = applies on top of the product's own sale (the old STACK);
+   *  false = replaces it, discounting the original price instead (the old
+   *  OVERRIDE). Governs only this interaction — promotions never combine
+   *  with each other; see PromotionBody.priority. */
+  stackable: boolean;
 }
 
-export type DiscountScope = 'ALL' | 'COLLECTION' | 'CATEGORY';
+export type PromotionStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
 
-/** Admin-managed catalog discount (`GET /api/discounts`). */
-export interface Discount {
+/** Admin-managed promotion (`GET /api/promotions`). */
+export interface Promotion {
   id: UUID;
   nameEn: string;
   nameAr: string;
-  scope: DiscountScope;
-  collectionID: UUID | null;
-  categoryID: UUID | null;
+  status: PromotionStatus;
   type: DiscountType;
   value: Decimalish;
-  stacking: 'STACK' | 'OVERRIDE';
-  isActive: boolean;
+  /** Single-winner-by-priority: among every ACTIVE, in-window promotion
+   *  covering a product, the highest number wins outright — no implicit
+   *  specificity. */
+  priority: number;
+  stackable: boolean;
+  /** Site-wide — covers every product, no targets needed. Mutually
+   *  exclusive with having any target below. */
+  appliesToAll: boolean;
   startsAt: IsoDateTime | null;
   endsAt: IsoDateTime | null;
   dateCreated: IsoDateTime;
-  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr'> | null;
-  category?: Pick<Category, 'id' | 'nameEn' | 'nameAr'> | null;
+  products: { productID: UUID; product: Pick<Product, 'id' | 'nameEn' | 'nameAr' | 'sku'> }[];
+  categories: {
+    categoryID: UUID;
+    includeDescendants: boolean;
+    category: Pick<Category, 'id' | 'nameEn' | 'nameAr' | 'slug'>;
+  }[];
+  collections: { collectionID: UUID; collection: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'> }[];
 }
 
-export interface DiscountBody {
+export interface PromotionCategoryTarget {
+  categoryId: UUID;
+  includeDescendants: boolean;
+}
+
+export interface PromotionBody {
   nameEn: string;
   nameAr: string;
-  scope: DiscountScope;
-  collectionId?: UUID | null;
-  categoryId?: UUID | null;
+  status?: PromotionStatus;
   type: DiscountType;
   value: number;
-  stacking?: 'STACK' | 'OVERRIDE';
-  isActive?: boolean;
+  priority?: number;
+  stackable?: boolean;
+  appliesToAll?: boolean;
   startsAt?: string | null;
   endsAt?: string | null;
+  productIds?: UUID[];
+  categoryTargets?: PromotionCategoryTarget[];
+  collectionIds?: UUID[];
 }
 
 /** Admin-managed checkout coupon (`GET /api/coupons`). */

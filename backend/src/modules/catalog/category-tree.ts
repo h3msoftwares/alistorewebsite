@@ -64,6 +64,16 @@ export function productInCollectionFilter(collectionId: string | string[]): Pris
   return { collectionLinks: { some: { collectionID: { in: ids } } } };
 }
 
+/** Prisma where-fragment: "this product's primary or an additional category
+ *  is this exact category path, or — when `includeDescendants` — any
+ *  descendant of it." Powers Promotion/CollectionRule CATEGORY-target
+ *  matching at the SQL level (used to narrow a listing query, not just to
+ *  price an already-fetched row). */
+export function productInCategoryPathFilter(path: string, includeDescendants: boolean): Prisma.ProductWhereInput {
+  const match = includeDescendants ? { path: { startsWith: path } } : { path };
+  return { OR: [{ primaryCategory: match }, { categoryLinks: { some: { category: match } } }] };
+}
+
 /** Prisma where-fragment for the general (unscoped) "active" product listing:
  *  a product stays visible as long as AT LEAST ONE of its category
  *  placements (primary or additional) is still reachable — an archived
@@ -80,22 +90,43 @@ export function productReachableFilter(archivedIds: Set<string>): Prisma.Product
   };
 }
 
-/** Every distinct category id a (hydrated) product is placed in — primary
- *  plus additional links. What CATEGORY-scoped discount matching tests
- *  against (see lib/pricing.ts pickDiscount). */
-export function productCategoryIds(product: {
-  primaryCategoryID: string;
-  categoryLinks?: { categoryID: string }[];
+/** The minimal category/collection relation shape `productCategoryPaths()` /
+ *  `productCollectionIds()` need for promotion matching — spread into any
+ *  Prisma `include` on Product (or `variant.include.product.include`)
+ *  wherever pricing needs to test a promotion against it: cart, checkout,
+ *  favourites. `product.service.ts`'s own `productInclude` selects a richer
+ *  shape for display (a 4-level primaryCategory breadcrumb) that already
+ *  carries `path`, so it composes its own version instead of this one —
+ *  spreading this AFTER a richer include would silently narrow it back down. */
+export const PROMOTION_PRODUCT_INCLUDE = {
+  primaryCategory: { select: { path: true } },
+  categoryLinks: { select: { category: { select: { path: true } } } },
+  collectionLinks: { select: { collectionID: true } },
+} as const;
+
+/** Every distinct category PATH a (hydrated) product is placed in — primary
+ *  plus additional links. What Promotion CATEGORY-target matching (including
+ *  `includeDescendants`) tests against — see lib/pricing.ts pickPromotion().
+ *  Paths, not ids: a promotion targeting an ancestor category with
+ *  `includeDescendants: true` covers this product too, checked with a plain
+ *  `path.startsWith()` — no separate tree-walk needed, reusing the same
+ *  materialized `path` the Stage 1 triggers maintain. Requires
+ *  `primaryCategory: { path: true }` and
+ *  `categoryLinks: { category: { path: true } } }` on the product query. */
+export function productCategoryPaths(product: {
+  primaryCategory?: { path: string } | null;
+  categoryLinks?: { category: { path: string } }[];
 }): string[] {
-  const ids = new Set<string>([product.primaryCategoryID]);
-  for (const link of product.categoryLinks ?? []) ids.add(link.categoryID);
-  return [...ids];
+  const paths = new Set<string>();
+  if (product.primaryCategory) paths.add(product.primaryCategory.path);
+  for (const link of product.categoryLinks ?? []) paths.add(link.category.path);
+  return [...paths];
 }
 
 /** Every collection id a (hydrated) product is manually placed in — what
- *  COLLECTION-scoped discount matching tests against. Replaces the old
- *  Product.collectionID denormalized mirror, which this Stage 1 redesign
- *  removes outright. */
+ *  Promotion COLLECTION-target matching tests against. Replaces the old
+ *  Product.collectionID denormalized mirror, which the Stage 1 redesign
+ *  removed outright. */
 export function productCollectionIds(product: { collectionLinks?: { collectionID: string }[] }): string[] {
   return [...new Set((product.collectionLinks ?? []).map((link) => link.collectionID))];
 }

@@ -3,12 +3,12 @@ import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { round2, toNumber } from '../../lib/money';
 import {
-  pickDiscount,
-  pricedWithDiscount,
-  type AppliedDiscount,
-  type DiscountCandidate,
+  pickPromotion,
+  pricedWithPromotion,
+  type AppliedPromotion,
+  type PromotionCandidate,
 } from '../../lib/pricing';
-import { activeDiscounts, discountCoverage } from '../discounts/discount.service';
+import { activePromotions, promotionCoverageFilter } from '../discounts/promotion.service';
 import { z } from 'zod';
 import {
   listProductsQuerySchema,
@@ -22,7 +22,7 @@ import {
 import { cleanupCatalogImageIfOrphaned } from './image-cleanup.service';
 import {
   archivedCategoryIds,
-  productCategoryIds,
+  productCategoryPaths,
   productCollectionIds,
   productInCategoryFilter,
   productInCollectionFilter,
@@ -48,7 +48,7 @@ const productInclude = {
   // 3-4 levels regardless of how deep the tree can structurally go.
   primaryCategory: { include: { parent: { include: { parent: { include: { parent: true } } } } } },
   categoryLinks: {
-    include: { category: { select: { id: true, nameEn: true, nameAr: true, slug: true } } },
+    include: { category: { select: { id: true, nameEn: true, nameAr: true, slug: true, path: true } } },
   },
   collectionLinks: {
     include: { collection: { select: { id: true, nameEn: true, nameAr: true, slug: true } } },
@@ -56,32 +56,34 @@ const productInclude = {
 };
 
 // Attach the post-sale price so every product/variant read carries what a
-// shopper actually pays — the product's own sale AND the best-matching active
-// catalog discount (see lib/pricing.ts).
+// shopper actually pays — the product's own sale AND the best (single,
+// priority-picked) active promotion (see lib/pricing.ts).
 type Priced = {
+  id: string;
   price: Prisma.Decimal;
   saleType: DiscountType | null;
   saleValue: Prisma.Decimal | null;
-  primaryCategoryID: string;
-  categoryLinks?: { categoryID: string }[];
+  primaryCategory?: { path: string } | null;
+  categoryLinks?: { category: { path: string } }[];
   collectionLinks?: { collectionID: string }[];
   variants?: { price: Prisma.Decimal | null }[];
 };
-function withPricing<T extends Priced>(p: T, discounts: DiscountCandidate[] = []) {
-  const picked: AppliedDiscount | null = pickDiscount(
+function withPricing<T extends Priced>(p: T, promotions: PromotionCandidate[] = []) {
+  const picked: AppliedPromotion | null = pickPromotion(
     {
+      id: p.id,
       price: p.price,
       saleType: p.saleType,
       saleValue: p.saleValue,
-      categoryIDs: productCategoryIds(p),
-      collectionIDs: productCollectionIds(p),
+      categoryPaths: productCategoryPaths(p),
+      collectionIds: productCollectionIds(p),
     },
-    discounts
+    promotions
   );
   // A variant with no price of its own falls back to the product's price;
-  // the same discount applies on top of whichever base price is in play.
+  // the same promotion applies on top of whichever base price is in play.
   const priceFor = (base: Prisma.Decimal | number) =>
-    pricedWithDiscount(base, p.saleType, p.saleValue, picked);
+    pricedWithPromotion(base, p.saleType, p.saleValue, picked);
   const onSaleFor = (base: Prisma.Decimal | number) => priceFor(base) < round2(toNumber(base));
   // `searchText` is a DB-generated haystack for search only — never part of the
   // API shape (it's just nameEn+nameAr normalized, already on the wire).
@@ -91,7 +93,7 @@ function withPricing<T extends Priced>(p: T, discounts: DiscountCandidate[] = []
     ...rest,
     effectivePrice: priceFor(p.price),
     onSale: onSaleFor(p.price),
-    discount: picked ? { type: picked.type, value: picked.value, stacking: picked.stacking } : null,
+    promotion: picked ? { type: picked.type, value: picked.value, stackable: picked.stackable } : null,
     variants: p.variants?.map((v) => {
       const base = v.price ?? p.price;
       return { ...v, effectivePrice: priceFor(base), onSale: onSaleFor(base) };
@@ -246,29 +248,22 @@ export async function listProducts(query: ListProductsQuery) {
     });
   }
 
-  // Load the discounts in force now — needed both for pricing every row and
+  // Load the promotions in force now — needed both for pricing every row and
   // (when `onSale=true`) to narrow the query to discounted products.
-  const discounts = await activeDiscounts();
+  const promotions = await activePromotions();
   if (query.onSale) {
-    const cov = discountCoverage(discounts);
-    if (!cov.all) {
-      // A product is "on sale" if it has its own live sale, or one of its
-      // category/collection placements is covered by an active catalog
-      // discount.
-      const onSaleOr: Prisma.ProductWhereInput[] = [
-        { saleType: { not: null }, saleValue: { gt: 0 } },
-      ];
-      if (cov.categoryIds.length) onSaleOr.push(productInCategoryFilter(cov.categoryIds));
-      if (cov.collectionIds.length) onSaleOr.push(productInCollectionFilter(cov.collectionIds));
-      and.push({ OR: onSaleOr });
-    }
-    // cov.all ⇒ every product is discounted; no extra restriction needed.
+    // A product is "on sale" if it has its own live sale, or is covered by
+    // an active promotion (product/category-with-descendants/collection, or
+    // one marked site-wide — see promotionCoverageFilter()).
+    and.push({
+      OR: [{ saleType: { not: null }, saleValue: { gt: 0 } }, promotionCoverageFilter(promotions)],
+    });
   }
 
   const where: Prisma.ProductWhereInput = { AND: and };
 
   if (query.sort === 'best_selling') {
-    return bestSellingPage(where, query, discounts);
+    return bestSellingPage(where, query, promotions);
   }
 
   // `id` as a secondary key (fix-list.md #19, resolves 11.6): the primary
@@ -299,7 +294,7 @@ export async function listProducts(query: ListProductsQuery) {
   ]);
 
   return {
-    items: items.map((p) => withPricing(p, discounts)),
+    items: items.map((p) => withPricing(p, promotions)),
     total,
     page: query.page,
     pageSize: query.pageSize,
@@ -319,7 +314,7 @@ const BEST_SELLING_MAX = 200;
 async function bestSellingPage(
   where: Prisma.ProductWhereInput,
   query: ListProductsQuery,
-  discounts: Awaited<ReturnType<typeof activeDiscounts>>
+  promotions: Awaited<ReturnType<typeof activePromotions>>
 ) {
   const since = new Date(Date.now() - BEST_SELLING_WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const sold = await prisma.orderItem.groupBy({
@@ -360,7 +355,7 @@ async function bestSellingPage(
       prisma.product.count({ where }),
     ]);
     return {
-      items: rows.map((p) => withPricing(p, discounts)),
+      items: rows.map((p) => withPricing(p, promotions)),
       total,
       page: query.page,
       pageSize: query.pageSize,
@@ -376,7 +371,7 @@ async function bestSellingPage(
 
   const start = (query.page - 1) * query.pageSize;
   return {
-    items: rows.slice(start, start + query.pageSize).map((p) => withPricing(p, discounts)),
+    items: rows.slice(start, start + query.pageSize).map((p) => withPricing(p, promotions)),
     total: rows.length,
     page: query.page,
     pageSize: query.pageSize,
@@ -384,15 +379,15 @@ async function bestSellingPage(
 }
 
 export async function getProductById(id: string, includeInactive = false) {
-  const [product, discounts] = await Promise.all([
+  const [product, promotions] = await Promise.all([
     prisma.product.findFirst({
       where: { id, ...(includeInactive ? {} : { isActive: true, deletedAt: null }) },
       include: productInclude,
     }),
-    activeDiscounts(),
+    activePromotions(),
   ]);
   if (!product) throw new AppError('NOT_FOUND', 'Product not found');
-  return withPricing(product, discounts);
+  return withPricing(product, promotions);
 }
 
 // ---- Admin-side writes ----

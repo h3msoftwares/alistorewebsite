@@ -1744,13 +1744,18 @@ async function main() {
   // Categories now (the permanent navigation tree, above); Collection is
   // reserved for this kind of cross-cutting, hand-picked grouping instead —
   // documented in catalog-redesign-implementation-plan.md's Stage 1 scope,
-  // not an implicit side effect of the restructuring. Membership is manual
-  // only (Stage 1 has no CollectionRule yet), so the picks below are just a
-  // deterministic, reasonable-looking slice of the seeded catalog.
+  // not an implicit side effect of the restructuring.
+  //
+  // Stage 2: Sale is now AUTOMATED — "whatever currently has an active
+  // Promotion", computed by CollectionRule (HAS_ACTIVE_PROMOTION EXISTS)
+  // rather than a hand-picked, manually-maintained product list. New
+  // Arrivals stays MANUAL; there's no rule that means "recently added" in a
+  // way an admin would actually want automated (it would need re-curating
+  // as soon as anything new ships anyway).
   const sale = await prisma.collection.upsert({
     where: { slug: 'sale' },
-    update: { nameEn: 'Sale', nameAr: 'تخفيضات', isActive: true },
-    create: { slug: 'sale', nameEn: 'Sale', nameAr: 'تخفيضات' },
+    update: { nameEn: 'Sale', nameAr: 'تخفيضات', isActive: true, type: 'AUTOMATED' },
+    create: { slug: 'sale', nameEn: 'Sale', nameAr: 'تخفيضات', type: 'AUTOMATED' },
   });
   const newArrivals = await prisma.collection.upsert({
     where: { slug: 'new-arrivals' },
@@ -1758,15 +1763,48 @@ async function main() {
     create: { slug: 'new-arrivals', nameEn: 'New Arrivals', nameAr: 'وصل حديثاً' },
   });
 
+  await prisma.collectionProduct.deleteMany({ where: { collectionID: sale.id } });
+  await prisma.collectionRule.deleteMany({ where: { collectionID: sale.id } });
+  await prisma.collectionRule.create({
+    data: { collectionID: sale.id, groupNumber: 0, field: 'HAS_ACTIVE_PROMOTION', operator: 'EXISTS' },
+  });
+
+  // The products that used to be hand-picked into Sale (their own
+  // Product.saleType is set) are what the seeded Promotion below targets, so
+  // the AUTOMATED collection ends up showing the same, familiar slice.
   const onSaleProducts = await prisma.product.findMany({
     where: { saleType: { not: null } },
     select: { id: true },
     orderBy: { sku: 'asc' },
     take: 12,
   });
-  await prisma.collectionProduct.deleteMany({ where: { collectionID: sale.id } });
-  await prisma.collectionProduct.createMany({
-    data: onSaleProducts.map((p, i) => ({ collectionID: sale.id, productID: p.id, sortOrder: i })),
+  const sitePromotion = await prisma.promotion.upsert({
+    where: { id: '00000000-0000-0000-0000-0000000000f1' },
+    update: {
+      nameEn: 'Seasonal Promo',
+      nameAr: 'عرض الموسم',
+      status: 'ACTIVE',
+      type: 'PERCENT',
+      value: 15,
+      priority: 1,
+      stackable: true,
+      appliesToAll: false,
+    },
+    create: {
+      id: '00000000-0000-0000-0000-0000000000f1',
+      nameEn: 'Seasonal Promo',
+      nameAr: 'عرض الموسم',
+      status: 'ACTIVE',
+      type: 'PERCENT',
+      value: 15,
+      priority: 1,
+      stackable: true,
+      appliesToAll: false,
+    },
+  });
+  await prisma.promotionProduct.deleteMany({ where: { promotionID: sitePromotion.id } });
+  await prisma.promotionProduct.createMany({
+    data: onSaleProducts.map((p) => ({ promotionID: sitePromotion.id, productID: p.id })),
   });
 
   const newestProducts = await prisma.product.findMany({

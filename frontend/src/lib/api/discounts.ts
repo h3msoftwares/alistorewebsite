@@ -1,22 +1,24 @@
 import { api } from './client';
-import type { Coupon, CouponBody, Discount, DiscountBody, ResolvedCoupon, UUID } from '../types';
+import type { Coupon, CouponBody, Promotion, PromotionBody, ResolvedCoupon, UUID } from '../types';
 
-// ---- Catalog discounts (admin) ----
+// ---- Promotions (admin) ----
+// Route/permission namespace stays "discounts" — renaming Role.permissions
+// strings would be a data migration, not just a rename.
 
-export function listDiscounts() {
-  return api.get<{ discounts: Discount[] }>('/api/discounts').then((r) => r.discounts);
+export function listPromotions() {
+  return api.get<{ promotions: Promotion[] }>('/api/promotions').then((r) => r.promotions);
 }
 
-export function createDiscount(body: DiscountBody) {
-  return api.post<{ discount: Discount }>('/api/discounts', body).then((r) => r.discount);
+export function createPromotion(body: PromotionBody) {
+  return api.post<{ promotion: Promotion }>('/api/promotions', body).then((r) => r.promotion);
 }
 
-export function updateDiscount(id: UUID, body: Partial<DiscountBody>) {
-  return api.patch<{ discount: Discount }>(`/api/discounts/${id}`, body).then((r) => r.discount);
+export function updatePromotion(id: UUID, body: Partial<PromotionBody>) {
+  return api.patch<{ promotion: Promotion }>(`/api/promotions/${id}`, body).then((r) => r.promotion);
 }
 
-export function deleteDiscount(id: UUID) {
-  return api.del(`/api/discounts/${id}`);
+export function deletePromotion(id: UUID) {
+  return api.del(`/api/promotions/${id}`);
 }
 
 // ---- Coupons (admin) ----

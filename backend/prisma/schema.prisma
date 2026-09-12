@@ -55,27 +55,12 @@ enum StockMovementType {
 }
 
 // How a product's sale is expressed: a percentage off (0–100) or a flat
-// amount off the price. Reused for catalog Discounts and Coupons.
+// amount off the price. Reused for the product's own sale, Promotion, and
+// Coupon — kept as PERCENT/AMOUNT (not renamed to the architecture doc's
+// FIXED_AMOUNT) since it's shared infrastructure well beyond Promotion.
 enum DiscountType {
   PERCENT
   AMOUNT
-}
-
-// What a catalog Discount applies to.
-enum DiscountScope {
-  ALL // every product
-  COLLECTION // products in one collection
-  CATEGORY // products in one category
-}
-
-// How a catalog Discount interacts with a product's own sale:
-//  STACK    — apply the product's sale first, then this discount off the
-//             already-reduced price (compounds).
-//  OVERRIDE — this discount comes off the original price; the product's own
-//             sale is ignored while the discount is active.
-enum DiscountStacking {
-  STACK
-  OVERRIDE
 }
 
 // Built-in "smart" home-page rows — computed product lists the owner can turn
@@ -273,30 +258,30 @@ model Address {
 // Stage 1 of the catalog redesign — see catalog-redesign-implementation-plan.md.
 // Stage 2 adds CollectionRule for automated membership.
 model Collection {
-  id                String    @id @default(uuid()) @db.Uuid
+  id                String         @id @default(uuid()) @db.Uuid
   nameEn            String
   nameAr            String
-  slug              String    @unique
+  slug              String         @unique
   descriptionEn     String?
   descriptionAr     String?
-  isActive          Boolean   @default(true)
+  isActive          Boolean        @default(true)
   // Owner opts a collection into the top nav / footer; nav order is `sortOrder`.
-  showInNav         Boolean   @default(false)
+  showInNav         Boolean        @default(false)
   // Owner opts a collection into the home page's featured row (own row: name +
   // horizontal scroll of its categories). Independent of showInNav — a
   // collection can be navigable without being featured, or vice versa.
-  showOnHome        Boolean   @default(false)
+  showOnHome        Boolean        @default(false)
   // Owner shows this collection on the home page as a full-width image banner
   // (coloured panel + CTA, and the photo). Takes precedence over showOnHome —
   // an image-collection is not also given a scrolling row.
-  showOnHomeAsImage Boolean   @default(false)
+  showOnHomeAsImage Boolean        @default(false)
   // Position in the top nav (with showInNav). NOT the home-page order.
-  sortOrder         Int       @default(0)
+  sortOrder         Int            @default(0)
   // Position on the home page — the single shared ranking key for EVERY home
   // block (featured collections, image banners, featured categories, smart
   // rows), so the owner orders them all in one list. Separate from sortOrder
   // so nav order and home order are independent.
-  homeSortOrder     Int       @default(0)
+  homeSortOrder     Int            @default(0)
   // #rrggbb — the storefront derives the --collection-accent* CSS custom
   // properties from this. null ⇒ the collection uses the default accent. Also
   // the background colour of the home-page image banner (showOnHomeAsImage).
@@ -310,27 +295,45 @@ model Collection {
   // the storefront, kept in the DB, restorable. Permanent delete is only
   // allowed once archived (and empty of products).
   archivedAt        DateTime?
-  dateCreated       DateTime  @default(now())
-  lastEdit          DateTime  @default(now()) @updatedAt
+  // Stage 2: MANUAL (default — Stage 1's only mode, e.g. Sale/New Arrivals as
+  // seeded) keeps `products` (CollectionProduct) as the sole membership
+  // source. AUTOMATED computes membership purely from `rules` at read time,
+  // ignoring CollectionProduct entirely. HYBRID computes from `rules`, then
+  // layers manual CollectionProduct.membership INCLUDE/EXCLUDE on top. See
+  // collection-rules.ts.
+  type              CollectionType @default(MANUAL)
+  dateCreated       DateTime       @default(now())
+  lastEdit          DateTime       @default(now()) @updatedAt
 
   images      CollectionImage[]
   products    CollectionProduct[]
+  rules       CollectionRule[]
   siteHeroFor SiteSetting[]
-  discounts   Discount[]
+  promotions  PromotionCollection[]
 
   @@index([isActive])
   @@index([archivedAt])
   @@map("collection")
 }
 
-// Manual collection membership — Stage 1 supports MANUAL only (an admin
-// explicitly picks products). No `membership` (INCLUDE/EXCLUDE) or rule-based
-// inclusion yet; that's Stage 2's CollectionRule / hybrid collections.
+enum CollectionType {
+  MANUAL
+  AUTOMATED
+  HYBRID
+}
+
+// Manual collection membership. For a MANUAL collection this is the sole
+// membership source (`membership` is always INCLUDE in practice). For a
+// HYBRID collection, `rules` compute the base set and these rows overlay
+// explicit INCLUDE/EXCLUDE on top — see collection-rules.ts. Meaningless for
+// AUTOMATED collections (rules alone decide membership; any rows here are
+// ignored).
 model CollectionProduct {
-  collectionID String   @db.Uuid
-  productID    String   @db.Uuid
-  sortOrder    Int      @default(0)
-  createdAt    DateTime @default(now())
+  collectionID String               @db.Uuid
+  productID    String               @db.Uuid
+  membership   CollectionMembership @default(INCLUDE)
+  sortOrder    Int                  @default(0)
+  createdAt    DateTime             @default(now())
 
   collection Collection @relation(fields: [collectionID], references: [id], onDelete: Cascade)
   product    Product    @relation(fields: [productID], references: [id], onDelete: Cascade)
@@ -338,6 +341,59 @@ model CollectionProduct {
   @@id([collectionID, productID])
   @@index([productID])
   @@map("collectionproduct")
+}
+
+enum CollectionMembership {
+  INCLUDE
+  EXCLUDE
+}
+
+// Structured, validated rule for an AUTOMATED/HYBRID collection — never raw
+// SQL or admin-supplied code (matching this codebase's existing security bar
+// for anything translated into a live query). Rules with the same
+// `groupNumber` are ANDed together; different `groupNumber`s are ORed
+// (standard rule-group semantics) — see collection-rules.ts for the
+// safe field/operator/value -> Prisma-where translation.
+model CollectionRule {
+  id           String                 @id @default(uuid()) @db.Uuid
+  collectionID String                 @db.Uuid
+  groupNumber  Int                    @default(0)
+  field        CollectionRuleField
+  operator     CollectionRuleOperator
+  value        Json?
+  sortOrder    Int                    @default(0)
+
+  collection Collection @relation(fields: [collectionID], references: [id], onDelete: Cascade)
+
+  @@index([collectionID, groupNumber, sortOrder])
+  @@map("collectionrule")
+}
+
+// Deliberately narrower than the architecture doc's template enum: BRAND and
+// TAG are dropped because this Product model has no brand or tag concept at
+// all — offering them as pickable rule fields with nothing behind them would
+// be the same dead-control shape as the old Product.quantity field. Every
+// value here corresponds to real, queryable data.
+enum CollectionRuleField {
+  PRODUCT_STATUS
+  CATEGORY
+  PRICE
+  COMPARE_AT_PRICE
+  HAS_ACTIVE_PROMOTION
+  CREATED_AT
+  STOCK_STATUS
+}
+
+enum CollectionRuleOperator {
+  EQUALS
+  NOT_EQUALS
+  GREATER_THAN
+  GREATER_THAN_OR_EQUAL
+  LESS_THAN
+  LESS_THAN_OR_EQUAL
+  IN
+  NOT_IN
+  EXISTS
 }
 
 // Same shape/behaviour as ProductImage — a gallery table (url + bilingual alt
@@ -424,14 +480,14 @@ model Category {
   // Trigger-maintained. 0 for a root category.
   depth             Int       @default(0)
 
-  parent          Category?         @relation("CategoryTree", fields: [parentID], references: [id], onDelete: Restrict)
-  children        Category[]        @relation("CategoryTree")
+  parent          Category?           @relation("CategoryTree", fields: [parentID], references: [id], onDelete: Restrict)
+  children        Category[]          @relation("CategoryTree")
   images          CategoryImage[]
   // A product's canonical category (breadcrumbs, canonical URL, reporting).
-  primaryProducts Product[]         @relation("PrimaryCategory")
+  primaryProducts Product[]           @relation("PrimaryCategory")
   // Additional (non-canonical) category placements — see ProductCategory.
   productLinks    ProductCategory[]
-  discounts       Discount[]
+  promotions      PromotionCategory[]
 
   @@index([parentID, sortOrder])
   @@index([path])
@@ -501,6 +557,7 @@ model Product {
   images          ProductImage[]
   variants        ProductVariant[]
   favorites       Favorite[]
+  promotions      PromotionProduct[]
 
   @@index([primaryCategoryID])
   @@map("product")
@@ -526,38 +583,99 @@ model ProductCategory {
   @@map("productcategory")
 }
 
-// A catalog-wide discount the admin runs over ALL products, one collection,
-// or one category. Resolved live at read time (product listings, cart,
-// checkout) — nothing is written onto Product. When more than one active
-// discount could apply to a product, the most specific scope wins
-// (CATEGORY > COLLECTION > ALL); within the winning scope the one giving the
-// larger reduction is used. `startsAt` / `endsAt` null ⇒ open-ended on that
-// side. See lib/pricing.ts for how `stacking` combines with a product's own
-// sale.
-model Discount {
-  id           String           @id @default(uuid()) @db.Uuid
+// A catalog-wide price reduction targeting any mix of products, categories
+// (optionally including their descendants), and collections at once.
+// Resolved live at read time (product listings, cart, checkout) — nothing is
+// written onto Product. Stage 2 of the catalog redesign — replaces the old
+// single-scope `Discount` model outright (dropped; zero seeded rows existed
+// anywhere in this repo, so no backfill was needed — see
+// catalog-redesign-implementation-plan.md).
+//
+// Resolution (see lib/pricing.ts pickPromotion — a decision this session
+// made explicitly rather than inheriting the old implicit
+// "most-specific-scope-wins" default): among every ACTIVE, in-window
+// Promotion covering a product, the single HIGHEST `priority` wins outright
+// — promotions never combine with each other, regardless of how many match.
+// `stackable` answers a different, narrower question — carried forward
+// unchanged in meaning from the old `Discount.stacking` (STACK/OVERRIDE),
+// just as a boolean: true applies this promotion on top of the product's own
+// sale, false replaces it (discounts the original price, ignoring the sale).
+model Promotion {
+  id           String          @id @default(uuid()) @db.Uuid
   nameEn       String
   nameAr       String
-  scope        DiscountScope
-  collectionID String?          @db.Uuid // set iff scope = COLLECTION
-  categoryID   String?          @db.Uuid // set iff scope = CATEGORY
-  type         DiscountType
-  value        Decimal          @db.Decimal(12, 2) // PERCENT: 0–100; AMOUNT: currency off
-  stacking     DiscountStacking @default(STACK)
-  isActive     Boolean          @default(true)
+  status       PromotionStatus @default(DRAFT)
+  type         DiscountType // PERCENT: 0–100; AMOUNT: currency off. Shared enum — see DiscountType's own comment.
+  value        Decimal         @db.Decimal(12, 2)
+  priority     Int             @default(0)
+  stackable    Boolean         @default(true)
+  // Site-wide — covers every product, with no product/category/collection
+  // targets needed. A deliberate addition beyond the architecture doc's
+  // literal Promotion sketch: the old Discount model this replaces supports
+  // a `scope: ALL` site-wide discount (exercised by this codebase's own
+  // tests), and neither the doc's schema nor a plain PromotionCategory over
+  // every current root category preserves that — the latter would silently
+  // stop covering a NEW root category added later. Mutually exclusive with
+  // having any targets at all (enforced in promotion.service.ts).
+  appliesToAll Boolean         @default(false)
   startsAt     DateTime?
   endsAt       DateTime?
-  dateCreated  DateTime         @default(now())
-  lastEdit     DateTime         @default(now()) @updatedAt
+  dateCreated  DateTime        @default(now())
+  lastEdit     DateTime        @default(now()) @updatedAt
 
-  collection Collection? @relation(fields: [collectionID], references: [id], onDelete: Cascade)
-  category   Category?   @relation(fields: [categoryID], references: [id], onDelete: Cascade)
+  products    PromotionProduct[]
+  categories  PromotionCategory[]
+  collections PromotionCollection[]
 
-  @@index([scope])
-  @@index([collectionID])
+  @@index([status])
+  @@index([startsAt, endsAt])
+  @@map("promotion")
+}
+
+enum PromotionStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+model PromotionProduct {
+  promotionID String @db.Uuid
+  productID   String @db.Uuid
+
+  promotion Promotion @relation(fields: [promotionID], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productID], references: [id], onDelete: Cascade)
+
+  @@id([promotionID, productID])
+  @@index([productID])
+  @@map("promotionproduct")
+}
+
+// `includeDescendants` reuses Category.path (Stage 1 infra) — no separate
+// tree-walk needed, just a `path` prefix check at read time.
+model PromotionCategory {
+  promotionID        String  @db.Uuid
+  categoryID         String  @db.Uuid
+  includeDescendants Boolean @default(true)
+
+  promotion Promotion @relation(fields: [promotionID], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryID], references: [id], onDelete: Restrict)
+
+  @@id([promotionID, categoryID])
   @@index([categoryID])
-  @@index([isActive])
-  @@map("discount")
+  @@map("promotioncategory")
+}
+
+model PromotionCollection {
+  promotionID  String @db.Uuid
+  collectionID String @db.Uuid
+
+  promotion  Promotion  @relation(fields: [promotionID], references: [id], onDelete: Cascade)
+  collection Collection @relation(fields: [collectionID], references: [id], onDelete: Cascade)
+
+  @@id([promotionID, collectionID])
+  @@index([collectionID])
+  @@map("promotioncollection")
 }
 
 // A code the shopper enters at checkout for a discount off the (already

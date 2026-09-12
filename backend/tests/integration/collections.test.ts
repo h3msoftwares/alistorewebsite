@@ -428,4 +428,168 @@ describe('Collections API', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  // Stage 2 of the catalog redesign.
+  describe('AUTOMATED / HYBRID collections (CollectionRule)', () => {
+    it('defaults to MANUAL, and PUT /:id/products is rejected once switched to AUTOMATED', async () => {
+      await tokens();
+      const col = await makeCollection({ slug: 'default-manual' });
+      expect(col.type).toBe('MANUAL');
+
+      await request(app)
+        .patch(`/api/collections/${col.id}`)
+        .set(bearer(adminToken))
+        .send({ type: 'AUTOMATED' });
+
+      const cat = await makeCategory();
+      const product = await makeProduct(cat.id);
+      const res = await request(app)
+        .put(`/api/collections/${col.id}/products`)
+        .set(bearer(adminToken))
+        .send({ productIds: [product.id] });
+      expect(res.status).toBe(409);
+    });
+
+    it('PUT /:id/rules is rejected for a MANUAL collection', async () => {
+      await tokens();
+      const col = await makeCollection({ slug: 'still-manual' });
+      const res = await request(app)
+        .put(`/api/collections/${col.id}/rules`)
+        .set(bearer(adminToken))
+        .send({ rules: [{ groupNumber: 0, field: 'PRICE', operator: 'GREATER_THAN', value: 10 }] });
+      expect(res.status).toBe(409);
+    });
+
+    it('AUTOMATED: membership comes purely from rules, ignoring any CollectionProduct rows', async () => {
+      await tokens();
+      const cat = await makeCategory({ slug: 'auto-cat' });
+      const cheap = await makeProduct(cat.id, { over: { nameEn: 'Cheap', price: 10 } });
+      const pricey = await makeProduct(cat.id, { over: { nameEn: 'Pricey', price: 90 } });
+
+      const col = await request(app)
+        .post('/api/collections')
+        .set(bearer(adminToken))
+        .send({ nameEn: 'Under 50', nameAr: 'أقل من 50', slug: 'under-50', type: 'AUTOMATED' });
+      const colId = col.body.collection.id;
+
+      await request(app)
+        .put(`/api/collections/${colId}/rules`)
+        .set(bearer(adminToken))
+        .send({ rules: [{ groupNumber: 0, field: 'PRICE', operator: 'LESS_THAN', value: 50 }] });
+
+      const res = await request(app).get(`/api/collections/${colId}/products`);
+      const ids = res.body.products.map((p: { id: string }) => p.id);
+      expect(ids).toEqual([cheap.id]);
+      expect(ids).not.toContain(pricey.id);
+    });
+
+    it('CATEGORY rule groups: same groupNumber ANDs, different groupNumbers OR', async () => {
+      await tokens();
+      const cat = await makeCategory({ slug: 'rule-group-cat' });
+      // Matches group 0 (price < 50 AND active) only.
+      const cheapActive = await makeProduct(cat.id, { over: { nameEn: 'CheapActive', price: 20 } });
+      // Matches neither group.
+      const pricey = await makeProduct(cat.id, { over: { nameEn: 'Pricey', price: 200 } });
+      // Matches group 1 (compareAtPrice > 100) only.
+      const onSaleLooking = await makeProduct(cat.id, { over: { nameEn: 'CompareHigh', price: 60, compareAtPrice: 150 } });
+
+      const col = await request(app)
+        .post('/api/collections')
+        .set(bearer(adminToken))
+        .send({ nameEn: 'Grouped', nameAr: 'مجمّع', slug: 'grouped-rules', type: 'AUTOMATED' });
+      const colId = col.body.collection.id;
+
+      await request(app)
+        .put(`/api/collections/${colId}/rules`)
+        .set(bearer(adminToken))
+        .send({
+          rules: [
+            { groupNumber: 0, field: 'PRICE', operator: 'LESS_THAN', value: 50 },
+            { groupNumber: 0, field: 'PRODUCT_STATUS', operator: 'EQUALS', value: 'ACTIVE' },
+            { groupNumber: 1, field: 'COMPARE_AT_PRICE', operator: 'GREATER_THAN', value: 100 },
+          ],
+        });
+
+      const res = await request(app).get(`/api/collections/${colId}/products`);
+      const ids = res.body.products.map((p: { id: string }) => p.id).sort();
+      expect(ids).toEqual([cheapActive.id, onSaleLooking.id].sort());
+      expect(ids).not.toContain(pricey.id);
+    });
+
+    it('HYBRID: rules plus manual INCLUDE, minus manual EXCLUDE', async () => {
+      await tokens();
+      const cat = await makeCategory({ slug: 'hybrid-cat' });
+      const matchesRule = await makeProduct(cat.id, { over: { nameEn: 'MatchesRule', price: 20 } });
+      const manuallyIncluded = await makeProduct(cat.id, { over: { nameEn: 'ManualInclude', price: 999 } });
+      const manuallyExcluded = await makeProduct(cat.id, { over: { nameEn: 'ManualExclude', price: 20 } });
+
+      const col = await request(app)
+        .post('/api/collections')
+        .set(bearer(adminToken))
+        .send({ nameEn: 'Hybrid', nameAr: 'هجين', slug: 'hybrid-col', type: 'HYBRID' });
+      const colId = col.body.collection.id;
+
+      await request(app)
+        .put(`/api/collections/${colId}/rules`)
+        .set(bearer(adminToken))
+        .send({ rules: [{ groupNumber: 0, field: 'PRICE', operator: 'LESS_THAN', value: 50 }] });
+
+      // Manual overlay: explicitly include the pricey one, explicitly
+      // exclude the cheap one that would otherwise match the rule.
+      await prisma.collectionProduct.createMany({
+        data: [
+          { collectionID: colId, productID: manuallyIncluded.id, membership: 'INCLUDE' },
+          { collectionID: colId, productID: manuallyExcluded.id, membership: 'EXCLUDE' },
+        ],
+      });
+
+      const res = await request(app).get(`/api/collections/${colId}/products`);
+      const ids = res.body.products.map((p: { id: string }) => p.id).sort();
+      expect(ids).toEqual([matchesRule.id, manuallyIncluded.id].sort());
+      expect(ids).not.toContain(manuallyExcluded.id);
+    });
+
+    it("HAS_ACTIVE_PROMOTION EXISTS powers an automated Sale-style collection", async () => {
+      await tokens();
+      const cat = await makeCategory({ slug: 'sale-rule-cat' });
+      const onPromotion = await makeProduct(cat.id, { over: { nameEn: 'OnPromo', price: 40 } });
+      const notOnPromotion = await makeProduct(cat.id, { over: { nameEn: 'NotOnPromo', price: 40 } });
+
+      await request(app)
+        .post('/api/promotions')
+        .set(bearer(adminToken))
+        .send({
+          nameEn: 'Sale rule promo', nameAr: 'تخفيض', status: 'ACTIVE', type: 'PERCENT', value: 15,
+          productIds: [onPromotion.id],
+        });
+
+      const col = await request(app)
+        .post('/api/collections')
+        .set(bearer(adminToken))
+        .send({ nameEn: 'Sale', nameAr: 'تخفيضات', slug: 'auto-sale', type: 'AUTOMATED' });
+      const colId = col.body.collection.id;
+
+      await request(app)
+        .put(`/api/collections/${colId}/rules`)
+        .set(bearer(adminToken))
+        .send({ rules: [{ groupNumber: 0, field: 'HAS_ACTIVE_PROMOTION', operator: 'EXISTS' }] });
+
+      const res = await request(app).get(`/api/collections/${colId}/products`);
+      const ids = res.body.products.map((p: { id: string }) => p.id);
+      expect(ids).toContain(onPromotion.id);
+      expect(ids).not.toContain(notOnPromotion.id);
+    });
+
+    it('an AUTOMATED collection with no rules yet shows nothing, not "everything"', async () => {
+      await tokens();
+      await makeProduct((await makeCategory()).id);
+      const col = await request(app)
+        .post('/api/collections')
+        .set(bearer(adminToken))
+        .send({ nameEn: 'Empty auto', nameAr: 'فارغة', slug: 'empty-auto', type: 'AUTOMATED' });
+
+      const res = await request(app).get(`/api/collections/${col.body.collection.id}/products`);
+      expect(res.body.products).toEqual([]);
+    });
+  });
 });

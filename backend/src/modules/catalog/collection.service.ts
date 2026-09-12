@@ -2,12 +2,14 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { z } from 'zod';
-import { createCollectionSchema, updateCollectionSchema } from './collection.schema';
+import { createCollectionSchema, updateCollectionSchema, setCollectionRulesSchema } from './collection.schema';
 import type { CreateImageInput, UpdateImageInput } from './image.schema';
 import { cleanupCatalogImageIfOrphaned } from './image-cleanup.service';
+import { collectionMembershipFilter } from './collection-rules';
 
 type CreateCollectionInput = z.infer<typeof createCollectionSchema>;
 type UpdateCollectionInput = z.infer<typeof updateCollectionSchema>;
+type SetCollectionRulesInput = z.infer<typeof setCollectionRulesSchema>;
 
 // Same ordering ProductImage uses — the row with the lowest sortOrder is the
 // "base" image.
@@ -77,23 +79,38 @@ export async function getCollectionBySlug(slug: string) {
   return collection;
 }
 
-/** A manually-curated collection's live product listing, newest-linked
- *  first. Collection membership is orthogonal to the category tree (see
- *  schema.prisma's Collection doc comment) — a product's own active/archived
- *  state and category reachability still gate whether it shows up here;
- *  this only adds the "is manually placed in this collection" filter. */
+/** A collection's live product listing. Collection membership is orthogonal
+ *  to the category tree (see schema.prisma's Collection doc comment) — a
+ *  product's own active/archived state and category reachability still gate
+ *  whether it shows up here; this only adds the membership filter, which
+ *  depends on the collection's `type` (see collection-rules.ts):
+ *   - MANUAL    → CollectionProduct rows, in `sortOrder`.
+ *   - AUTOMATED → CollectionRule evaluation only.
+ *   - HYBRID    → rules plus manual INCLUDE, minus manual EXCLUDE. */
 export async function listCollectionProducts(id: string) {
-  await ensureExists(id);
-  const links = await prisma.collectionProduct.findMany({
-    where: { collectionID: id, product: { isActive: true, deletedAt: null } },
-    orderBy: { sortOrder: 'asc' },
-    include: {
-      product: {
-        include: { images: imageOrder, variants: true },
-      },
-    },
+  const collection = await getCollectionById(id);
+  const where: Prisma.ProductWhereInput = {
+    isActive: true,
+    deletedAt: null,
+    ...(await collectionMembershipFilter(collection)),
+  };
+
+  if (collection.type === 'MANUAL') {
+    // Manual order is meaningful (the admin's own curation order) —
+    // AUTOMATED/HYBRID have no such ordering, so those fall back to newest.
+    const links = await prisma.collectionProduct.findMany({
+      where: { collectionID: id, membership: 'INCLUDE', product: where },
+      orderBy: { sortOrder: 'asc' },
+      include: { product: { include: { images: imageOrder, variants: true } } },
+    });
+    return links.map((l) => l.product);
+  }
+
+  return prisma.product.findMany({
+    where,
+    orderBy: [{ dateCreated: 'desc' }, { id: 'asc' }],
+    include: { images: imageOrder, variants: true },
   });
-  return links.map((l) => l.product);
 }
 
 // ---- Admin-side writes ----
@@ -149,14 +166,19 @@ export async function restoreCollection(id: string) {
 }
 
 // Permanent, irreversible delete — only once the collection is archived AND
-// empty of products (images cascade + get cleaned up from ImageKit).
+// empty of products (images cascade + get cleaned up from ImageKit). "Empty"
+// is checked via the same membership filter listCollectionProducts() uses,
+// not a raw CollectionProduct count — for an AUTOMATED/HYBRID collection,
+// the rules themselves can still be matching live products even with zero
+// manual rows.
 export async function deleteCollection(id: string) {
-  const existing = await prisma.collection.findUnique({ where: { id }, select: { archivedAt: true } });
+  const existing = await prisma.collection.findUnique({ where: { id }, select: { archivedAt: true, type: true } });
   if (!existing) throw new AppError('NOT_FOUND', 'Collection not found');
   if (!existing.archivedAt) {
     throw new AppError('CONFLICT', 'Archive the collection before deleting it permanently.');
   }
-  const productCount = await prisma.collectionProduct.count({ where: { collectionID: id } });
+  const where = await collectionMembershipFilter({ id, type: existing.type });
+  const productCount = await prisma.product.count({ where });
   if (productCount > 0) {
     throw new AppError(
       'CONFLICT',
@@ -164,14 +186,25 @@ export async function deleteCollection(id: string) {
     );
   }
   const images = await prisma.collectionImage.findMany({ where: { collectionID: id }, select: { fileId: true } });
+  // CollectionRule cascades automatically (onDelete: Cascade).
   await prisma.collection.delete({ where: { id } });
   await Promise.all(images.map((img) => cleanupCatalogImageIfOrphaned(img.fileId)));
 }
 
 // Replace the collection's manual product membership wholesale — same
 // "replace-all on save" convention used elsewhere in this codebase.
+// MANUAL: these become the collection's entire membership (INCLUDE).
+// HYBRID: these overlay INCLUDE on top of the rule-computed set. Meaningless
+// for AUTOMATED (rules alone decide membership) — rejected outright rather
+// than silently accepted and ignored.
 export async function setCollectionProducts(id: string, productIds: string[]) {
-  await ensureExists(id);
+  const collection = await getCollectionById(id);
+  if (collection.type === 'AUTOMATED') {
+    throw new AppError(
+      'CONFLICT',
+      'An automated collection’s membership comes from its rules — set its type to HYBRID to also pick products manually.'
+    );
+  }
   const unique = [...new Set(productIds)];
   const found = await prisma.product.findMany({ where: { id: { in: unique } }, select: { id: true } });
   if (found.length !== unique.length) {
@@ -180,7 +213,34 @@ export async function setCollectionProducts(id: string, productIds: string[]) {
   await prisma.$transaction([
     prisma.collectionProduct.deleteMany({ where: { collectionID: id } }),
     prisma.collectionProduct.createMany({
-      data: unique.map((productID, i) => ({ collectionID: id, productID, sortOrder: i })),
+      data: unique.map((productID, i) => ({ collectionID: id, productID, sortOrder: i, membership: 'INCLUDE' })),
+    }),
+  ]);
+  return getCollectionById(id);
+}
+
+// Replace the collection's rules wholesale — same "replace-all on save"
+// convention. Meaningless for a MANUAL collection (rules are never
+// evaluated) — rejected outright for the same reason as above.
+export async function setCollectionRules(id: string, rules: SetCollectionRulesInput['rules']) {
+  const collection = await getCollectionById(id);
+  if (collection.type === 'MANUAL') {
+    throw new AppError(
+      'CONFLICT',
+      'A manual collection’s membership is picked by hand — set its type to AUTOMATED or HYBRID to use rules.'
+    );
+  }
+  await prisma.$transaction([
+    prisma.collectionRule.deleteMany({ where: { collectionID: id } }),
+    prisma.collectionRule.createMany({
+      data: rules.map((r, i) => ({
+        collectionID: id,
+        groupNumber: r.groupNumber,
+        field: r.field,
+        operator: r.operator,
+        value: r.value ?? Prisma.JsonNull,
+        sortOrder: i,
+      })),
     }),
   ]);
   return getCollectionById(id);

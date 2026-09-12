@@ -66,6 +66,8 @@ export const collectionImageParamSchema = z.object({
 
 export const ctaLabel = z.string().trim().max(40);
 
+export const collectionTypeSchema = z.enum(['MANUAL', 'AUTOMATED', 'HYBRID']);
+
 // Field shapes WITHOUT create-time defaults. The update schema partials over
 // these, so PATCHing one field never silently writes a `.default()` into the
 // others — `createCollectionSchema.partial()` would (Zod re-applies defaults
@@ -78,6 +80,11 @@ const collectionShape = {
   descriptionEn: z.string().trim().max(5000),
   descriptionAr: z.string().trim().max(5000),
   isActive: z.boolean(),
+  // Stage 2: MANUAL (Stage 1's only mode) keeps manual CollectionProduct
+  // membership; AUTOMATED computes membership purely from rules; HYBRID
+  // layers manual INCLUDE/EXCLUDE on top of the rule-computed set. See
+  // collection-rules.ts.
+  type: collectionTypeSchema,
   // Nav curation: appears in the storefront chrome, ordered by sortOrder.
   // Fully independent of the home-page flags below.
   showInNav: z.boolean(),
@@ -101,6 +108,7 @@ export const createCollectionSchema = z.object({
   descriptionEn: z.string().trim().max(5000).optional(),
   descriptionAr: z.string().trim().max(5000).optional(),
   isActive: z.boolean().default(true),
+  type: collectionTypeSchema.default('MANUAL'),
   showInNav: z.boolean().default(false),
   showOnHome: z.boolean().default(false),
   showOnHomeAsImage: z.boolean().default(false),
@@ -114,7 +122,45 @@ export const createCollectionSchema = z.object({
 export const updateCollectionSchema = z.object(collectionShape).partial();
 
 // Body for PUT /:id/products — replace this collection's manual product
-// membership wholesale (Stage 1: manual membership only, no rules).
+// membership wholesale.
 export const setCollectionProductsSchema = z.object({
   productIds: z.array(z.string().uuid()).max(500),
+});
+
+export const collectionRuleFieldSchema = z.enum([
+  'PRODUCT_STATUS',
+  'CATEGORY',
+  'PRICE',
+  'COMPARE_AT_PRICE',
+  'HAS_ACTIVE_PROMOTION',
+  'CREATED_AT',
+  'STOCK_STATUS',
+]);
+
+export const collectionRuleOperatorSchema = z.enum([
+  'EQUALS',
+  'NOT_EQUALS',
+  'GREATER_THAN',
+  'GREATER_THAN_OR_EQUAL',
+  'LESS_THAN',
+  'LESS_THAN_OR_EQUAL',
+  'IN',
+  'NOT_IN',
+  'EXISTS',
+]);
+
+// `value`'s actual shape depends on `field` — validated per-field in
+// collection-rules.ts (never interpreted as SQL/code), so it's just "some
+// JSON" here. `groupNumber`s with the same value are ANDed; different
+// `groupNumber`s are ORed.
+const collectionRuleSchema = z.object({
+  groupNumber: z.number().int().min(0).max(1000),
+  field: collectionRuleFieldSchema,
+  operator: collectionRuleOperatorSchema,
+  value: z.unknown().optional(),
+});
+
+// Body for PUT /:id/rules — replace this collection's rules wholesale.
+export const setCollectionRulesSchema = z.object({
+  rules: z.array(collectionRuleSchema).max(200),
 });

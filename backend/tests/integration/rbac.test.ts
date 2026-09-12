@@ -127,7 +127,7 @@ describe('requirePermission route boundary', () => {
     expect((await request(app).get('/api/admin/dashboard').set(bearer(token))).status).toBe(200);
     // out of scope
     expect((await request(app).get('/api/admin/permissions').set(bearer(token))).status).toBe(403);
-    expect((await request(app).get('/api/discounts').set(bearer(token))).status).toBe(403);
+    expect((await request(app).get('/api/promotions').set(bearer(token))).status).toBe(403);
     expect(
       (await request(app).post('/api/products').set(bearer(token)).send({})).status
     ).toBe(403);

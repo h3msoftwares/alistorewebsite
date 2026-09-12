@@ -64,6 +64,11 @@ export async function setCollectionProductsHandler(req: Request, res: Response) 
   res.json({ collection });
 }
 
+export async function setCollectionRulesHandler(req: Request, res: Response) {
+  const collection = await collectionService.setCollectionRules(paramString(req.params.id), req.body.rules);
+  res.json({ collection });
+}
+
 // ---- Images ----
 
 export async function addCollectionImageHandler(req: Request, res: Response) {

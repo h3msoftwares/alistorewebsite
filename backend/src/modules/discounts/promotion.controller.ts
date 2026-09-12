@@ -1,25 +1,29 @@
 import type { Request, Response } from 'express';
 import { AppError } from '../../lib/AppError';
 import { paramString } from '../../lib/params';
-import * as discounts from './discount.service';
+import * as promotions from './promotion.service';
 import * as coupons from './coupon.service';
 
-// ---- Catalog discounts (admin) ----
+// ---- Promotions (admin) ----
 
-export async function listDiscountsHandler(_req: Request, res: Response) {
-  res.json({ discounts: await discounts.listDiscounts() });
+export async function listPromotionsHandler(_req: Request, res: Response) {
+  res.json({ promotions: await promotions.listPromotions() });
 }
 
-export async function createDiscountHandler(req: Request, res: Response) {
-  res.status(201).json({ discount: await discounts.createDiscount(req.body) });
+export async function getPromotionHandler(req: Request, res: Response) {
+  res.json({ promotion: await promotions.getPromotion(paramString(req.params.id)) });
 }
 
-export async function updateDiscountHandler(req: Request, res: Response) {
-  res.json({ discount: await discounts.updateDiscount(paramString(req.params.id), req.body) });
+export async function createPromotionHandler(req: Request, res: Response) {
+  res.status(201).json({ promotion: await promotions.createPromotion(req.body) });
 }
 
-export async function deleteDiscountHandler(req: Request, res: Response) {
-  await discounts.deleteDiscount(paramString(req.params.id));
+export async function updatePromotionHandler(req: Request, res: Response) {
+  res.json({ promotion: await promotions.updatePromotion(paramString(req.params.id), req.body) });
+}
+
+export async function deletePromotionHandler(req: Request, res: Response) {
+  await promotions.deletePromotion(paramString(req.params.id));
   res.status(204).end();
 }
 

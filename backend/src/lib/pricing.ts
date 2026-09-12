@@ -26,14 +26,21 @@ export function isOnSale(
   return effectivePrice(price, saleType, saleValue) < round2(toNumber(price));
 }
 
-// ---- Catalog discounts (collection / category / all-items) ----
+// ---- Promotions (product / category / collection) — Stage 2 of the catalog
+// redesign, replacing the old single-scope Discount model outright. ----
 
-/** The shape lib/pricing needs from a Discount row — decoupled from Prisma. */
-export interface AppliedDiscount {
+/** The shape lib/pricing needs from a Promotion row — decoupled from Prisma.
+ *  This is what a product's `promotion` API field is shaped like. */
+export interface AppliedPromotion {
   id: string;
   type: DiscountType;
   value: number;
-  stacking: 'STACK' | 'OVERRIDE';
+  // Whether this promotion applies ON TOP of the product's own sale (true —
+  // the old STACK) or REPLACES it, discounting the ORIGINAL price instead
+  // (false — the old OVERRIDE). Renamed from `DiscountStacking`, same
+  // meaning, unchanged. Governs ONLY this interaction — see pickPromotion()
+  // for why promotions never combine with each OTHER.
+  stackable: boolean;
 }
 
 function amountOff(type: DiscountType, value: number, price: number): number {
@@ -41,74 +48,90 @@ function amountOff(type: DiscountType, value: number, price: number): number {
 }
 
 /**
- * Final unit price after BOTH the product's own sale and one catalog
- * discount.
+ * Final unit price after BOTH the product's own sale and one promotion.
  *
- *  - STACK    → product sale first, then the discount off the reduced price.
- *  - OVERRIDE → discount off the ORIGINAL price; the product sale is ignored.
+ *  - stackable=true  → product sale first, then the promotion off the reduced price.
+ *  - stackable=false → promotion off the ORIGINAL price; the product sale is ignored.
  *
- * Returns the plain base price (post product-sale) when `discount` is null.
+ * Returns the plain base price (post product-sale) when `promotion` is null.
  */
-export function pricedWithDiscount(
+export function pricedWithPromotion(
   price: Money,
   saleType: DiscountType | null | undefined,
   saleValue: Money | null | undefined,
-  discount: AppliedDiscount | null | undefined
+  promotion: AppliedPromotion | null | undefined
 ): number {
   const base = round2(toNumber(price));
   const afterSale = effectivePrice(base, saleType, saleValue);
-  if (!discount) return afterSale;
-  if (discount.stacking === 'OVERRIDE') {
-    return round2(Math.max(0, base - amountOff(discount.type, discount.value, base)));
+  if (!promotion) return afterSale;
+  if (!promotion.stackable) {
+    return round2(Math.max(0, base - amountOff(promotion.type, promotion.value, base)));
   }
-  return round2(Math.max(0, afterSale - amountOff(discount.type, discount.value, afterSale)));
+  return round2(Math.max(0, afterSale - amountOff(promotion.type, promotion.value, afterSale)));
+}
+
+/** Everything pickPromotion needs to test whether a Promotion covers a given
+ *  product, plus the fields needed to price it once picked. */
+export interface PromotionCandidate extends AppliedPromotion {
+  priority: number;
+  /** Site-wide — covers every product regardless of the target arrays below.
+   *  See the Promotion model's doc comment in schema.prisma for why this
+   *  exists beyond the architecture doc's literal sketch. */
+  appliesToAll: boolean;
+  productIds: string[];
+  categoryTargets: { path: string; includeDescendants: boolean }[];
+  collectionIds: string[];
+}
+
+function promotionCoversProduct(
+  promo: PromotionCandidate,
+  product: { id: string; categoryPaths: string[]; collectionIds: string[] }
+): boolean {
+  if (promo.appliesToAll) return true;
+  if (promo.productIds.includes(product.id)) return true;
+  if (promo.collectionIds.some((id) => product.collectionIds.includes(id))) return true;
+  return promo.categoryTargets.some((t) =>
+    product.categoryPaths.some((p) => (t.includeDescendants ? p.startsWith(t.path) : p === t.path))
+  );
 }
 
 /**
- * Of every catalog discount that could apply to a product, pick the one that
- * should actually be used: the most specific scope wins
- * (CATEGORY > COLLECTION > ALL); within that scope the one that yields the
- * lowest price for THIS product is chosen. `discounts` is expected to be
- * pre-filtered to those active right now (see discount.service.activeDiscounts).
+ * Of every promotion that could apply to a product, pick the one that
+ * actually applies: single winner by `priority` (confirmed design — NOT
+ * "most specific scope wins", the old Discount behavior this session
+ * deliberately reopened rather than inherited). The highest-priority
+ * ACTIVE, in-window match covering this product wins outright; promotions
+ * never combine with each other, regardless of how many also match. Ties
+ * (equal priority) are broken by whichever gives the lower price.
  *
- * `categoryIDs`/`collectionIDs` are every category (primary + additional,
- * see category-tree.ts productCategoryIds()) / collection the product is
- * placed in — a product can match a CATEGORY or COLLECTION discount through
- * any one of its placements, not just a single canonical id.
+ * `promotions` is expected to be pre-filtered to those ACTIVE and in-window
+ * right now (see promotion.service.activePromotions()).
  */
-export function pickDiscount(
+export function pickPromotion(
   product: {
+    id: string;
     price: Money;
     saleType: DiscountType | null;
     saleValue: Money | null;
-    categoryIDs: string[];
-    collectionIDs: string[];
+    categoryPaths: string[];
+    collectionIds: string[];
   },
-  discounts: DiscountCandidate[]
-): AppliedDiscount | null {
-  const tiers: DiscountCandidate[][] = [
-    discounts.filter((d) => d.scope === 'CATEGORY' && d.categoryID != null && product.categoryIDs.includes(d.categoryID)),
-    discounts.filter((d) => d.scope === 'COLLECTION' && d.collectionID != null && product.collectionIDs.includes(d.collectionID)),
-    discounts.filter((d) => d.scope === 'ALL'),
-  ];
-  const winningTier = tiers.find((t) => t.length > 0);
-  if (!winningTier) return null;
+  promotions: PromotionCandidate[]
+): AppliedPromotion | null {
+  const matches = promotions.filter((p) => promotionCoversProduct(p, product));
+  if (matches.length === 0) return null;
 
-  let best: AppliedDiscount | null = null;
-  let bestPrice = Infinity;
-  for (const d of winningTier) {
-    const applied: AppliedDiscount = { id: d.id, type: d.type, value: d.value, stacking: d.stacking };
-    const p = pricedWithDiscount(product.price, product.saleType, product.saleValue, applied);
+  const topPriority = Math.max(...matches.map((m) => m.priority));
+  const tied = matches.filter((m) => m.priority === topPriority);
+
+  let best = tied[0];
+  let bestPrice = pricedWithPromotion(product.price, product.saleType, product.saleValue, best);
+  for (const m of tied.slice(1)) {
+    const p = pricedWithPromotion(product.price, product.saleType, product.saleValue, m);
     if (p < bestPrice) {
       bestPrice = p;
-      best = applied;
+      best = m;
     }
   }
-  return best;
-}
-
-export interface DiscountCandidate extends AppliedDiscount {
-  scope: 'ALL' | 'COLLECTION' | 'CATEGORY';
-  collectionID: string | null;
-  categoryID: string | null;
+  return { id: best.id, type: best.type, value: best.value, stackable: best.stackable };
 }

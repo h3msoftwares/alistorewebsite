@@ -26,8 +26,8 @@ import addressRoutes from './modules/account/address.routes';
 import userRoutes from './modules/account/user.routes';
 import uploadRoutes from './modules/uploads/upload.routes';
 import settingsRoutes from './modules/settings/settings.routes';
-import { discountRoutes } from './modules/discounts/discount.routes';
 import { backupRoutes } from './modules/backup/backup.routes';
+import { promotionRoutes } from './modules/discounts/promotion.routes';
 
 export function buildApp(
   opts: {
@@ -257,7 +257,7 @@ export function buildApp(
   app.use('/api/settings', settingsRoutes);
   app.use(
     '/api',
-    discountRoutes({ validateCouponRateLimit: opts.validateCouponRateLimit ?? env.NODE_ENV !== 'test' })
+    promotionRoutes({ validateCouponRateLimit: opts.validateCouponRateLimit ?? env.NODE_ENV !== 'test' })
   );
 
   // 404 fallback

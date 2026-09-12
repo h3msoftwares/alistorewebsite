@@ -3,7 +3,8 @@ import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { round2 } from '../../lib/money';
 import { lineUnitPrice } from '../../lib/line-pricing';
-import { activeDiscounts } from '../discounts/discount.service';
+import { activePromotions } from '../discounts/promotion.service';
+import { PROMOTION_PRODUCT_INCLUDE } from '../catalog/category-tree';
 
 interface CartOwner {
   userID?: string;
@@ -48,22 +49,33 @@ async function getOrCreateCart(owner: CartOwner) {
 
 export async function getCart(owner: CartOwner) {
   const cart = await getOrCreateCart(owner);
-  const [rows, discounts] = await Promise.all([
+  const [rows, promotions] = await Promise.all([
     prisma.cartItem.findMany({
       where: { cartID: cart.id },
       // `variants: true` lets the cart page/drawer build a size/color picker
-      // (sibling variants of the same product) without a second request per row.
-      include: { variant: { include: { product: { include: { images: true, variants: true } } } } },
+      // (sibling variants of the same product) without a second request per
+      // row. `categoryLinks`/`collectionLinks` are needed for promotion
+      // matching (a product's ADDITIONAL category or manual collection
+      // placements) — previously absent here, which silently under-priced a
+      // cart line for a promotion covering only one of those (caught while
+      // rewiring this file for Stage 2's Promotion, not something Stage 2
+      // itself introduced — see PROMOTION_INCLUDE for the shared shape).
+      include: {
+        variant: {
+          include: { product: { include: { images: true, variants: true, ...PROMOTION_PRODUCT_INCLUDE } } },
+        },
+      },
       orderBy: { dateCreated: 'asc' },
     }),
-    activeDiscounts(),
+    activePromotions(),
   ]);
 
-  // Attach the effective unit price (variant override → product sale → catalog
-  // discount) so the cart UI and the total agree with what checkout will charge.
+  // Attach the effective unit price (variant override → product sale → the
+  // best active promotion) so the cart UI and the total agree with what
+  // checkout will charge.
   const items = rows.map((i) => ({
     ...i,
-    effectivePrice: lineUnitPrice(i.variant, discounts),
+    effectivePrice: lineUnitPrice(i.variant, promotions),
   }));
   const subtotal = round2(items.reduce((sum, i) => sum + i.effectivePrice * i.quantity, 0));
   return { items, subtotal };
