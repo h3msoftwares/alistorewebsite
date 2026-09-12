@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
@@ -22,27 +23,47 @@ function validateShape(input: { type?: 'PERCENT' | 'AMOUNT'; value?: number; sta
   }
 }
 
+// Codes are 12 digits, dash-separated in groups of 4 (e.g. "4821-0937-6650") —
+// easy to read aloud/type, and generated with crypto.randomInt so they're not
+// guessable. Collisions against the unique `code` column are astronomically
+// unlikely (1 in 10^12) but are retried a few times just in case.
+function generateCouponCode(): string {
+  const digits = Array.from({ length: 12 }, () => crypto.randomInt(0, 10)).join('');
+  return `${digits.slice(0, 4)}-${digits.slice(4, 8)}-${digits.slice(8, 12)}`;
+}
+
 export async function createCoupon(input: CreateCouponInput) {
   validateShape(input);
-  try {
-    return await prisma.coupon.create({
-      data: {
-        code: input.code.toUpperCase(),
-        type: input.type,
-        value: input.value,
-        isActive: input.isActive,
-        startsAt: input.startsAt ? new Date(input.startsAt) : null,
-        endsAt: input.endsAt ? new Date(input.endsAt) : null,
-        maxRedemptions: input.maxRedemptions ?? null,
-        // Only override the DB default (1 = single-use per customer) when the
-        // admin actually sent a value — `null` here means "explicitly
-        // unlimited", not "not specified".
-        ...(input.maxPerCustomer !== undefined ? { maxPerCustomer: input.maxPerCustomer ?? null } : {}),
-      },
-    });
-  } catch (e) {
-    throw mapPrismaError(e);
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const code = input.code ? input.code.toUpperCase() : generateCouponCode();
+    try {
+      return await prisma.coupon.create({
+        data: {
+          code,
+          type: input.type,
+          value: input.value,
+          isActive: input.isActive,
+          startsAt: input.startsAt ? new Date(input.startsAt) : null,
+          endsAt: input.endsAt ? new Date(input.endsAt) : null,
+          maxRedemptions: input.maxRedemptions ?? null,
+          // Only override the DB default (1 = single-use per customer) when the
+          // admin actually sent a value — `null` here means "explicitly
+          // unlimited", not "not specified".
+          ...(input.maxPerCustomer !== undefined ? { maxPerCustomer: input.maxPerCustomer ?? null } : {}),
+        },
+      });
+    } catch (e) {
+      const mapped = mapPrismaError(e);
+      // Only auto-generated codes get retried on a collision — a caller-supplied
+      // code that collides should surface as a normal conflict.
+      if (!input.code && mapped instanceof AppError && mapped.code === 'CONFLICT' && attempt < maxAttempts) {
+        continue;
+      }
+      throw mapped;
+    }
   }
+  throw new AppError('CONFLICT', 'Could not generate a unique coupon code, please try again');
 }
 
 export async function updateCoupon(id: string, input: UpdateCouponInput) {
