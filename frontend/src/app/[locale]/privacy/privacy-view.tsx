@@ -4,8 +4,8 @@ import type { ReactNode } from 'react';
 import { useSettings } from '@/hooks/use-settings';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 
-const LAST_UPDATED_EN = '8 September 2026';
-const LAST_UPDATED_AR = '٨ أيلول ٢٠٢٦';
+const LAST_UPDATED_EN = '12 September 2026';
+const LAST_UPDATED_AR = '١٢ أيلول ٢٠٢٦';
 
 // Fallback used only when the owner hasn't set an Instagram URL in
 // /admin/settings — matches the handle referenced in the policy text.
@@ -73,7 +73,8 @@ function EnglishPrivacy({ brand, contact }: { brand: string; contact: Contact })
       <ul>
         <li>
           <strong>Account information:</strong> name, email address, phone number, and password (if
-          you create an account). Account creation is optional — guest checkout is available.
+          you create an account) — or, if you choose to sign in with Google, the name and email
+          address Google shares with us. Account creation is optional — guest checkout is available.
         </li>
         <li>
           <strong>Order information:</strong> delivery address, phone number, and order details
@@ -85,14 +86,19 @@ function EnglishPrivacy({ brand, contact }: { brand: string; contact: Contact })
           options are added in the future, this policy will be updated accordingly.
         </li>
         <li>
+          <strong>Fraud-prevention data:</strong> the IP address associated with your order and with
+          any email verification code (OTP) you request at checkout. We use this to screen for
+          blacklisted contacts and unusually rapid repeat orders before an order is accepted.
+        </li>
+        <li>
           <strong>Browsing and cookie data:</strong> information collected automatically through
           cookies, such as items in your shopping cart, login session data, language/region
           preference, and general usage patterns.
         </li>
         <li>
           <strong>Analytics data:</strong> aggregated, non-identifying data about how visitors use
-          the Site (pages viewed, time spent, general location by IP), collected through analytics
-          tools.
+          the Site (pages viewed, time spent, general location by IP), collected through Google
+          Analytics — only if you accept optional cookies (see Section 3).
         </li>
       </ul>
 
@@ -104,6 +110,10 @@ function EnglishPrivacy({ brand, contact }: { brand: string; contact: Contact })
         <li>Maintain your shopping cart and login session</li>
         <li>Respond to customer service inquiries</li>
         <li>Improve the Site&apos;s content, layout, and performance using analytics</li>
+        <li>
+          Detect and prevent fraud or abuse (e.g., screening orders and verification requests
+          against blacklisted contacts, or against unusual order velocity)
+        </li>
         <li>Comply with legal and accounting obligations (e.g., recordkeeping for tax purposes)</li>
       </ul>
       <p>
@@ -132,8 +142,9 @@ function EnglishPrivacy({ brand, contact }: { brand: string; contact: Contact })
           the extent needed to complete delivery.
         </li>
         <li>
-          <strong>Analytics providers:</strong> in aggregated or pseudonymized form, to help us
-          understand Site usage.
+          <strong>Google:</strong> if you accept optional cookies, Google Analytics receives
+          aggregated usage data (see Section 1); if you sign in with Google, Google acts as your
+          identity provider. Google processes this data under its own privacy policy.
         </li>
         <li>
           <strong>Legal requirements:</strong> if required by law, regulation, or a valid legal
@@ -225,7 +236,8 @@ function ArabicPrivacy({ brand, contact }: { brand: string; contact: Contact }) 
       <ul>
         <li>
           <strong>معلومات الحساب:</strong> الاسم، البريد الإلكتروني، رقم الهاتف، وكلمة المرور (في حال
-          إنشاء حساب). إنشاء الحساب اختياري، ويمكنك إتمام الطلب كزائر دون تسجيل.
+          إنشاء حساب) — أو، في حال اخترت تسجيل الدخول عبر Google، الاسم والبريد الإلكتروني اللذان
+          تشاركهما Google معنا. إنشاء الحساب اختياري، ويمكنك إتمام الطلب كزائر دون تسجيل.
         </li>
         <li>
           <strong>معلومات الطلب:</strong> عنوان التوصيل، رقم الهاتف، وتفاصيل الطلب (المنتجات،
@@ -237,6 +249,11 @@ function ArabicPrivacy({ brand, contact }: { brand: string; contact: Contact }) 
           مستقبلاً، سيتم تحديث هذه السياسة وفقًا لذلك.
         </li>
         <li>
+          <strong>بيانات منع الاحتيال:</strong> عنوان IP المرتبط بطلبك وبأي رمز تحقق (OTP) عبر البريد
+          الإلكتروني تطلبه عند الدفع. نستخدم هذه البيانات لفحص جهات الاتصال المحظورة والطلبات المتكررة
+          بشكل غير معتاد قبل قبول الطلب.
+        </li>
+        <li>
           <strong>بيانات التصفح وملفات تعريف الارتباط (الكوكيز):</strong> معلومات تُجمع تلقائيًا عبر
           ملفات تعريف الارتباط، مثل محتويات سلة التسوق، بيانات جلسة تسجيل الدخول، تفضيل اللغة/المنطقة،
           وأنماط الاستخدام العامة.
@@ -244,7 +261,7 @@ function ArabicPrivacy({ brand, contact }: { brand: string; contact: Contact }) 
         <li>
           <strong>بيانات التحليلات:</strong> بيانات مجمّعة وغير معرّفة للهوية حول كيفية استخدام الزوار
           للموقع (الصفحات المُشاهدة، الوقت المستغرق، الموقع الجغرافي التقريبي عبر عنوان IP)، وتُجمع عبر
-          أدوات التحليل.
+          خدمة Google Analytics — فقط في حال موافقتك على ملفات تعريف الارتباط الاختيارية (انظر القسم ٣).
         </li>
       </ul>
 
@@ -256,6 +273,10 @@ function ArabicPrivacy({ brand, contact }: { brand: string; contact: Contact }) 
         <li>الحفاظ على سلة التسوق وجلسة تسجيل الدخول الخاصة بك</li>
         <li>الرد على استفسارات خدمة العملاء</li>
         <li>تحسين محتوى الموقع وتصميمه وأدائه باستخدام أدوات التحليل</li>
+        <li>
+          كشف الاحتيال أو إساءة الاستخدام ومنعهما (مثل فحص الطلبات وطلبات التحقق مقابل جهات الاتصال
+          المحظورة، أو معدّل طلبات غير معتاد)
+        </li>
         <li>الامتثال للالتزامات القانونية والمحاسبية (مثل حفظ السجلات لأغراض ضريبية)</li>
       </ul>
       <p>
@@ -284,8 +305,9 @@ function ArabicPrivacy({ brand, contact }: { brand: string; contact: Contact }) 
           لإتمام عملية التوصيل.
         </li>
         <li>
-          <strong>مزوّدي خدمات التحليل:</strong> بشكل مجمّع أو غير معرّف للهوية، لمساعدتنا على فهم
-          كيفية استخدام الموقع.
+          <strong>Google:</strong> في حال موافقتك على ملفات تعريف الارتباط الاختيارية، تتلقى خدمة
+          Google Analytics بيانات استخدام مجمّعة (انظر القسم ١)؛ وفي حال تسجيل الدخول عبر Google، تعمل
+          Google كمزوّد لهويتك. تعالج Google هذه البيانات وفق سياسة الخصوصية الخاصة بها.
         </li>
         <li>
           <strong>المتطلبات القانونية:</strong> في حال طلب ذلك بموجب القانون أو التنظيمات أو طلب
