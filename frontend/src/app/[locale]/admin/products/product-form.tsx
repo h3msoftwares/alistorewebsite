@@ -1,9 +1,12 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Controller, type Control, type FieldErrors, type UseFormRegister } from 'react-hook-form';
 import { z } from 'zod';
 import { CheckList, Field, Input, Select, Textarea } from '@/components/ui';
+import { CategoryPicker } from '@/components/admin/category-picker';
 import { useAdminCategories, useCollections } from '@/hooks/use-catalog';
+import { buildCategoryPaths } from '@/lib/category-path';
 
 // Optional money fields are kept as strings in the form (not z.coerce.number
 // — an empty box would coerce to NaN, which Zod can't cleanly validate as
@@ -87,6 +90,7 @@ export function ProductCoreFields<T extends ProductCoreValues>({
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { data: categories } = useAdminCategories();
   const { data: collections } = useCollections({ includeInactive: true });
+  const categoryPaths = useMemo(() => buildCategoryPaths(categories ?? [], isAr), [categories, isAr]);
 
   return (
     <>
@@ -110,20 +114,26 @@ export function ProductCoreFields<T extends ProductCoreValues>({
           required
         >
           {(p) => (
-            <Select {...p} {...register('primaryCategoryId' as never)} disabled={busy}>
-              <option value="">{t('Select a category', 'اختر فئة')}</option>
-              {(categories ?? []).map((c) => (
+            <Controller
+              control={control}
+              name={'primaryCategoryId' as never}
+              render={({ field }) => (
                 // Flagged, not excluded, when this category (or an ancestor)
                 // is archived — the category row itself may still be
                 // perfectly valid, just currently unreachable on the
                 // storefront (fix-list.md #15's principle, carried onto the
                 // tree — see category-tree.ts's archivedCategoryIds()).
-                <option key={c.id} value={c.id} disabled={Boolean(c.isEffectivelyArchived)}>
-                  {'—'.repeat(c.depth)} {isAr ? c.nameAr : c.nameEn}
-                  {c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}
-                </option>
-              ))}
-            </Select>
+                <CategoryPicker
+                  {...p}
+                  categories={categories ?? []}
+                  value={field.value}
+                  onChange={field.onChange}
+                  locale={locale}
+                  disabled={busy}
+                  placeholder={t('Select a category', 'اختر فئة')}
+                />
+              )}
+            />
           )}
         </Field>
       </div>
@@ -149,10 +159,11 @@ export function ProductCoreFields<T extends ProductCoreValues>({
                     disabled: Boolean(c.isEffectivelyArchived),
                     label: (
                       <>
-                        {'—'.repeat(c.depth)} {isAr ? c.nameAr : c.nameEn}
+                        {isAr ? c.nameAr : c.nameEn}
                         {c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}
                       </>
                     ),
+                    sublabel: categoryPaths.get(c.id) || undefined,
                   }))}
                 />
               )}

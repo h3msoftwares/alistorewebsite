@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Archive, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import { Alert, Button, CheckList, Choice, EmptyState, Field, Icon, Input, ProductGridSkeleton, Select } from '@/components/ui';
@@ -19,6 +19,7 @@ import {
   useSetCollectionRules,
   useUpdateCollection,
 } from '@/hooks/use-catalog';
+import { buildCategoryPaths } from '@/lib/category-path';
 import type { Collection, CollectionRule, CollectionRuleField, CollectionRuleOperator } from '@/lib/types';
 import { CollectionForm, type CollectionFormValues } from '../collection-form';
 
@@ -168,6 +169,7 @@ function RuleValueEditor({
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { data: categories } = useAdminCategories({ status: 'all' });
+  const categoryPaths = useMemo(() => buildCategoryPaths(categories ?? [], isAr), [categories, isAr]);
 
   switch (rule.field) {
     case 'PRODUCT_STATUS':
@@ -220,7 +222,8 @@ function RuleValueEditor({
             items={(categories ?? []).map((c) => ({
               id: c.id,
               disabled: Boolean(c.isEffectivelyArchived),
-              label: `${'—'.repeat(c.depth)} ${isAr ? c.nameAr : c.nameEn}${c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}`,
+              label: `${isAr ? c.nameAr : c.nameEn}${c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}`,
+              sublabel: categoryPaths.get(c.id) || undefined,
             }))}
           />
           <Choice

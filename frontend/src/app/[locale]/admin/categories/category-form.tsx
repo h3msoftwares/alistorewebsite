@@ -1,9 +1,10 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Alert, Button, Choice, Field, Input, Select } from '@/components/ui';
+import { Alert, Button, Choice, Field, Input } from '@/components/ui';
+import { CategoryPicker } from '@/components/admin/category-picker';
 import { useAdminCategories } from '@/hooks/use-catalog';
 import type { Category } from '@/lib/types';
 
@@ -80,6 +81,7 @@ export function CategoryForm({
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<CategoryFormValues>({ resolver: zodResolver(categoryFormSchema), defaultValues });
@@ -111,21 +113,27 @@ export function CategoryForm({
         hint={t('Leave as "Top level" for a root category (e.g. Women, Men, Kids)', 'اتركها "المستوى الأعلى" لفئة رئيسية (مثل نساء، رجال، أطفال)')}
       >
         {(p) => (
-          <Select {...p} {...register('parentId')} disabled={busy}>
-            <option value="">{t('Top level (no parent)', 'المستوى الأعلى (بدون أصل)')}</option>
-            {pickable.map((c) => (
+          <Controller
+            control={control}
+            name="parentId"
+            render={({ field }) => (
               // A category whose own archivedAt is unset can still be
               // unreachable on the storefront if an ANCESTOR is archived
               // (isEffectivelyArchived, computed server-side) — flagged here
               // too, not just a directly-archived option, so assigning a new
               // category under it doesn't silently create another invisible
               // one (fix-list.md #15's principle, carried onto the tree).
-              <option key={c.id} value={c.id} disabled={Boolean(c.isEffectivelyArchived)}>
-                {'—'.repeat(c.depth)} {isAr ? c.nameAr : c.nameEn}
-                {c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}
-              </option>
-            ))}
-          </Select>
+              <CategoryPicker
+                {...p}
+                categories={pickable}
+                value={field.value}
+                onChange={field.onChange}
+                locale={locale}
+                disabled={busy}
+                emptyOption={t('Top level (no parent)', 'المستوى الأعلى (بدون أصل)')}
+              />
+            )}
+          />
         )}
       </Field>
 

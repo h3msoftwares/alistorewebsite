@@ -19,6 +19,7 @@ import {
 } from '@/components/ui';
 import { useAdminCollections, useAdminCategories, useProducts } from '@/hooks/use-catalog';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { buildCategoryPaths } from '@/lib/category-path';
 import {
   useCoupons,
   useCreateCoupon,
@@ -119,6 +120,7 @@ function PromotionsPanel({ isAr }: { isAr: boolean }) {
   );
   const { data: collections } = useAdminCollections({ status: 'all' });
   const { data: categories } = useAdminCategories({ status: 'all' });
+  const categoryPaths = useMemo(() => buildCategoryPaths(categories ?? [], isAr), [categories, isAr]);
   const create = useCreatePromotion();
   const update = useUpdatePromotion();
   const remove = useDeletePromotion();
@@ -292,19 +294,23 @@ function PromotionsPanel({ isAr }: { isAr: boolean }) {
                               id: c.id,
                               disabled: Boolean(c.isEffectivelyArchived),
                               label: `${isAr ? c.nameAr : c.nameEn}${c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}`,
+                              sublabel: categoryPaths.get(c.id) || undefined,
                             }))}
                           />
                           {field.value.length > 0 && (
                             <div style={{ display: 'grid', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
                               {field.value.map((target) => {
                                 const cat = (categories ?? []).find((c) => c.id === target.categoryId);
+                                const path = categoryPaths.get(target.categoryId);
+                                const catName = cat ? (isAr ? cat.nameAr : cat.nameEn) : target.categoryId;
+                                const fullName = path ? `${path}${isAr ? ' « ' : ' › '}${catName}` : catName;
                                 return (
                                   <Choice
                                     key={target.categoryId}
                                     type="checkbox"
                                     label={t(
-                                      `Include subcategories of "${cat ? (isAr ? cat.nameAr : cat.nameEn) : target.categoryId}"`,
-                                      `شمول الفئات الفرعية لـ "${cat ? (isAr ? cat.nameAr : cat.nameEn) : target.categoryId}"`
+                                      `Include subcategories of "${fullName}"`,
+                                      `شمول الفئات الفرعية لـ "${fullName}"`
                                     )}
                                     checked={target.includeDescendants}
                                     onChange={(e) =>

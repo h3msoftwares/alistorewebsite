@@ -3,6 +3,10 @@ import type { ReactNode } from 'react';
 export interface CheckListItem {
   id: string;
   label: ReactNode;
+  /** Muted secondary line under the label — e.g. a category's ancestor
+   *  breadcrumb ("Men › Shoes"), so two same-named options from different
+   *  branches (a "Shoes" under Women, Men, and Kids) are distinguishable. */
+  sublabel?: ReactNode;
   disabled?: boolean;
 }
 
@@ -57,7 +61,10 @@ export function CheckList({
                 disabled={rowDisabled}
                 onChange={() => toggle(item.id)}
               />
-              <span>{item.label}</span>
+              <span className="check-list__row-text">
+                <span>{item.label}</span>
+                {item.sublabel && <span className="check-list__row-sublabel">{item.sublabel}</span>}
+              </span>
             </label>
           );
         })
