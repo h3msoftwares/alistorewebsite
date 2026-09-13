@@ -232,7 +232,11 @@ export async function activePromotions(at: Date = new Date(), db: Db = prisma): 
   // matching against it (pickPromotion's matchSource, promotionCoverageFilter)
   // stays harmless for an automated one since a product never carries a
   // manual CollectionProduct row for it either way; that's covered via
-  // `productIds` instead.
+  // `productIds` instead. `ruleBasedProductCollections` (built below,
+  // per-promotion) keeps the resolved productId -> collection mapping around
+  // so matchPromotion() can still correctly attribute those as "COLLECTION"
+  // instead of the generic "PRODUCT" fallback the flat union alone can't
+  // tell apart from a real, direct product target.
   const ruleBasedCollectionIds = [
     ...new Set(
       rows.flatMap((p) => p.collections.filter((c) => c.collection.type !== 'MANUAL').map((c) => c.collection.id))
@@ -255,9 +259,25 @@ export async function activePromotions(at: Date = new Date(), db: Db = prisma): 
   }
 
   return rows.map((p) => {
-    const ruleBasedProductIds = p.collections
-      .filter((c) => c.collection.type !== 'MANUAL')
-      .flatMap((c) => resolvedMembers.get(c.collection.id) ?? []);
+    const ruleBasedCollections = p.collections.filter((c) => c.collection.type !== 'MANUAL');
+    const ruleBasedProductIds = ruleBasedCollections.flatMap((c) => resolvedMembers.get(c.collection.id) ?? []);
+    const directProductIds = p.products.map((x) => x.productID);
+
+    // productId -> the FIRST automated/hybrid collection whose resolved
+    // membership included it (good enough for a single "Applied via..."
+    // label — a product covered by two different rule-based targets at once
+    // is a rare enough overlap that picking one deterministically is fine).
+    const ruleBasedProductCollections: Record<string, { id: string; nameEn: string; nameAr: string }> = {};
+    for (const c of ruleBasedCollections) {
+      for (const productId of resolvedMembers.get(c.collection.id) ?? []) {
+        ruleBasedProductCollections[productId] ??= {
+          id: c.collection.id,
+          nameEn: c.collection.nameEn,
+          nameAr: c.collection.nameAr,
+        };
+      }
+    }
+
     return {
       id: p.id,
       nameEn: p.nameEn,
@@ -267,7 +287,8 @@ export async function activePromotions(at: Date = new Date(), db: Db = prisma): 
       stackable: p.stackable,
       priority: p.priority,
       appliesToAll: p.appliesToAll,
-      productIds: [...new Set([...p.products.map((x) => x.productID), ...ruleBasedProductIds])],
+      productIds: [...new Set([...directProductIds, ...ruleBasedProductIds])],
+      directProductIds,
       categoryTargets: p.categories.map((c) => ({
         path: c.category.path,
         includeDescendants: c.includeDescendants,
@@ -279,6 +300,7 @@ export async function activePromotions(at: Date = new Date(), db: Db = prisma): 
         nameEn: c.collection.nameEn,
         nameAr: c.collection.nameAr,
       })),
+      ruleBasedProductCollections,
     };
   });
 }

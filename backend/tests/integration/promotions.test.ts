@@ -217,7 +217,7 @@ describe('Promotions API', () => {
       over: { price: 10 },
       variants: [{ sku: 'acr2', stockQuantity: 5 }],
     });
-    const automated = await makeCollection({ slug: 'auto-col', type: 'AUTOMATED' });
+    const automated = await makeCollection({ slug: 'auto-col', nameEn: 'Auto Collection', type: 'AUTOMATED' });
     await request(app)
       .put(`/api/collections/${automated.id}/rules`)
       .set(bearer(adminToken))
@@ -231,6 +231,12 @@ describe('Promotions API', () => {
     const matchRes = await request(app).get(`/api/products/${matchesRule.id}`);
     expect(matchRes.body.product.effectivePrice).toBe(80);
     expect(matchRes.body.product.promotion).toMatchObject({ type: 'PERCENT', value: 20 });
+    // Regression: this product is covered ONLY via the automated collection's
+    // resolved membership — never a direct PromotionProduct row — so the
+    // attributed source must say COLLECTION (and name it), not fall back to
+    // the generic PRODUCT label just because it's also present in the flat
+    // productIds coverage union pickPromotion() tests against.
+    expect(matchRes.body.product.promotion).toMatchObject({ source: 'COLLECTION', sourceNameEn: 'Auto Collection' });
 
     // Priced at 10 — fails the collection's own PRICE >= 50 rule, so it was
     // never a member of the collection in the first place.

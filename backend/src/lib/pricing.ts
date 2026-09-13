@@ -80,9 +80,31 @@ export interface PromotionCandidate extends AppliedPromotion {
    *  See the Promotion model's doc comment in schema.prisma for why this
    *  exists beyond the architecture doc's literal sketch. */
   appliesToAll: boolean;
+  /** EVERY product this promotion covers — directly-targeted products PLUS
+   *  the resolved current membership of any AUTOMATED/HYBRID collection
+   *  target (a rule-based collection never has real CollectionProduct rows
+   *  to match on directly — see promotion.service.ts's activePromotions()).
+   *  Used for coverage tests (promotionCoverageFilter, pickPromotion) where
+   *  only "does this promotion cover this product at all" matters, not WHY.
+   *  Attribution (`source`) is derived separately below — matching this
+   *  union alone can't tell a direct PRODUCT target apart from a resolved
+   *  COLLECTION one. */
   productIds: string[];
+  /** Subset of `productIds` that were directly, manually targeted (a real
+   *  PromotionProduct row) — the only ones that legitimately mean
+   *  `source: 'PRODUCT'`. */
+  directProductIds: string[];
   categoryTargets: { path: string; includeDescendants: boolean; nameEn: string; nameAr: string }[];
+  /** Every targeted collection (manual AND rule-based), for display and for
+   *  matching a product's own MANUAL collectionIds. */
   collections: { id: string; nameEn: string; nameAr: string }[];
+  /** productId -> the (first) AUTOMATED/HYBRID collection target whose
+   *  resolved rule-based membership included it — lets matchPromotion()
+   *  attribute those covered-via-`productIds` products back to "COLLECTION"
+   *  instead of falling through to the wrong "PRODUCT" label. A MANUAL
+   *  collection's members never need this: they already match via the
+   *  product's own `collectionIds` against `collections` above. */
+  ruleBasedProductCollections: Record<string, { id: string; nameEn: string; nameAr: string }>;
 }
 
 /** Which target actually matched, and (for a COLLECTION/CATEGORY match) that
@@ -100,13 +122,24 @@ function matchPromotion(
   product: { id: string; categoryPaths: string[]; collectionIds: string[] }
 ): PromotionMatch | null {
   if (promo.appliesToAll) return { source: 'ALL' };
-  if (promo.productIds.includes(product.id)) return { source: 'PRODUCT' };
+  if (promo.directProductIds.includes(product.id)) return { source: 'PRODUCT' };
   const collectionHit = promo.collections.find((c) => product.collectionIds.includes(c.id));
   if (collectionHit) return { source: 'COLLECTION', sourceNameEn: collectionHit.nameEn, sourceNameAr: collectionHit.nameAr };
+  // Not a direct manual collectionLinks row (that's the check just above) —
+  // an AUTOMATED/HYBRID target this product matches only via its resolved,
+  // rule-based membership still needs to say "COLLECTION", not fall through
+  // to a plain "PRODUCT" label just because it's also present in the flat
+  // `productIds` coverage union.
+  const ruleBasedHit = promo.ruleBasedProductCollections[product.id];
+  if (ruleBasedHit) return { source: 'COLLECTION', sourceNameEn: ruleBasedHit.nameEn, sourceNameAr: ruleBasedHit.nameAr };
   const categoryHit = promo.categoryTargets.find((t) =>
     product.categoryPaths.some((p) => (t.includeDescendants ? p.startsWith(t.path) : p === t.path))
   );
   if (categoryHit) return { source: 'CATEGORY', sourceNameEn: categoryHit.nameEn, sourceNameAr: categoryHit.nameAr };
+  // Covered via the flat union (`productIds`) but none of the above matched
+  // explicitly — shouldn't happen given how that union is built, but falls
+  // back to PRODUCT rather than silently returning "not covered".
+  if (promo.productIds.includes(product.id)) return { source: 'PRODUCT' };
   return null;
 }
 
