@@ -18,6 +18,7 @@ import {
   Select,
 } from '@/components/ui';
 import { useAdminCollections, useAdminCategories, useProducts } from '@/hooks/use-catalog';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import {
   useCoupons,
   useCreateCoupon,
@@ -104,7 +105,17 @@ const BLANK_PROMOTION: PromotionForm = {
 function PromotionsPanel({ isAr }: { isAr: boolean }) {
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { data: promotions, isPending, isError, refetch } = usePromotions();
-  const { data: products } = useProducts({ status: 'all', pageSize: 500 }, { keepPreviousData: false });
+  // A flat, uncapped product list doesn't scale — GET /api/products caps
+  // pageSize at 60 — so this picker searches instead of trying to load
+  // everything. A product already selected but not in the current search
+  // results stays selected (CheckList only drops items it isn't given), it
+  // just won't be visible as a checked row until its name is searched again.
+  const [productSearch, setProductSearch] = useState('');
+  const debouncedProductSearch = useDebouncedValue(productSearch, 300);
+  const { data: products } = useProducts(
+    { status: 'all', pageSize: 60, search: debouncedProductSearch || undefined },
+    { keepPreviousData: false }
+  );
   const { data: collections } = useAdminCollections({ status: 'all' });
   const { data: categories } = useAdminCategories({ status: 'all' });
   const create = useCreatePromotion();
@@ -182,7 +193,7 @@ function PromotionsPanel({ isAr }: { isAr: boolean }) {
     if (p.appliesToAll) return t('All items', 'كل المنتجات');
     const parts: string[] = [];
     if (p.products.length) parts.push(t(`${p.products.length} product(s)`, `${p.products.length} منتج`));
-    if (p.categories.length) parts.push(t(`${p.categories.length} categor(y/ies)`, `${p.categories.length} فئة`));
+    if (p.categories.length) parts.push(t(`${p.categories.length} categor${p.categories.length === 1 ? 'y' : 'ies'}`, `${p.categories.length} فئة`));
     if (p.collections.length) parts.push(t(`${p.collections.length} collection(s)`, `${p.collections.length} مجموعة`));
     return parts.join(', ') || '—';
   };
@@ -220,25 +231,38 @@ function PromotionsPanel({ isAr }: { isAr: boolean }) {
 
           {!appliesToAll && (
             <>
-              <Field label={t('Products', 'المنتجات')} hint={t('Optional', 'اختياري')}>
+              <Field
+                label={t('Products', 'المنتجات')}
+                hint={t('Optional — search to narrow the list', 'اختياري — ابحث لتضييق القائمة')}
+              >
                 {(p) => (
-                  <Controller
-                    control={control}
-                    name="productIds"
-                    render={({ field }) => (
-                      <CheckList
-                        {...p}
-                        value={field.value}
-                        onChange={field.onChange}
-                        disabled={busy}
-                        emptyLabel={t('No products yet', 'لا توجد منتجات بعد')}
-                        items={(products?.items ?? []).map((prod) => ({
-                          id: prod.id,
-                          label: isAr ? prod.nameAr : prod.nameEn,
-                        }))}
-                      />
-                    )}
-                  />
+                  <>
+                    <Input
+                      value={productSearch}
+                      onChange={(e) => setProductSearch(e.target.value)}
+                      placeholder={t('Search products…', 'ابحث عن منتج…')}
+                      disabled={busy}
+                      style={{ marginBottom: 'var(--space-2)' }}
+                    />
+                    <Controller
+                      control={control}
+                      name="productIds"
+                      render={({ field }) => (
+                        <CheckList
+                          {...p}
+                          value={field.value}
+                          onChange={field.onChange}
+                          disabled={busy}
+                          emptyLabel={t('No products match', 'لا توجد منتجات مطابقة')}
+                          items={(products?.items ?? []).map((prod) => ({
+                            id: prod.id,
+                            disabled: Boolean(prod.deletedAt),
+                            label: `${isAr ? prod.nameAr : prod.nameEn}${prod.deletedAt ? t(' (archived)', ' (مؤرشفة)') : ''}`,
+                          }))}
+                        />
+                      )}
+                    />
+                  </>
                 )}
               </Field>
 
@@ -257,7 +281,8 @@ function PromotionsPanel({ isAr }: { isAr: boolean }) {
                           emptyLabel={t('No categories yet', 'لا توجد فئات بعد')}
                           items={(categories ?? []).map((c) => ({
                             id: c.id,
-                            label: isAr ? c.nameAr : c.nameEn,
+                            disabled: Boolean(c.isEffectivelyArchived),
+                            label: `${isAr ? c.nameAr : c.nameEn}${c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}`,
                           }))}
                         />
                       )}
@@ -286,7 +311,8 @@ function PromotionsPanel({ isAr }: { isAr: boolean }) {
                         emptyLabel={t('No collections yet', 'لا توجد مجموعات بعد')}
                         items={(collections ?? []).map((c) => ({
                           id: c.id,
-                          label: isAr ? c.nameAr : c.nameEn,
+                          disabled: Boolean(c.archivedAt),
+                          label: `${isAr ? c.nameAr : c.nameEn}${c.archivedAt ? t(' (archived)', ' (مؤرشفة)') : ''}`,
                         }))}
                       />
                     )}
