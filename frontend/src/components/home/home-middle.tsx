@@ -2,9 +2,9 @@
 
 import {
   useFeaturedCategories,
-  useFeaturedCollections,
-  useHomeImageCollections,
-  useOtherCollections,
+  useFeaturedTopCategories,
+  useHomeImageCategories,
+  useOtherTopCategories,
 } from '@/hooks/use-catalog';
 import { useSettings } from '@/hooks/use-settings';
 import { useReveal } from '@/hooks/use-reveal';
@@ -12,12 +12,12 @@ import { CollectionRow } from './collection-row';
 import { CollectionBanner } from './collection-banner';
 import { CategoryRow } from './category-row';
 import { ShowcaseRow } from './showcase-row';
-import type { Category, Collection, HomeShowcase } from '@/lib/types';
+import type { Category, HomeShowcase } from '@/lib/types';
 
 type FeaturedItem =
-  | { kind: 'collection'; sortOrder: number; collection: Collection }
+  | { kind: 'collection'; sortOrder: number; collection: Category }
   | { kind: 'category'; sortOrder: number; category: Category }
-  | { kind: 'imageCollection'; sortOrder: number; collection: Collection }
+  | { kind: 'imageCollection'; sortOrder: number; collection: Category }
   | { kind: 'showcase'; sortOrder: number; showcase: HomeShowcase };
 
 function RowSkeleton() {
@@ -39,24 +39,26 @@ function RowSkeleton() {
  * Home page middle section:
  *   Zone 1 — everything the owner has curated onto the home page, interleaved
  *            into one list by `sortOrder` as a shared ranking key:
- *              • featured collections (Collection.showOnHome) — a row of their
- *                categories;
- *              • featured categories (Category.showOnHome) — a row of their
- *                products;
- *              • image collections (Collection.showOnHomeAsImage) — a full-width
- *                banner (coloured panel + CTA, and the photo);
+ *              • featured root categories (Category.showOnHome, no parent) —
+ *                a row of their child categories (Women/Men/Kids' old
+ *                "featured collection" role — see the catalog redesign's
+ *                nav/banner decision);
+ *              • featured categories (Category.showOnHome, any depth) — a
+ *                row of their products;
+ *              • image root categories (Category.showOnHomeAsImage) — a
+ *                full-width banner (coloured panel + CTA, and the photo);
  *              • built-in smart rows (best sellers / new / on sale) that are
  *                switched on.
- *   Zone 2 — every other (non-featured) collection, same row treatment —
+ *   Zone 2 — every other (non-featured) root category, same row treatment —
  *            "the rest", so nothing is hidden, just deprioritized.
  */
 export function HomeMiddle({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
   const [moreEyebrowRef, moreEyebrowClass, moreEyebrowStyle] = useReveal();
-  const imageCollections = useHomeImageCollections();
-  const featuredCollections = useFeaturedCollections();
+  const imageCollections = useHomeImageCategories();
+  const featuredCollections = useFeaturedTopCategories();
   const featuredCategories = useFeaturedCategories();
-  const otherCollections = useOtherCollections();
+  const otherCollections = useOtherTopCategories();
   const { data: settings } = useSettings();
   const moreHeading = settings
     ? isAr

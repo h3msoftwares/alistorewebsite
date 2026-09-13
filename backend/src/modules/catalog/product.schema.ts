@@ -76,27 +76,51 @@ const variantInputSchema = z.object({
 
 export const discountTypeSchema = z.enum(['PERCENT', 'AMOUNT']);
 
-export const createProductSchema = z.object({
+// Field shapes WITHOUT create-time defaults — same reason as category.schema.ts
+// / collection.schema.ts: Zod's `.partial()` does NOT protect a field from
+// having its `.default()` re-applied when the key is simply absent (verified
+// directly — `z.object({a: z.array(z.string()).default([])}).partial().parse({})`
+// still returns `{a: []}`, not `{}`). `additionalCategoryIds`/`collectionIds`
+// need to distinguish "omitted → leave existing placements alone" from
+// "explicit `[]` → clear them", so their defaults live ONLY in
+// createProductSchema below, never in the shape updateProductSchema derives
+// `.partial()` from. (`quantity` previously had this exact same latent bug —
+// invisible only because it's a dead field nothing else reads — fixed here
+// as a mechanical side effect of the same restructuring, not a behavior
+// change to `quantity` itself.)
+const productShape = {
   sku: z.string().trim().min(1).max(SKU_MAX),
   nameEn: z.string().trim().min(1).max(NAME_MAX),
   nameAr: z.string().trim().min(1).max(NAME_MAX),
   descriptionEn: z.string().trim().max(DESC_MAX).optional(),
   descriptionAr: z.string().trim().max(DESC_MAX).optional(),
-  categoryId: z.string().uuid(),
-  // No collectionId: a product's collection is the denormalized mirror of its
-  // category's collection, derived server-side. It is never set directly.
+  // The canonical category (breadcrumbs, canonical URL, reporting).
+  primaryCategoryId: z.string().uuid(),
+  // Zero or more ADDITIONAL (non-canonical) category placements — see
+  // ProductCategory in schema.prisma. Must not repeat primaryCategoryId.
+  additionalCategoryIds: z.array(z.string().uuid()).max(50),
+  // Manual collection membership (Stage 1: manual only, no rules) — a flat,
+  // cross-cutting merchandising grouping, unrelated to the category tree.
+  collectionIds: z.array(z.string().uuid()).max(50),
   price: z.number().positive().max(PRICE_MAX),
   compareAtPrice: z.number().positive().max(PRICE_MAX).optional(),
   // Free-standing signed quantity — may be 0 or negative, unrelated to isActive.
-  quantity: z.number().int().min(-1_000_000).max(1_000_000).default(0),
+  quantity: z.number().int().min(-1_000_000).max(1_000_000),
   // Optional sale: both together, or neither. PERCENT is 0–100 (checked in the
   // service so `.partial()` still works for updates).
   saleType: discountTypeSchema.nullish(),
   saleValue: z.number().nonnegative().max(PRICE_MAX).nullish(),
+};
+
+export const createProductSchema = z.object({
+  ...productShape,
+  additionalCategoryIds: z.array(z.string().uuid()).max(50).default([]),
+  collectionIds: z.array(z.string().uuid()).max(50).default([]),
+  quantity: z.number().int().min(-1_000_000).max(1_000_000).default(0),
   variants: z.array(variantInputSchema).min(1).max(100),
 });
 
-export const updateProductSchema = createProductSchema.partial().omit({ variants: true }).extend({
+export const updateProductSchema = z.object(productShape).partial().extend({
   // Optimistic-concurrency guard (fix-list.md #14, resolves 1.5): the
   // `lastEdit` the client's form last fetched. When present, updateProduct()
   // only writes if the row's current `lastEdit` still matches — otherwise

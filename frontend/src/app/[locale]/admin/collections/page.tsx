@@ -126,10 +126,8 @@ export default function AdminCollectionsPage() {
                 <th aria-hidden="true" />
                 <th>{t('Name', 'الاسم')}</th>
                 <th>{t('Slug', 'الرابط')}</th>
+                <th>{t('Type', 'النوع')}</th>
                 <th>{t('Status', 'الحالة')}</th>
-                <th>{t('Nav', 'التنقل')}</th>
-                <th>{t('Home', 'الرئيسية')}</th>
-                <th className="is-numeric">{t('Categories', 'الفئات')}</th>
                 <th className="is-numeric">{t('Products', 'المنتجات')}</th>
                 <th aria-hidden="true" />
               </tr>
@@ -144,6 +142,13 @@ export default function AdminCollectionsPage() {
                     <Link href={`/${locale}/admin/collections/${c.id}`}>{name(c)}</Link>
                   </td>
                   <td data-label={t('Slug', 'الرابط')}>{c.slug}</td>
+                  <td data-label={t('Type', 'النوع')}>
+                    {c.type === 'MANUAL'
+                      ? t('Manual', 'يدوي')
+                      : c.type === 'AUTOMATED'
+                        ? t('Automated', 'آلي')
+                        : t('Hybrid', 'مختلط')}
+                  </td>
                   <td data-label={t('Status', 'الحالة')}>
                     {c.archivedAt ? (
                       <Badge variant="low-stock" className="admin-status-badge--archived">
@@ -154,11 +159,6 @@ export default function AdminCollectionsPage() {
                     ) : (
                       <Badge variant="low-stock">{t('Hidden', 'مخفية')}</Badge>
                     )}
-                  </td>
-                  <td data-label={t('Nav', 'التنقل')}>{c.showInNav ? t('Yes', 'نعم') : '—'}</td>
-                  <td data-label={t('Home', 'الرئيسية')}>{c.showOnHome ? t('Yes', 'نعم') : '—'}</td>
-                  <td className="is-numeric" data-label={t('Categories', 'الفئات')}>
-                    {c._count?.categories ?? 0}
                   </td>
                   <td className="is-numeric" data-label={t('Products', 'المنتجات')}>
                     {c._count?.products ?? 0}

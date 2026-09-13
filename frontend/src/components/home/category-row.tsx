@@ -12,7 +12,9 @@ const ROW_SIZE = 12;
 /** One featured-category row on the home page: the category's name (linking
  *  to its page) + a horizontal scroll of its products (image + name each,
  *  linking to the product page). Independent of whether the category's own
- *  collection is also featured (see `CollectionRow`). */
+ *  root category is also featured (see `CollectionRow`, which now renders
+ *  top-level categories — see the Stage 1 catalog redesign's nav/banner
+ *  decision). Themed with its root ancestor's accent colour. */
 export function CategoryRow({
   locale,
   category,
@@ -27,6 +29,8 @@ export function CategoryRow({
   const name = isAr ? category.nameAr : category.nameEn;
   const items = data?.items ?? [];
   const [revealRef, revealClass, revealStyle] = useReveal(delayMs);
+  let root = category;
+  while (root.parent) root = root.parent;
 
   if (!isPending && items.length === 0) return null;
 
@@ -34,8 +38,8 @@ export function CategoryRow({
     <div
       ref={revealRef}
       className={revealClass}
-      data-collection={category.collection?.slug}
-      style={{ ...accentStyle(category.collection?.accentColor), ...revealStyle }}
+      data-collection={root.slug}
+      style={{ ...accentStyle(root.accentColor), ...revealStyle }}
     >
       <HorizontalScroller
         locale={locale}

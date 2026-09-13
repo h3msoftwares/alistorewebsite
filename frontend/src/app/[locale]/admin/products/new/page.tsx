@@ -57,7 +57,9 @@ export default function NewProductPage() {
         nameAr: values.nameAr,
         descriptionEn: values.descriptionEn || undefined,
         descriptionAr: values.descriptionAr || undefined,
-        categoryId: values.categoryId,
+        primaryCategoryId: values.primaryCategoryId,
+        additionalCategoryIds: values.additionalCategoryIds,
+        collectionIds: values.collectionIds,
         price: values.price,
         compareAtPrice: values.compareAtPrice ? Number(values.compareAtPrice) : undefined,
         saleType: values.saleType || null,
@@ -84,7 +86,7 @@ export default function NewProductPage() {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
-        <ProductCoreFields register={register} errors={errors} busy={busy} locale={locale} />
+        <ProductCoreFields register={register} control={control} errors={errors} busy={busy} locale={locale} />
 
         <div className="admin-form__section">
           <p className="admin-form__section-title">{t('Variants', 'المقاسات والألوان')}</p>

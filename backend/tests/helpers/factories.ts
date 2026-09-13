@@ -14,14 +14,12 @@ export async function makeCollection(over: Record<string, unknown> = {}) {
   });
 }
 
-// Pass `null` (or omit) for a standalone category unattached to any collection.
-export async function makeCategory(
-  collectionID: string | null = null,
-  over: Record<string, unknown> = {}
-) {
+// Root category by default — pass `{ parentID: someCategory.id }` in `over`
+// to nest it under another category (Stage 1 catalog redesign: Category is a
+// pure self-referencing tree, unrelated to Collection — see schema.prisma).
+export async function makeCategory(over: Record<string, unknown> = {}) {
   return prisma.category.create({
     data: {
-      collectionID,
       nameEn: 'Test Category',
       nameAr: 'فئة',
       slug: `cat-${short()}`,
@@ -39,13 +37,13 @@ interface MakeProductOpts {
     price?: number | null;
     stockQuantity?: number;
   }[];
+  /** Additional (non-canonical) category placements — see ProductCategory. */
+  additionalCategoryIds?: string[];
+  /** Manual collection memberships — see CollectionProduct. */
+  collectionIds?: string[];
 }
 
-export async function makeProduct(
-  collectionID: string | null,
-  categoryID: string,
-  opts: MakeProductOpts = {}
-) {
+export async function makeProduct(primaryCategoryID: string, opts: MakeProductOpts = {}) {
   const sku = `sku-${short()}`;
   const variants = opts.variants ?? [{ size: 'M', color: 'Black', stockQuantity: 10 }];
   return prisma.product.create({
@@ -53,8 +51,7 @@ export async function makeProduct(
       sku,
       nameEn: 'Test Product',
       nameAr: 'منتج',
-      categoryID,
-      collectionID,
+      primaryCategoryID,
       price: 25,
       ...opts.over,
       variants: {
@@ -66,7 +63,13 @@ export async function makeProduct(
           stockQuantity: v.stockQuantity ?? 10,
         })),
       },
+      ...(opts.additionalCategoryIds?.length
+        ? { categoryLinks: { create: opts.additionalCategoryIds.map((categoryID) => ({ categoryID })) } }
+        : {}),
+      ...(opts.collectionIds?.length
+        ? { collectionLinks: { create: opts.collectionIds.map((collectionID) => ({ collectionID })) } }
+        : {}),
     },
-    include: { variants: true },
+    include: { variants: true, categoryLinks: true, collectionLinks: true },
   });
 }

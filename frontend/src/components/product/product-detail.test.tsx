@@ -26,8 +26,7 @@ const baseProduct: Product = {
   nameAr: 'قميص كلاسيكي',
   descriptionEn: 'A classic shirt.',
   descriptionAr: 'قميص كلاسيكي.',
-  categoryID: 'cat1',
-  collectionID: 'col1',
+  primaryCategoryID: 'cat1',
   price: '39.00',
   compareAtPrice: '49.00',
   isActive: true,
@@ -49,8 +48,7 @@ const baseProduct: Product = {
     { id: 'v1', productID: 'p1', sku: 'SKU1-1', size: 'M', color: null, stockQuantity: 5 },
     { id: 'v2', productID: 'p1', sku: 'SKU1-2', size: 'L', color: null, stockQuantity: 0 },
   ],
-  collection: { id: 'col1', nameEn: 'Men', nameAr: 'رجالي', slug: 'men' },
-  category: {
+  primaryCategory: {
     id: 'cat1',
     nameEn: 'Shirts',
     nameAr: 'قمصان',
@@ -59,7 +57,26 @@ const baseProduct: Product = {
     showOnHome: false,
     sortOrder: 0,
     homeSortOrder: 0,
+    showInNav: false,
+    showOnHomeAsImage: false,
+    path: '/men/shirts/',
+    depth: 1,
     images: [],
+    parent: {
+      id: 'root-men',
+      nameEn: 'Men',
+      nameAr: 'رجالي',
+      slug: 'men',
+      isActive: true,
+      showOnHome: true,
+      sortOrder: 0,
+      homeSortOrder: 0,
+      showInNav: true,
+      showOnHomeAsImage: false,
+      path: '/men/',
+      depth: 0,
+      images: [],
+    },
   },
 };
 
@@ -180,7 +197,7 @@ describe('ProductDetail', () => {
     expect(mockFavourites.addFavourite).not.toHaveBeenCalled();
   });
 
-  it('shows a Home / Collection / Category breadcrumb using the already-fetched category and collection', async () => {
+  it('shows a Home / Men / Shirts breadcrumb from the primary category ancestor chain', async () => {
     mockCatalog.getProduct.mockResolvedValue(baseProduct);
     const { Wrapper } = createWrapper();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
@@ -189,13 +206,13 @@ describe('ProductDetail', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(nav).toHaveTextContent('Home');
-    expect(within(nav).getByRole('link', { name: 'Men' })).toHaveAttribute('href', '/en/men');
-    // Category is the trailing "current" crumb — not a link.
+    expect(within(nav).getByRole('link', { name: 'Men' })).toHaveAttribute('href', '/en/category/men');
+    // The primary category is the trailing "current" crumb — not a link.
     expect(within(nav).getByText('Shirts')).toBeInTheDocument();
     expect(within(nav).queryByRole('link', { name: 'Shirts' })).not.toBeInTheDocument();
   });
 
-  it('links the collection eyebrow to the collection page', async () => {
+  it('links the root-category eyebrow to its page', async () => {
     mockCatalog.getProduct.mockResolvedValue(baseProduct);
     const { Wrapper } = createWrapper();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
@@ -205,7 +222,7 @@ describe('ProductDetail', () => {
     // Two "Men" links now exist (breadcrumb + eyebrow) — scope to the eyebrow.
     const eyebrow = document.querySelector('.eyebrow');
     expect(eyebrow?.tagName).toBe('A');
-    expect(eyebrow).toHaveAttribute('href', '/en/men');
+    expect(eyebrow).toHaveAttribute('href', '/en/category/men');
     expect(eyebrow).toHaveTextContent('Men');
   });
 

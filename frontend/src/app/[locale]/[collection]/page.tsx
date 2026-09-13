@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import { catalogApi } from '@/lib/api';
 import { ApiError } from '@/lib/api/errors';
 import { accentStyle } from '@/lib/collections';
-import { MediaTile } from '@/components/home/media-tile';
 import { CollectionProducts } from '@/components/collection/collection-products';
 import type { Collection } from '@/lib/types';
 
@@ -48,7 +47,6 @@ export default async function CollectionPage({
   const isAr = locale === 'ar';
   const name = isAr ? col.nameAr : col.nameEn;
   const description = isAr ? col.descriptionAr : col.descriptionEn;
-  const categories = col.categories ?? [];
 
   return (
     <div className="collection-page" data-collection={col.slug} style={accentStyle(col.accentColor)}>
@@ -56,32 +54,10 @@ export default async function CollectionPage({
         <p className="container collection-page__lede prose">{description}</p>
       )}
 
-      {/* Products lead the page — the grid starts above the fold. The
-          "shop by category" links move below it (secondary navigation). */}
+      {/* A Collection is a flat, manually-curated product group now (Stage 1
+          of the catalog redesign) — no nested categories to also list here
+          the way the old Collection -> Category hierarchy did. */}
       <CollectionProducts collectionId={col.id} locale={locale} name={name} />
-
-      {categories.length > 0 && (
-        <section
-          className="container section--tight collection-page__categories"
-          aria-label={isAr ? 'الفئات' : 'Categories'}
-        >
-          <h2 className="collection-page__subhead">
-            {isAr ? 'تسوّق حسب الفئة' : 'Shop by category'}
-          </h2>
-          <ul className="category-grid" role="list">
-            {categories.map((cat) => (
-              <li key={cat.id}>
-                <MediaTile
-                  href={`/${locale}/category/${cat.slug}`}
-                  name={isAr ? cat.nameAr : cat.nameEn}
-                  imageUrl={cat.images[0]?.url}
-                  imageAlt={(isAr ? cat.images[0]?.altAr : cat.images[0]?.altEn) ?? undefined}
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
     </div>
   );
 }

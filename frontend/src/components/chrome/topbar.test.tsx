@@ -18,7 +18,7 @@ vi.mock('next/navigation', () => ({ usePathname: () => '/en' }));
 
 const auth = { user: null as { name: string } | null, isAuthenticated: false };
 vi.mock('@/hooks/use-auth', () => ({ useAuth: () => auth }));
-vi.mock('@/hooks/use-catalog', () => ({ useNavCollections: () => ({ data: [], isPending: false }) }));
+vi.mock('@/hooks/use-catalog', () => ({ useNavCategories: () => ({ data: [], isPending: false }) }));
 vi.mock('@/hooks/use-settings', () => ({ useSettings: () => ({ data: null }) }));
 vi.mock('./search-overlay', () => ({ SearchOverlay: () => null }));
 vi.mock('./cart-drawer', () => ({ CartDrawer: () => null }));

@@ -11,12 +11,13 @@ export const queryKeys = {
     adminList: (query: CatalogListQuery) => ['collections', 'list', 'admin', query] as const,
     detail: (id: UUID) => ['collections', 'detail', id] as const,
     bySlug: (slug: string) => ['collections', 'slug', slug] as const,
+    products: (id: UUID) => ['collections', 'detail', id, 'products'] as const,
   },
   categories: {
     all: () => ['categories'] as const,
-    list: (collectionId?: UUID) => ['categories', 'list', collectionId ?? null] as const,
+    list: (parentId?: UUID) => ['categories', 'list', parentId ?? null] as const,
     adminList: (query: CatalogListQuery) => ['categories', 'list', 'admin', query] as const,
-    standalone: () => ['categories', 'list', 'standalone'] as const,
+    topLevel: () => ['categories', 'list', 'topLevel'] as const,
     featured: () => ['categories', 'list', 'featured'] as const,
     detail: (id: UUID) => ['categories', 'detail', id] as const,
     bySlug: (slug: string) => ['categories', 'slug', slug] as const,
@@ -60,5 +61,9 @@ export const queryKeys = {
     all: () => ['addresses'] as const,
     list: () => ['addresses', 'list'] as const,
     detail: (id: UUID) => ['addresses', 'detail', id] as const,
+  },
+  blacklist: {
+    all: () => ['blacklist'] as const,
+    list: () => ['blacklist', 'list'] as const,
   },
 } as const;

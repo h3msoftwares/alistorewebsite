@@ -26,8 +26,8 @@ const delivery = {
 beforeEach(async () => {
   adminToken = (await createAdmin()).token;
   const col = await makeCollection({ slug: 'cc' });
-  const cat = await makeCategory(col.id, { slug: 'cc-c' });
-  const p = await makeProduct(col.id, cat.id, {
+  const cat = await makeCategory({ slug: 'cc-c' });
+  const p = await makeProduct(cat.id, {
     over: { price: 20 },
     variants: [{ sku: 'v1', size: 'M', color: 'Black', stockQuantity: 500 }],
   });

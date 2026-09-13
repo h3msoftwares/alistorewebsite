@@ -43,6 +43,7 @@ export default function EditProductPage() {
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<ProductCoreValues>({
@@ -54,7 +55,9 @@ export default function EditProductPage() {
           nameAr: product.nameAr,
           descriptionEn: product.descriptionEn ?? '',
           descriptionAr: product.descriptionAr ?? '',
-          categoryId: product.categoryID,
+          primaryCategoryId: product.primaryCategoryID,
+          additionalCategoryIds: (product.categoryLinks ?? []).map((l) => l.categoryID),
+          collectionIds: (product.collectionLinks ?? []).map((l) => l.collectionID),
           price: Number(product.price),
           compareAtPrice: product.compareAtPrice != null ? String(product.compareAtPrice) : '',
           saleType: product.saleType ?? '',
@@ -76,7 +79,9 @@ export default function EditProductPage() {
           nameAr: values.nameAr,
           descriptionEn: values.descriptionEn || undefined,
           descriptionAr: values.descriptionAr || undefined,
-          categoryId: values.categoryId,
+          primaryCategoryId: values.primaryCategoryId,
+          additionalCategoryIds: values.additionalCategoryIds,
+          collectionIds: values.collectionIds,
           price: values.price,
           compareAtPrice: values.compareAtPrice ? Number(values.compareAtPrice) : undefined,
           saleType: values.saleType || null,
@@ -204,7 +209,7 @@ export default function EditProductPage() {
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
-        <ProductCoreFields register={register} errors={errors} busy={busy} locale={locale} />
+        <ProductCoreFields register={register} control={control} errors={errors} busy={busy} locale={locale} />
 
         {error && <Alert tone="danger">{error}</Alert>}
 

@@ -1,10 +1,18 @@
 'use client';
 
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Alert, Button, Choice, Field, Input, Textarea } from '@/components/ui';
+import { Alert, Button, Choice, Field, Input, Select, Textarea } from '@/components/ui';
 
+// No showInNav / showOnHome / showOnHomeAsImage / accentColor / homeImageCta*
+// here on purpose (Stage 1 catalog redesign): those fields still exist on
+// the Collection model (left in place rather than migrated away, same as
+// Product.quantity — see fix-list.md #16), but Collection no longer has a
+// nav/home-banner role at all — top-level Categories (Women/Men/Kids) took
+// it over, see the implementation plan's nav/banner decision. Exposing dead
+// toggles here would silently mislead an admin into thinking they still do
+// something.
 export const collectionFormSchema = z.object({
   nameEn: z.string().min(1, 'Required'),
   nameAr: z.string().min(1, 'Required'),
@@ -15,24 +23,7 @@ export const collectionFormSchema = z.object({
   descriptionEn: z.string(),
   descriptionAr: z.string(),
   isActive: z.boolean(),
-  showInNav: z.boolean(),
-  showOnHome: z.boolean(),
-  showOnHomeAsImage: z.boolean(),
-  // Plain z.number(), not z.coerce.number() — coercion gives the schema an
-  // `unknown` input type that zodResolver's generics can't reconcile with
-  // useForm<Values>'s z.infer (output) type. RHF's own register(...,
-  // { valueAsNumber: true }) below does the string->number conversion
-  // instead, so the field is already a number by the time Zod sees it.
-  sortOrder: z.number().int().nonnegative(),
-  homeSortOrder: z.number().int().nonnegative(),
-  accentColor: z
-    .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, 'Must be a #rrggbb hex colour')
-    .or(z.literal('')),
-  // Button label on the home-page image banner (showOnHomeAsImage). Blank ⇒ a
-  // generic "Shop <name>".
-  homeImageCtaEn: z.string().max(40),
-  homeImageCtaAr: z.string().max(40),
+  type: z.enum(['MANUAL', 'AUTOMATED', 'HYBRID']),
 });
 export type CollectionFormValues = z.infer<typeof collectionFormSchema>;
 
@@ -43,14 +34,7 @@ export const collectionFormDefaults: CollectionFormValues = {
   descriptionEn: '',
   descriptionAr: '',
   isActive: true,
-  showInNav: false,
-  showOnHome: false,
-  showOnHomeAsImage: false,
-  sortOrder: 0,
-  homeSortOrder: 0,
-  accentColor: '',
-  homeImageCtaEn: '',
-  homeImageCtaAr: '',
+  type: 'MANUAL',
 };
 
 export function CollectionForm({
@@ -73,20 +57,11 @@ export function CollectionForm({
 
   const {
     register,
-    control,
     handleSubmit,
-    setValue,
     formState: { errors },
   } = useForm<CollectionFormValues>({ resolver: zodResolver(collectionFormSchema), defaultValues });
 
   const busy = isSubmitting;
-
-  // Accent colour is optional, so it's controlled: `''` means "no accent" and
-  // the swatch falls back to a default hue; picking a colour or clearing it
-  // writes back through `setValue`.
-  const HEX = /^#[0-9a-fA-F]{6}$/;
-  const accentColor = useWatch({ control, name: 'accentColor' }) ?? '';
-  const accentSwatch = HEX.test(accentColor) ? accentColor : '#a65a7e';
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
@@ -119,93 +94,21 @@ export function CollectionForm({
 
       <div className="admin-form__row">
         <Field
-          label={t('Nav order', 'ترتيب التنقل')}
-          hint={t('Position in the top nav (lower first)', 'الموضع في شريط التنقل (الأصغر أولاً)')}
-          error={errors.sortOrder?.message}
+          label={t('Membership type', 'نوع العضوية')}
+          hint={t(
+            'Manual: pick products by hand. Automated: computed from rules. Hybrid: rules plus a manual include/exclude on top.',
+            'يدوي: اختر المنتجات يدويًا. آلي: يُحسب من القواعد. مختلط: القواعد مع إضافة/استبعاد يدوي فوقها.'
+          )}
         >
           {(p) => (
-            <Input {...p} type="number" min={0} {...register('sortOrder', { valueAsNumber: true })} disabled={busy} />
+            <Select {...p} {...register('type')} disabled={busy}>
+              <option value="MANUAL">{t('Manual', 'يدوي')}</option>
+              <option value="AUTOMATED">{t('Automated', 'آلي')}</option>
+              <option value="HYBRID">{t('Hybrid', 'مختلط')}</option>
+            </Select>
           )}
         </Field>
-        <Field
-          label={t('Home order', 'ترتيب الرئيسية')}
-          hint={t('Position on the home page, among all home blocks', 'الموضع في الصفحة الرئيسية بين كل عناصرها')}
-          error={errors.homeSortOrder?.message}
-        >
-          {(p) => (
-            <Input
-              {...p}
-              type="number"
-              min={0}
-              {...register('homeSortOrder', { valueAsNumber: true })}
-              disabled={busy}
-            />
-          )}
-        </Field>
-      </div>
-      <div className="admin-form__row">
-        <Field
-          label={t('Accent colour', 'لون مميز')}
-          hint={t('Optional — tints this collection across the storefront', 'اختياري — يلوّن هذه المجموعة في المتجر')}
-          error={errors.accentColor?.message}
-        >
-          {(p) => (
-            <div className="colour-field">
-              <input
-                {...p}
-                type="color"
-                className="colour-field__swatch"
-                value={accentSwatch}
-                onChange={(e) =>
-                  setValue('accentColor', e.target.value, { shouldDirty: true, shouldValidate: true })
-                }
-                disabled={busy}
-                aria-label={t('Accent colour', 'لون مميز')}
-              />
-              <span className="colour-field__value">{accentColor || t('None', 'بدون')}</span>
-              {accentColor ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setValue('accentColor', '', { shouldDirty: true })}
-                  disabled={busy}
-                >
-                  {t('Clear', 'مسح')}
-                </Button>
-              ) : null}
-            </div>
-          )}
-        </Field>
-      </div>
-
-      <div className="admin-form__row">
         <Choice type="checkbox" label={t('Active', 'مفعّل')} {...register('isActive')} disabled={busy} />
-        <Choice type="checkbox" label={t('Show in nav', 'إظهار في التنقل')} {...register('showInNav')} disabled={busy} />
-        <Choice type="checkbox" label={t('Show on home', 'إظهار في الرئيسية')} {...register('showOnHome')} disabled={busy} />
-        <Choice
-          type="checkbox"
-          label={t('Show on home as image', 'إظهار في الرئيسية كصورة')}
-          {...register('showOnHomeAsImage')}
-          disabled={busy}
-        />
-      </div>
-
-      <p className="admin-form__hint">
-        {t(
-          'Image banner (when "Show on home as image" is on): the accent colour is the panel background, the English/Arabic description is its copy, and the button below links to the collection.',
-          'شريط الصورة (عند تفعيل "إظهار في الرئيسية كصورة"): اللون المميز هو خلفية اللوحة، والوصف بالإنجليزية/العربية هو نصّها، والزر أدناه يفتح المجموعة.'
-        )}
-      </p>
-      <div className="admin-form__row">
-        <Field label={t('Banner button (English)', 'زر الشريط (إنجليزي)')} error={errors.homeImageCtaEn?.message}>
-          {(p) => (
-            <Input {...p} placeholder={t('Shop the collection', 'تسوّق المجموعة')} {...register('homeImageCtaEn')} disabled={busy} />
-          )}
-        </Field>
-        <Field label={t('Banner button (Arabic)', 'زر الشريط (عربي)')} error={errors.homeImageCtaAr?.message}>
-          {(p) => <Input {...p} dir="rtl" {...register('homeImageCtaAr')} disabled={busy} />}
-        </Field>
       </div>
 
       {submitError && <Alert tone="danger">{submitError}</Alert>}

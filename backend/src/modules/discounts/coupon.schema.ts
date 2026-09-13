@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { discountTypeSchema } from './discount.schema';
+import { discountTypeSchema } from './discount-type.schema';
 
 // Code: letters/digits/-/_ , stored upper-cased. Value bounds (PERCENT 0–100)
 // checked in the service. Omitted on create = the service auto-generates a

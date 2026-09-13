@@ -1,15 +1,17 @@
 import { z } from 'zod';
+import { hexColor, ctaLabel } from './collection.schema';
 
 export const listCategoriesQuerySchema = z.object({
-  collectionId: z.string().uuid().optional(),
-  // Standalone-only view: categories not attached to any collection.
-  standalone: z
+  // Filter to the direct children of one category.
+  parentId: z.string().uuid().optional(),
+  // Root-only view: categories with no parent.
+  topLevel: z
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v === 'true'),
   // Home-featured view: categories with their own row on the home page,
-  // across every collection (and standalone) in one call — there's no other
-  // "all categories" listing endpoint for the home page to piggyback on.
+  // across the whole tree in one call — there's no other "all categories"
+  // listing endpoint for the home page to piggyback on.
   showOnHome: z
     .enum(['true', 'false'])
     .optional()
@@ -50,31 +52,46 @@ const categorySlug = z
 // for absent keys, so PATCHing e.g. `homeSortOrder` would reset `showOnHome`.
 // The length / range caps here flow into both create and update.
 const categoryShape = {
-  // Nullable: a category can stand alone. `null` on update detaches it.
-  collectionId: z.string().uuid().nullable(),
   nameEn: z.string().trim().min(1).max(200),
   nameAr: z.string().trim().min(1).max(200),
   slug: categorySlug,
-  parentCategoryId: z.string().uuid(),
+  descriptionEn: z.string().trim().max(5000).nullable(),
+  descriptionAr: z.string().trim().max(5000).nullable(),
+  // Nullable: `null` (on update) makes this a root category. Self-parent and
+  // cycle checks happen in category-tree.ts's assertValidParent(), backed by
+  // the DB trigger's own checks (see migration 20260912000000).
+  parentId: z.string().uuid().nullable(),
   isActive: z.boolean(),
-  // Home curation: its own featured row. Independent of the parent
-  // collection's showOnHome.
+  // Home curation: its own featured row. Any depth.
   showOnHome: z.boolean(),
-  // Sibling order within a collection.
+  // Sibling order among categories with the same parent.
   sortOrder: z.number().int().nonnegative().max(100000),
   // Position of this category's own home row (shared key with
   // Collection.homeSortOrder).
   homeSortOrder: z.number().int().nonnegative().max(100000),
+  // Storefront chrome — meaningful in practice only on top-level categories
+  // (the old Collection-level Women/Men/Kids nav + home-banner treatment).
+  showInNav: z.boolean(),
+  showOnHomeAsImage: z.boolean(),
+  accentColor: hexColor.nullable(),
+  homeImageCtaEn: ctaLabel.or(z.literal('')).nullable(),
+  homeImageCtaAr: ctaLabel.or(z.literal('')).nullable(),
 };
 
 export const createCategorySchema = z.object({
   ...categoryShape,
-  collectionId: z.string().uuid().nullish(),
-  parentCategoryId: z.string().uuid().optional(),
+  parentId: z.string().uuid().nullish(),
+  descriptionEn: z.string().trim().max(5000).nullish(),
+  descriptionAr: z.string().trim().max(5000).nullish(),
   isActive: z.boolean().default(true),
   showOnHome: z.boolean().default(false),
   sortOrder: z.number().int().nonnegative().max(100000).default(0),
   homeSortOrder: z.number().int().nonnegative().max(100000).default(0),
+  showInNav: z.boolean().default(false),
+  showOnHomeAsImage: z.boolean().default(false),
+  accentColor: hexColor.optional().nullable(),
+  homeImageCtaEn: ctaLabel.or(z.literal('')).optional().nullable(),
+  homeImageCtaAr: ctaLabel.or(z.literal('')).optional().nullable(),
 });
 
 export const updateCategorySchema = z.object(categoryShape).partial();

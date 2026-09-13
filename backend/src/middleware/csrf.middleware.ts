@@ -25,16 +25,20 @@ import { AppError } from '../lib/AppError';
  * strong-secret-asserted in production) with a domain-separation label, so
  * there's no new env var / rotation surface.
  *
- * `/api/auth/refresh` is exempt: it runs during app bootstrap before any GET
- * has primed the cookie, and is self-protected (the refreshToken cookie it
- * consumes is SameSite=Strict).
+ * `/api/auth/refresh` and `/api/admin/auth/refresh` are exempt: both run
+ * during app bootstrap before any GET has primed the cookie, and both are
+ * self-protected the same way — the refreshToken / adminRefreshToken cookie
+ * each one consumes is SameSite=Strict (see app.ts's comment on why the two
+ * sessions have separate cookies at all). Without this, an admin's access
+ * token expiring (or just a fresh page load with no prior CSRF-priming GET)
+ * silently fails the refresh and bounces them out of the admin panel.
  */
 
 export const CSRF_COOKIE = 'csrfToken';
 export const CSRF_HEADER = 'x-csrf-token';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-const EXEMPT_PATHS = new Set(['/api/auth/refresh']);
+const EXEMPT_PATHS = new Set(['/api/auth/refresh', '/api/admin/auth/refresh']);
 
 const SIGNING_KEY = createHmac('sha256', env.JWT_ACCESS_SECRET).update('csrf-double-submit-v1').digest();
 

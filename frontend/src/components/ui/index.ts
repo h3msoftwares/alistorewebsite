@@ -3,6 +3,7 @@ export { Button, type ButtonProps } from './button';
 export { Input, type InputProps } from './input';
 export { Select, type SelectProps, Textarea, type TextareaProps } from './select';
 export { Choice, type ChoiceProps } from './choice';
+export { CheckList, type CheckListProps, type CheckListItem } from './check-list';
 export { Field, type FieldProps, type FieldControlProps } from './field';
 export { SizeChip, type SizeChipProps } from './size-chip';
 export { Swatch, type SwatchProps } from './swatch';

@@ -7,6 +7,7 @@ import type {
   CatalogListQuery,
   CategoryBody,
   CollectionBody,
+  CollectionRule,
   ImageBody,
   ProductBody,
   ProductImageBody,
@@ -25,10 +26,20 @@ export function useCollections(opts?: { includeInactive?: boolean }) {
   });
 }
 
-/** The collections the owner has promoted into the storefront chrome, in
- *  `sortOrder`. Derived from `useCollections()` — no separate request. */
-export function useNavCollections() {
-  const q = useCollections();
+/** Root categories (Women/Men/Kids) — carries the storefront nav/home-banner
+ *  fields that moved here from Collection in the Stage 1 catalog redesign
+ *  (see catalog-redesign-implementation-plan.md's nav/banner decision). */
+export function useTopLevelCategories() {
+  return useQuery({
+    queryKey: queryKeys.categories.topLevel(),
+    queryFn: () => catalogApi.listTopLevelCategories(),
+  });
+}
+
+/** The root categories the owner has promoted into the storefront chrome, in
+ *  `sortOrder`. Derived from `useTopLevelCategories()` — no separate request. */
+export function useNavCategories() {
+  const q = useTopLevelCategories();
   return {
     ...q,
     data: q.data
@@ -38,11 +49,12 @@ export function useNavCollections() {
   };
 }
 
-/** Collections promoted into the home page's featured row (own row: name +
- *  a horizontal scroll of its categories), in `homeSortOrder`. Image
- *  collections (`showOnHomeAsImage`) are excluded — they render as a banner. */
-export function useFeaturedCollections() {
-  const q = useCollections();
+/** Root categories promoted into the home page's featured row (own row: name
+ *  + a horizontal scroll of their child categories), in `homeSortOrder`.
+ *  Image categories (`showOnHomeAsImage`) are excluded — they render as a
+ *  banner. */
+export function useFeaturedTopCategories() {
+  const q = useTopLevelCategories();
   return {
     ...q,
     data: q.data
@@ -52,10 +64,10 @@ export function useFeaturedCollections() {
   };
 }
 
-/** Every collection NOT on the home page at all — the "rest of the
- *  collections" block below the curated zone, in `homeSortOrder`. */
-export function useOtherCollections() {
-  const q = useCollections();
+/** Every root category NOT on the home page at all — the "rest" block below
+ *  the curated zone, in `homeSortOrder`. */
+export function useOtherTopCategories() {
+  const q = useTopLevelCategories();
   return {
     ...q,
     data: q.data
@@ -65,10 +77,10 @@ export function useOtherCollections() {
   };
 }
 
-/** Collections the owner shows on the home page as a full-width image banner
- *  (`showOnHomeAsImage`), in `homeSortOrder`. */
-export function useHomeImageCollections() {
-  const q = useCollections();
+/** Root categories the owner shows on the home page as a full-width image
+ *  banner (`showOnHomeAsImage`), in `homeSortOrder`. */
+export function useHomeImageCategories() {
+  const q = useTopLevelCategories();
   return {
     ...q,
     data: q.data
@@ -104,10 +116,10 @@ export function useCollectionBySlug(slug: string | undefined) {
   });
 }
 
-export function useCategories(collectionId?: UUID) {
+export function useCategories(parentId?: UUID) {
   return useQuery({
-    queryKey: queryKeys.categories.list(collectionId),
-    queryFn: () => catalogApi.listCategories(collectionId),
+    queryKey: queryKeys.categories.list(parentId),
+    queryFn: () => catalogApi.listCategories(parentId),
   });
 }
 
@@ -121,15 +133,7 @@ export function useAdminCategories(query: CatalogListQuery = {}) {
   });
 }
 
-/** Categories attached to no collection. */
-export function useStandaloneCategories() {
-  return useQuery({
-    queryKey: queryKeys.categories.standalone(),
-    queryFn: () => catalogApi.listStandaloneCategories(),
-  });
-}
-
-/** Categories promoted to their own home-page row, across every collection,
+/** Categories promoted to their own home-page row, across the whole tree,
  *  sorted by `homeSortOrder` (the shared home-page ranking key — see
  *  `useFeaturedCollections`). */
 export function useFeaturedCategories() {
@@ -213,8 +217,8 @@ function extractFacets(items: { variants: { size?: string | null; color?: string
 
 const FACETS_PAGE_SIZE = 60; // the API's max — good enough to sample facets for a small-catalog storefront
 
-/** Available size/colour filter options across a collection (all its
- *  categories), independent of the currently-applied filters. */
+/** Available size/colour filter options across a collection's manually
+ *  curated products, independent of the currently-applied filters. */
 export function useCollectionFacets(collectionId: UUID | undefined) {
   return useQuery({
     queryKey: queryKeys.products.facetsByCollection(collectionId ?? ''),
@@ -302,14 +306,35 @@ export function usePermanentDeleteCollection() {
   });
 }
 
-export function useLinkCategoriesToCollection() {
+/** A collection's manually-curated products (`GET /api/collections/:id/products`). */
+export function useCollectionProducts(id: UUID | undefined) {
+  return useQuery({
+    queryKey: queryKeys.collections.products(id ?? ''),
+    queryFn: () => catalogApi.listCollectionProducts(id as UUID),
+    enabled: Boolean(id),
+  });
+}
+
+export function useSetCollectionProducts() {
   const inv = useInvalidator();
   return useMutation({
-    mutationFn: ({ id, categoryIds }: { id: UUID; categoryIds: UUID[] }) =>
-      catalogApi.linkCategoriesToCollection(id, categoryIds),
+    mutationFn: ({ id, productIds }: { id: UUID; productIds: UUID[] }) =>
+      catalogApi.setCollectionProducts(id, productIds),
     onSuccess: () => {
       inv.collections();
-      inv.categories();
+      inv.products();
+    },
+  });
+}
+
+export function useSetCollectionRules() {
+  const inv = useInvalidator();
+  return useMutation({
+    mutationFn: ({ id, rules }: { id: UUID; rules: CollectionRule[] }) =>
+      catalogApi.setCollectionRules(id, rules),
+    onSuccess: () => {
+      inv.collections();
+      inv.products();
     },
   });
 }

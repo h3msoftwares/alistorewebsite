@@ -2838,6 +2838,101 @@ a.home-card__name:hover { text-decoration: underline; }
   cursor: pointer;
 }
 
+/* Checkbox-list multi-picker — replaces a native <select multiple> (ctrl/cmd
+   -click to pick several, undiscoverable) with checkable rows. */
+.check-list {
+  max-height: 12rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+.check-list[data-disabled] { background: var(--color-surface-sunken); }
+.check-list__empty { margin: 0; padding: var(--space-2); font-size: var(--fs-sm); color: var(--color-text-muted); }
+.check-list__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.check-list__row:hover { background: var(--color-surface-sunken); }
+.check-list__row[data-disabled] { color: var(--color-text-disabled); cursor: not-allowed; }
+.check-list__row input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+.check-list__row[data-disabled] input { cursor: not-allowed; }
+.check-list__row-text { display: flex; flex-direction: column; gap: 1px; }
+/* Ancestor breadcrumb ("Men › Shoes") disambiguating same-named categories
+   from different branches — see buildCategoryPaths(). */
+.check-list__row-sublabel { font-size: var(--fs-xs); color: var(--color-text-muted); }
+
+/* Single-select category picker (CategoryPicker) — a searchable modal list
+   replacing a native <select>, for the same "which Shoes is this" reason
+   check-list__row-sublabel exists. */
+.category-picker__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  text-align: start;
+  cursor: pointer;
+  color: var(--color-text);
+}
+.category-picker__trigger:disabled { cursor: not-allowed; }
+.category-picker__placeholder { color: var(--color-text-disabled); }
+.category-picker__modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  width: min(92vw, 480px);
+}
+.category-picker__title { margin: 0; padding-inline-end: var(--space-7); font-weight: var(--fw-medium); }
+.category-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+.category-picker__empty { margin: 0; padding: var(--space-3); text-align: center; font-size: var(--fs-sm); color: var(--color-text-muted); }
+.category-picker__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.category-picker__row:hover:not(:disabled) { background: var(--color-surface-sunken); }
+.category-picker__row:disabled { color: var(--color-text-disabled); cursor: not-allowed; }
+.category-picker__row-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.category-picker__row-name { font-size: var(--fs-sm); }
+.category-picker__row-path { font-size: var(--fs-xs); color: var(--color-text-muted); }
+
 /* ---- 5.7 Size chips (text, not a dropdown — Saxon) ---- */
 .chip-group { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 

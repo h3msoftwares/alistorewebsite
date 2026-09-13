@@ -1,10 +1,12 @@
 'use client';
 
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Alert, Button, Choice, Field, Input, Select } from '@/components/ui';
-import { useCollections } from '@/hooks/use-catalog';
+import { Alert, Button, Choice, Field, Input } from '@/components/ui';
+import { CategoryPicker } from '@/components/admin/category-picker';
+import { useAdminCategories } from '@/hooks/use-catalog';
+import type { Category } from '@/lib/types';
 
 export const categoryFormSchema = z.object({
   nameEn: z.string().min(1, 'Required'),
@@ -13,8 +15,8 @@ export const categoryFormSchema = z.object({
     .string()
     .min(1, 'Required')
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Lowercase, kebab-case (e.g. summer-dresses)'),
-  // '' = standalone (no collection) — mapped to null when the page submits.
-  collectionId: z.string(),
+  // '' = root category (no parent) — mapped to null when the page submits.
+  parentId: z.string(),
   isActive: z.boolean(),
   showOnHome: z.boolean(),
   sortOrder: z.number().int().nonnegative(),
@@ -25,14 +27,34 @@ export const categoryFormDefaults: CategoryFormValues = {
   nameEn: '',
   nameAr: '',
   slug: '',
-  collectionId: '',
+  parentId: '',
   isActive: true,
   showOnHome: false,
   sortOrder: 0,
 };
 
+// Every id in `category`'s own subtree (itself included) — a category can
+// never become a descendant of one of its own descendants. The backend
+// trigger enforces this too (the actual guarantee), but filtering the
+// picker down front avoids a doomed-to-fail selection.
+function subtreeIds(category: Category, all: Category[]): Set<string> {
+  const ids = new Set([category.id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const c of all) {
+      if (c.parentID && ids.has(c.parentID) && !ids.has(c.id)) {
+        ids.add(c.id);
+        grew = true;
+      }
+    }
+  }
+  return ids;
+}
+
 export function CategoryForm({
   locale,
+  editingId,
   defaultValues,
   onSubmit,
   submitLabel,
@@ -40,6 +62,9 @@ export function CategoryForm({
   submitError,
 }: {
   locale: 'en' | 'ar';
+  /** The category being edited, when this is not a create form — excluded
+   *  (along with its own descendants) from the parent picker. */
+  editingId?: string;
   defaultValues: CategoryFormValues;
   onSubmit: (values: CategoryFormValues) => void | Promise<void>;
   submitLabel: string;
@@ -49,10 +74,14 @@ export function CategoryForm({
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
-  const { data: collections } = useCollections({ includeInactive: true });
+  const { data: allCategories } = useAdminCategories();
+  const editing = editingId ? allCategories?.find((c) => c.id === editingId) : undefined;
+  const excluded = editing && allCategories ? subtreeIds(editing, allCategories) : new Set<string>();
+  const pickable = (allCategories ?? []).filter((c) => !excluded.has(c.id));
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<CategoryFormValues>({ resolver: zodResolver(categoryFormSchema), defaultValues });
@@ -80,26 +109,31 @@ export function CategoryForm({
       </Field>
 
       <Field
-        label={t('Collection', 'المجموعة')}
-        hint={t('Leave as "Standalone" for a category not tied to any collection', 'اتركها "مستقلة" لفئة غير مرتبطة بأي مجموعة')}
+        label={t('Parent category', 'الفئة الأصل')}
+        hint={t('Leave as "Top level" for a root category (e.g. Women, Men, Kids)', 'اتركها "المستوى الأعلى" لفئة رئيسية (مثل نساء، رجال، أطفال)')}
       >
         {(p) => (
-          <Select {...p} {...register('collectionId')} disabled={busy}>
-            <option value="">{t('Standalone (no collection)', 'مستقلة (بدون مجموعة)')}</option>
-            {(collections ?? []).map((c) => (
-              // Archived collections stay in this list (this category might
-              // already be assigned to one) but are visually flagged and
-              // blocked from being picked as a NEW assignment — previously
-              // indistinguishable from an active one (fix-list.md #15,
-              // resolves 12.2). A native <option> can't carry richer
-              // styling than plain text, so the label suffix is the only
-              // available signal.
-              <option key={c.id} value={c.id} disabled={Boolean(c.archivedAt)}>
-                {isAr ? c.nameAr : c.nameEn}
-                {c.archivedAt ? t(' (archived)', ' (مؤرشفة)') : ''}
-              </option>
-            ))}
-          </Select>
+          <Controller
+            control={control}
+            name="parentId"
+            render={({ field }) => (
+              // A category whose own archivedAt is unset can still be
+              // unreachable on the storefront if an ANCESTOR is archived
+              // (isEffectivelyArchived, computed server-side) — flagged here
+              // too, not just a directly-archived option, so assigning a new
+              // category under it doesn't silently create another invisible
+              // one (fix-list.md #15's principle, carried onto the tree).
+              <CategoryPicker
+                {...p}
+                categories={pickable}
+                value={field.value}
+                onChange={field.onChange}
+                locale={locale}
+                disabled={busy}
+                emptyOption={t('Top level (no parent)', 'المستوى الأعلى (بدون أصل)')}
+              />
+            )}
+          />
         )}
       </Field>
 

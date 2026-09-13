@@ -63,16 +63,16 @@ let betaOS: SeedLine; // Beta Dress / one-size / Red @50, stock 40
 
 beforeEach(async () => {
   const col = await makeCollection({ slug: `c-${Math.random().toString(36).slice(2, 8)}` });
-  const cat = await makeCategory(col.id, { nameEn: 'Dresses' });
+  const cat = await makeCategory({ nameEn: 'Dresses' });
 
-  const alpha = await makeProduct(col.id, cat.id, {
+  const alpha = await makeProduct(cat.id, {
     over: { nameEn: 'Alpha Tee', sku: 'ALPHA', price: 20 },
     variants: [
       { sku: 'ALPHA-M-BLK', size: 'M', color: 'Black', stockQuantity: 3 },
       { sku: 'ALPHA-L-BLK', size: 'L', color: 'Black', stockQuantity: 0 },
     ],
   });
-  const beta = await makeProduct(col.id, cat.id, {
+  const beta = await makeProduct(cat.id, {
     over: { nameEn: 'Beta Dress', sku: 'BETA', price: 50 },
     variants: [{ sku: 'BETA-OS-RED', size: null, color: 'Red', stockQuantity: 40 }],
   });

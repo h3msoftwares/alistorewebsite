@@ -58,9 +58,15 @@ export type ProductImage = CatalogImage & {
 export type CollectionImage = CatalogImage & { collectionID: UUID };
 export type CategoryImage = CatalogImage & { categoryID: UUID };
 
-/** Owner-editable top-level grouping. Replaces the old fixed `Department`
- *  enum. The storefront's three primary doors (Women/Men/Kids) are the seeded
- *  collections — see `lib/collections.ts`. Hierarchy: Collection → Category → Product. */
+/** A flat, flexible merchandising grouping (Sale, New Arrivals) — cuts across
+ *  the category tree, not a level above it. See `Category` for the permanent
+ *  navigation tree, which Collection has no relationship to at all.
+ *
+ *  Stage 2: `type` decides how membership works —
+ *   - MANUAL (Stage 1's only mode): `CollectionProduct` rows are the whole
+ *     membership, admin-picked by hand.
+ *   - AUTOMATED: membership comes purely from `rules`, computed live.
+ *   - HYBRID: `rules` plus a manual INCLUDE/EXCLUDE overlay on top. */
 export interface Collection {
   id: UUID;
   nameEn: string;
@@ -69,62 +75,110 @@ export interface Collection {
   descriptionEn?: string | null;
   descriptionAr?: string | null;
   isActive: boolean;
-  /** Owner-picked: appears in the top nav / footer. Order reuses `sortOrder`. */
+  type: CollectionType;
   showInNav: boolean;
-  /** Owner-picked: gets its own featured row on the home page (name + a
-   *  horizontal scroll of its categories). Independent of `showInNav`. */
   showOnHome: boolean;
-  /** Owner-picked: shown on the home page as a full-width image banner — its
-   *  base image on one side, a coloured panel (`accentColor`) with the
-   *  description and a CTA button on the other. Takes precedence over
-   *  `showOnHome`. */
   showOnHomeAsImage: boolean;
-  /** Position in the top nav (with `showInNav`). NOT the home-page order. */
   sortOrder: number;
-  /** Position on the home page — the shared ranking key for every home block
-   *  (featured collections, image banners, featured categories, smart rows). */
   homeSortOrder: number;
-  /** `#rrggbb` — drives the `--collection-accent*` CSS vars (see `accentStyle`),
-   *  and the background of the home-page image banner. */
   accentColor?: string | null;
-  /** CTA label on the home-page image banner. Empty ⇒ a generic "Shop <name>". */
   homeImageCtaEn?: string | null;
   homeImageCtaAr?: string | null;
   /** Set when archived from the admin — hidden from the storefront, restorable. */
   archivedAt?: string | null;
   images: CollectionImage[];
-  /** Present on `GET /api/collections/:id` and `/slug/:slug` — active categories,
-   *  one level of nesting, ordered by `sortOrder`. */
-  categories?: Category[];
-  _count?: { categories: number; products: number };
+  /** Present on `GET /collections/:id` (the admin edit form) — empty/absent
+   *  for a MANUAL collection, since rules are never evaluated for one. */
+  rules?: CollectionRule[];
+  _count?: { products: number };
 }
 
+export type CollectionType = 'MANUAL' | 'AUTOMATED' | 'HYBRID';
+
+/** Deliberately narrower than a generic rule-engine template: every value
+ *  here corresponds to real, queryable Product data (see the backend's
+ *  CollectionRuleField doc comment) — no BRAND/TAG-style dead options. */
+export type CollectionRuleField =
+  | 'PRODUCT_STATUS'
+  | 'CATEGORY'
+  | 'PRICE'
+  | 'COMPARE_AT_PRICE'
+  | 'HAS_ACTIVE_PROMOTION'
+  | 'CREATED_AT'
+  | 'STOCK_STATUS';
+
+export type CollectionRuleOperator =
+  | 'EQUALS'
+  | 'NOT_EQUALS'
+  | 'GREATER_THAN'
+  | 'GREATER_THAN_OR_EQUAL'
+  | 'LESS_THAN'
+  | 'LESS_THAN_OR_EQUAL'
+  | 'IN'
+  | 'NOT_IN'
+  | 'EXISTS';
+
+/** One condition in an AUTOMATED/HYBRID collection's membership rule set.
+ *  Rules sharing a `groupNumber` are ANDed together; different group numbers
+ *  are ORed. `value`'s actual shape depends on `field` (a plain number for
+ *  PRICE, a string for STOCK_STATUS, `{categoryIds, includeDescendants}` for
+ *  CATEGORY, absent for HAS_ACTIVE_PROMOTION) — validated server-side, never
+ *  interpreted as code. */
+export interface CollectionRule {
+  id?: UUID;
+  groupNumber: number;
+  field: CollectionRuleField;
+  operator: CollectionRuleOperator;
+  value?: unknown;
+}
+
+/** The permanent navigation tree (Men → Shoes → Sport Shoes → ...),
+ *  unlimited depth, self-referencing via `parentID`. Fully decoupled from
+ *  Collection. `path`/`depth` are read-only, server-computed (a Postgres
+ *  trigger — never write them). Women/Men/Kids are top-level categories and
+ *  carry the storefront nav/home-banner fields (moved here from Collection
+ *  in the Stage 1 redesign). */
 export interface Category {
   id: UUID;
-  /** Nullable — a category can stand alone, unattached to any collection. */
-  collectionID?: UUID | null;
+  parentID?: UUID | null;
   nameEn: string;
   nameAr: string;
   slug: string;
-  parentCategoryID?: UUID | null;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
   isActive: boolean;
   /** Owner-picked: gets its own featured row on the home page (name + a
-   *  horizontal scroll of its products), independent of its parent
-   *  collection's own `showOnHome`. */
+   *  horizontal scroll of its products). Any depth. */
   showOnHome: boolean;
-  /** Sibling order within a collection (its page + that collection's home row).
-   *  NOT the home-page order of this category's own featured row. */
+  /** Sibling order among categories with the same parent. NOT the home-page
+   *  order of this category's own featured row. */
   sortOrder: number;
-  /** Position of this category's own featured row on the home page (shared key
-   *  with `Collection.homeSortOrder`). */
+  /** Position of this category's own featured row on the home page (shared
+   *  key with `Collection.homeSortOrder`). */
   homeSortOrder: number;
-  /** Set when archived from the admin — hidden from the storefront, restorable. */
+  /** Storefront chrome — meaningful in practice only on top-level categories. */
+  showInNav: boolean;
+  showOnHomeAsImage: boolean;
+  accentColor?: string | null;
+  homeImageCtaEn?: string | null;
+  homeImageCtaAr?: string | null;
+  /** Set when archived from the admin — hidden from the storefront (itself
+   *  and every descendant, computed at read time), restorable. */
   archivedAt?: string | null;
+  /** Read-only, trigger-maintained. Slug-based, e.g. "/men/shoes/". */
+  path: string;
+  /** Read-only, trigger-maintained. 0 for a root category. */
+  depth: number;
   images: CategoryImage[];
   /** Present on `GET /categories` (one level of nesting). */
   children?: Category[];
-  /** `null` for a standalone category. */
-  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug' | 'accentColor' | 'archivedAt'> | null;
+  /** Present on a product's `primaryCategory` (nested up to 4 levels) — walk
+   *  this chain to render a full breadcrumb. `null`/absent at the root. */
+  parent?: Category | null;
+  /** Computed by the API: this category itself is archived, OR descends from
+   *  an archived ancestor. Never written to the row — an admin picker uses
+   *  this to flag an option instead of silently allowing (or hiding) it. */
+  isEffectivelyArchived?: boolean;
 }
 
 export interface ProductVariant {
@@ -154,10 +208,8 @@ export interface Product {
   nameAr: string;
   descriptionEn?: string | null;
   descriptionAr?: string | null;
-  categoryID: UUID;
-  /** Denormalized mirror of the category's collection (derived server-side).
-   *  `null` when the product's category stands alone. */
-  collectionID?: UUID | null;
+  /** The canonical category (breadcrumbs, canonical URL, reporting). */
+  primaryCategoryID: UUID;
   price: Decimalish;
   compareAtPrice?: Decimalish | null;
   /** Product-level quantity — free-standing signed int (may be 0 or negative). */
@@ -166,13 +218,13 @@ export interface Product {
   saleType?: DiscountType | null;
   saleValue?: Decimalish | null;
   /** Computed by the API: what the shopper pays after the product's own sale
-   *  AND the best active catalog discount (>= 0), and whether that price is
-   *  below the base price. */
+   *  AND the best (single, priority-picked) active promotion (>= 0), and
+   *  whether that price is below the base price. */
   effectivePrice: number;
   onSale: boolean;
-  /** The catalog discount (collection/category/all-items) currently applied
-   *  to this product, if any — for context on the storefront. */
-  discount?: AppliedDiscountInfo | null;
+  /** The promotion currently applied to this product, if any — for context
+   *  on the storefront. */
+  promotion?: AppliedPromotionInfo | null;
   isActive: boolean;
   /** Set when the product is archived (soft-deleted) from the admin. */
   deletedAt?: string | null;
@@ -183,54 +235,80 @@ export interface Product {
   dateCreated: IsoDateTime;
   images: ProductImage[];
   variants: ProductVariant[];
-  category?: Category;
-  /** `null` when the product's category stands alone. */
-  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'> | null;
+  primaryCategory?: Category;
+  /** Additional (non-canonical) category placements. */
+  categoryLinks?: { categoryID: UUID; category: Pick<Category, 'id' | 'nameEn' | 'nameAr' | 'slug'> }[];
+  /** Manual collection memberships (Stage 1: manual only). */
+  collectionLinks?: { collectionID: UUID; collection: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'> }[];
 }
 
-// ---- Discounts & coupons ----
+// ---- Promotions & coupons ----
+// Stage 2 of the catalog redesign — Promotion replaces the old single-scope
+// Discount model outright (one promotion can target any mix of products,
+// categories — optionally including their descendants — and collections at
+// once). Coupon (a separate checkout-code discount) is untouched.
 
-/** A catalog discount as applied to one product (percentage or amount off,
- *  and how it combines with the product's own sale). */
-export interface AppliedDiscountInfo {
+/** A promotion as applied to one product (percentage or amount off, and
+ *  whether it combines with the product's own sale). */
+export interface AppliedPromotionInfo {
   type: DiscountType;
   value: number;
-  stacking: 'STACK' | 'OVERRIDE';
+  /** true = applies on top of the product's own sale (the old STACK);
+   *  false = replaces it, discounting the original price instead (the old
+   *  OVERRIDE). Governs only this interaction — promotions never combine
+   *  with each other; see PromotionBody.priority. */
+  stackable: boolean;
 }
 
-export type DiscountScope = 'ALL' | 'COLLECTION' | 'CATEGORY';
+export type PromotionStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
 
-/** Admin-managed catalog discount (`GET /api/discounts`). */
-export interface Discount {
+/** Admin-managed promotion (`GET /api/promotions`). */
+export interface Promotion {
   id: UUID;
   nameEn: string;
   nameAr: string;
-  scope: DiscountScope;
-  collectionID: UUID | null;
-  categoryID: UUID | null;
+  status: PromotionStatus;
   type: DiscountType;
   value: Decimalish;
-  stacking: 'STACK' | 'OVERRIDE';
-  isActive: boolean;
+  /** Single-winner-by-priority: among every ACTIVE, in-window promotion
+   *  covering a product, the highest number wins outright — no implicit
+   *  specificity. */
+  priority: number;
+  stackable: boolean;
+  /** Site-wide — covers every product, no targets needed. Mutually
+   *  exclusive with having any target below. */
+  appliesToAll: boolean;
   startsAt: IsoDateTime | null;
   endsAt: IsoDateTime | null;
   dateCreated: IsoDateTime;
-  collection?: Pick<Collection, 'id' | 'nameEn' | 'nameAr'> | null;
-  category?: Pick<Category, 'id' | 'nameEn' | 'nameAr'> | null;
+  products: { productID: UUID; product: Pick<Product, 'id' | 'nameEn' | 'nameAr' | 'sku'> }[];
+  categories: {
+    categoryID: UUID;
+    includeDescendants: boolean;
+    category: Pick<Category, 'id' | 'nameEn' | 'nameAr' | 'slug'>;
+  }[];
+  collections: { collectionID: UUID; collection: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'> }[];
 }
 
-export interface DiscountBody {
+export interface PromotionCategoryTarget {
+  categoryId: UUID;
+  includeDescendants: boolean;
+}
+
+export interface PromotionBody {
   nameEn: string;
   nameAr: string;
-  scope: DiscountScope;
-  collectionId?: UUID | null;
-  categoryId?: UUID | null;
+  status?: PromotionStatus;
   type: DiscountType;
   value: number;
-  stacking?: 'STACK' | 'OVERRIDE';
-  isActive?: boolean;
+  priority?: number;
+  stackable?: boolean;
+  appliesToAll?: boolean;
   startsAt?: string | null;
   endsAt?: string | null;
+  productIds?: UUID[];
+  categoryTargets?: PromotionCategoryTarget[];
+  collectionIds?: UUID[];
 }
 
 /** Admin-managed checkout coupon (`GET /api/coupons`). */
@@ -518,6 +596,30 @@ export interface AdminCustomerDetail extends AdminCustomerSummary {
   orders: Order[];
 }
 
+// ---- Blacklist (anti-abuse block list, GET/POST/DELETE /api/admin/blacklist) ----
+// Checked at checkout-OTP request time and at order creation (phone/email/IP).
+// Every route here needs orders:manage, not just orders:view.
+
+export type BlacklistType = 'PHONE' | 'EMAIL' | 'IP';
+
+export interface BlacklistEntry {
+  id: UUID;
+  type: BlacklistType;
+  /** Normalized server-side: an EMAIL is lower-cased; PHONE/IP are stored as
+   *  entered. */
+  value: string;
+  reason?: string | null;
+  createdAt: IsoDateTime;
+  /** Absent if the admin who created it was later deleted. */
+  creator?: { name: string; email: string } | null;
+}
+
+export interface BlacklistEntryBody {
+  type: BlacklistType;
+  value: string;
+  reason?: string;
+}
+
 // ---- Product list query (GET /api/products) ----
 
 export type ProductSort = 'newest' | 'price_asc' | 'price_desc' | 'best_selling';
@@ -798,6 +900,7 @@ export interface CollectionBody {
   descriptionEn?: string;
   descriptionAr?: string;
   isActive?: boolean;
+  type?: CollectionType;
   // TODO(admin-collections): expose showInNav / showOnHome / sortOrder / accentColor in the admin form.
   showInNav?: boolean;
   showOnHome?: boolean;
@@ -807,21 +910,26 @@ export interface CollectionBody {
   accentColor?: string | null;
   homeImageCtaEn?: string | null;
   homeImageCtaAr?: string | null;
-  categoryIds?: UUID[];
 }
 
 export interface CategoryBody {
-  /** Omit or `null` for a standalone category; `null` on update detaches an
-   *  existing category from its collection. */
-  collectionId?: UUID | null;
+  /** Omit or `null` for a root category; `null` on update makes an existing
+   *  category a root. */
+  parentId?: UUID | null;
   nameEn: string;
   nameAr: string;
   slug: string;
-  parentCategoryId?: UUID;
+  descriptionEn?: string | null;
+  descriptionAr?: string | null;
   isActive?: boolean;
   showOnHome?: boolean;
   sortOrder?: number;
   homeSortOrder?: number;
+  showInNav?: boolean;
+  showOnHomeAsImage?: boolean;
+  accentColor?: string | null;
+  homeImageCtaEn?: string | null;
+  homeImageCtaAr?: string | null;
 }
 
 export interface VariantBody {
@@ -839,9 +947,11 @@ export interface ProductBody {
   nameAr: string;
   descriptionEn?: string;
   descriptionAr?: string;
-  categoryId: UUID;
-  // No collectionId: the product's collection is derived server-side from its
-  // category (a denormalized mirror), never sent by the client.
+  primaryCategoryId: UUID;
+  /** Additional (non-canonical) category placements. */
+  additionalCategoryIds?: UUID[];
+  /** Manual collection memberships (Stage 1: manual only). */
+  collectionIds?: UUID[];
   price: number;
   compareAtPrice?: number;
   /** May be 0 or negative; independent of `isActive`. Defaults to 0. */

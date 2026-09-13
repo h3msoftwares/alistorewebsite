@@ -25,3 +25,6 @@ CLAUDE.md
 
 # QA stress-test DB snapshots (scripts/qa-snapshot.sh) — local scratch, not source
 /qa-snapshots
+
+# Playwright MCP session artifacts (screenshots, console/network logs) — local scratch, not source
+/.playwright-mcp

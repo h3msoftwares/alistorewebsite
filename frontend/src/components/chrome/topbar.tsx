@@ -12,7 +12,7 @@ import { useAppSelector } from '@/store/hooks';
 import { selectCartCount } from '@/store/slices/cartSlice';
 import { selectFavouritesCount } from '@/store/slices/favouritesSlice';
 import { useAuth } from '@/hooks/use-auth';
-import { useNavCollections } from '@/hooks/use-catalog';
+import { useNavCategories } from '@/hooks/use-catalog';
 import { useSettings } from '@/hooks/use-settings';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 import { SearchOverlay } from './search-overlay';
@@ -55,7 +55,7 @@ export function Topbar({ locale }: { locale: string }) {
   const { user, isAuthenticated } = useAuth();
   const signedIn = useHydrated() && isAuthenticated;
 
-  const { data: navCollections, isPending: navPending } = useNavCollections();
+  const { data: navCategories, isPending: navPending } = useNavCategories();
   const { data: settings } = useSettings();
   const brandName = settings
     ? isAr
@@ -65,7 +65,11 @@ export function Topbar({ locale }: { locale: string }) {
       ? DEFAULT_BRAND_NAME_AR
       : DEFAULT_BRAND_NAME_EN;
   const pathname = usePathname();
-  const activeSlug = pathname?.split('/')[2];
+  // Nav items link to /[locale]/category/[slug] now (top-level categories,
+  // not Collections — see the catalog redesign's nav/banner decision), so
+  // the active slug is segment 3, not segment 2.
+  const pathSegments = pathname?.split('/') ?? [];
+  const activeSlug = pathSegments[2] === 'category' ? pathSegments[3] : undefined;
 
   // The home page's first screenful is a near-black band; while the sticky
   // header sits over it, it borrows that colour so it reads as part of the
@@ -122,10 +126,10 @@ export function Topbar({ locale }: { locale: string }) {
             ? Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="collection-switcher__link" style={{ width: '4.5rem' }} />
               ))
-            : (navCollections ?? []).map((c) => (
+            : (navCategories ?? []).map((c) => (
                 <Link
                   key={c.id}
-                  href={`/${locale}/${c.slug}`}
+                  href={`/${locale}/category/${c.slug}`}
                   className="collection-switcher__link"
                   data-active={activeSlug === c.slug}
                   aria-current={activeSlug === c.slug ? 'page' : undefined}
@@ -216,10 +220,10 @@ export function Topbar({ locale }: { locale: string }) {
         closeLabel={t('Close menu', 'إغلاق القائمة')}
       >
         <nav className="drawer__nav" aria-label={t('Collections', 'الأقسام')}>
-          {(navCollections ?? []).map((c) => (
+          {(navCategories ?? []).map((c) => (
             <Link
               key={c.id}
-              href={`/${locale}/${c.slug}`}
+              href={`/${locale}/category/${c.slug}`}
               className="drawer__nav-link"
               aria-current={activeSlug === c.slug ? 'page' : undefined}
               onClick={() => setMenuOpen(false)}

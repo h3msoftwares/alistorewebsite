@@ -13,7 +13,7 @@ import { Clock, Search, Sparkles } from 'lucide-react';
 import { Drawer } from '@/components/ui/drawer';
 import { CatalogImage, Icon, PriceTag } from '@/components/ui';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import { useNavCollections, useProducts } from '@/hooks/use-catalog';
+import { useNavCategories, useProducts } from '@/hooks/use-catalog';
 
 const MIN_CHARS = 2;
 const MAX_RESULTS = 8;
@@ -106,11 +106,11 @@ export function SearchOverlay({
     setRecent(readRecent());
   }
 
-  // "Popular searches" — the nav collections (already cached: the root layout
+  // "Popular searches" — the nav categories (already cached: the root layout
   // prefetches them). Names double as good search terms.
-  const { data: navCollections } = useNavCollections();
+  const { data: navCategories } = useNavCategories();
   const recentLower = new Set(recent.map((r) => r.toLowerCase()));
-  const suggestions = (navCollections ?? [])
+  const suggestions = (navCategories ?? [])
     .map((c) => (isAr ? c.nameAr : c.nameEn).trim())
     .filter((name) => name && !recentLower.has(name.toLowerCase()))
     .slice(0, SUGGEST_MAX);

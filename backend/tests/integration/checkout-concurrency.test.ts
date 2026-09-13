@@ -34,13 +34,13 @@ let colId: string;
 
 beforeEach(async () => {
   const col = await makeCollection({ slug: 'cx' });
-  const cat = await makeCategory(col.id, { slug: 'cx-c' });
+  const cat = await makeCategory({ slug: 'cx-c' });
   colId = col.id;
   catId = cat.id;
 });
 
 async function makeVariant(stock: number, sku = `v-${Math.random().toString(36).slice(2, 8)}`) {
-  const p = await makeProduct(colId, catId, { over: { price: 20 }, variants: [{ sku, size: 'M', color: 'Black', stockQuantity: stock }] });
+  const p = await makeProduct(catId, { over: { price: 20 }, variants: [{ sku, size: 'M', color: 'Black', stockQuantity: stock }] });
   return p.variants[0].id;
 }
 

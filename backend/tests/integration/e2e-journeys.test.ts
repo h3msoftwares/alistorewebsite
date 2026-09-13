@@ -36,8 +36,8 @@ let productId: string;
 beforeEach(async () => {
   vi.clearAllMocks();
   const col = await makeCollection({ slug: 'e2e' });
-  const cat = await makeCategory(col.id, { slug: 'e2e-cat' });
-  const p = await makeProduct(col.id, cat.id, {
+  const cat = await makeCategory({ slug: 'e2e-cat' });
+  const p = await makeProduct(cat.id, {
     over: { price: 30, nameEn: 'E2E Tee' },
     variants: [{ sku: 'e2e-v1', size: 'M', color: 'Black', stockQuantity: 20 }],
   });

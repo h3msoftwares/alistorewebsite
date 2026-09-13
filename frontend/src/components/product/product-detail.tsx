@@ -35,6 +35,7 @@ import {
   isOptionOutOfStock,
   resolveVariant,
 } from '@/lib/product-variants';
+import type { Category } from '@/lib/types';
 
 export function ProductDetail({
   id,
@@ -196,28 +197,35 @@ export function ProductDetail({
 
   const name = isAr ? product.nameAr : product.nameEn;
   const description = isAr ? product.descriptionAr : product.descriptionEn;
-  const collectionName = product.collection
-    ? isAr
-      ? product.collection.nameAr
-      : product.collection.nameEn
-    : undefined;
-  // No per-collection accent theming here: GET /api/products/:id doesn't
-  // select Collection.accentColor onto product.collection (see
-  // backend/src/modules/catalog/product.service.ts's productInclude), so
-  // there's nothing to feed accentStyle() with. Falls back to the :root
-  // accent defaults, same as any other collection-less page.
 
-  // Home / Collection / Category — same shape and "last crumb has no href"
-  // convention CategoryProducts already uses. GET /api/products/:id already
-  // selects both `category` (full row: nameEn/nameAr/slug) and `collection`
-  // (nameEn/nameAr/slug) — no backend change needed for this.
-  const categoryName = product.category ? (isAr ? product.category.nameAr : product.category.nameEn) : undefined;
+  // The canonical category's own ancestor chain, root first — GET
+  // /api/products/:id nests `primaryCategory.parent` up to 4 levels (see
+  // backend/src/modules/catalog/product.service.ts's productInclude) so the
+  // full path (Women → Lingerie → ...) is available without extra requests.
+  const categoryChain: Category[] = [];
+  for (let c: Category | undefined = product.primaryCategory; c; c = c.parent ?? undefined) {
+    categoryChain.unshift(c);
+  }
+
+  // Eyebrow above the title used to link to the product's Collection (the
+  // old Women/Men/Kids). Those are top-level Categories now — the chain's
+  // root plays the same role.
+  const rootCategory = categoryChain[0];
+  const rootCategoryName = rootCategory ? (isAr ? rootCategory.nameAr : rootCategory.nameEn) : undefined;
+
+  const categoryName = product.primaryCategory
+    ? isAr
+      ? product.primaryCategory.nameAr
+      : product.primaryCategory.nameEn
+    : undefined;
+  // Home / (category chain, root first) — same "last crumb has no href"
+  // convention CategoryProducts already uses.
   const crumbs: Crumb[] = [
     { label: t('Home', 'الرئيسية'), href: `/${locale}` },
-    ...(product.collection && collectionName
-      ? [{ label: collectionName, href: `/${locale}/${product.collection.slug}` }]
-      : []),
-    ...(product.category && categoryName ? [{ label: categoryName }] : []),
+    ...categoryChain.map((c, i) => {
+      const label = isAr ? c.nameAr : c.nameEn;
+      return i === categoryChain.length - 1 ? { label } : { label, href: `/${locale}/category/${c.slug}` };
+    }),
   ];
 
   // Threshold for the low-stock nudge — picked arbitrarily at 5 (your own
@@ -336,9 +344,9 @@ export function ProductDetail({
         </div>
 
         <div className="pdp__content">
-          {collectionName && product.collection && (
-            <Link href={`/${locale}/${product.collection.slug}`} className="eyebrow">
-              {collectionName}
+          {rootCategoryName && rootCategory && (
+            <Link href={`/${locale}/category/${rootCategory.slug}`} className="eyebrow">
+              {rootCategoryName}
             </Link>
           )}
           <h1 className="pdp__title">{name}</h1>
@@ -485,11 +493,11 @@ export function ProductDetail({
         </div>
       </div>
 
-      <RelatedProducts categoryId={product.categoryID} excludeProductId={product.id} locale={locale} />
+      <RelatedProducts categoryId={product.primaryCategoryID} excludeProductId={product.id} locale={locale} />
 
-      {product.category && categoryName && (
+      {product.primaryCategory && categoryName && (
         <div className="pdp__discover">
-          <Link href={`/${locale}/category/${product.category.slug}`} className="btn btn--outline">
+          <Link href={`/${locale}/category/${product.primaryCategory.slug}`} className="btn btn--outline">
             {t(`Discover more in ${categoryName}`, `اكتشف المزيد في ${categoryName}`)}
           </Link>
         </div>

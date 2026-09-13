@@ -4,9 +4,10 @@ import { createWrapper } from '@/test/utils';
 import { queryKeys } from '@/lib/query-keys';
 import {
   useCollections,
-  useNavCollections,
-  useFeaturedCollections,
-  useOtherCollections,
+  useTopLevelCategories,
+  useNavCategories,
+  useFeaturedTopCategories,
+  useOtherTopCategories,
   useFeaturedCategories,
   useCollection,
   useProducts,
@@ -14,7 +15,6 @@ import {
   useCreateProduct,
   useDeleteCollection,
   useCategoryBySlug,
-  useStandaloneCategories,
   useCategoryProducts,
   useCollectionFacets,
   useCategoryFacets,
@@ -26,7 +26,7 @@ vi.mock('@/lib/api', () => ({
     getCollection: vi.fn(),
     getCollectionBySlug: vi.fn(),
     listCategories: vi.fn(),
-    listStandaloneCategories: vi.fn(),
+    listTopLevelCategories: vi.fn(),
     listFeaturedCategories: vi.fn(),
     getCategory: vi.fn(),
     getCategoryBySlug: vi.fn(),
@@ -63,44 +63,54 @@ describe('use-catalog queries', () => {
     await waitFor(() => expect(mockCatalog.listCollections).toHaveBeenCalledWith({ includeInactive: true }));
   });
 
-  it('useNavCollections keeps only showInNav and orders by sortOrder', async () => {
-    mockCatalog.listCollections.mockResolvedValue([
+  it('useNavCategories keeps only showInNav top-level categories and orders by sortOrder', async () => {
+    mockCatalog.listTopLevelCategories.mockResolvedValue([
       { id: 'c', slug: 'c', showInNav: true, sortOrder: 3 },
       { id: 'a', slug: 'a', showInNav: true, sortOrder: 1 },
       { id: 'hidden', slug: 'hidden', showInNav: false, sortOrder: 0 },
       { id: 'b', slug: 'b', showInNav: true, sortOrder: 2 },
     ] as never);
     const { Wrapper } = createWrapper();
-    const { result } = renderHook(() => useNavCollections(), { wrapper: Wrapper });
+    const { result } = renderHook(() => useNavCategories(), { wrapper: Wrapper });
 
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(result.current.data?.map((c) => c.slug)).toEqual(['a', 'b', 'c']);
+    expect(result.current.data?.map((c: { slug: string }) => c.slug)).toEqual(['a', 'b', 'c']);
   });
 
-  it('useFeaturedCollections keeps only showOnHome and orders by homeSortOrder', async () => {
-    mockCatalog.listCollections.mockResolvedValue([
+  it('useFeaturedTopCategories keeps only showOnHome and orders by homeSortOrder', async () => {
+    mockCatalog.listTopLevelCategories.mockResolvedValue([
       { id: 'c', slug: 'c', showOnHome: true, sortOrder: 1, homeSortOrder: 3 },
       { id: 'a', slug: 'a', showOnHome: true, sortOrder: 3, homeSortOrder: 1 },
       { id: 'hidden', slug: 'hidden', showOnHome: false, sortOrder: 0, homeSortOrder: 0 },
     ] as never);
     const { Wrapper } = createWrapper();
-    const { result } = renderHook(() => useFeaturedCollections(), { wrapper: Wrapper });
+    const { result } = renderHook(() => useFeaturedTopCategories(), { wrapper: Wrapper });
 
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(result.current.data?.map((c) => c.slug)).toEqual(['a', 'c']);
+    expect(result.current.data?.map((c: { slug: string }) => c.slug)).toEqual(['a', 'c']);
   });
 
-  it('useOtherCollections keeps everything off the home page, ordered by homeSortOrder', async () => {
-    mockCatalog.listCollections.mockResolvedValue([
+  it('useOtherTopCategories keeps everything off the home page, ordered by homeSortOrder', async () => {
+    mockCatalog.listTopLevelCategories.mockResolvedValue([
       { id: 'featured', slug: 'featured', showOnHome: true, homeSortOrder: 0 },
       { id: 'z', slug: 'z', showOnHome: false, homeSortOrder: 2 },
       { id: 'a', slug: 'a', showOnHome: false, homeSortOrder: 1 },
     ] as never);
     const { Wrapper } = createWrapper();
-    const { result } = renderHook(() => useOtherCollections(), { wrapper: Wrapper });
+    const { result } = renderHook(() => useOtherTopCategories(), { wrapper: Wrapper });
 
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(result.current.data?.map((c) => c.slug)).toEqual(['a', 'z']);
+    expect(result.current.data?.map((c: { slug: string }) => c.slug)).toEqual(['a', 'z']);
+  });
+
+  it('useTopLevelCategories fetches root categories', async () => {
+    mockCatalog.listTopLevelCategories.mockResolvedValue([{ id: 'root1' }] as never);
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useTopLevelCategories(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([{ id: 'root1' }]);
+    expect(mockCatalog.listTopLevelCategories).toHaveBeenCalled();
   });
 
   it('useFeaturedCategories fetches showOnHome=true categories, sorted by homeSortOrder', async () => {
@@ -178,16 +188,6 @@ describe('use-catalog queries', () => {
     expect(mockCatalog.listProducts).toHaveBeenCalledWith(query);
   });
 
-  it('useStandaloneCategories fetches the standalone list', async () => {
-    mockCatalog.listStandaloneCategories.mockResolvedValue([{ id: 'sc1' }] as never);
-    const { Wrapper } = createWrapper();
-    const { result } = renderHook(() => useStandaloneCategories(), { wrapper: Wrapper });
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual([{ id: 'sc1' }]);
-    expect(mockCatalog.listStandaloneCategories).toHaveBeenCalled();
-  });
-
   it('useCategoryBySlug is disabled without a slug and enabled with one', async () => {
     mockCatalog.getCategoryBySlug.mockResolvedValue({ id: 'k1', slug: 'clearance' } as never);
     const { Wrapper } = createWrapper();
@@ -244,7 +244,7 @@ describe('use-catalog mutations', () => {
       sku: 'S1',
       nameEn: 'x',
       nameAr: 'x',
-      categoryId: 'c',
+      primaryCategoryId: 'c',
       price: 10,
       variants: [{ sku: 'v1' }],
     });

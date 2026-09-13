@@ -69,4 +69,17 @@ describe('CSRF (double-submit cookie)', () => {
     expect(res.status).not.toBe(403);
     expect(res.status).toBe(401);
   });
+
+  // Regression: the admin session's refresh endpoint is bootstrap-timed and
+  // self-protected the exact same way as the customer one above (its own
+  // SameSite=Strict adminRefreshToken cookie) — but was missing from
+  // EXEMPT_PATHS, so an admin's silent refresh always 403'd on CSRF instead
+  // of ever reaching the "no refresh token" check, bouncing them out of the
+  // admin panel on every access-token expiry (or a fresh page load, with no
+  // prior CSRF-priming GET).
+  it('exempts POST /api/admin/auth/refresh the same way', async () => {
+    const res = await request(app).post('/api/admin/auth/refresh').send({});
+    expect(res.status).not.toBe(403);
+    expect(res.status).toBe(401);
+  });
 });

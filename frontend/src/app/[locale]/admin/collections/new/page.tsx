@@ -23,14 +23,7 @@ export default function NewCollectionPage() {
         descriptionEn: values.descriptionEn || undefined,
         descriptionAr: values.descriptionAr || undefined,
         isActive: values.isActive,
-        showInNav: values.showInNav,
-        showOnHome: values.showOnHome,
-        showOnHomeAsImage: values.showOnHomeAsImage,
-        sortOrder: values.sortOrder,
-        homeSortOrder: values.homeSortOrder,
-        accentColor: values.accentColor || undefined,
-        homeImageCtaEn: values.homeImageCtaEn || undefined,
-        homeImageCtaAr: values.homeImageCtaAr || undefined,
+        type: values.type,
       });
       // Images can only be attached once the collection exists.
       router.push(`/${locale}/admin/collections/${created.id}`);

@@ -6,10 +6,10 @@ import { requireAuth } from '../../middleware/auth.middleware';
 import { requireRole, requirePermission } from '../../middleware/rbac.middleware';
 import { RATE_LIMITED_BODY } from '../../lib/rate-limit';
 import {
-  createDiscountSchema,
-  updateDiscountSchema,
-  discountIdParamSchema,
-} from './discount.schema';
+  createPromotionSchema,
+  updatePromotionSchema,
+  promotionIdParamSchema,
+} from './promotion.schema';
 import {
   createCouponSchema,
   updateCouponSchema,
@@ -17,32 +17,37 @@ import {
   validateCouponSchema,
 } from './coupon.schema';
 import {
-  listDiscountsHandler,
-  createDiscountHandler,
-  updateDiscountHandler,
-  deleteDiscountHandler,
+  listPromotionsHandler,
+  getPromotionHandler,
+  createPromotionHandler,
+  updatePromotionHandler,
+  deletePromotionHandler,
   listCouponsHandler,
   createCouponHandler,
   updateCouponHandler,
   deleteCouponHandler,
   validateCouponHandler,
-} from './discount.controller';
+} from './promotion.controller';
 
 const passThrough: RequestHandler = (_req, _res, next) => next();
 
 /**
- * `discountRoutes` is a factory so the public coupon-check endpoint can carry
- * a dedicated per-IP limiter (defaults ON; buildApp turns it off under test).
- * Without it, `POST /api/coupons/validate` is an unauthenticated code oracle
- * — a 200 vs 404 (plus the returned discount) enumerates valid coupon codes
- * at the app-wide baseline rate.
+ * `promotionRoutes` is a factory so the public coupon-check endpoint can
+ * carry a dedicated per-IP limiter (defaults ON; buildApp turns it off under
+ * test). Without it, `POST /api/coupons/validate` is an unauthenticated code
+ * oracle — a 200 vs 404 (plus the returned coupon) enumerates valid coupon
+ * codes at the app-wide baseline rate.
+ *
+ * Named for the module (Stage 2: Promotion replaces the old Discount model
+ * outright — see promotion.service.ts), but the RBAC permission keys stay
+ * `discounts:*` and the admin UI area stays "Discounts & coupons": renaming
+ * a permission string would silently revoke it from every stored
+ * `Role.permissions` row in the DB, a real migration hazard for zero benefit
+ * — deliberately not done. Coupons are untouched by the Stage 2 redesign.
  */
-export function discountRoutes(opts: { validateCouponRateLimit?: boolean } = {}): Router {
+export function promotionRoutes(opts: { validateCouponRateLimit?: boolean } = {}): Router {
   const router = Router();
   const admin = [requireAuth, requireRole('STAFF', 'ADMIN')];
-  // Viewing vs. managing discounts/coupons is gated by the RBAC permission
-  // system (see lib/permissions.ts). `discounts:manage` is what "changes what
-  // the store charges" — POST / PATCH / DELETE.
   const canView = [...admin, requirePermission('discounts:view')];
   const canManage = [...admin, requirePermission('discounts:manage')];
 
@@ -65,20 +70,31 @@ export function discountRoutes(opts: { validateCouponRateLimit?: boolean } = {})
     asyncHandler(validateCouponHandler)
   );
 
-  // ---- Discounts: view = discounts:view, write = discounts:manage ----
-  router.get('/discounts', ...canView, asyncHandler(listDiscountsHandler));
-  router.post('/discounts', ...canManage, validate({ body: createDiscountSchema }), asyncHandler(createDiscountHandler));
-  router.patch(
-    '/discounts/:id',
+  // ---- Promotions: view = discounts:view, write = discounts:manage ----
+  router.get('/promotions', ...canView, asyncHandler(listPromotionsHandler));
+  router.get(
+    '/promotions/:id',
+    ...canView,
+    validate({ params: promotionIdParamSchema }),
+    asyncHandler(getPromotionHandler)
+  );
+  router.post(
+    '/promotions',
     ...canManage,
-    validate({ params: discountIdParamSchema, body: updateDiscountSchema }),
-    asyncHandler(updateDiscountHandler)
+    validate({ body: createPromotionSchema }),
+    asyncHandler(createPromotionHandler)
+  );
+  router.patch(
+    '/promotions/:id',
+    ...canManage,
+    validate({ params: promotionIdParamSchema, body: updatePromotionSchema }),
+    asyncHandler(updatePromotionHandler)
   );
   router.delete(
-    '/discounts/:id',
+    '/promotions/:id',
     ...canManage,
-    validate({ params: discountIdParamSchema }),
-    asyncHandler(deleteDiscountHandler)
+    validate({ params: promotionIdParamSchema }),
+    asyncHandler(deletePromotionHandler)
   );
 
   // ---- Coupons: view = discounts:view, write = discounts:manage ----
