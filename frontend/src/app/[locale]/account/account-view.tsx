@@ -69,7 +69,7 @@ type PasswordValues = z.infer<typeof passwordSchema>;
 export function AccountView({ locale }: { locale: Locale }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
-  const { status } = useAuth();
+  const { status, isAdmin } = useAuth();
   const hydrated = useHydrated();
   const [tab, setTab] = useState<'details' | 'orders'>('details');
 
@@ -106,7 +106,14 @@ export function AccountView({ locale }: { locale: Locale }) {
     <div className="container section" style={{ maxWidth: '38rem' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
         <h1>{t('My account', 'حسابي')}</h1>
-        <LogoutButton locale={locale} />
+        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          {isAdmin && (
+            <Link className="btn btn--outline btn--sm" href={`/${locale}/admin`}>
+              {t('Admin dashboard', 'لوحة التحكم')}
+            </Link>
+          )}
+          <LogoutButton locale={locale} />
+        </span>
       </div>
 
       <div className="account-tabs" role="tablist" aria-label={t('Account sections', 'أقسام الحساب')}>
