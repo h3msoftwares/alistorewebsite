@@ -52,6 +52,16 @@ export default async function CategoryPage({
   let root = cat;
   while (root.parent) root = root.parent;
 
+  // Every ancestor between Home and this category, root-first (Women, Shoes,
+  // Sport Shoes, ...) — the API already fetches this full chain (up to 4
+  // levels) for exactly this purpose. A single "root ancestor" crumb was
+  // fine while the tree was only ever 2 levels deep, but silently drops
+  // every level in between once a category goes any deeper than that.
+  const ancestors: { slug: string; name: string }[] = [];
+  for (let p = cat.parent; p; p = p.parent) {
+    ancestors.unshift({ slug: p.slug, name: isAr ? p.nameAr : p.nameEn });
+  }
+
   return (
     <div
       className="collection-page"
@@ -78,12 +88,7 @@ export default async function CategoryPage({
         </section>
       )}
 
-      <CategoryProducts
-        categoryId={cat.id}
-        locale={locale}
-        name={name}
-        collection={root.id !== cat.id ? { slug: root.slug, name: isAr ? root.nameAr : root.nameEn } : null}
-      />
+      <CategoryProducts categoryId={cat.id} locale={locale} name={name} ancestors={ancestors} />
     </div>
   );
 }

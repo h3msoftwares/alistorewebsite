@@ -9,26 +9,25 @@ import { ProductFilters } from './product-filters';
 import { Breadcrumb, type Crumb } from './breadcrumb';
 import { ProductPreviewCard } from './product-preview-card';
 
-/** Product listing for a category page: a compact toolbar (Home / root
- *  category / Category breadcrumb + filter/sort panel, side by side — no
- *  category chip, already scoped to one) + a real product grid + pagination.
- *  Hits `GET /api/categories/:id/products`, the same shaped list a root
- *  category's own products come from. Kept dense so more of the grid is
- *  visible without scrolling. */
+/** Product listing for a category page: a compact toolbar (Home / every
+ *  ancestor / this category breadcrumb + filter/sort panel, side by side —
+ *  no category chip, already scoped to one) + a real product grid +
+ *  pagination. Hits `GET /api/categories/:id/products`, the same shaped list
+ *  a root category's own products come from. Kept dense so more of the grid
+ *  is visible without scrolling. */
 export function CategoryProducts({
   categoryId,
   locale,
   name,
-  collection: rootCategory,
+  ancestors,
 }: {
   categoryId: string;
   locale: string;
   name: string;
-  /** This category's root ancestor, when it isn't already the root (null for
-   *  a root category itself) — `name` pre-resolved to the current locale.
-   *  Named `collection` for prop-shape continuity with the pre-Stage-1 API
-   *  (Women/Men/Kids used to literally be Collections); it's a Category now. */
-  collection?: { slug: string; name: string } | null;
+  /** Every ancestor between Home and this category, root-first — empty for a
+   *  root category itself. `name`/`ancestors[].name` are pre-resolved to the
+   *  current locale. */
+  ancestors: { slug: string; name: string }[];
 }) {
   const isAr = locale === 'ar';
   const dispatch = useAppDispatch();
@@ -49,7 +48,7 @@ export function CategoryProducts({
 
   const crumbs: Crumb[] = [
     { label: isAr ? 'الرئيسية' : 'Home', href: `/${locale}` },
-    ...(rootCategory ? [{ label: rootCategory.name, href: `/${locale}/category/${rootCategory.slug}` }] : []),
+    ...ancestors.map((a) => ({ label: a.name, href: `/${locale}/category/${a.slug}` })),
     { label: name },
   ];
 
