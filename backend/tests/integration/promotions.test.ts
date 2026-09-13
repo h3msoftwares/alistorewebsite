@@ -199,6 +199,46 @@ describe('Promotions API', () => {
     expect(notInColRes.body.product.onSale).toBe(false);
   });
 
+  // Regression: a COLLECTION target used to only ever match a product
+  // through a manual CollectionProduct row — correct for MANUAL, but an
+  // AUTOMATED collection's real membership is computed from CollectionRule
+  // and never stored as a join row, so a promotion targeting one silently
+  // never matched anything, no matter how correctly everything else (status,
+  // window, priority) was configured. Found live: a user-created AUTOMATED
+  // collection + a promotion correctly targeting it showed no effect at all
+  // on the storefront.
+  it('a COLLECTION target resolves an AUTOMATED collection\'s rule-based membership, not just manual rows', async () => {
+    const cat = await makeCategory({ slug: 'auto-col-cat' });
+    const matchesRule = await makeProduct(cat.id, {
+      over: { price: 100 },
+      variants: [{ sku: 'acr1', stockQuantity: 5 }],
+    });
+    const doesNotMatchRule = await makeProduct(cat.id, {
+      over: { price: 10 },
+      variants: [{ sku: 'acr2', stockQuantity: 5 }],
+    });
+    const automated = await makeCollection({ slug: 'auto-col', type: 'AUTOMATED' });
+    await request(app)
+      .put(`/api/collections/${automated.id}/rules`)
+      .set(bearer(adminToken))
+      .send({ rules: [{ groupNumber: 0, field: 'PRICE', operator: 'GREATER_THAN_OR_EQUAL', value: 50 }] });
+
+    await postAdmin('/api/promotions', {
+      nameEn: 'Auto collection sale', nameAr: 'تخفيض آلي', status: 'ACTIVE', type: 'PERCENT', value: 20,
+      collectionIds: [automated.id],
+    });
+
+    const matchRes = await request(app).get(`/api/products/${matchesRule.id}`);
+    expect(matchRes.body.product.effectivePrice).toBe(80);
+    expect(matchRes.body.product.promotion).toMatchObject({ type: 'PERCENT', value: 20 });
+
+    // Priced at 10 — fails the collection's own PRICE >= 50 rule, so it was
+    // never a member of the collection in the first place.
+    const noMatchRes = await request(app).get(`/api/products/${doesNotMatchRule.id}`);
+    expect(noMatchRes.body.product.effectivePrice).toBe(10);
+    expect(noMatchRes.body.product.onSale).toBe(false);
+  });
+
   it('appliesToAll covers every product, regardless of category/collection', async () => {
     const cat = await makeCategory({ slug: 'all-cat' });
     const product = await makeProduct(cat.id, { over: { price: 100 }, variants: [{ sku: 'allv1', stockQuantity: 5 }] });

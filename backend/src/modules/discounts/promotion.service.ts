@@ -4,6 +4,7 @@ import { AppError } from '../../lib/AppError';
 import { toNumber } from '../../lib/money';
 import type { PromotionCandidate } from '../../lib/pricing';
 import { productInCategoryPathFilter } from '../catalog/category-tree';
+import { collectionMembershipFilter } from '../catalog/collection-rules';
 import type { CreatePromotionInput, UpdatePromotionInput } from './promotion.schema';
 
 // Shared client or an interactive-transaction client — see the note in
@@ -212,27 +213,74 @@ export async function activePromotions(at: Date = new Date(), db: Db = prisma): 
       categories: {
         select: { includeDescendants: true, category: { select: { path: true, nameEn: true, nameAr: true } } },
       },
-      collections: { select: { collection: { select: { id: true, nameEn: true, nameAr: true } } } },
+      collections: {
+        select: { collection: { select: { id: true, type: true, nameEn: true, nameAr: true } } },
+      },
     },
   });
-  return rows.map((p) => ({
-    id: p.id,
-    nameEn: p.nameEn,
-    nameAr: p.nameAr,
-    type: p.type,
-    value: toNumber(p.value),
-    stackable: p.stackable,
-    priority: p.priority,
-    appliesToAll: p.appliesToAll,
-    productIds: p.products.map((x) => x.productID),
-    categoryTargets: p.categories.map((c) => ({
-      path: c.category.path,
-      includeDescendants: c.includeDescendants,
-      nameEn: c.category.nameEn,
-      nameAr: c.category.nameAr,
-    })),
-    collections: p.collections.map((x) => ({ id: x.collection.id, nameEn: x.collection.nameEn, nameAr: x.collection.nameAr })),
-  }));
+
+  // A collection target only ever matches a product through a
+  // CollectionProduct row (see promotionCoversProduct() in lib/pricing.ts) —
+  // correct for MANUAL, but an AUTOMATED/HYBRID collection's real membership
+  // is computed from CollectionRule at read time and never stored as a join
+  // row, so a promotion targeting one would otherwise never match anything,
+  // silently. Resolve those here — once per unique collection per call, not
+  // once per product — and fold the matching product ids into `productIds`;
+  // pickPromotion()/promotionCoverageFilter() already know how to match on
+  // that, so nothing downstream needs to change. `collections` below still
+  // lists every targeted collection (including automated ones) for display —
+  // matching against it (pickPromotion's matchSource, promotionCoverageFilter)
+  // stays harmless for an automated one since a product never carries a
+  // manual CollectionProduct row for it either way; that's covered via
+  // `productIds` instead.
+  const ruleBasedCollectionIds = [
+    ...new Set(
+      rows.flatMap((p) => p.collections.filter((c) => c.collection.type !== 'MANUAL').map((c) => c.collection.id))
+    ),
+  ];
+  const resolvedMembers = new Map<string, string[]>();
+  if (ruleBasedCollectionIds.length) {
+    const collections = await db.collection.findMany({
+      where: { id: { in: ruleBasedCollectionIds } },
+      select: { id: true, type: true },
+    });
+    for (const collection of collections) {
+      const where = await collectionMembershipFilter(collection);
+      const matches = await db.product.findMany({ where, select: { id: true } });
+      resolvedMembers.set(
+        collection.id,
+        matches.map((m) => m.id)
+      );
+    }
+  }
+
+  return rows.map((p) => {
+    const ruleBasedProductIds = p.collections
+      .filter((c) => c.collection.type !== 'MANUAL')
+      .flatMap((c) => resolvedMembers.get(c.collection.id) ?? []);
+    return {
+      id: p.id,
+      nameEn: p.nameEn,
+      nameAr: p.nameAr,
+      type: p.type,
+      value: toNumber(p.value),
+      stackable: p.stackable,
+      priority: p.priority,
+      appliesToAll: p.appliesToAll,
+      productIds: [...new Set([...p.products.map((x) => x.productID), ...ruleBasedProductIds])],
+      categoryTargets: p.categories.map((c) => ({
+        path: c.category.path,
+        includeDescendants: c.includeDescendants,
+        nameEn: c.category.nameEn,
+        nameAr: c.category.nameAr,
+      })),
+      collections: p.collections.map((c) => ({
+        id: c.collection.id,
+        nameEn: c.collection.nameEn,
+        nameAr: c.collection.nameAr,
+      })),
+    };
+  });
 }
 
 /** Prisma where-fragment: "this product is covered by at least one of the
