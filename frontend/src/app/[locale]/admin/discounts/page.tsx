@@ -60,8 +60,10 @@ const promotionSchema = z
     // Plain string arrays: a native multi-select's value (same pattern as
     // the product form's additionalCategoryIds / collectionIds).
     productIds: z.array(z.string()),
-    categoryIds: z.array(z.string()),
-    includeDescendants: z.boolean(),
+    // Each target keeps its OWN includeDescendants — the backend already
+    // supports this per-category (PromotionCategory.includeDescendants),
+    // this form just used to collapse them all onto one shared checkbox.
+    categoryTargets: z.array(z.object({ categoryId: z.string(), includeDescendants: z.boolean() })),
     collectionIds: z.array(z.string()),
     status: z.enum(['DRAFT', 'ACTIVE', 'PAUSED', 'ENDED']),
     startsAt: z.string(),
@@ -74,7 +76,7 @@ const promotionSchema = z
     if (
       !v.appliesToAll &&
       v.productIds.length === 0 &&
-      v.categoryIds.length === 0 &&
+      v.categoryTargets.length === 0 &&
       v.collectionIds.length === 0
     ) {
       ctx.addIssue({ code: 'custom', path: ['appliesToAll'], message: 'Pick at least one target, or apply to all items' });
@@ -94,8 +96,7 @@ const BLANK_PROMOTION: PromotionForm = {
   stackable: true,
   appliesToAll: false,
   productIds: [],
-  categoryIds: [],
-  includeDescendants: true,
+  categoryTargets: [],
   collectionIds: [],
   status: 'DRAFT',
   startsAt: '',
@@ -138,10 +139,10 @@ function PromotionsPanel({ isAr }: { isAr: boolean }) {
             stackable: editing.stackable,
             appliesToAll: editing.appliesToAll,
             productIds: editing.products.map((p) => p.productID),
-            categoryIds: editing.categories.map((c) => c.categoryID),
-            // One shared flag for the whole form — every target the admin
-            // picks for this promotion uses the same includeDescendants.
-            includeDescendants: editing.categories[0]?.includeDescendants ?? true,
+            categoryTargets: editing.categories.map((c) => ({
+              categoryId: c.categoryID,
+              includeDescendants: c.includeDescendants,
+            })),
             collectionIds: editing.collections.map((c) => c.collectionID),
             status: editing.status,
             startsAt: toLocalInput(editing.startsAt),
@@ -171,9 +172,7 @@ function PromotionsPanel({ isAr }: { isAr: boolean }) {
       stackable: form.stackable,
       appliesToAll: form.appliesToAll,
       productIds: form.appliesToAll ? [] : form.productIds,
-      categoryTargets: form.appliesToAll
-        ? []
-        : form.categoryIds.map((categoryId) => ({ categoryId, includeDescendants: form.includeDescendants })),
+      categoryTargets: form.appliesToAll ? [] : form.categoryTargets,
       collectionIds: form.appliesToAll ? [] : form.collectionIds,
       status: form.status,
       startsAt: fromLocalInput(form.startsAt),
@@ -266,36 +265,69 @@ function PromotionsPanel({ isAr }: { isAr: boolean }) {
                 )}
               </Field>
 
-              <div className="admin-form__row">
-                <Field label={t('Categories', 'الفئات')} hint={t('Optional', 'اختياري')}>
-                  {(p) => (
-                    <Controller
-                      control={control}
-                      name="categoryIds"
-                      render={({ field }) => (
-                        <CheckList
-                          {...p}
-                          value={field.value}
-                          onChange={field.onChange}
-                          disabled={busy}
-                          emptyLabel={t('No categories yet', 'لا توجد فئات بعد')}
-                          items={(categories ?? []).map((c) => ({
-                            id: c.id,
-                            disabled: Boolean(c.isEffectivelyArchived),
-                            label: `${isAr ? c.nameAr : c.nameEn}${c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}`,
-                          }))}
-                        />
-                      )}
-                    />
-                  )}
-                </Field>
-                <Choice
-                  type="checkbox"
-                  label={t('Include subcategories', 'شمول الفئات الفرعية')}
-                  {...register('includeDescendants')}
-                  disabled={busy}
-                />
-              </div>
+              <Field
+                label={t('Categories', 'الفئات')}
+                hint={t('Optional — each category has its own "include subcategories" toggle below', 'اختياري — لكل فئة مفتاح "شمول الفئات الفرعية" الخاص بها أدناه')}
+              >
+                {(p) => (
+                  <Controller
+                    control={control}
+                    name="categoryTargets"
+                    render={({ field }) => {
+                      const selectedIds = field.value.map((v) => v.categoryId);
+                      return (
+                        <>
+                          <CheckList
+                            {...p}
+                            value={selectedIds}
+                            onChange={(ids) => {
+                              const byId = new Map(field.value.map((v) => [v.categoryId, v]));
+                              field.onChange(
+                                ids.map((categoryId) => byId.get(categoryId) ?? { categoryId, includeDescendants: true })
+                              );
+                            }}
+                            disabled={busy}
+                            emptyLabel={t('No categories yet', 'لا توجد فئات بعد')}
+                            items={(categories ?? []).map((c) => ({
+                              id: c.id,
+                              disabled: Boolean(c.isEffectivelyArchived),
+                              label: `${isAr ? c.nameAr : c.nameEn}${c.isEffectivelyArchived ? t(' (archived)', ' (مؤرشفة)') : ''}`,
+                            }))}
+                          />
+                          {field.value.length > 0 && (
+                            <div style={{ display: 'grid', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                              {field.value.map((target) => {
+                                const cat = (categories ?? []).find((c) => c.id === target.categoryId);
+                                return (
+                                  <Choice
+                                    key={target.categoryId}
+                                    type="checkbox"
+                                    label={t(
+                                      `Include subcategories of "${cat ? (isAr ? cat.nameAr : cat.nameEn) : target.categoryId}"`,
+                                      `شمول الفئات الفرعية لـ "${cat ? (isAr ? cat.nameAr : cat.nameEn) : target.categoryId}"`
+                                    )}
+                                    checked={target.includeDescendants}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        field.value.map((v) =>
+                                          v.categoryId === target.categoryId
+                                            ? { ...v, includeDescendants: e.target.checked }
+                                            : v
+                                        )
+                                      )
+                                    }
+                                    disabled={busy}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      );
+                    }}
+                  />
+                )}
+              </Field>
 
               <Field label={t('Collections', 'المجموعات')} hint={t('Optional', 'اختياري')}>
                 {(p) => (
