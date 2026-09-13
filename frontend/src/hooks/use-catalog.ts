@@ -7,6 +7,7 @@ import type {
   CatalogListQuery,
   CategoryBody,
   CollectionBody,
+  CollectionRule,
   ImageBody,
   ProductBody,
   ProductImageBody,
@@ -319,6 +320,18 @@ export function useSetCollectionProducts() {
   return useMutation({
     mutationFn: ({ id, productIds }: { id: UUID; productIds: UUID[] }) =>
       catalogApi.setCollectionProducts(id, productIds),
+    onSuccess: () => {
+      inv.collections();
+      inv.products();
+    },
+  });
+}
+
+export function useSetCollectionRules() {
+  const inv = useInvalidator();
+  return useMutation({
+    mutationFn: ({ id, rules }: { id: UUID; rules: CollectionRule[] }) =>
+      catalogApi.setCollectionRules(id, rules),
     onSuccess: () => {
       inv.collections();
       inv.products();

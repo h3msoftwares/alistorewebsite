@@ -3,7 +3,7 @@
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Alert, Button, Choice, Field, Input, Textarea } from '@/components/ui';
+import { Alert, Button, Choice, Field, Input, Select, Textarea } from '@/components/ui';
 
 // No showInNav / showOnHome / showOnHomeAsImage / accentColor / homeImageCta*
 // here on purpose (Stage 1 catalog redesign): those fields still exist on
@@ -23,6 +23,7 @@ export const collectionFormSchema = z.object({
   descriptionEn: z.string(),
   descriptionAr: z.string(),
   isActive: z.boolean(),
+  type: z.enum(['MANUAL', 'AUTOMATED', 'HYBRID']),
 });
 export type CollectionFormValues = z.infer<typeof collectionFormSchema>;
 
@@ -33,6 +34,7 @@ export const collectionFormDefaults: CollectionFormValues = {
   descriptionEn: '',
   descriptionAr: '',
   isActive: true,
+  type: 'MANUAL',
 };
 
 export function CollectionForm({
@@ -91,6 +93,21 @@ export function CollectionForm({
       </div>
 
       <div className="admin-form__row">
+        <Field
+          label={t('Membership type', 'نوع العضوية')}
+          hint={t(
+            'Manual: pick products by hand. Automated: computed from rules. Hybrid: rules plus a manual include/exclude on top.',
+            'يدوي: اختر المنتجات يدويًا. آلي: يُحسب من القواعد. مختلط: القواعد مع إضافة/استبعاد يدوي فوقها.'
+          )}
+        >
+          {(p) => (
+            <Select {...p} {...register('type')} disabled={busy}>
+              <option value="MANUAL">{t('Manual', 'يدوي')}</option>
+              <option value="AUTOMATED">{t('Automated', 'آلي')}</option>
+              <option value="HYBRID">{t('Hybrid', 'مختلط')}</option>
+            </Select>
+          )}
+        </Field>
         <Choice type="checkbox" label={t('Active', 'مفعّل')} {...register('isActive')} disabled={busy} />
       </div>
 

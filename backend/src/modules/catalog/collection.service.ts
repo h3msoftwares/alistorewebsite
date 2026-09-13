@@ -58,7 +58,13 @@ export async function listCollections(opts: ListCollectionsOpts = {}) {
 export async function getCollectionById(id: string) {
   const collection = await prisma.collection.findUnique({
     where: { id },
-    include: { images: imageOrder },
+    include: {
+      images: imageOrder,
+      // The admin edit form needs this to show/edit an AUTOMATED/HYBRID
+      // collection's existing rules — same ordering setCollectionRules()
+      // writes them in (group, then position within the group).
+      rules: { orderBy: [{ groupNumber: 'asc' }, { sortOrder: 'asc' }] },
+    },
   });
   if (!collection) throw new AppError('NOT_FOUND', 'Collection not found');
   return collection;

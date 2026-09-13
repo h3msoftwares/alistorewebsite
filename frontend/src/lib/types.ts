@@ -59,10 +59,14 @@ export type CollectionImage = CatalogImage & { collectionID: UUID };
 export type CategoryImage = CatalogImage & { categoryID: UUID };
 
 /** A flat, flexible merchandising grouping (Sale, New Arrivals) — cuts across
- *  the category tree, not a level above it. Stage 1 of the catalog redesign:
- *  membership is manual only (`CollectionProduct`), no rules yet. See
- *  `Category` for the permanent navigation tree, which Collection has no
- *  relationship to at all. */
+ *  the category tree, not a level above it. See `Category` for the permanent
+ *  navigation tree, which Collection has no relationship to at all.
+ *
+ *  Stage 2: `type` decides how membership works —
+ *   - MANUAL (Stage 1's only mode): `CollectionProduct` rows are the whole
+ *     membership, admin-picked by hand.
+ *   - AUTOMATED: membership comes purely from `rules`, computed live.
+ *   - HYBRID: `rules` plus a manual INCLUDE/EXCLUDE overlay on top. */
 export interface Collection {
   id: UUID;
   nameEn: string;
@@ -71,6 +75,7 @@ export interface Collection {
   descriptionEn?: string | null;
   descriptionAr?: string | null;
   isActive: boolean;
+  type: CollectionType;
   showInNav: boolean;
   showOnHome: boolean;
   showOnHomeAsImage: boolean;
@@ -82,7 +87,49 @@ export interface Collection {
   /** Set when archived from the admin — hidden from the storefront, restorable. */
   archivedAt?: string | null;
   images: CollectionImage[];
+  /** Present on `GET /collections/:id` (the admin edit form) — empty/absent
+   *  for a MANUAL collection, since rules are never evaluated for one. */
+  rules?: CollectionRule[];
   _count?: { products: number };
+}
+
+export type CollectionType = 'MANUAL' | 'AUTOMATED' | 'HYBRID';
+
+/** Deliberately narrower than a generic rule-engine template: every value
+ *  here corresponds to real, queryable Product data (see the backend's
+ *  CollectionRuleField doc comment) — no BRAND/TAG-style dead options. */
+export type CollectionRuleField =
+  | 'PRODUCT_STATUS'
+  | 'CATEGORY'
+  | 'PRICE'
+  | 'COMPARE_AT_PRICE'
+  | 'HAS_ACTIVE_PROMOTION'
+  | 'CREATED_AT'
+  | 'STOCK_STATUS';
+
+export type CollectionRuleOperator =
+  | 'EQUALS'
+  | 'NOT_EQUALS'
+  | 'GREATER_THAN'
+  | 'GREATER_THAN_OR_EQUAL'
+  | 'LESS_THAN'
+  | 'LESS_THAN_OR_EQUAL'
+  | 'IN'
+  | 'NOT_IN'
+  | 'EXISTS';
+
+/** One condition in an AUTOMATED/HYBRID collection's membership rule set.
+ *  Rules sharing a `groupNumber` are ANDed together; different group numbers
+ *  are ORed. `value`'s actual shape depends on `field` (a plain number for
+ *  PRICE, a string for STOCK_STATUS, `{categoryIds, includeDescendants}` for
+ *  CATEGORY, absent for HAS_ACTIVE_PROMOTION) — validated server-side, never
+ *  interpreted as code. */
+export interface CollectionRule {
+  id?: UUID;
+  groupNumber: number;
+  field: CollectionRuleField;
+  operator: CollectionRuleOperator;
+  value?: unknown;
 }
 
 /** The permanent navigation tree (Men → Shoes → Sport Shoes → ...),
@@ -829,6 +876,7 @@ export interface CollectionBody {
   descriptionEn?: string;
   descriptionAr?: string;
   isActive?: boolean;
+  type?: CollectionType;
   // TODO(admin-collections): expose showInNav / showOnHome / sortOrder / accentColor in the admin form.
   showInNav?: boolean;
   showOnHome?: boolean;

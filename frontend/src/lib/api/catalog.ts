@@ -6,6 +6,7 @@ import type {
   CategoryBody,
   Collection,
   CollectionBody,
+  CollectionRule,
   ImageBody,
   Product,
   ProductBody,
@@ -74,11 +75,20 @@ export function listCollectionProducts(id: UUID) {
   return api.get<{ products: Product[] }>(`/api/collections/${id}/products`).then((r) => r.products);
 }
 
-/** Replace a collection's manual product membership wholesale (Stage 1:
- *  manual membership only, no rules). */
+/** Replace a collection's manual product membership wholesale. The whole
+ *  membership for MANUAL; an INCLUDE overlay on top of the rule-computed set
+ *  for HYBRID; rejected outright for AUTOMATED (see collection.service.ts). */
 export function setCollectionProducts(id: UUID, productIds: UUID[]) {
   return api
     .put<{ collection: Collection }>(`/api/collections/${id}/products`, { productIds })
+    .then((r) => r.collection);
+}
+
+/** Replace a collection's rule set wholesale (AUTOMATED/HYBRID only —
+ *  rejected for MANUAL). */
+export function setCollectionRules(id: UUID, rules: CollectionRule[]) {
+  return api
+    .put<{ collection: Collection }>(`/api/collections/${id}/rules`, { rules })
     .then((r) => r.collection);
 }
 

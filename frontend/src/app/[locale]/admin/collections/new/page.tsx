@@ -23,6 +23,7 @@ export default function NewCollectionPage() {
         descriptionEn: values.descriptionEn || undefined,
         descriptionAr: values.descriptionAr || undefined,
         isActive: values.isActive,
+        type: values.type,
       });
       // Images can only be attached once the collection exists.
       router.push(`/${locale}/admin/collections/${created.id}`);
