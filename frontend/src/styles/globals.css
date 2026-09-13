@@ -2145,6 +2145,37 @@ a.home-card__name:hover { text-decoration: underline; }
 .stat-tile__value { font-size: var(--fs-xl); font-weight: var(--fw-semibold); font-variant-numeric: tabular-nums; }
 .stat-tile__hint { font-size: var(--fs-xs); color: var(--color-text-muted); }
 
+/* Icon + heading/body row (e.g. the Drive-connection / backup-schedule cards
+   on the Backups admin page) — was unstyled (no flex), so the icon chip sat
+   stacked above the text instead of beside it. */
+.list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+}
+.list-item + .list-item { margin-block-start: var(--space-4); }
+.list-item-body { flex: 1; min-width: 0; }
+.list-item-title { margin: 0; font-size: var(--fs-base); font-weight: var(--fw-semibold); line-height: var(--lh-sm); }
+
+.stat-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+.stat-icon.is-success { background: var(--color-success-bg); color: var(--color-success); }
+.stat-icon.is-warning { background: var(--color-warning-bg); color: var(--color-warning); }
+.stat-icon.is-primary { background: color-mix(in srgb, var(--color-primary) 20%, white); color: var(--color-primary-hover); }
+
 /* Admin dashboard (landing page) — clickable stat tiles + shortcut row. */
 .admin-dashboard { display: flex; flex-direction: column; gap: var(--space-6); }
 .stat-tile--link {
