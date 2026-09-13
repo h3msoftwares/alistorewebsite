@@ -25,9 +25,9 @@ import {
   productCategoryPaths,
   productCollectionIds,
   productInCategoryPathFilter,
-  productInCollectionFilter,
   productReachableFilter,
 } from './category-tree';
+import { collectionMembershipFilter } from './collection-rules';
 
 type ListProductsQuery = z.infer<typeof listProductsQuerySchema>;
 type CreateProductInput = z.infer<typeof createProductSchema>;
@@ -225,7 +225,20 @@ export async function listProducts(query: ListProductsQuery) {
   // into one object would have each later one silently clobber the previous
   // one's `OR` key instead of narrowing the results.
   const and: Prisma.ProductWhereInput[] = [await productStatusWhere(query)];
-  if (query.collectionId) and.push(productInCollectionFilter(query.collectionId));
+  if (query.collectionId) {
+    // Membership depends on the collection's type — MANUAL is a plain
+    // CollectionProduct lookup, but AUTOMATED/HYBRID membership is computed
+    // from CollectionRule (see collection-rules.ts). This is the storefront's
+    // actual collection-page listing path, so a collection converted to
+    // AUTOMATED (e.g. Sale, driven by HAS_ACTIVE_PROMOTION) needs this to
+    // stay correct or it silently shows zero products despite resolving
+    // fine through the dedicated /api/collections/:id/products endpoint.
+    const collection = await prisma.collection.findUnique({
+      where: { id: query.collectionId },
+      select: { id: true, type: true },
+    });
+    and.push(collection ? await collectionMembershipFilter(collection) : { id: { in: [] } });
+  }
   if (query.categoryId) {
     // Browsing a category means browsing its whole subtree (a root like
     // "Women" has no products placed on it directly — they live on its leaf

@@ -45,13 +45,6 @@ export async function isCategoryEffectivelyArchived(categoryId: string): Promise
   return rows[0]?.archived ?? false;
 }
 
-/** Prisma where-fragment: "this product is manually placed in (one of) the
- *  given collection id(s)." */
-export function productInCollectionFilter(collectionId: string | string[]): Prisma.ProductWhereInput {
-  const ids = Array.isArray(collectionId) ? collectionId : [collectionId];
-  return { collectionLinks: { some: { collectionID: { in: ids } } } };
-}
-
 /** Prisma where-fragment: "this product's primary or an additional category
  *  is this exact category path, or — when `includeDescendants` — any
  *  descendant of it." Powers Promotion/CollectionRule CATEGORY-target

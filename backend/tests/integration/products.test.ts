@@ -160,6 +160,56 @@ describe('Products API', () => {
     });
   });
 
+  // Regression: this is the storefront's ACTUAL collection-page code path
+  // (CollectionProducts -> useProducts({ collectionId }) -> GET /api/products
+  // ?collectionId=), a completely different route from the admin-facing
+  // GET /api/collections/:id/products preview. The collectionId filter used
+  // to check the CollectionProduct join table unconditionally, so an
+  // AUTOMATED or HYBRID collection (computed from CollectionRule) always
+  // came back empty here even though the dedicated preview endpoint resolved
+  // it correctly — caught by manually browsing the real storefront page, not
+  // by curling the preview endpoint alone.
+  describe('GET /api/products?collectionId= (collection membership by type)', () => {
+    it('MANUAL: only products with a CollectionProduct row for this collection', async () => {
+      await makeProduct(categoryId, { over: { nameEn: 'In' }, collectionIds: [collectionId] });
+      await makeProduct(categoryId, { over: { nameEn: 'Out' } });
+
+      const res = await request(app).get(`/api/products?collectionId=${collectionId}`);
+      expect(res.body.items.map((p: { nameEn: string }) => p.nameEn)).toEqual(['In']);
+    });
+
+    it('AUTOMATED: membership computed from CollectionRule, ignoring CollectionProduct rows entirely', async () => {
+      const automated = await makeCollection({ slug: 'auto', type: 'AUTOMATED' });
+      await makeProduct(categoryId, { over: { nameEn: 'Cheap', price: 10 } });
+      await makeProduct(categoryId, { over: { nameEn: 'Pricey', price: 50 } });
+      await prisma.collectionRule.create({
+        data: { collectionID: automated.id, groupNumber: 0, field: 'PRICE', operator: 'GREATER_THAN_OR_EQUAL', value: 30 },
+      });
+
+      const res = await request(app).get(`/api/products?collectionId=${automated.id}`);
+      expect(res.body.items.map((p: { nameEn: string }) => p.nameEn)).toEqual(['Pricey']);
+    });
+
+    it('HYBRID: rule match OR manual INCLUDE, minus manual EXCLUDE', async () => {
+      const hybrid = await makeCollection({ slug: 'hyb', type: 'HYBRID' });
+      await makeProduct(categoryId, { over: { nameEn: 'Matches', price: 50 } });
+      const forcedIn = await makeProduct(categoryId, { over: { nameEn: 'ForcedIn', price: 5 } });
+      const forcedOut = await makeProduct(categoryId, { over: { nameEn: 'ForcedOut', price: 50 } });
+      await prisma.collectionRule.create({
+        data: { collectionID: hybrid.id, groupNumber: 0, field: 'PRICE', operator: 'GREATER_THAN_OR_EQUAL', value: 30 },
+      });
+      await prisma.collectionProduct.create({
+        data: { collectionID: hybrid.id, productID: forcedIn.id, membership: 'INCLUDE' },
+      });
+      await prisma.collectionProduct.create({
+        data: { collectionID: hybrid.id, productID: forcedOut.id, membership: 'EXCLUDE' },
+      });
+
+      const res = await request(app).get(`/api/products?collectionId=${hybrid.id}`);
+      expect(res.body.items.map((p: { nameEn: string }) => p.nameEn).sort()).toEqual(['ForcedIn', 'Matches']);
+    });
+  });
+
   // Backs the header type-ahead (frontend SearchOverlay -> useProducts({ search, pageSize })).
   describe('GET /api/products — catalogue search', () => {
     const names = (res: { body: { items: { nameEn: string }[] } }) =>
