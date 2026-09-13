@@ -62,4 +62,8 @@ export const queryKeys = {
     list: () => ['addresses', 'list'] as const,
     detail: (id: UUID) => ['addresses', 'detail', id] as const,
   },
+  blacklist: {
+    all: () => ['blacklist'] as const,
+    list: () => ['blacklist', 'list'] as const,
+  },
 } as const;

@@ -1,6 +1,13 @@
+import { Prisma, type BlacklistType } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
-import type { BlacklistType, Prisma } from '@prisma/client';
+
+function mapPrismaError(e: unknown) {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+    return new AppError('CONFLICT', 'This value is already blacklisted');
+  }
+  return e as Error;
+}
 
 /** Either the shared client or an interactive-transaction client. Callers that
  *  are already inside a `$transaction` MUST pass their `tx` so the query runs
@@ -37,7 +44,10 @@ export async function isBlacklisted(type: BlacklistType, value: string, db: Db =
 }
 
 export function listBlacklistEntries() {
-  return prisma.blacklistEntry.findMany({ orderBy: { createdAt: 'desc' } });
+  return prisma.blacklistEntry.findMany({
+    orderBy: { createdAt: 'desc' },
+    include: { creator: { select: { name: true, email: true } } },
+  });
 }
 
 export async function createBlacklistEntry(input: {
@@ -46,14 +56,19 @@ export async function createBlacklistEntry(input: {
   reason?: string;
   createdBy: string;
 }) {
-  return prisma.blacklistEntry.create({
-    data: {
-      type: input.type,
-      value: normalize(input.type, input.value),
-      reason: input.reason,
-      createdBy: input.createdBy,
-    },
-  });
+  try {
+    return await prisma.blacklistEntry.create({
+      data: {
+        type: input.type,
+        value: normalize(input.type, input.value),
+        reason: input.reason,
+        createdBy: input.createdBy,
+      },
+      include: { creator: { select: { name: true, email: true } } },
+    });
+  } catch (e) {
+    throw mapPrismaError(e);
+  }
 }
 
 export async function deleteBlacklistEntry(id: string): Promise<void> {

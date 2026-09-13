@@ -19,6 +19,7 @@ import {
 import { AdminPager } from '@/components/admin/admin-pager';
 import { useAdminOrders, useMarkOrderCollected, useReviewOrder, useUpdateOrderStatus } from '@/hooks/use-orders';
 import { DELIVERY_REGIONS } from '@/lib/regions';
+import { usePermissions } from '@/lib/rbac';
 import type { Order, OrderStatus } from '@/lib/types';
 
 const PAGE_SIZE = 20;
@@ -46,6 +47,7 @@ export default function AdminOrdersPage() {
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const canManageBlacklist = usePermissions().has('orders:manage');
 
   const money = (n: number) =>
     new Intl.NumberFormat(isAr ? 'ar-EG' : 'en-US', {
@@ -166,6 +168,11 @@ export default function AdminOrdersPage() {
       <div className="admin-page__head">
         <h1>{t('Orders', 'الطلبات')}</h1>
         <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
+          {canManageBlacklist && (
+            <Link href={`/${locale}/admin/orders/blacklist`} className="btn btn--outline">
+              {t('Blacklist', 'قائمة الحظر')}
+            </Link>
+          )}
           <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
             <input
               type="checkbox"

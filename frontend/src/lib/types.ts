@@ -596,6 +596,30 @@ export interface AdminCustomerDetail extends AdminCustomerSummary {
   orders: Order[];
 }
 
+// ---- Blacklist (anti-abuse block list, GET/POST/DELETE /api/admin/blacklist) ----
+// Checked at checkout-OTP request time and at order creation (phone/email/IP).
+// Every route here needs orders:manage, not just orders:view.
+
+export type BlacklistType = 'PHONE' | 'EMAIL' | 'IP';
+
+export interface BlacklistEntry {
+  id: UUID;
+  type: BlacklistType;
+  /** Normalized server-side: an EMAIL is lower-cased; PHONE/IP are stored as
+   *  entered. */
+  value: string;
+  reason?: string | null;
+  createdAt: IsoDateTime;
+  /** Absent if the admin who created it was later deleted. */
+  creator?: { name: string; email: string } | null;
+}
+
+export interface BlacklistEntryBody {
+  type: BlacklistType;
+  value: string;
+  reason?: string;
+}
+
 // ---- Product list query (GET /api/products) ----
 
 export type ProductSort = 'newest' | 'price_asc' | 'price_desc' | 'best_selling';
