@@ -12,11 +12,22 @@ const HOVER_MS = 1600;
 
 // The photos the hover carousel moves through for the shown colour: that
 // colour's tagged shots, else the generic (untagged) ones, else all of them.
+//
+// The generic bucket needs MORE than one photo to be worth cycling through —
+// the common catalog shape is a single untagged lead shot plus several
+// colour-tagged ones (see home-card.test.tsx's fixture), so before any
+// swatch is clicked a plain "> 0" check here left the hover hook nothing to
+// advance through at all (gallery.length stuck at 1, the effect's own guard
+// never firing) even though the product genuinely has more photos — hence
+// falling back to every photo instead. `forColor` doesn't need the same
+// widening: once a shopper has actually picked a colour, showing another
+// colour's photo on hover would be visually wrong even if that colour has
+// only one shot of its own.
 function pickGallery(images: ProductImage[], color: string | null): ProductImage[] {
   const forColor = color ? images.filter((img) => img.color === color) : [];
   if (forColor.length > 0) return forColor;
   const generic = images.filter((img) => !img.color);
-  return generic.length > 0 ? generic : images;
+  return generic.length > 1 ? generic : images;
 }
 
 /**
