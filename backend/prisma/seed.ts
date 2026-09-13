@@ -66,10 +66,17 @@ function clothImage(seed: string, topic: string, w = 800, h = 1000): string {
 const CLOTH_TOPIC: Record<string, string> = {
   'women-lingerie': 'underwear',
   'women-nightwear': 'pajamas',
+  'women-shoes': 'sneaker',
+  'women-shoes-sneakers': 'sneaker',
   'men-shirts': 'shirt',
   'men-underwear': 'underwear',
+  'men-shoes': 'sneaker',
+  'men-shoes-sport': 'sneaker',
+  'men-shoes-running': 'sneaker',
   'kids-pajamas': 'pajamas',
   'kids-everyday': 'clothing',
+  'kids-shoes': 'sneaker',
+  'kids-everyday-holiday-costumes': 'clothing',
   women: 'dress',
   men: 'menswear',
   kids: 'clothing',
@@ -247,14 +254,34 @@ async function main() {
 
   // ---- Subcategories (bilingual, each nested under one root category) ----
   // kids-pajamas is individually featured too, to demo a category getting its
-  // own "product row" on the home page independent of its parent.
+  // own "product row" on the home page independent of its parent. The Shoes
+  // branches go 3-4 levels deep (Men > Shoes > Sport Shoes > Running Shoes)
+  // deliberately — the rest of the tree is only 2 levels, which was never
+  // enough to exercise real breadcrumb depth or a mid-tree archive cascade.
+  // Order matters: a child's row must come after its own parent's, since the
+  // single loop below looks up `categories.get(parentSlug)` as it goes.
   const subcategoryDefs = [
     { parentSlug: 'women', nameEn: 'Lingerie', nameAr: 'ملابس داخلية نسائية', slug: 'women-lingerie', sortOrder: 1 },
     { parentSlug: 'women', nameEn: 'Nightwear', nameAr: 'ملابس النوم النسائية', slug: 'women-nightwear', sortOrder: 2 },
+    { parentSlug: 'women', nameEn: 'Shoes', nameAr: 'أحذية', slug: 'women-shoes', sortOrder: 3 },
+    { parentSlug: 'women-shoes', nameEn: 'Sneakers', nameAr: 'أحذية رياضية', slug: 'women-shoes-sneakers', sortOrder: 1 },
     { parentSlug: 'men', nameEn: "Men's Shirts", nameAr: 'قمصان رجالي', slug: 'men-shirts', sortOrder: 1 },
     { parentSlug: 'men', nameEn: "Men's Underwear", nameAr: 'ملابس داخلية رجالية', slug: 'men-underwear', sortOrder: 2 },
+    { parentSlug: 'men', nameEn: 'Shoes', nameAr: 'أحذية', slug: 'men-shoes', sortOrder: 3 },
+    { parentSlug: 'men-shoes', nameEn: 'Sport Shoes', nameAr: 'أحذية رياضية', slug: 'men-shoes-sport', sortOrder: 1 },
+    { parentSlug: 'men-shoes-sport', nameEn: 'Running Shoes', nameAr: 'أحذية جري', slug: 'men-shoes-running', sortOrder: 1 },
     { parentSlug: 'kids', nameEn: "Kids' Pajamas", nameAr: 'بيجامات أطفال', slug: 'kids-pajamas', sortOrder: 4, homeSortOrder: 30, showOnHome: true },
     { parentSlug: 'kids', nameEn: "Kids' Everyday", nameAr: 'ملابس أطفال يومية', slug: 'kids-everyday', sortOrder: 2 },
+    { parentSlug: 'kids', nameEn: 'Shoes', nameAr: 'أحذية', slug: 'kids-shoes', sortOrder: 3 },
+    // A small, dedicated pair kept SEPARATE from the Men's Shoes branch above
+    // on purpose — this one gets archived below, and archiving hides its
+    // whole subtree's products from the storefront by design. Using a
+    // throwaway seasonal branch for that demo (instead of Men's Shoes) means
+    // the deep, 4-level Men's Shoes branch stays fully browsable, so the
+    // "real breadcrumb depth" demo and the "archive cascade" demo don't fight
+    // each other over the same products.
+    { parentSlug: 'kids-everyday', nameEn: 'Holiday Outfits', nameAr: 'أزياء الأعياد', slug: 'kids-everyday-holiday', sortOrder: 3 },
+    { parentSlug: 'kids-everyday-holiday', nameEn: 'Costumes', nameAr: 'أزياء تنكرية', slug: 'kids-everyday-holiday-costumes', sortOrder: 1 },
   ];
 
   for (const c of subcategoryDefs) {
@@ -1621,6 +1648,199 @@ async function main() {
       saleValue: 15,
       variants: [v('4-5Y', 'Grey', 20), v('6-7Y', 'Grey', 20), v('8-9Y', 'Grey', 4)],
     },
+
+    // ---- Women / Shoes / Sneakers (3 levels deep) ----
+    {
+      sku: 'WOM-SHO-001',
+      categorySlug: 'women-shoes-sneakers',
+      nameEn: 'Canvas Low-Top Sneakers',
+      nameAr: 'حذاء رياضي قماشي منخفض',
+      descriptionEn: 'Everyday canvas low-top sneakers with a cushioned insole.',
+      descriptionAr: 'حذاء رياضي قماشي منخفض للاستخدام اليومي بنعل داخلي مبطن.',
+      price: 32.0,
+      saleType: 'PERCENT',
+      saleValue: 10,
+      variants: [v('36', 'White', 12), v('37', 'White', 15), v('38', 'White', 5), v('39', 'White', 0)],
+    },
+    {
+      sku: 'WOM-SHO-002',
+      categorySlug: 'women-shoes-sneakers',
+      nameEn: 'Knit Slip-On Sneakers',
+      nameAr: 'حذاء رياضي محبوك بدون رباط',
+      descriptionEn: 'Stretch-knit slip-on sneakers, sock-like fit.',
+      descriptionAr: 'حذاء رياضي محبوك قابل للتمدد بدون رباط، يلائم القدم كالجورب.',
+      price: 29.0,
+      compareAtPrice: 35.0,
+      variants: [v('36', 'Grey', 10), v('37', 'Grey', 20), v('38', 'Grey', 8)],
+    },
+    {
+      sku: 'WOM-SHO-003',
+      categorySlug: 'women-shoes-sneakers',
+      nameEn: 'Chunky Platform Sneakers',
+      nameAr: 'حذاء رياضي بنعل سميك',
+      descriptionEn: 'Trend platform sneakers with an extra-thick sole.',
+      descriptionAr: 'حذاء رياضي عصري بنعل سميك إضافي.',
+      price: 45.0,
+      variants: [v('37', 'Black', 6), v('38', 'Black', 14), v('39', 'Black', 9), v('40', 'Black', 2)],
+    },
+    {
+      sku: 'WOM-SHO-004',
+      categorySlug: 'women-shoes-sneakers',
+      nameEn: 'Classic White Sneakers',
+      nameAr: 'حذاء رياضي أبيض كلاسيكي',
+      descriptionEn: 'Minimalist all-white leather-look sneakers.',
+      descriptionAr: 'حذاء رياضي أبيض بالكامل بتصميم بسيط شبيه بالجلد.',
+      price: 38.0,
+      saleType: 'AMOUNT',
+      saleValue: 8,
+      variants: [v('36', 'White', 20), v('37', 'White', 20), v('38', 'White', 3)],
+    },
+    {
+      sku: 'WOM-SHO-005',
+      categorySlug: 'women-shoes-sneakers',
+      nameEn: 'Running Trainers',
+      nameAr: 'حذاء جري رياضي',
+      descriptionEn: 'Lightweight running trainers with breathable mesh upper.',
+      descriptionAr: 'حذاء جري خفيف الوزن بقماش علوي قابل للتنفس.',
+      price: 42.0,
+      variants: [v('36', 'Pink', 10), v('37', 'Pink', 20), v('38', 'Pink', 20), v('39', 'Pink', 0), v('40', 'Pink', 4)],
+    },
+
+    // ---- Men / Shoes / Sport Shoes / Running Shoes (4 levels deep) ----
+    {
+      sku: 'MEN-SHO-001',
+      categorySlug: 'men-shoes-running',
+      nameEn: 'Lightweight Running Shoes',
+      nameAr: 'حذاء جري خفيف الوزن',
+      descriptionEn: 'Cushioned, lightweight running shoes for daily mileage.',
+      descriptionAr: 'حذاء جري خفيف ومبطن مناسب للتمارين اليومية.',
+      price: 55.0,
+      saleType: 'PERCENT',
+      saleValue: 15,
+      variants: [v('40', 'Black', 12), v('41', 'Black', 20), v('42', 'Black', 20), v('43', 'Black', 5), v('44', 'Black', 0)],
+    },
+    {
+      sku: 'MEN-SHO-002',
+      categorySlug: 'men-shoes-running',
+      nameEn: 'Trail Running Shoes',
+      nameAr: 'حذاء جري للمسارات الوعرة',
+      descriptionEn: 'Grippy outsole trail running shoes for off-road terrain.',
+      descriptionAr: 'حذاء جري بنعل قوي التماسك مناسب للمسارات الوعرة.',
+      price: 62.0,
+      compareAtPrice: 70.0,
+      variants: [v('41', 'Olive', 8), v('42', 'Olive', 16), v('43', 'Olive', 9), v('44', 'Olive', 2)],
+    },
+    {
+      sku: 'MEN-SHO-003',
+      categorySlug: 'men-shoes-running',
+      nameEn: 'Cushioned Road Runners',
+      nameAr: 'حذاء جري مبطن للطرق',
+      descriptionEn: 'Extra-cushioned road runners for long-distance comfort.',
+      descriptionAr: 'حذاء جري مبطن بشكل إضافي لراحة المسافات الطويلة.',
+      price: 58.0,
+      variants: [v('40', 'Grey', 20), v('41', 'Grey', 20), v('42', 'Grey', 20), v('43', 'Grey', 0)],
+    },
+    {
+      sku: 'MEN-SHO-004',
+      categorySlug: 'men-shoes-running',
+      nameEn: 'Breathable Mesh Runners',
+      nameAr: 'حذاء جري بقماش شبكي قابل للتنفس',
+      descriptionEn: 'Mesh upper running shoes built for hot-weather training.',
+      descriptionAr: 'حذاء جري بقماش علوي شبكي مناسب للتمرين في الأجواء الحارة.',
+      price: 48.0,
+      saleType: 'AMOUNT',
+      saleValue: 10,
+      variants: [v('41', 'Blue', 14), v('42', 'Blue', 20), v('43', 'Blue', 20), v('44', 'Blue', 6), v('45', 'Blue', 0)],
+    },
+    {
+      sku: 'MEN-SHO-005',
+      categorySlug: 'men-shoes-running',
+      nameEn: 'Marathon Racing Flats',
+      nameAr: 'حذاء سباق الماراثون',
+      descriptionEn: 'Ultra-light racing flats built for race day.',
+      descriptionAr: 'حذاء سباق فائق الخفة مخصص ليوم السباق.',
+      price: 65.0,
+      variants: [v('42', 'Red', 5), v('43', 'Red', 9), v('44', 'Red', 3)],
+    },
+
+    // ---- Kids / Shoes ----
+    {
+      sku: 'KID-SHO-001',
+      categorySlug: 'kids-shoes',
+      nameEn: 'Velcro Sneakers',
+      nameAr: 'حذاء رياضي بشريط لاصق',
+      descriptionEn: 'Easy-on velcro sneakers, no laces to tie.',
+      descriptionAr: 'حذاء رياضي بشريط لاصق سهل الارتداء بدون رباط.',
+      price: 24.0,
+      variants: [v('2-3Y', 'Blue', 20), v('4-5Y', 'Blue', 20), v('6-7Y', 'Blue', 5)],
+    },
+    {
+      sku: 'KID-SHO-002',
+      categorySlug: 'kids-shoes',
+      nameEn: 'Light-Up Sneakers',
+      nameAr: 'حذاء رياضي مضيء',
+      descriptionEn: 'Sneakers with light-up soles that flash with every step.',
+      descriptionAr: 'حذاء رياضي بنعل مضيء يومض مع كل خطوة.',
+      price: 27.0,
+      compareAtPrice: 32.0,
+      variants: [v('4-5Y', 'Red', 15), v('6-7Y', 'Red', 20), v('8-9Y', 'Red', 0)],
+    },
+    {
+      sku: 'KID-SHO-003',
+      categorySlug: 'kids-shoes',
+      nameEn: 'Slip-On Canvas Shoes',
+      nameAr: 'حذاء قماشي بدون رباط',
+      descriptionEn: 'Simple slip-on canvas shoes for everyday play.',
+      descriptionAr: 'حذاء قماشي بسيط بدون رباط للعب اليومي.',
+      price: 20.0,
+      saleType: 'PERCENT',
+      saleValue: 10,
+      variants: [v('2-3Y', 'Yellow', 20), v('4-5Y', 'Yellow', 20), v('6-7Y', 'Yellow', 6)],
+    },
+    {
+      sku: 'KID-SHO-004',
+      categorySlug: 'kids-shoes',
+      nameEn: 'High-Top Sneakers',
+      nameAr: 'حذاء رياضي عالي الرقبة',
+      descriptionEn: 'High-top sneakers with reinforced ankle support.',
+      descriptionAr: 'حذاء رياضي عالي الرقبة بدعم إضافي للكاحل.',
+      price: 26.0,
+      variants: [v('4-5Y', 'Black', 9), v('6-7Y', 'Black', 20)],
+    },
+    {
+      sku: 'KID-SHO-005',
+      categorySlug: 'kids-shoes',
+      nameEn: 'Sport Sandals',
+      nameAr: 'صندل رياضي',
+      descriptionEn: 'Adjustable sport sandals for warm-weather play.',
+      descriptionAr: 'صندل رياضي قابل للتعديل للعب في الأجواء الدافئة.',
+      price: 18.0,
+      variants: [v('2-3Y', 'Green', 20), v('4-5Y', 'Green', 20), v('6-7Y', 'Green', 20), v('8-9Y', 'Green', 4)],
+    },
+
+    // ---- Kids / Everyday / Holiday Outfits / Costumes — the archive-cascade
+    // demo branch (see the archiving section below): archived at the Holiday
+    // Outfits level, so these two never show up until it's restored. ----
+    {
+      sku: 'KID-EVR-021',
+      categorySlug: 'kids-everyday-holiday-costumes',
+      nameEn: 'Superhero Costume',
+      nameAr: 'زي بطل خارق',
+      descriptionEn: 'Dress-up superhero costume with cape.',
+      descriptionAr: 'زي تنكري لبطل خارق مع عباءة.',
+      price: 22.0,
+      variants: [v('4-5Y', 'Blue', 10), v('6-7Y', 'Blue', 8)],
+    },
+    {
+      sku: 'KID-EVR-022',
+      categorySlug: 'kids-everyday-holiday-costumes',
+      nameEn: 'Princess Costume',
+      nameAr: 'زي أميرة',
+      descriptionEn: 'Dress-up princess costume with tulle skirt.',
+      descriptionAr: 'زي تنكري لأميرة بتنورة تول.',
+      price: 25.0,
+      variants: [v('2-3Y', 'Pink', 12), v('4-5Y', 'Pink', 9)],
+    },
   ];
 
   for (const p of productDefs) {
@@ -1725,6 +1945,10 @@ async function main() {
     ['WOM-LNG-001', 'women-nightwear'],
     ['WOM-NGT-001', 'women-lingerie'],
   ];
+  // Clear stale rows first — otherwise a placement removed from the list
+  // above (by shrinking it on a later edit) would survive forever, since
+  // upsert-by-pair only ever adds/no-ops and nothing here ever deletes.
+  await prisma.productCategory.deleteMany({});
   for (const [sku, categorySlug] of crossListings) {
     const product = await prisma.product.findUnique({ where: { sku }, select: { id: true } });
     const category = categories.get(categorySlug);
@@ -1737,14 +1961,44 @@ async function main() {
     }
   }
 
+  // ---- Archiving demo data ----
+  // The 2-level, everything-active tree/catalog from Stage 1's original seed
+  // never gave the archive/restore UI (or a manual QA pass) anything to look
+  // at. Archive one thing at each level instead: a mid-tree CATEGORY that has
+  // its own child (kids-everyday-holiday, with kids-everyday-holiday-costumes
+  // under it — a separate branch from Men's Shoes on purpose, see that
+  // subcategory def's comment) — the reachability-computed-at-read-time
+  // guarantee (never propagated to children) is only actually visible in the
+  // admin/storefront if something like this exists — a PRODUCT (soft-deleted,
+  // independent of any category archiving), and a COLLECTION (see
+  // winter-clearance below).
+  await prisma.category.update({
+    where: { slug: 'kids-everyday-holiday' },
+    data: { archivedAt: new Date() },
+  });
+  // Explicitly restored: an earlier version of this seed archived
+  // men-shoes-sport instead (see kids-everyday-holiday's comment above for
+  // why that moved) — category upserts never touch archivedAt, so without
+  // this a dev DB seeded by that earlier version would carry it forever.
+  await prisma.category.update({
+    where: { slug: 'men-shoes-sport' },
+    data: { archivedAt: null },
+  });
+  await prisma.product.update({
+    where: { sku: 'WOM-LNG-013' },
+    data: { deletedAt: new Date() },
+  });
+
   // ---- Collections (Stage 1: flat, manual merchandising groups, unrelated
   // to the category tree — see robust-ecommerce-catalog-architecture.md's
   // "core idea") ----
-  // Only two, deliberately: Sale and New Arrivals. Women/Men/Kids are
-  // Categories now (the permanent navigation tree, above); Collection is
+  // Sale and New Arrivals are the "core two" from Stage 1 — Women/Men/Kids
+  // are Categories now (the permanent navigation tree, above); Collection is
   // reserved for this kind of cross-cutting, hand-picked grouping instead —
   // documented in catalog-redesign-implementation-plan.md's Stage 1 scope,
-  // not an implicit side effect of the restructuring.
+  // not an implicit side effect of the restructuring. Winter Clearance and
+  // Premium Picks (below) round the demo data out: an ARCHIVED collection,
+  // and a HYBRID one with real CollectionRules.
   //
   // Stage 2: Sale is now AUTOMATED — "whatever currently has an active
   // Promotion", computed by CollectionRule (HAS_ACTIVE_PROMOTION EXISTS)
@@ -1770,8 +2024,12 @@ async function main() {
   });
 
   // The products that used to be hand-picked into Sale (their own
-  // Product.saleType is set) are what the seeded Promotion below targets, so
-  // the AUTOMATED collection ends up showing the same, familiar slice.
+  // Product.saleType is set) are what the seeded "Seasonal Promo" targets —
+  // but Sale being AUTOMATED via HAS_ACTIVE_PROMOTION means it now also picks
+  // up whatever the OTHER active promotions below cover (the shoe deal, the
+  // collection bonus), which is the actual point of making it automated: an
+  // admin adding a new promotion doesn't have to remember to also go curate
+  // the Sale collection by hand.
   const onSaleProducts = await prisma.product.findMany({
     where: { saleType: { not: null } },
     select: { id: true },
@@ -1807,6 +2065,147 @@ async function main() {
     data: onSaleProducts.map((p) => ({ promotionID: sitePromotion.id, productID: p.id })),
   });
 
+  // ---- More promotions (Stage 2) — varied targets/priority/stackable/status
+  // so single-winner-by-priority, category+descendants targeting, and the
+  // status/window distinction are all demonstrable, not just tested. ----
+
+  // Higher priority than Seasonal Promo AND non-stackable: any shoe under
+  // Men > Shoes > Sport Shoes (including Running Shoes beneath it, via
+  // includeDescendants) wins this promotion outright over Seasonal Promo,
+  // discounting the ORIGINAL price rather than stacking on the product's own
+  // sale — visibly, on the real product pages under that branch.
+  const menShoesSport = categories.get('men-shoes-sport')!;
+  const vipShoeDeal = await prisma.promotion.upsert({
+    where: { id: '00000000-0000-0000-0000-0000000000f2' },
+    update: {
+      nameEn: 'VIP Shoe Deal',
+      nameAr: 'عرض الأحذية المميز',
+      status: 'ACTIVE',
+      type: 'AMOUNT',
+      value: 10,
+      priority: 10,
+      stackable: false,
+      appliesToAll: false,
+    },
+    create: {
+      id: '00000000-0000-0000-0000-0000000000f2',
+      nameEn: 'VIP Shoe Deal',
+      nameAr: 'عرض الأحذية المميز',
+      status: 'ACTIVE',
+      type: 'AMOUNT',
+      value: 10,
+      priority: 10,
+      stackable: false,
+      appliesToAll: false,
+    },
+  });
+  await prisma.promotionCategory.deleteMany({ where: { promotionID: vipShoeDeal.id } });
+  await prisma.promotionCategory.create({
+    data: { promotionID: vipShoeDeal.id, categoryID: menShoesSport.id, includeDescendants: true },
+  });
+
+  // Lowest priority AND paused — never actually applies (status gate), even
+  // though it targets everything. Proves a PAUSED promotion is inert.
+  const flashWeekend = await prisma.promotion.upsert({
+    where: { id: '00000000-0000-0000-0000-0000000000f3' },
+    update: {
+      nameEn: 'Flash Weekend',
+      nameAr: 'عرض نهاية الأسبوع',
+      status: 'PAUSED',
+      type: 'PERCENT',
+      value: 5,
+      priority: 0,
+      stackable: true,
+      appliesToAll: true,
+    },
+    create: {
+      id: '00000000-0000-0000-0000-0000000000f3',
+      nameEn: 'Flash Weekend',
+      nameAr: 'عرض نهاية الأسبوع',
+      status: 'PAUSED',
+      type: 'PERCENT',
+      value: 5,
+      priority: 0,
+      stackable: true,
+      appliesToAll: true,
+    },
+  });
+  await prisma.promotionProduct.deleteMany({ where: { promotionID: flashWeekend.id } });
+  await prisma.promotionCategory.deleteMany({ where: { promotionID: flashWeekend.id } });
+  await prisma.promotionCollection.deleteMany({ where: { promotionID: flashWeekend.id } });
+
+  // COLLECTION-target example — everything manually placed in New Arrivals
+  // (below) gets this AMOUNT-off bonus. Explicit startsAt/endsAt window (both
+  // in range) so the admin UI actually has date values to show.
+  const loyaltyBonus = await prisma.promotion.upsert({
+    where: { id: '00000000-0000-0000-0000-0000000000f4' },
+    update: {
+      nameEn: 'Loyalty Collection Bonus',
+      nameAr: 'مكافأة الولاء',
+      status: 'ACTIVE',
+      type: 'AMOUNT',
+      value: 3,
+      priority: 2,
+      stackable: true,
+      appliesToAll: false,
+      startsAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      endsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+    create: {
+      id: '00000000-0000-0000-0000-0000000000f4',
+      nameEn: 'Loyalty Collection Bonus',
+      nameAr: 'مكافأة الولاء',
+      status: 'ACTIVE',
+      type: 'AMOUNT',
+      value: 3,
+      priority: 2,
+      stackable: true,
+      appliesToAll: false,
+      startsAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      endsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.promotionCollection.deleteMany({ where: { promotionID: loyaltyBonus.id } });
+  await prisma.promotionCollection.create({
+    data: { promotionID: loyaltyBonus.id, collectionID: newArrivals.id },
+  });
+
+  // ACTIVE status but an endsAt already in the past — the status/window
+  // distinction: this must NOT apply anywhere despite being "ACTIVE".
+  const expiredProduct = await prisma.product.findUnique({ where: { sku: 'MEN-SHO-005' }, select: { id: true } });
+  const expiredDeal = await prisma.promotion.upsert({
+    where: { id: '00000000-0000-0000-0000-0000000000f5' },
+    update: {
+      nameEn: 'Expired Deal',
+      nameAr: 'عرض منتهي',
+      status: 'ACTIVE',
+      type: 'PERCENT',
+      value: 25,
+      priority: 20,
+      stackable: false,
+      appliesToAll: false,
+      endsAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    },
+    create: {
+      id: '00000000-0000-0000-0000-0000000000f5',
+      nameEn: 'Expired Deal',
+      nameAr: 'عرض منتهي',
+      status: 'ACTIVE',
+      type: 'PERCENT',
+      value: 25,
+      priority: 20,
+      stackable: false,
+      appliesToAll: false,
+      endsAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    },
+  });
+  await prisma.promotionProduct.deleteMany({ where: { promotionID: expiredDeal.id } });
+  if (expiredProduct) {
+    await prisma.promotionProduct.create({
+      data: { promotionID: expiredDeal.id, productID: expiredProduct.id },
+    });
+  }
+
   const newestProducts = await prisma.product.findMany({
     select: { id: true },
     orderBy: [{ dateCreated: 'desc' }, { sku: 'desc' }],
@@ -1816,6 +2215,53 @@ async function main() {
   await prisma.collectionProduct.createMany({
     data: newestProducts.map((p, i) => ({ collectionID: newArrivals.id, productID: p.id, sortOrder: i })),
   });
+
+  // ---- Winter Clearance — an ARCHIVED MANUAL collection, kept non-empty on
+  // purpose (the admin's "delete blocked while non-empty" guard needs a real
+  // example to show, not just an empty archived shell). ----
+  const winterClearance = await prisma.collection.upsert({
+    where: { slug: 'winter-clearance' },
+    update: { nameEn: 'Winter Clearance', nameAr: 'تصفية الشتاء', isActive: true, archivedAt: new Date() },
+    create: { slug: 'winter-clearance', nameEn: 'Winter Clearance', nameAr: 'تصفية الشتاء', archivedAt: new Date() },
+  });
+  const clearanceProducts = await prisma.product.findMany({
+    where: { sku: { in: ['MEN-SHO-002', 'KID-SHO-002'] } },
+    select: { id: true },
+  });
+  await prisma.collectionProduct.deleteMany({ where: { collectionID: winterClearance.id } });
+  await prisma.collectionProduct.createMany({
+    data: clearanceProducts.map((p, i) => ({ collectionID: winterClearance.id, productID: p.id, sortOrder: i })),
+  });
+
+  // ---- Premium Picks — a HYBRID collection: CollectionRule-computed
+  // membership (price >= $30 AND in stock, both in group 0 so they're ANDed)
+  // PLUS a manual overlay — one cheap item force-INCLUDEd despite not
+  // matching the rule, and one otherwise-matching item force-EXCLUDEd. ----
+  const premiumPicks = await prisma.collection.upsert({
+    where: { slug: 'premium-picks' },
+    update: { nameEn: 'Premium Picks', nameAr: 'مختارات مميزة', isActive: true, type: 'HYBRID' },
+    create: { slug: 'premium-picks', nameEn: 'Premium Picks', nameAr: 'مختارات مميزة', type: 'HYBRID' },
+  });
+  await prisma.collectionRule.deleteMany({ where: { collectionID: premiumPicks.id } });
+  await prisma.collectionRule.createMany({
+    data: [
+      { collectionID: premiumPicks.id, groupNumber: 0, field: 'PRICE', operator: 'GREATER_THAN_OR_EQUAL', value: 30, sortOrder: 0 },
+      { collectionID: premiumPicks.id, groupNumber: 0, field: 'STOCK_STATUS', operator: 'EQUALS', value: 'IN_STOCK', sortOrder: 1 },
+    ],
+  });
+  const premiumInclude = await prisma.product.findUnique({ where: { sku: 'WOM-LNG-009' }, select: { id: true } });
+  const premiumExclude = await prisma.product.findUnique({ where: { sku: 'WOM-LNG-004' }, select: { id: true } });
+  await prisma.collectionProduct.deleteMany({ where: { collectionID: premiumPicks.id } });
+  if (premiumInclude) {
+    await prisma.collectionProduct.create({
+      data: { collectionID: premiumPicks.id, productID: premiumInclude.id, membership: 'INCLUDE' },
+    });
+  }
+  if (premiumExclude) {
+    await prisma.collectionProduct.create({
+      data: { collectionID: premiumPicks.id, productID: premiumExclude.id, membership: 'EXCLUDE' },
+    });
+  }
 
   // Site settings singleton (id 1) + the default announcement lines. Idempotent:
   // upsert the row, and only seed the lines when there are none yet so a run
