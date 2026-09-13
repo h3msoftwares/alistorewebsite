@@ -24,6 +24,7 @@ export const PERMISSION_AREAS: PermissionArea[] = [
   { area: 'collections', label: 'Collections', levels: ['view', 'manage'] },
   { area: 'categories', label: 'Categories', levels: ['view', 'manage'] },
   { area: 'discounts', label: 'Discounts & coupons', levels: ['view', 'manage'] },
+  { area: 'loyalty', label: 'Loyalty program', levels: ['view', 'manage'] },
   { area: 'analytics', label: 'Analytics', levels: ['view'] },
   { area: 'settings', label: 'Store settings', levels: ['view', 'manage'] },
   { area: 'roles', label: 'Permissions & roles', levels: ['view', 'manage'] },

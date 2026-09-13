@@ -1,5 +1,5 @@
 import nodemailer from 'nodemailer';
-import type { Order, OrderItem } from '@prisma/client';
+import type { Coupon, Order, OrderItem } from '@prisma/client';
 import { env } from '../config/env';
 import { prisma } from '../config/prisma';
 import { DELIVERY_REGIONS } from './regions';
@@ -517,6 +517,55 @@ export async function sendCheckoutOtpEmail(to: string, code: string, ttlMinutes:
     return true;
   } catch (err) {
     console.error('[mailer] failed to send checkout-OTP email', err);
+    return false;
+  }
+}
+
+/**
+ * Tells a customer they've earned a loyalty-program coupon (see
+ * loyalty.service.ts's checkLoyaltyThreshold). Same never-throws contract as
+ * the other mailer functions — a failed send never fails the order-status
+ * update that triggered it.
+ */
+export async function sendLoyaltyRewardEmail(
+  to: string,
+  rule: { nameEn: string; nameAr: string },
+  coupon: Coupon
+): Promise<boolean> {
+  if (!transporter) {
+    console.warn('[mailer] SMTP is not configured — skipping loyalty-reward email to', to);
+    return false;
+  }
+  const from = await resolveFrom();
+
+  const reward = coupon.type === 'PERCENT' ? `${Number(coupon.value)}% off` : `${money(Number(coupon.value))} off`;
+  const expiry = coupon.endsAt ? ` It's valid until ${coupon.endsAt.toDateString()}.` : '';
+
+  const text =
+    `Thank you for being a loyal customer!\n\n` +
+    `You've earned a reward for "${rule.nameEn}": ${reward} your next order.\n\n` +
+    `Use this code at checkout: ${coupon.code}\n` +
+    `${expiry}`.trim();
+
+  const html = `
+    <p>Thank you for being a loyal customer!</p>
+    <p>You've earned a reward for <strong>${esc(rule.nameEn)}</strong>: ${esc(reward)} your next order.</p>
+    <p style="font-size: 1.25em; font-weight: bold; letter-spacing: 0.05em;">${esc(coupon.code)}</p>
+    ${expiry ? `<p>${esc(expiry.trim())}</p>` : ''}
+  `.trim();
+
+  try {
+    const info = await transporter.sendMail({
+      from,
+      to,
+      subject: `A reward for you, from Ali's Store`,
+      text,
+      html,
+    });
+    console.log('[mailer] loyalty-reward email sent', info.messageId);
+    return true;
+  } catch (err) {
+    console.error('[mailer] failed to send loyalty-reward email', err);
     return false;
   }
 }

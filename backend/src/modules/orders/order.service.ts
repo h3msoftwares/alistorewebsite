@@ -21,6 +21,7 @@ import {
   type DeliveryConfig,
 } from '../../lib/delivery-fee';
 import { REGION_VALUES } from '../../lib/regions';
+import { checkLoyaltyThreshold } from '../loyalty/loyalty.service';
 import { Order, OrderItem, OrderStatus, Prisma } from '@prisma/client';
 
 type OrderWithItems = Order & { items: OrderItem[] };
@@ -1016,6 +1017,17 @@ export async function updateOrderStatus(
   if (status === 'SHIPPED' && existing.status !== 'SHIPPED') {
     void sendOrderShippedNotifications(updated).catch((err) => {
       console.error('[order.service] failed to send order-shipped notification', err);
+    });
+  }
+
+  // Same fire-and-forget, first-time-only discipline as the SHIPPED email
+  // above — checks every active loyalty rule against this customer's new
+  // DELIVERED count/total and awards (generates + emails) any newly-crossed
+  // milestone. Never throws; a broken loyalty rule must not fail the order
+  // update that triggered it.
+  if (status === 'DELIVERED' && existing.status !== 'DELIVERED') {
+    void checkLoyaltyThreshold(updated).catch((err) => {
+      console.error('[order.service] failed to check loyalty threshold', err);
     });
   }
 

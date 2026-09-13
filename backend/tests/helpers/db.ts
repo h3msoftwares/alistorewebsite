@@ -17,6 +17,8 @@ const TABLES = [
   'promotioncollection',
   'promotion',
   'collectionrule',
+  'loyaltyaward',
+  'loyaltyrule',
   'coupon',
   'role',
   'blacklistentry',

@@ -41,7 +41,6 @@ export const productCoreObjectSchema = z.object({
   additionalCategoryIds: z.array(z.string()),
   collectionIds: z.array(z.string()),
   price: z.number().positive('Must be greater than 0'),
-  compareAtPrice: priceStringSchema,
   saleType: z.enum(['', 'PERCENT', 'AMOUNT']),
   saleValue: priceStringSchema,
 });
@@ -64,7 +63,6 @@ export const productCoreDefaults: ProductCoreValues = {
   additionalCategoryIds: [],
   collectionIds: [],
   price: 0,
-  compareAtPrice: '',
   saleType: '',
   saleValue: '',
 };
@@ -216,13 +214,6 @@ export function ProductCoreFields<T extends ProductCoreValues>({
           {(p) => (
             <Input {...p} type="number" min={0} step="0.01" {...register('price' as never, { valueAsNumber: true })} disabled={busy} />
           )}
-        </Field>
-        <Field
-          label={t('Compare-at price', 'السعر قبل التخفيض')}
-          hint={t('Optional — shown struck through', 'اختياري — يظهر مشطوبًا')}
-          error={errors.compareAtPrice?.message as string | undefined}
-        >
-          {(p) => <Input {...p} type="text" inputMode="decimal" placeholder="0.00" {...register('compareAtPrice' as never)} disabled={busy} />}
         </Field>
       </div>
 

@@ -251,6 +251,8 @@ export interface Product {
 /** A promotion as applied to one product (percentage or amount off, and
  *  whether it combines with the product's own sale). */
 export interface AppliedPromotionInfo {
+  nameEn: string;
+  nameAr: string;
   type: DiscountType;
   value: number;
   /** true = applies on top of the product's own sale (the old STACK);
@@ -258,6 +260,12 @@ export interface AppliedPromotionInfo {
    *  OVERRIDE). Governs only this interaction — promotions never combine
    *  with each other; see PromotionBody.priority. */
   stackable: boolean;
+  /** Which target actually matched this product — ALL (site-wide),
+   *  PRODUCT (picked individually), or COLLECTION/CATEGORY (via one of the
+   *  promotion's targets, named by sourceNameEn/sourceNameAr below). */
+  source: 'ALL' | 'PRODUCT' | 'COLLECTION' | 'CATEGORY';
+  sourceNameEn?: string | null;
+  sourceNameAr?: string | null;
 }
 
 export type PromotionStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ENDED';
@@ -337,6 +345,37 @@ export interface CouponBody {
   endsAt?: string | null;
   maxRedemptions?: number | null;
   maxPerCustomer?: number | null;
+}
+
+export type LoyaltyMetric = 'ORDER_COUNT' | 'TOTAL_SPENT';
+
+/** Admin-configured "reward every N orders / $N spent" rule
+ *  (`GET /api/loyalty-rules`). Registered customers only — see the backend
+ *  LoyaltyRule model's doc comment. Repeating: milestone 2 fires at
+ *  2 x threshold, milestone 3 at 3 x threshold, and so on. */
+export interface LoyaltyRule {
+  id: UUID;
+  nameEn: string;
+  nameAr: string;
+  metric: LoyaltyMetric;
+  threshold: Decimalish;
+  isActive: boolean;
+  rewardType: DiscountType;
+  rewardValue: Decimalish;
+  /** How long the auto-issued coupon stays redeemable; null = no expiry. */
+  couponValidDays: number | null;
+  dateCreated: IsoDateTime;
+}
+
+export interface LoyaltyRuleBody {
+  nameEn: string;
+  nameAr: string;
+  metric: LoyaltyMetric;
+  threshold: number;
+  isActive?: boolean;
+  rewardType: DiscountType;
+  rewardValue: number;
+  couponValidDays?: number | null;
 }
 
 /** `POST /api/coupons/validate` success payload. */

@@ -5,7 +5,7 @@ import { round2, toNumber } from '../../lib/money';
 import {
   pickPromotion,
   pricedWithPromotion,
-  type AppliedPromotion,
+  type PickedPromotion,
   type PromotionCandidate,
 } from '../../lib/pricing';
 import { activePromotions, promotionCoverageFilter } from '../discounts/promotion.service';
@@ -69,7 +69,7 @@ type Priced = {
   variants?: { price: Prisma.Decimal | null }[];
 };
 function withPricing<T extends Priced>(p: T, promotions: PromotionCandidate[] = []) {
-  const picked: AppliedPromotion | null = pickPromotion(
+  const picked: PickedPromotion | null = pickPromotion(
     {
       id: p.id,
       price: p.price,
@@ -93,7 +93,18 @@ function withPricing<T extends Priced>(p: T, promotions: PromotionCandidate[] = 
     ...rest,
     effectivePrice: priceFor(p.price),
     onSale: onSaleFor(p.price),
-    promotion: picked ? { type: picked.type, value: picked.value, stackable: picked.stackable } : null,
+    promotion: picked
+      ? {
+          type: picked.type,
+          value: picked.value,
+          stackable: picked.stackable,
+          nameEn: picked.nameEn,
+          nameAr: picked.nameAr,
+          source: picked.source,
+          sourceNameEn: picked.sourceNameEn ?? null,
+          sourceNameAr: picked.sourceNameAr ?? null,
+        }
+      : null,
     variants: p.variants?.map((v) => {
       const base = v.price ?? p.price;
       return { ...v, effectivePrice: priceFor(base), onSale: onSaleFor(base) };

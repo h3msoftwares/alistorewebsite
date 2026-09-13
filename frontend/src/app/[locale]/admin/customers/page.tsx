@@ -20,14 +20,53 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useAdminCustomer, useAdminCustomers, useSetCustomerActive } from '@/hooks/use-customers';
 import { usePermissions } from '@/lib/rbac';
 import type { AdminCustomerSummary, CustomerSort, Order } from '@/lib/types';
+import { LoyaltyRulesPanel } from './loyalty-panel';
 
 const PAGE_SIZE = 20;
 
 type StatusFilter = 'all' | 'active' | 'inactive';
+type Tab = 'customers' | 'loyalty';
 
 export default function AdminCustomersPage() {
   const params = useParams();
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
+  const [tab, setTab] = useState<Tab>('customers');
+
+  return (
+    <div className="section--tight">
+      <div className="admin-page__head">
+        <h1>{t('Customers', 'الزبائن')}</h1>
+      </div>
+
+      <nav className="admin-nav settings-tabs" aria-label={t('Customer sections', 'أقسام الزبائن')}>
+        <button
+          type="button"
+          className="admin-nav__link"
+          data-active={tab === 'customers' ? '' : undefined}
+          aria-pressed={tab === 'customers'}
+          onClick={() => setTab('customers')}
+        >
+          {t('Customers', 'الزبائن')}
+        </button>
+        <button
+          type="button"
+          className="admin-nav__link"
+          data-active={tab === 'loyalty' ? '' : undefined}
+          aria-pressed={tab === 'loyalty'}
+          onClick={() => setTab('loyalty')}
+        >
+          {t('Loyalty program', 'برنامج الولاء')}
+        </button>
+      </nav>
+
+      {tab === 'customers' ? <CustomersPanel locale={locale} /> : <LoyaltyRulesPanel isAr={isAr} />}
+    </div>
+  );
+}
+
+function CustomersPanel({ locale }: { locale: 'en' | 'ar' }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
@@ -92,11 +131,7 @@ export default function AdminCustomersPage() {
   };
 
   return (
-    <div className="section--tight">
-      <div className="admin-page__head">
-        <h1>{t('Customers', 'الزبائن')}</h1>
-      </div>
-
+    <>
       <div className="admin-form__row">
         <Field label={t('Search', 'بحث')} hint={t('Name, email or phone', 'الاسم أو البريد أو الهاتف')}>
           {(p) => (
@@ -305,7 +340,7 @@ export default function AdminCustomersPage() {
           </div>
         </Modal>
       )}
-    </div>
+    </>
   );
 }
 

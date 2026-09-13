@@ -209,20 +209,29 @@ export async function activePromotions(at: Date = new Date(), db: Db = prisma): 
     },
     include: {
       products: { select: { productID: true } },
-      categories: { select: { includeDescendants: true, category: { select: { path: true } } } },
-      collections: { select: { collectionID: true } },
+      categories: {
+        select: { includeDescendants: true, category: { select: { path: true, nameEn: true, nameAr: true } } },
+      },
+      collections: { select: { collection: { select: { id: true, nameEn: true, nameAr: true } } } },
     },
   });
   return rows.map((p) => ({
     id: p.id,
+    nameEn: p.nameEn,
+    nameAr: p.nameAr,
     type: p.type,
     value: toNumber(p.value),
     stackable: p.stackable,
     priority: p.priority,
     appliesToAll: p.appliesToAll,
     productIds: p.products.map((x) => x.productID),
-    categoryTargets: p.categories.map((c) => ({ path: c.category.path, includeDescendants: c.includeDescendants })),
-    collectionIds: p.collections.map((x) => x.collectionID),
+    categoryTargets: p.categories.map((c) => ({
+      path: c.category.path,
+      includeDescendants: c.includeDescendants,
+      nameEn: c.category.nameEn,
+      nameAr: c.category.nameAr,
+    })),
+    collections: p.collections.map((x) => ({ id: x.collection.id, nameEn: x.collection.nameEn, nameAr: x.collection.nameAr })),
   }));
 }
 
@@ -237,7 +246,7 @@ export function promotionCoverageFilter(promotions: PromotionCandidate[]): Prism
   if (promotions.some((p) => p.appliesToAll)) return {};
 
   const productIds = promotions.flatMap((p) => p.productIds);
-  const collectionIds = promotions.flatMap((p) => p.collectionIds);
+  const collectionIds = promotions.flatMap((p) => p.collections.map((c) => c.id));
   const categoryTargets = promotions.flatMap((p) => p.categoryTargets);
 
   const or: Prisma.ProductWhereInput[] = [];

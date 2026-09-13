@@ -10,6 +10,7 @@ export * as uploadsApi from './uploads';
 export * as settingsApi from './settings';
 export * as pushApi from './push';
 export * as discountsApi from './discounts';
+export * as loyaltyApi from './loyalty';
 export * as rbacApi from './rbac';
 export * as customersApi from './customers';
 export * as backupApi from './backup';
