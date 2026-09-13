@@ -73,26 +73,48 @@ export function pricedWithPromotion(
 /** Everything pickPromotion needs to test whether a Promotion covers a given
  *  product, plus the fields needed to price it once picked. */
 export interface PromotionCandidate extends AppliedPromotion {
+  nameEn: string;
+  nameAr: string;
   priority: number;
   /** Site-wide — covers every product regardless of the target arrays below.
    *  See the Promotion model's doc comment in schema.prisma for why this
    *  exists beyond the architecture doc's literal sketch. */
   appliesToAll: boolean;
   productIds: string[];
-  categoryTargets: { path: string; includeDescendants: boolean }[];
-  collectionIds: string[];
+  categoryTargets: { path: string; includeDescendants: boolean; nameEn: string; nameAr: string }[];
+  collections: { id: string; nameEn: string; nameAr: string }[];
+}
+
+/** Which target actually matched, and (for a COLLECTION/CATEGORY match) that
+ *  target's own name — what the admin product page shows so an admin can
+ *  see WHICH collection/category is behind a product's promotion, not just
+ *  that "some" promotion applies. */
+export interface PromotionMatch {
+  source: 'ALL' | 'PRODUCT' | 'COLLECTION' | 'CATEGORY';
+  sourceNameEn?: string;
+  sourceNameAr?: string;
+}
+
+function matchPromotion(
+  promo: PromotionCandidate,
+  product: { id: string; categoryPaths: string[]; collectionIds: string[] }
+): PromotionMatch | null {
+  if (promo.appliesToAll) return { source: 'ALL' };
+  if (promo.productIds.includes(product.id)) return { source: 'PRODUCT' };
+  const collectionHit = promo.collections.find((c) => product.collectionIds.includes(c.id));
+  if (collectionHit) return { source: 'COLLECTION', sourceNameEn: collectionHit.nameEn, sourceNameAr: collectionHit.nameAr };
+  const categoryHit = promo.categoryTargets.find((t) =>
+    product.categoryPaths.some((p) => (t.includeDescendants ? p.startsWith(t.path) : p === t.path))
+  );
+  if (categoryHit) return { source: 'CATEGORY', sourceNameEn: categoryHit.nameEn, sourceNameAr: categoryHit.nameAr };
+  return null;
 }
 
 function promotionCoversProduct(
   promo: PromotionCandidate,
   product: { id: string; categoryPaths: string[]; collectionIds: string[] }
 ): boolean {
-  if (promo.appliesToAll) return true;
-  if (promo.productIds.includes(product.id)) return true;
-  if (promo.collectionIds.some((id) => product.collectionIds.includes(id))) return true;
-  return promo.categoryTargets.some((t) =>
-    product.categoryPaths.some((p) => (t.includeDescendants ? p.startsWith(t.path) : p === t.path))
-  );
+  return matchPromotion(promo, product) !== null;
 }
 
 /**
@@ -107,6 +129,11 @@ function promotionCoversProduct(
  * `promotions` is expected to be pre-filtered to those ACTIVE and in-window
  * right now (see promotion.service.activePromotions()).
  */
+export interface PickedPromotion extends AppliedPromotion, PromotionMatch {
+  nameEn: string;
+  nameAr: string;
+}
+
 export function pickPromotion(
   product: {
     id: string;
@@ -117,7 +144,7 @@ export function pickPromotion(
     collectionIds: string[];
   },
   promotions: PromotionCandidate[]
-): AppliedPromotion | null {
+): PickedPromotion | null {
   const matches = promotions.filter((p) => promotionCoversProduct(p, product));
   if (matches.length === 0) return null;
 
@@ -133,5 +160,8 @@ export function pickPromotion(
       best = m;
     }
   }
-  return { id: best.id, type: best.type, value: best.value, stackable: best.stackable };
+  // best came from `matches`, which is pre-filtered to promotions that DO
+  // match this product, so this can never be null.
+  const match = matchPromotion(best, product)!;
+  return { id: best.id, type: best.type, value: best.value, stackable: best.stackable, nameEn: best.nameEn, nameAr: best.nameAr, ...match };
 }

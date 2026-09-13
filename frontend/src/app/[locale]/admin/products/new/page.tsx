@@ -61,7 +61,6 @@ export default function NewProductPage() {
         additionalCategoryIds: values.additionalCategoryIds,
         collectionIds: values.collectionIds,
         price: values.price,
-        compareAtPrice: values.compareAtPrice ? Number(values.compareAtPrice) : undefined,
         saleType: values.saleType || null,
         saleValue: values.saleValue ? Number(values.saleValue) : null,
         variants: values.variants.map((v) => ({

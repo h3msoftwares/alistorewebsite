@@ -59,7 +59,6 @@ export default function EditProductPage() {
           additionalCategoryIds: (product.categoryLinks ?? []).map((l) => l.categoryID),
           collectionIds: (product.collectionLinks ?? []).map((l) => l.collectionID),
           price: Number(product.price),
-          compareAtPrice: product.compareAtPrice != null ? String(product.compareAtPrice) : '',
           saleType: product.saleType ?? '',
           saleValue: product.saleValue != null ? String(product.saleValue) : '',
         }
@@ -83,7 +82,6 @@ export default function EditProductPage() {
           additionalCategoryIds: values.additionalCategoryIds,
           collectionIds: values.collectionIds,
           price: values.price,
-          compareAtPrice: values.compareAtPrice ? Number(values.compareAtPrice) : undefined,
           saleType: values.saleType || null,
           saleValue: values.saleValue ? Number(values.saleValue) : null,
           // Optimistic-concurrency guard (fix-list.md #14, resolves 1.5) —
@@ -210,6 +208,38 @@ export default function EditProductPage() {
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
         <ProductCoreFields register={register} control={control} errors={errors} busy={busy} locale={locale} />
+
+        {product.promotion && (
+          <Alert tone="info">
+            {t(
+              `"${product.promotion.nameEn}" is currently applied to this product: ${
+                product.promotion.type === 'PERCENT' ? `${product.promotion.value}%` : `$${product.promotion.value}`
+              } off.`,
+              `يُطبَّق حاليًا على هذا المنتج ترويج «${product.promotion.nameAr}»: خصم ${
+                product.promotion.type === 'PERCENT' ? `${product.promotion.value}%` : `${product.promotion.value}$`
+              }.`
+            )}{' '}
+            {product.promotion.source === 'COLLECTION' &&
+              t(
+                `Applied via the collection "${product.promotion.sourceNameEn}".`,
+                `يُطبَّق عبر مجموعة «${product.promotion.sourceNameAr}».`
+              )}
+            {product.promotion.source === 'CATEGORY' &&
+              t(
+                `Applied via the category "${product.promotion.sourceNameEn}".`,
+                `يُطبَّق عبر فئة «${product.promotion.sourceNameAr}».`
+              )}
+            {product.promotion.source === 'ALL' && t('Applied site-wide (all products).', 'يُطبَّق على كل المنتجات.')}
+            {product.promotion.source === 'PRODUCT' &&
+              t('Applied directly to this product.', 'يُطبَّق مباشرةً على هذا المنتج.')}{' '}
+            {product.promotion.stackable
+              ? t('It stacks on top of the sale set above.', 'يُضاف فوق التخفيض المحدَّد أعلاه.')
+              : t(
+                  'It replaces the sale set above (applied to the original price instead).',
+                  'يحلّ محل التخفيض المحدَّد أعلاه (يُطبَّق على السعر الأصلي بدلاً منه).'
+                )}
+          </Alert>
+        )}
 
         {error && <Alert tone="danger">{error}</Alert>}
 

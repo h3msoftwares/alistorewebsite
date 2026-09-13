@@ -108,6 +108,7 @@ model User {
   stockMovements          StockMovement[] // manual stock adjustments made by this user
   blacklistEntries        BlacklistEntry[] // entries this admin created
   pushSubscriptions       PushSubscription[] // this admin's opted-in browser/device(s)
+  loyaltyAwards           LoyaltyAward[] // loyalty-program milestones this customer has earned
 
   @@index([role])
   @@index([customRoleID])
@@ -701,7 +702,8 @@ model Coupon {
   dateCreated    DateTime     @default(now())
   lastEdit       DateTime     @default(now()) @updatedAt
 
-  redemptions CouponRedemption[]
+  redemptions   CouponRedemption[]
+  loyaltyAwards LoyaltyAward[] // set when this coupon was auto-generated as a loyalty reward
 
   @@map("coupon")
 }
@@ -722,6 +724,77 @@ model CouponRedemption {
   @@index([couponID, userID])
   @@index([couponID, email])
   @@map("couponredemption")
+}
+
+// Admin-configured "reward every N orders / $N spent" rule. Registered
+// customers only — a persistent identity is what the milestone count is
+// tracked against (see LoyaltyAward), so a guest checkout has nothing to
+// accumulate onto. Checked in order.service.ts's updateOrderStatus, right
+// where an order actually reaches DELIVERED (see LoyaltyAward doc comment
+// for why DELIVERED-only and how the milestone math works).
+model LoyaltyRule {
+  id              String        @id @default(uuid()) @db.Uuid
+  nameEn          String
+  nameAr          String
+  metric          LoyaltyMetric
+  // The unit an admin reads/writes this in is metric-dependent (a plain
+  // order count for ORDER_COUNT, a currency amount for TOTAL_SPENT) — both
+  // fit one Decimal column, same as Coupon.value doing double duty for
+  // PERCENT vs AMOUNT.
+  threshold       Decimal       @db.Decimal(12, 2)
+  isActive        Boolean       @default(true)
+  rewardType      DiscountType
+  rewardValue     Decimal       @db.Decimal(12, 2)
+  // How long the auto-generated coupon stays redeemable after being issued;
+  // null = no expiry. Independent of the rule's own isActive/lifetime.
+  couponValidDays Int?
+  dateCreated     DateTime      @default(now())
+  lastEdit        DateTime      @default(now()) @updatedAt
+
+  awards LoyaltyAward[]
+
+  @@map("loyaltyrule")
+}
+
+enum LoyaltyMetric {
+  ORDER_COUNT
+  TOTAL_SPENT
+}
+
+// One row per milestone actually paid out to a customer under a rule — the
+// audit trail AND the race-safety backstop (the unique index below), not
+// just a log. `milestoneNumber` is how many multiples of the rule's
+// threshold this award represents (1 = first time crossing it, 2 = second,
+// ...), so "the next milestone due" is always
+// max(milestoneNumber for this rule+user) + 1 — that's what makes a rule
+// "repeat": reaching order #10 under a "every 5 orders" rule pays out
+// milestone 2, not a second copy of milestone 1. A single order that jumps
+// several milestones at once (e.g. one huge order crossing a $-spent
+// threshold twice over) only ever awards the single newest milestone
+// reached, not one coupon per skipped milestone — deliberate, to avoid
+// coupon-spamming a customer over one order.
+model LoyaltyAward {
+  id              String   @id @default(uuid()) @db.Uuid
+  ruleID          String   @db.Uuid
+  userID          String   @db.Uuid
+  milestoneNumber Int
+  // Null if the coupon this award created has since been deleted from the
+  // Coupons admin panel — the award itself still stands (the customer did
+  // reach the milestone), only the reward's own row is gone.
+  couponID        String?  @db.Uuid
+  awardedAt       DateTime @default(now())
+
+  rule   LoyaltyRule @relation(fields: [ruleID], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userID], references: [id], onDelete: Cascade)
+  coupon Coupon?     @relation(fields: [couponID], references: [id], onDelete: SetNull)
+
+  // One award per (rule, customer, milestone) — the DB-level guard against
+  // double-awarding under concurrent DELIVERED transitions, same idiom as
+  // the coupon-code collision retry: attempt the insert, treat a unique
+  // violation as "someone else just did this" rather than locking upfront.
+  @@unique([ruleID, userID, milestoneNumber])
+  @@index([userID])
+  @@map("loyaltyaward")
 }
 
 model ProductImage {

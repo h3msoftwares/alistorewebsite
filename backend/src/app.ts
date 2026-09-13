@@ -28,6 +28,7 @@ import uploadRoutes from './modules/uploads/upload.routes';
 import settingsRoutes from './modules/settings/settings.routes';
 import { backupRoutes } from './modules/backup/backup.routes';
 import { promotionRoutes } from './modules/discounts/promotion.routes';
+import { loyaltyRoutes } from './modules/loyalty/loyalty.routes';
 
 export function buildApp(
   opts: {
@@ -259,6 +260,7 @@ export function buildApp(
     '/api',
     promotionRoutes({ validateCouponRateLimit: opts.validateCouponRateLimit ?? env.NODE_ENV !== 'test' })
   );
+  app.use('/api', loyaltyRoutes());
 
   // 404 fallback
   app.use((req, res) => {
