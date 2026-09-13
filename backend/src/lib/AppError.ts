@@ -5,6 +5,7 @@ export type AppErrorCode =
   | 'FORBIDDEN'
   | 'STEP_UP_REQUIRED'
   | 'CONFLICT'
+  | 'STALE_WRITE'
   | 'OUT_OF_STOCK'
   | 'RATE_LIMITED'
   | 'INTERNAL';
@@ -20,6 +21,12 @@ const STATUS_BY_CODE: Record<AppErrorCode, number> = {
   // surface a re-auth prompt instead.
   STEP_UP_REQUIRED: 403,
   CONFLICT: 409,
+  // A genuine optimistic-concurrency loss (the row's `lastEdit`/version no
+  // longer matches what the client last loaded) — distinct from CONFLICT so
+  // callers can tell "someone else changed this, refresh" apart from every
+  // other 409 (e.g. "that category is archived"), which needs its own
+  // message shown instead, not the stale-edit refresh flow.
+  STALE_WRITE: 409,
   OUT_OF_STOCK: 409,
   RATE_LIMITED: 429,
   INTERNAL: 500,

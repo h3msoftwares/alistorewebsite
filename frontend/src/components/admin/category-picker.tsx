@@ -50,8 +50,15 @@ export function CategoryPicker({
   const paths = useMemo(() => buildCategoryPaths(categories, isAr), [categories, isAr]);
 
   const selected = categories.find((c) => c.id === value);
+  // Non-blocking — the row itself may still be perfectly valid, just
+  // currently unreachable on the storefront (same principle as the
+  // per-row " (archived)" flag below). A product already placed here keeps
+  // that placement on save; this just tells the admin why they're seeing a
+  // category that looks otherwise unremarkable in this picker.
+  const selectedArchived = Boolean(selected?.isEffectivelyArchived);
   const selectedLabel = selected
-    ? [paths.get(selected.id), isAr ? selected.nameAr : selected.nameEn].filter(Boolean).join(isAr ? ' « ' : ' › ')
+    ? [paths.get(selected.id), isAr ? selected.nameAr : selected.nameEn].filter(Boolean).join(isAr ? ' « ' : ' › ') +
+      (selectedArchived ? t(' (archived)', ' (مؤرشفة)') : '')
     : value === '' && emptyOption
       ? emptyOption
       : '';

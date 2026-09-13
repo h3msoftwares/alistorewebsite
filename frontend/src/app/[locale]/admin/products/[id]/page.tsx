@@ -93,7 +93,14 @@ export default function EditProductPage() {
         },
       });
     } catch (e) {
-      if (isApiError(e) && e.code === 'CONFLICT') {
+      // STALE_WRITE is a genuine optimistic-concurrency loss — `lastEdit`
+      // moved under us, so whatever we're about to show is already stale.
+      // It's a distinct code from the backend's generic CONFLICT (e.g. "that
+      // category is archived") specifically so this refresh flow only fires
+      // for a real race, not for every 409 (fix-list.md's category/version
+      // conflation bug) — anything else falls through to the plain
+      // `e.message` branch below, which shows the backend's actual reason.
+      if (isApiError(e) && e.code === 'STALE_WRITE') {
         // The form's `values` are wired to `product` (below), so refetching
         // pulls in whatever the other admin just saved — this edit is lost,
         // same as it would be for two people editing the same document

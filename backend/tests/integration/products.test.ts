@@ -527,7 +527,11 @@ describe('Products API', () => {
         .set(bearer(adminToken))
         .send({ price: 60, expectedLastEdit: staleLastEdit });
       expect(tabB.status).toBe(409);
-      expect(tabB.body.error.code).toBe('CONFLICT');
+      // Distinct from the plain CONFLICT a rejected category/collection
+      // assignment uses (see the archived-category tests below) — the
+      // frontend needs to tell a genuine stale-edit race apart from every
+      // other 409 without string-matching the message.
+      expect(tabB.body.error.code).toBe('STALE_WRITE');
 
       const final = await prisma.product.findUniqueOrThrow({ where: { id: p.id } });
       expect(Number(final.price)).toBe(50); // tab A's write stands, not silently overwritten
@@ -550,6 +554,49 @@ describe('Products API', () => {
         .send({ price: 70, expectedLastEdit: refetched.body.product.lastEdit });
       expect(res.status).toBe(200);
       expect(Number(res.body.product.price)).toBe(70);
+    });
+
+    it('resubmitting an existing (now-archived) placement unchanged still succeeds', async () => {
+      // A product placed under a category that gets archived AFTER the
+      // product was created/placed there — the admin form always resends
+      // the product's current, full category set on every save, so this
+      // used to permanently block editing ANY field of the product.
+      const archivedAdjacent = await makeCategory({ slug: 'sport-sandals-men-branch' });
+      const p = await makeProduct(archivedAdjacent.id, {
+        additionalCategoryIds: [categoryId],
+        over: { nameEn: 'Sport Sandals' },
+      });
+      await request(app).delete(`/api/categories/${archivedAdjacent.id}`).set(bearer(adminToken));
+
+      // Editing an unrelated field, resubmitting the SAME primary/additional
+      // category ids the product already had (unchanged) — must succeed.
+      const res = await request(app)
+        .patch(`/api/products/${p.id}`)
+        .set(bearer(adminToken))
+        .send({
+          price: 99,
+          primaryCategoryId: archivedAdjacent.id,
+          additionalCategoryIds: [categoryId],
+        });
+      expect(res.status).toBe(200);
+      expect(Number(res.body.product.price)).toBe(99);
+      expect(res.body.product.primaryCategoryID).toBe(archivedAdjacent.id);
+    });
+
+    it('409s newly assigning the product to a DIFFERENT, already-archived category', async () => {
+      const otherArchived = await makeCategory({ slug: 'other-archived' });
+      await request(app).delete(`/api/categories/${otherArchived.id}`).set(bearer(adminToken));
+
+      const p = await makeProduct(categoryId);
+      const res = await request(app)
+        .patch(`/api/products/${p.id}`)
+        .set(bearer(adminToken))
+        .send({ additionalCategoryIds: [otherArchived.id] });
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('CONFLICT');
+
+      const row = await prisma.product.findUnique({ where: { id: p.id }, include: { categoryLinks: true } });
+      expect(row?.categoryLinks).toHaveLength(0); // rejected — never linked
     });
 
     it('soft-deletes a product', async () => {

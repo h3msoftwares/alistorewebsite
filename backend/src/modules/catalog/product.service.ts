@@ -515,7 +515,13 @@ export async function createProduct(input: CreateProductInput) {
 export async function updateProduct(id: string, input: UpdateProductInput) {
   const existing = await prisma.product.findUnique({
     where: { id },
-    select: { saleType: true, saleValue: true, lastEdit: true, primaryCategoryID: true },
+    select: {
+      saleType: true,
+      saleValue: true,
+      lastEdit: true,
+      primaryCategoryID: true,
+      categoryLinks: { select: { categoryID: true } },
+    },
   });
   if (!existing) throw new AppError('NOT_FOUND', 'Product not found');
 
@@ -536,10 +542,25 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
     (categoryId) => categoryId !== nextPrimaryCategoryId
   );
   if (input.primaryCategoryId !== undefined || additionalCategoryIds !== undefined) {
-    await assertCategoriesAssignable([
+    // Only a placement that's NEW in this save has to pass the "not
+    // archived" gate. Resubmitting a placement the product already had
+    // (the whole primary category, or one of the additional ones) must
+    // succeed even if that category has since been archived — otherwise a
+    // product can never be edited again, for any field, purely because one
+    // of its (unchanged) categories was archived after the fact. That's a
+    // real bug this exact form used to hit: the form always resends the
+    // full current category set on every save, not just the ones the admin
+    // actually touched.
+    const existingCategoryIds = new Set([
+      existing.primaryCategoryID,
+      ...existing.categoryLinks.map((l) => l.categoryID),
+    ]);
+    const candidateIds = [
       ...(input.primaryCategoryId !== undefined ? [input.primaryCategoryId] : []),
       ...(additionalCategoryIds ?? []),
-    ]);
+    ];
+    const newCategoryIds = candidateIds.filter((categoryId) => !existingCategoryIds.has(categoryId));
+    await assertCategoriesAssignable(newCategoryIds);
   }
   if (input.collectionIds !== undefined) {
     await assertCollectionsAssignable(input.collectionIds);
@@ -576,7 +597,7 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
         });
         if (claim.count === 0) {
           throw new AppError(
-            'CONFLICT',
+            'STALE_WRITE',
             'This product was changed by someone else since you loaded it. Refresh and try again.'
           );
         }
