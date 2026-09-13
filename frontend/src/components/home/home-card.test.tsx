@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HomeProductCard } from './home-card';
 import type { Product } from '@/lib/types';
@@ -44,5 +44,16 @@ describe('HomeProductCard image selection (fix-list.md #7 broader scope)', () =>
     await user.click(screen.getByRole('button', { name: 'Colour: Red' }));
 
     expect(screen.getByRole('img', { name: 'Red colourway' })).toBeInTheDocument();
+  });
+
+  it('advances to the next photo on hover before any swatch is picked (regression: a lone generic photo used to leave nothing to cycle through)', () => {
+    render(<HomeProductCard product={product} locale="en" />);
+    const media = screen.getByRole('img', { name: 'Front (generic)' }).closest('a')!;
+
+    fireEvent.mouseEnter(media);
+    expect(screen.getByRole('img', { name: 'Red colourway' })).toBeInTheDocument();
+
+    fireEvent.mouseLeave(media);
+    expect(screen.getByRole('img', { name: 'Front (generic)' })).toBeInTheDocument();
   });
 });
