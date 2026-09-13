@@ -218,14 +218,19 @@ export function ProductDetail({
       ? product.primaryCategory.nameAr
       : product.primaryCategory.nameEn
     : undefined;
-  // Home / (category chain, root first) — same "last crumb has no href"
-  // convention CategoryProducts already uses.
+  // Home / (category chain, root first, every one clickable) / product name
+  // (the current, unclickable crumb) — unlike CategoryProducts, the PDP has
+  // its own separate <h1> (pdp__title below) for the product name, so the
+  // leaf category here is never the last crumb the way it is on a listing
+  // page, and Breadcrumb renders this last crumb as plain text rather than
+  // a second <h1> (see currentAsHeading below).
   const crumbs: Crumb[] = [
     { label: t('Home', 'الرئيسية'), href: `/${locale}` },
-    ...categoryChain.map((c, i) => {
-      const label = isAr ? c.nameAr : c.nameEn;
-      return i === categoryChain.length - 1 ? { label } : { label, href: `/${locale}/category/${c.slug}` };
-    }),
+    ...categoryChain.map((c) => ({
+      label: isAr ? c.nameAr : c.nameEn,
+      href: `/${locale}/category/${c.slug}`,
+    })),
+    { label: name },
   ];
 
   // Threshold for the low-stock nudge — picked arbitrarily at 5 (your own
@@ -263,7 +268,7 @@ export function ProductDetail({
   return (
     <div className="container section">
       <div style={{ marginBlockEnd: 'var(--space-5)' }}>
-        <Breadcrumb ariaLabel={t('Breadcrumb', 'مسار التنقل')} items={crumbs} />
+        <Breadcrumb ariaLabel={t('Breadcrumb', 'مسار التنقل')} items={crumbs} currentAsHeading={false} />
       </div>
 
       <div className="pdp">

@@ -7,10 +7,21 @@ export interface Crumb {
 }
 
 /** Route breadcrumb — Home / Collection / Category — that also carries the
- *  page's <h1> (the last, current crumb). Sits beside the filter panel in
- *  the products toolbar, so it stays compact/inline rather than looking
- *  like a standalone heading. */
-export function Breadcrumb({ items, ariaLabel }: { items: Crumb[]; ariaLabel: string }) {
+ *  page's <h1> (the last, current crumb) by default. Sits beside the filter
+ *  panel in the products toolbar, so it stays compact/inline rather than
+ *  looking like a standalone heading. */
+export function Breadcrumb({
+  items,
+  ariaLabel,
+  currentAsHeading = true,
+}: {
+  items: Crumb[];
+  ariaLabel: string;
+  /** Set false when the page already has its own <h1> elsewhere (e.g. the
+   *  product detail page's large title) — the current crumb then renders as
+   *  plain text instead of a second, competing <h1>. */
+  currentAsHeading?: boolean;
+}) {
   return (
     <nav className="breadcrumb" aria-label={ariaLabel}>
       <ol className="breadcrumb__list">
@@ -19,7 +30,11 @@ export function Breadcrumb({ items, ariaLabel }: { items: Crumb[]; ariaLabel: st
           return (
             <li key={i} className="breadcrumb__item">
               {isLast ? (
-                <h1 className="breadcrumb__current">{item.label}</h1>
+                currentAsHeading ? (
+                  <h1 className="breadcrumb__current">{item.label}</h1>
+                ) : (
+                  <span className="breadcrumb__current">{item.label}</span>
+                )
               ) : (
                 <Link href={item.href!} className="breadcrumb__link">
                   {item.label}

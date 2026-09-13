@@ -101,7 +101,7 @@ describe('ProductDetail', () => {
     expect(screen.queryByText('Classic Shirt')).not.toBeInTheDocument();
     expect(document.querySelector('.pdp[aria-busy="true"]')).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
     expect(mockCatalog.getProduct).toHaveBeenCalledWith('p1');
   });
 
@@ -129,7 +129,7 @@ describe('ProductDetail', () => {
     const user = userEvent.setup();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     const addToCartBtn = screen.getByRole('button', { name: 'Add to cart' });
     expect(addToCartBtn).toBeDisabled(); // nothing selected yet
@@ -154,7 +154,7 @@ describe('ProductDetail', () => {
     const user = userEvent.setup();
     render(<ProductDetail id="p1" locale="en" initialSize="M" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     // No click needed — Add to cart is already enabled and the deep-linked
     // size chip already shows selected, exactly as if the shopper had just
@@ -172,7 +172,7 @@ describe('ProductDetail', () => {
     const { Wrapper } = createWrapper();
     render(<ProductDetail id="p1" locale="en" initialSize="XXL" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     expect(screen.getByRole('button', { name: 'Add to cart' })).toBeDisabled();
     expect(screen.getByText('Select every option to add this to your cart.')).toBeInTheDocument();
@@ -184,7 +184,7 @@ describe('ProductDetail', () => {
     const user = userEvent.setup();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     const favBtn = screen.getByRole('button', { name: 'Add to favourites' });
     expect(favBtn).toHaveAttribute('aria-pressed', 'false');
@@ -197,19 +197,22 @@ describe('ProductDetail', () => {
     expect(mockFavourites.addFavourite).not.toHaveBeenCalled();
   });
 
-  it('shows a Home / Men / Shirts breadcrumb from the primary category ancestor chain', async () => {
+  it('shows a Home / Men / Shirts / Classic Shirt breadcrumb from the primary category ancestor chain', async () => {
     mockCatalog.getProduct.mockResolvedValue(baseProduct);
     const { Wrapper } = createWrapper();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(nav).toHaveTextContent('Home');
     expect(within(nav).getByRole('link', { name: 'Men' })).toHaveAttribute('href', '/en/category/men');
-    // The primary category is the trailing "current" crumb — not a link.
-    expect(within(nav).getByText('Shirts')).toBeInTheDocument();
-    expect(within(nav).queryByRole('link', { name: 'Shirts' })).not.toBeInTheDocument();
+    // The leaf category is now a link too — it's no longer the trailing crumb.
+    expect(within(nav).getByRole('link', { name: 'Shirts' })).toHaveAttribute('href', '/en/category/shirts');
+    // The product's own name is the trailing "current" crumb — not a link,
+    // and not a second <h1> (the page's real <h1> is the pdp__title below).
+    expect(within(nav).getByText('Classic Shirt')).toBeInTheDocument();
+    expect(within(nav).queryByRole('link', { name: 'Classic Shirt' })).not.toBeInTheDocument();
   });
 
   it('links the root-category eyebrow to its page', async () => {
@@ -217,7 +220,7 @@ describe('ProductDetail', () => {
     const { Wrapper } = createWrapper();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     // Two "Men" links now exist (breadcrumb + eyebrow) — scope to the eyebrow.
     const eyebrow = document.querySelector('.eyebrow');
@@ -232,7 +235,7 @@ describe('ProductDetail', () => {
     const user = userEvent.setup();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     expect(screen.queryByText('Only 5 left')).not.toBeInTheDocument();
 
@@ -253,7 +256,7 @@ describe('ProductDetail', () => {
     const user = userEvent.setup();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'M' }));
     expect(screen.queryByText(/left$/)).not.toBeInTheDocument();
@@ -281,7 +284,7 @@ describe('ProductDetail', () => {
     const { Wrapper } = createWrapper();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     expect(screen.getByText('$29.00')).toBeInTheDocument(); // sale price
     expect(screen.getByText('$39.00')).toBeInTheDocument(); // struck-through original
@@ -311,7 +314,7 @@ describe('ProductDetail', () => {
     const user = userEvent.setup();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     // No variant resolved yet — the product's own price.
     expect(screen.getByText('$39.00')).toBeInTheDocument();
@@ -351,7 +354,7 @@ describe('ProductDetail', () => {
     const user = userEvent.setup();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     // No variant resolved yet — the product-level sale (100 -> 80).
     expect(screen.getByText('$80.00')).toBeInTheDocument();
@@ -408,7 +411,7 @@ describe('ProductDetail', () => {
     const user = userEvent.setup();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     // No colour chosen yet — the generic (untagged) shot leads the gallery.
     expect(screen.getByRole('img', { name: 'Front (generic)' })).toBeInTheDocument();
@@ -458,7 +461,7 @@ describe('ProductDetail', () => {
     const { Wrapper } = createWrapper();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     expect(screen.getByRole('img', { name: 'Front (generic)' })).toBeInTheDocument();
     expect(screen.queryByRole('img', { name: 'Navy colourway' })).not.toBeInTheDocument();
@@ -482,7 +485,7 @@ describe('ProductDetail', () => {
     const user = userEvent.setup();
     render(<ProductDetail id="p1" locale="en" />, { wrapper: Wrapper });
 
-    await waitFor(() => expect(screen.getByText('Classic Shirt')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Classic Shirt' })).toBeInTheDocument());
 
     await user.click(screen.getByRole('button', { name: 'Colour: Red' }));
     await user.click(screen.getByRole('button', { name: 'S' }));
