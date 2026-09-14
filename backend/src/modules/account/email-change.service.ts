@@ -16,11 +16,13 @@ function hashToken(token: string): string {
 }
 
 /**
- * Step 1 of Task 3: an authenticated user asks to change their account
- * email. Requires the CURRENT password (same re-auth bar as changePassword
- * — a valid session alone is not enough), and never applies the change
- * immediately: a confirmation link is sent to the NEW address, and only
- * clicking it (confirmEmailChange below) actually updates `User.email`.
+ * Step 1 of Task 3: an ADMIN asks to change their own account email
+ * (role-gated in email-change.routes.ts — not a general customer/STAFF
+ * feature). Requires the CURRENT password (same re-auth bar as
+ * changePassword — a valid session alone is not enough), and never applies
+ * the change immediately: a confirmation link is sent to the NEW address,
+ * and only clicking it (confirmEmailChange below) actually updates
+ * `User.email`.
  *
  * Enumeration-resistant the same way register() is: if `newEmail` already
  * belongs to a DIFFERENT account, this silently does nothing beyond the

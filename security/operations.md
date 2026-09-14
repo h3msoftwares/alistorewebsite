@@ -267,8 +267,9 @@ set, it takes priority over the env vars (same pattern as `DriveCredential`
     reset tokens and OTP codes, not just "spoofed mail from the store".
 
 **Account email change** (`EmailChangeRequest`, `modules/account/email-change.*`):
-any authenticated user (customer, STAFF, or ADMIN — not role-gated) can
-change the email on their own account from `/account`. The current password
+ADMIN-only (`requireRole('ADMIN')` on `POST /request`) — an admin can change
+the email on their own account from `/account`; the "Email" section there
+renders nothing for a customer or STAFF account. The current password
 is re-verified server-side (same bar as change-password); the new address
 only takes effect once a confirmation link sent *to that address* is
 clicked — proof of control, same shape as email-verification tokens. On

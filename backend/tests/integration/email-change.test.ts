@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
-import { createUser, createAdmin, bearer } from '../helpers/auth';
+import { createUser, bearer } from '../helpers/auth';
 
 // SMTP is the one real I/O boundary — mock it so the suite stays offline and
 // deterministic. Everything else runs for real.
@@ -26,8 +26,10 @@ const CONFIRM_URL = '/api/account/email-change/confirm';
 
 const OLD_PASSWORD = 'CurrentPassw0rd!';
 
+// This flow is ADMIN-only (see email-change.routes.ts's requireRole('ADMIN')) —
+// not a general customer/STAFF feature.
 async function makeUser(email = 'owner@old.test') {
-  return createUser({ role: 'CUSTOMER', email, password: OLD_PASSWORD, emailVerified: true });
+  return createUser({ role: 'ADMIN', email, password: OLD_PASSWORD, emailVerified: true });
 }
 
 /** The raw token is only ever observable in the URL handed to the mailer. */
@@ -52,17 +54,21 @@ describe('POST /api/account/email-change/request', () => {
     expect(res.status).toBe(401);
   });
 
-  it('works for any authenticated role, not just ADMIN', async () => {
-    const { token } = await createAdmin();
-    const res = await request(app)
+  it('is ADMIN-only: 403 for a customer, 403 for STAFF', async () => {
+    const customer = await createUser({ role: 'CUSTOMER', password: OLD_PASSWORD, emailVerified: true });
+    const staff = await createUser({ role: 'STAFF', password: OLD_PASSWORD, emailVerified: true });
+
+    const asCustomer = await request(app)
       .post(REQUEST_URL)
-      .set(bearer(token))
-      .send({ newEmail: `admin-new-${Date.now()}@test.dev`, currentPassword: 'unused' });
-    // ADMIN accounts from createAdmin() have no password set — this asserts
-    // the route itself is reachable (401 auth passes); the actual re-auth
-    // check (400, wrong password) is covered by the password-holding-user
-    // tests below.
-    expect(res.status).not.toBe(403);
+      .set(bearer(customer.token))
+      .send({ newEmail: 'new@test.dev', currentPassword: OLD_PASSWORD });
+    expect(asCustomer.status).toBe(403);
+
+    const asStaff = await request(app)
+      .post(REQUEST_URL)
+      .set(bearer(staff.token))
+      .send({ newEmail: 'new@test.dev', currentPassword: OLD_PASSWORD });
+    expect(asStaff.status).toBe(403);
   });
 
   it('rejects a wrong current password with 400 and creates no request row', async () => {
@@ -143,9 +149,11 @@ describe('POST /api/account/email-change/confirm', () => {
   it('valid token: changes the email, stamps emailVerified, revokes other sessions, notifies the old address', async () => {
     const { user } = await makeUser('owner@old.test');
 
-    // a real login so there's a refresh token / session to revoke
+    // a real login so there's a refresh token / session to revoke — ADMIN
+    // accounts only sign in through the admin door, not /api/auth/login
+    // (which explicitly refuses privileged accounts).
     const login = await request(app)
-      .post('/api/auth/login')
+      .post('/api/auth/ali-admin-login')
       .send({ identifier: 'owner@old.test', password: OLD_PASSWORD });
     expect(login.status).toBe(200);
     const accessToken = login.body.accessToken as string;
@@ -171,12 +179,18 @@ describe('POST /api/account/email-change/confirm', () => {
 
     // sign-in now works with the new address, not the old one
     expect(
-      (await request(app).post('/api/auth/login').send({ identifier: 'owner@new.test', password: OLD_PASSWORD }))
-        .status
+      (
+        await request(app)
+          .post('/api/auth/ali-admin-login')
+          .send({ identifier: 'owner@new.test', password: OLD_PASSWORD })
+      ).status
     ).toBe(200);
     expect(
-      (await request(app).post('/api/auth/login').send({ identifier: 'owner@old.test', password: OLD_PASSWORD }))
-        .status
+      (
+        await request(app)
+          .post('/api/auth/ali-admin-login')
+          .send({ identifier: 'owner@old.test', password: OLD_PASSWORD })
+      ).status
     ).toBe(401);
   });
 
