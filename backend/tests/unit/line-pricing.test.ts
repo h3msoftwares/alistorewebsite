@@ -13,8 +13,10 @@ function promo(over: Partial<PromotionCandidate> = {}): PromotionCandidate {
     priority: 0,
     appliesToAll: false,
     productIds: [],
+    directProductIds: [],
     categoryTargets: [],
     collections: [],
+    ruleBasedProductCollections: {},
     ...over,
   };
 }
