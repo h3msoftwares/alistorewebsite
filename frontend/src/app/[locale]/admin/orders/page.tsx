@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { Printer, Settings2 } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -10,6 +11,7 @@ import {
   DataTable,
   EmptyState,
   Field,
+  Icon,
   Input,
   Modal,
   ProductGridSkeleton,
@@ -17,8 +19,13 @@ import {
   StatusPill,
 } from '@/components/ui';
 import { AdminPager } from '@/components/admin/admin-pager';
+import { OrderReceipt } from '@/components/orders/order-receipt';
 import { useAdminOrders, useMarkOrderCollected, useReviewOrder, useUpdateOrderStatus } from '@/hooks/use-orders';
+import { usePrintPreferences } from '@/hooks/use-print-preferences';
+import { useSettings } from '@/hooks/use-settings';
 import { DELIVERY_REGIONS } from '@/lib/regions';
+import type { ReceiptFormat } from '@/lib/print-preferences';
+import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 import { usePermissions } from '@/lib/rbac';
 import type { Order, OrderStatus } from '@/lib/types';
 
@@ -48,6 +55,10 @@ export default function AdminOrdersPage() {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const canManageBlacklist = usePermissions().has('orders:manage');
+  const { data: settings } = useSettings();
+  const brandName = settings ? (isAr ? settings.brandNameAr : settings.brandNameEn) : isAr ? DEFAULT_BRAND_NAME_AR : DEFAULT_BRAND_NAME_EN;
+  const { receiptFormat, printerName, setReceiptFormat, setPrinterName } = usePrintPreferences();
+  const [printSettingsOpen, setPrintSettingsOpen] = useState(false);
 
   const money = (n: number) =>
     new Intl.NumberFormat(isAr ? 'ar-EG' : 'en-US', {
@@ -70,6 +81,23 @@ export default function AdminOrdersPage() {
   const [pending, setPending] = useState<PendingAction | null>(null);
   const [daysInput, setDaysInput] = useState('');
   const [daysError, setDaysError] = useState<string | null>(null);
+  const [printOrder, setPrintOrder] = useState<Order | null>(null);
+
+  // Fires window.print() once <OrderReceipt> below has mounted with the
+  // picked order — printing synchronously inside the click handler would
+  // race that render, so this waits a frame instead. `afterprint` clears
+  // the selection whether the admin actually printed or cancelled the
+  // dialog.
+  useEffect(() => {
+    if (!printOrder) return;
+    const raf = requestAnimationFrame(() => window.print());
+    return () => cancelAnimationFrame(raf);
+  }, [printOrder]);
+  useEffect(() => {
+    const onAfterPrint = () => setPrintOrder(null);
+    window.addEventListener('afterprint', onAfterPrint);
+    return () => window.removeEventListener('afterprint', onAfterPrint);
+  }, []);
 
   const { data, isPending, isError, refetch } = useAdminOrders(status || undefined, flaggedOnly || undefined);
   const updateStatus = useUpdateOrderStatus();
@@ -173,6 +201,10 @@ export default function AdminOrdersPage() {
               {t('Blacklist', 'قائمة الحظر')}
             </Link>
           )}
+          <Button variant="outline" onClick={() => setPrintSettingsOpen(true)}>
+            <Icon as={Settings2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+            {t('Print settings', 'إعدادات الطباعة')}
+          </Button>
           <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
             <input
               type="checkbox"
@@ -327,6 +359,21 @@ export default function AdminOrdersPage() {
                             {collected ? t('Mark unpaid', 'إلغاء التحصيل') : t('Mark collected', 'تم التحصيل')}
                           </Button>
                         )}
+                        {o.paymentMethod === 'COD' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setPrintOrder(o)}
+                            title={
+                              printerName
+                                ? t(`Print a delivery receipt — select "${printerName}" in the dialog`, `طباعة إيصال توصيل — اختر "${printerName}" من نافذة الطباعة`)
+                                : t('Print a delivery receipt to give the customer', 'طباعة إيصال توصيل لتسليمه للزبون')
+                            }
+                          >
+                            <Icon as={Printer} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                            {t('Print receipt', 'طباعة الإيصال')}
+                          </Button>
+                        )}
                       </span>
                     </td>
                     <td data-label={t('Status', 'الحالة')}>
@@ -479,6 +526,65 @@ export default function AdminOrdersPage() {
           </form>
         </Modal>
       )}
+
+      {printSettingsOpen && (
+        <Modal
+          open
+          onClose={() => setPrintSettingsOpen(false)}
+          title={t('Print settings', 'إعدادات الطباعة')}
+          closeLabel={t('Close', 'إغلاق')}
+        >
+          <div className="admin-modal">
+            <p className="admin-form__hint" style={{ margin: 0 }}>
+              {t(
+                "Saved on this device only — different tills/computers can have different receipt printers.",
+                'تُحفظ على هذا الجهاز فقط — قد تختلف طابعة الإيصالات من جهاز/كاشير لآخر.'
+              )}
+            </p>
+            <Field
+              label={t('Receipt format', 'شكل الإيصال')}
+              hint={t(
+                'Compact prints a narrow, supermarket till-style receipt instead of a full page.',
+                'الشكل المضغوط يطبع إيصالاً ضيقًا على طراز أجهزة الكاشير بدلاً من صفحة كاملة.'
+              )}
+            >
+              {(p) => (
+                <Select
+                  {...p}
+                  value={receiptFormat}
+                  onChange={(e) => setReceiptFormat(e.target.value as ReceiptFormat)}
+                >
+                  <option value="standard">{t('Standard (full page)', 'عادي (صفحة كاملة)')}</option>
+                  <option value="compact">{t('Compact (thermal receipt)', 'مضغوط (إيصال حراري)')}</option>
+                </Select>
+              )}
+            </Field>
+            <Field
+              label={t('Preferred printer', 'الطابعة المفضّلة')}
+              hint={t(
+                "A reminder shown next to \"Print receipt\" — a website can't select a printer for you, so your browser's print dialog still lists every connected printer to pick from manually.",
+                'تذكير يظهر بجانب "طباعة الإيصال" — لا يمكن لموقع اختيار الطابعة تلقائيًا، لذا ستظل نافذة الطباعة تعرض كل الطابعات المتصلة لاختيار إحداها يدويًا.'
+              )}
+            >
+              {(p) => (
+                <Input
+                  {...p}
+                  value={printerName}
+                  onChange={(e) => setPrinterName(e.target.value)}
+                  placeholder={t('e.g. Epson TM-T20 (till 1)', 'مثال: طابعة الكاشير 1')}
+                />
+              )}
+            </Field>
+            <div className="admin-modal__actions">
+              <Button variant="primary" onClick={() => setPrintSettingsOpen(false)}>
+                {t('Done', 'تم')}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {printOrder && <OrderReceipt order={printOrder} locale={locale} brandName={brandName} format={receiptFormat} />}
     </div>
   );
 }
