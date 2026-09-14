@@ -69,6 +69,10 @@ export async function setCollectionRulesHandler(req: Request, res: Response) {
   res.json({ collection });
 }
 
+export async function previewCollectionRulesHandler(req: Request, res: Response) {
+  res.json(await collectionService.previewCollectionRules(req.body.rules));
+}
+
 // ---- Images ----
 
 export async function addCollectionImageHandler(req: Request, res: Response) {

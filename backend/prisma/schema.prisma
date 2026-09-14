@@ -1195,6 +1195,27 @@ model SiteSetting {
   @@map("sitesetting")
 }
 
+// Admin-editable override for one transactional email (order confirmation,
+// password reset, ...). `key` matches one of lib/email-templates.ts's fixed
+// EMAIL_TEMPLATE_DEFS entries, which also owns that key's default subject/
+// body, its {{placeholder}} allowlist, and its admin-facing label/trigger
+// description — none of that lives in the database. A key with no row here
+// simply sends its coded default; editing writes a row, and "reset to
+// default" just deletes it. Edit history lives in AuditLog (entityType
+// "emailTemplate", entityID = key) rather than a bespoke updatedBy column.
+model EmailTemplate {
+  key        String   @id
+  // Every outgoing email is bilingual (see mailer.ts's bilingualSubject/
+  // bilingualHtml) — an override must supply both languages, not just one.
+  subjectEn  String
+  subjectAr  String
+  htmlBodyEn String
+  htmlBodyAr String
+  updatedAt  DateTime @updatedAt
+
+  @@map("emailtemplate")
+}
+
 // Admin/staff-uploaded screenshots of customer reviews, shown as a
 // horizontally-scrolling strip on the home page under "Visit us". Replace-all
 // on save (like StoreLocation); an empty set hides the strip.

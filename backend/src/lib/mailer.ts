@@ -2,8 +2,10 @@ import nodemailer from 'nodemailer';
 import type { Coupon, Order, OrderItem } from '@prisma/client';
 import { env } from '../config/env';
 import { prisma } from '../config/prisma';
-import { DELIVERY_REGIONS } from './regions';
+import { recordAudit } from './audit';
+import { renderEmailTemplate } from './email-templates';
 import { getEffectiveSmtpConfig } from '../modules/settings/smtp-credential.service';
+import { DELIVERY_REGIONS } from './regions';
 
 type OrderWithItems = Order & { items: OrderItem[] };
 
@@ -33,11 +35,16 @@ function itemLabel(item: OrderItem): string {
   return `${item.productName}${variant ? ` (${variant})` : ''} x${item.quantity}`;
 }
 
-// HTML-escape for the `html` email bodies. The `text` bodies never use this.
-// Every interpolation of a customer-controlled value (name, address, phone,
-// notes, product name, email, SKU) into an `html` template MUST go through
-// this — output encoding, not the input sanitiser, is the real XSS control
-// for the mail path.
+// HTML-escape for every value handed to renderEmailTemplate()'s `vars` (and
+// still used directly by the callers that build their own small HTML
+// fragments, like an items table, before passing them through as one
+// pre-built "safe" variable). The `text` bodies never use this — plain text
+// has no markup to escape out of. Every interpolation of a
+// customer-controlled value (name, address, phone, notes, product name,
+// email, SKU) into HTML MUST go through this — output encoding, not the
+// input sanitiser, is the real XSS control for the mail path. An admin's own
+// template markup is trusted and never passed through here — only the
+// values dropped into it are.
 const HTML_ESCAPES: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -49,18 +56,33 @@ export function esc(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
+// A send failure is caught and logged, never thrown (see the per-function
+// doc comments below) — which previously meant it was only ever visible in
+// server console output, invisible to an admin. This makes it visible too,
+// without changing that never-throws contract.
+function logSendFailure(template: string, to: string, err: unknown): void {
+  console.error(`[mailer] failed to send ${template} email`, err);
+  void recordAudit({
+    entityType: 'email',
+    entityID: to,
+    action: 'email.send_failed',
+    metadata: { template, error: err instanceof Error ? err.message : String(err) },
+  });
+}
+
 /**
  * Every outgoing email is bilingual: the English copy first, then the Arabic
  * translation of the same content underneath, in the SAME message (not two
- * separate emails) — see the admin's Task 1 request. The Arabic block is
- * wrapped with `dir="rtl"`/`lang="ar"` so mail clients render it correctly
- * regardless of the outer document's direction.
+ * separate emails). The Arabic block is wrapped with `dir="rtl"`/`lang="ar"`
+ * so mail clients render it correctly regardless of the outer document's
+ * direction. Exported so email-templates.service.ts's "send test email" can
+ * compose a bilingual test message the same way every real sender does.
  */
-function bilingualText(en: string, ar: string): string {
+export function bilingualText(en: string, ar: string): string {
   return `${en}\n\n----------------------------------------\n\n${ar}`;
 }
 
-function bilingualHtml(enHtml: string, arHtml: string): string {
+export function bilingualHtml(enHtml: string, arHtml: string): string {
   return `
     <div dir="ltr" lang="en" style="direction: ltr; text-align: left;">
       ${enHtml}
@@ -72,20 +94,22 @@ function bilingualHtml(enHtml: string, arHtml: string): string {
   `.trim();
 }
 
-function bilingualSubject(en: string, ar: string): string {
+export function bilingualSubject(en: string, ar: string): string {
   return `${en} | ${ar}`;
 }
 
 /**
  * Builds the nodemailer transporter for outgoing mail. Reads credentials
  * fresh each call (never cached across calls) so an admin-configured
- * send-as account (Task 2 — `SmtpCredential`, DB-encrypted app password)
- * takes effect immediately, falling back to the `SMTP_*` env vars when
- * nothing has been configured in the admin panel. `configured: false` means
- * every send function below becomes a logged no-op instead of throwing, so
- * mail delivery can never change the calling endpoint's response.
+ * send-as account (`SmtpCredential`, DB-encrypted app password) takes effect
+ * immediately, falling back to the `SMTP_*` env vars when nothing has been
+ * configured in the admin panel. `null` means every send function below
+ * becomes a logged no-op instead of throwing, so mail delivery can never
+ * change the calling endpoint's response. Exported so
+ * email-templates.service.ts's "send test email" shares the exact same
+ * connection logic as a real send, rather than building its own.
  */
-async function getTransporter(): Promise<{ transporter: ReturnType<typeof nodemailer.createTransport>; from: string } | null> {
+export async function getTransporter(): Promise<{ transporter: ReturnType<typeof nodemailer.createTransport>; from: string } | null> {
   const cfg = await getEffectiveSmtpConfig();
   if (!cfg) return null;
   const transporter = nodemailer.createTransport({
@@ -158,31 +182,21 @@ export async function sendPasswordResetEmail(
     `تنتهي صلاحية هذا الرابط خلال ${ttlMinutes} دقيقة. إذا لم تطلب ذلك، يمكنك تجاهل هذا البريد ` +
     `الإلكتروني بأمان — لن يتم تغيير كلمة المرور الخاصة بك.`;
 
-  const htmlEn = `
-    <p>You requested a password reset for your Ali'sStore account.</p>
-    <p><a href="${esc(resetUrl)}">Reset your password</a></p>
-    <p>This link expires in ${ttlMinutes} minutes. If you didn't request this, you can
-    safely ignore this email — your password won't be changed.</p>
-  `.trim();
-  const htmlAr = `
-    <p>لقد طلبت إعادة تعيين كلمة مرور حساب Ali'sStore الخاص بك.</p>
-    <p><a href="${esc(resetUrl)}">إعادة تعيين كلمة المرور</a></p>
-    <p>تنتهي صلاحية هذا الرابط خلال ${ttlMinutes} دقيقة. إذا لم تطلب ذلك، يمكنك تجاهل هذا البريد
-    الإلكتروني بأمان — لن يتم تغيير كلمة المرور الخاصة بك.</p>
-  `.trim();
+  const vars = { resetUrl: esc(resetUrl), ttlMinutes: String(ttlMinutes) };
+  const rendered = await renderEmailTemplate('password.reset', vars, vars);
 
   try {
     const info = await transporter.sendMail({
       from,
       to,
-      subject: bilingualSubject("Reset your Ali'sStore password", 'إعادة تعيين كلمة مرور Ali\'sStore الخاصة بك'),
+      subject: bilingualSubject(rendered.subjectEn, rendered.subjectAr),
       text: bilingualText(textEn, textAr),
-      html: bilingualHtml(htmlEn, htmlAr),
+      html: bilingualHtml(rendered.htmlEn, rendered.htmlAr),
     });
     console.log('[mailer] password-reset email sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send password-reset email', err);
+    logSendFailure('password-reset', to, err);
     return false;
   }
 }
@@ -218,29 +232,22 @@ export async function sendVerificationEmail(
     `تحقق من بريدك الإلكتروني: ${verifyUrl}\n\n` +
     `هذا الرابط صالح لمدة ${validForAr}. إذا لم تقم بإنشاء حساب، يمكنك تجاهل هذا البريد الإلكتروني.`;
 
-  const htmlEn = `
-    <p>Welcome to Ali'sStore! Confirm your email address to finish setting up your account.</p>
-    <p><a href="${esc(verifyUrl)}">Verify your email</a></p>
-    <p>This link is valid for ${validForEn}. If you didn't create an account, you can ignore this email.</p>
-  `.trim();
-  const htmlAr = `
-    <p>مرحبًا بك في Ali'sStore! قم بتأكيد بريدك الإلكتروني لإكمال إعداد حسابك.</p>
-    <p><a href="${esc(verifyUrl)}">تحقق من بريدك الإلكتروني</a></p>
-    <p>هذا الرابط صالح لمدة ${validForAr}. إذا لم تقم بإنشاء حساب، يمكنك تجاهل هذا البريد الإلكتروني.</p>
-  `.trim();
+  const varsEn = { verifyUrl: esc(verifyUrl), validFor: validForEn };
+  const varsAr = { verifyUrl: esc(verifyUrl), validFor: validForAr };
+  const rendered = await renderEmailTemplate('email.verification', varsEn, varsAr);
 
   try {
     const info = await transporter.sendMail({
       from,
       to,
-      subject: bilingualSubject("Verify your Ali'sStore email", 'تحقق من بريدك الإلكتروني الخاص بـ Ali\'s Store'),
+      subject: bilingualSubject(rendered.subjectEn, rendered.subjectAr),
       text: bilingualText(textEn, textAr),
-      html: bilingualHtml(htmlEn, htmlAr),
+      html: bilingualHtml(rendered.htmlEn, rendered.htmlAr),
     });
     console.log('[mailer] verification email sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send verification email', err);
+    logSendFailure('email-verification', to, err);
     return false;
   }
 }
@@ -268,7 +275,7 @@ export async function sendOrderConfirmationEmail(
   const { transporter, from } = conn;
 
   const itemLines = order.items.map((i) => `- ${itemLabel(i)} — ${money(Number(i.lineTotal))}`).join('\n');
-  const deliveryFeeLine = Number(order.deliveryFee) === 0 ? 'Free' : money(Number(order.deliveryFee));
+  const deliveryFeeLineEn = Number(order.deliveryFee) === 0 ? 'Free' : money(Number(order.deliveryFee));
   const deliveryFeeLineAr = Number(order.deliveryFee) === 0 ? 'مجانية' : money(Number(order.deliveryFee));
 
   const textEn =
@@ -278,7 +285,7 @@ export async function sendOrderConfirmationEmail(
     `Payment: Cash on delivery\n\n` +
     `Items:\n${itemLines}\n\n` +
     `Subtotal: ${money(Number(order.subtotal))}\n` +
-    `Delivery: ${deliveryFeeLine}\n` +
+    `Delivery: ${deliveryFeeLineEn}\n` +
     `Total: ${money(Number(order.total))}\n\n` +
     `Delivering to:\n` +
     `${order.deliveryName}\n` +
@@ -305,64 +312,42 @@ export async function sendOrderConfirmationEmail(
     `\n\nسنتصل بك على ${order.deliveryPhone} لتأكيد التوصيل. شكرًا للتسوق مع Ali'sStore!\n\n` +
     `تتبع طلبك أو إلغاؤه في أي وقت قبل شحنه: ${orderUrl}`;
 
-  const itemRows = order.items
+  const itemsTable = order.items
     .map((i) => `<tr><td>${esc(itemLabel(i))}</td><td>${money(Number(i.lineTotal))}</td></tr>`)
     .join('');
 
-  const htmlEn = `
-    <p>Hi ${esc(order.deliveryName)},</p>
-    <p>Thanks for your order! Here's your confirmation.</p>
-    <p><strong>Order ${esc(order.orderNumber)}</strong><br>Payment: Cash on delivery</p>
-    <table>${itemRows}</table>
-    <p>
-      Subtotal: ${money(Number(order.subtotal))}<br>
-      Delivery: ${deliveryFeeLine}<br>
-      <strong>Total: ${money(Number(order.total))}</strong>
-    </p>
-    <p>
-      Delivering to:<br>
-      ${esc(order.deliveryName)}<br>
-      ${esc(deliveryLine(order, 'en'))}<br>
-      Phone: ${esc(order.deliveryPhone)}
-      ${order.deliveryNotes ? `<br>Delivery notes: ${esc(order.deliveryNotes)}` : ''}
-    </p>
-    <p>We'll call ${esc(order.deliveryPhone)} to confirm delivery. Thanks for shopping with Ali'sStore!</p>
-    <p><a href="${esc(orderUrl)}">Track this order or cancel it</a> any time before it ships.</p>
-  `.trim();
-
-  const htmlAr = `
-    <p>مرحبًا ${esc(order.deliveryName)}،</p>
-    <p>شكرًا لطلبك! إليك تأكيد الطلب.</p>
-    <p><strong>الطلب ${esc(order.orderNumber)}</strong><br>الدفع: الدفع عند الاستلام</p>
-    <table>${itemRows}</table>
-    <p>
-      المجموع الفرعي: ${money(Number(order.subtotal))}<br>
-      التوصيل: ${deliveryFeeLineAr}<br>
-      <strong>الإجمالي: ${money(Number(order.total))}</strong>
-    </p>
-    <p>
-      التوصيل إلى:<br>
-      ${esc(order.deliveryName)}<br>
-      ${esc(deliveryLine(order, 'ar'))}<br>
-      الهاتف: ${esc(order.deliveryPhone)}
-      ${order.deliveryNotes ? `<br>ملاحظات التوصيل: ${esc(order.deliveryNotes)}` : ''}
-    </p>
-    <p>سنتصل بك على ${esc(order.deliveryPhone)} لتأكيد التوصيل. شكرًا للتسوق مع Ali'sStore!</p>
-    <p><a href="${esc(orderUrl)}">تتبع طلبك أو إلغاؤه</a> في أي وقت قبل شحنه.</p>
-  `.trim();
+  const varsEn = {
+    customerName: esc(order.deliveryName),
+    orderNumber: esc(order.orderNumber),
+    itemsTable,
+    subtotal: money(Number(order.subtotal)),
+    deliveryFee: deliveryFeeLineEn,
+    total: money(Number(order.total)),
+    deliveryAddress: esc(deliveryLine(order, 'en')),
+    phone: esc(order.deliveryPhone),
+    deliveryNotesLine: order.deliveryNotes ? `<br>Delivery notes: ${esc(order.deliveryNotes)}` : '',
+    orderUrl: esc(orderUrl),
+  };
+  const varsAr = {
+    ...varsEn,
+    deliveryFee: deliveryFeeLineAr,
+    deliveryAddress: esc(deliveryLine(order, 'ar')),
+    deliveryNotesLine: order.deliveryNotes ? `<br>ملاحظات التوصيل: ${esc(order.deliveryNotes)}` : '',
+  };
+  const rendered = await renderEmailTemplate('order.confirmed', varsEn, varsAr);
 
   try {
     const info = await transporter.sendMail({
       from,
       to,
-      subject: bilingualSubject(`Order confirmed — ${order.orderNumber}`, `تم تأكيد الطلب — ${order.orderNumber}`),
+      subject: bilingualSubject(rendered.subjectEn, rendered.subjectAr),
       text: bilingualText(textEn, textAr),
-      html: bilingualHtml(htmlEn, htmlAr),
+      html: bilingualHtml(rendered.htmlEn, rendered.htmlAr),
     });
     console.log('[mailer] order-confirmation email sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send order-confirmation email', err);
+    logSendFailure('order-confirmation', to, err);
     return false;
   }
 }
@@ -407,68 +392,47 @@ export async function sendOwnerOrderAlertEmail(to: string, order: OrderWithItems
     (order.deliveryNotes ? `\nملاحظات التوصيل: ${order.deliveryNotes}` : '') +
     (order.notes ? `\nملاحظات العميل: ${order.notes}` : '');
 
-  const itemRows = order.items
+  const itemsTable = order.items
     .map(
       (i) =>
         `<tr><td>${esc(itemLabel(i))}</td><td>${esc(i.variantSKU)}</td><td>${money(Number(i.lineTotal))}</td></tr>`
     )
     .join('');
 
-  const htmlEn = `
-    <p><strong>New order placed.</strong></p>
-    <p>
-      Order ${esc(order.orderNumber)}<br>
-      Total: ${money(Number(order.total))} (subtotal ${money(Number(order.subtotal))} + delivery ${money(Number(order.deliveryFee))})<br>
-      Payment: Cash on delivery — not yet collected
-    </p>
-    <p>
-      Customer: ${esc(order.deliveryName)} — ${esc(order.deliveryPhone)}
-      ${order.guestEmail ? `<br>Email: ${esc(order.guestEmail)}` : ''}
-    </p>
-    <table>${itemRows}</table>
-    <p>
-      Deliver to:<br>
-      ${esc(deliveryLine(order, 'en'))}
-      ${order.deliveryNotes ? `<br>Delivery notes: ${esc(order.deliveryNotes)}` : ''}
-      ${order.notes ? `<br>Customer notes: ${esc(order.notes)}` : ''}
-    </p>
-  `.trim();
-
-  const htmlAr = `
-    <p><strong>تم تقديم طلب جديد.</strong></p>
-    <p>
-      الطلب ${esc(order.orderNumber)}<br>
-      الإجمالي: ${money(Number(order.total))} (المجموع الفرعي ${money(Number(order.subtotal))} + التوصيل ${money(Number(order.deliveryFee))})<br>
-      الدفع: الدفع عند الاستلام — لم يتم التحصيل بعد
-    </p>
-    <p>
-      العميل: ${esc(order.deliveryName)} — ${esc(order.deliveryPhone)}
-      ${order.guestEmail ? `<br>البريد الإلكتروني: ${esc(order.guestEmail)}` : ''}
-    </p>
-    <table>${itemRows}</table>
-    <p>
-      التوصيل إلى:<br>
-      ${esc(deliveryLine(order, 'ar'))}
-      ${order.deliveryNotes ? `<br>ملاحظات التوصيل: ${esc(order.deliveryNotes)}` : ''}
-      ${order.notes ? `<br>ملاحظات العميل: ${esc(order.notes)}` : ''}
-    </p>
-  `.trim();
+  const varsEn = {
+    orderNumber: esc(order.orderNumber),
+    total: money(Number(order.total)),
+    subtotal: money(Number(order.subtotal)),
+    deliveryFee: money(Number(order.deliveryFee)),
+    customerName: esc(order.deliveryName),
+    phone: esc(order.deliveryPhone),
+    customerEmailLine: order.guestEmail ? `<br>Email: ${esc(order.guestEmail)}` : '',
+    itemsTable,
+    deliveryAddress: esc(deliveryLine(order, 'en')),
+    deliveryNotesLine: order.deliveryNotes ? `<br>Delivery notes: ${esc(order.deliveryNotes)}` : '',
+    customerNotesLine: order.notes ? `<br>Customer notes: ${esc(order.notes)}` : '',
+  };
+  const varsAr = {
+    ...varsEn,
+    customerEmailLine: order.guestEmail ? `<br>البريد الإلكتروني: ${esc(order.guestEmail)}` : '',
+    deliveryAddress: esc(deliveryLine(order, 'ar')),
+    deliveryNotesLine: order.deliveryNotes ? `<br>ملاحظات التوصيل: ${esc(order.deliveryNotes)}` : '',
+    customerNotesLine: order.notes ? `<br>ملاحظات العميل: ${esc(order.notes)}` : '',
+  };
+  const rendered = await renderEmailTemplate('owner.order_alert', varsEn, varsAr);
 
   try {
     const info = await transporter.sendMail({
       from,
       to,
-      subject: bilingualSubject(
-        `New order ${order.orderNumber} — ${money(Number(order.total))} (COD)`,
-        `طلب جديد ${order.orderNumber} — ${money(Number(order.total))} (الدفع عند الاستلام)`
-      ),
+      subject: bilingualSubject(rendered.subjectEn, rendered.subjectAr),
       text: bilingualText(textEn, textAr),
-      html: bilingualHtml(htmlEn, htmlAr),
+      html: bilingualHtml(rendered.htmlEn, rendered.htmlAr),
     });
     console.log('[mailer] owner order alert sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send owner order alert', err);
+    logSendFailure('owner-order-alert', to, err);
     return false;
   }
 }
@@ -496,35 +460,25 @@ export async function sendOrderCancelledEmail(to: string, order: OrderWithItems)
     `نظرًا لأن الدفع كان عند الاستلام.\n\n` +
     `إذا لم يكن هذا أنت، أو كان لديك أي أسئلة، تواصل معنا وسنقوم بحل الأمر.`;
 
-  const htmlEn = `
-    <p>Hi ${esc(order.deliveryName)},</p>
-    <p>
-      Your order <strong>${esc(order.orderNumber)}</strong> has been cancelled, and the total
-      (${money(Number(order.total))}) won't be charged since payment was cash on delivery.
-    </p>
-    <p>If this wasn't you, or you have any questions, get in touch and we'll sort it out.</p>
-  `.trim();
-  const htmlAr = `
-    <p>مرحبًا ${esc(order.deliveryName)}،</p>
-    <p>
-      تم إلغاء طلبك <strong>${esc(order.orderNumber)}</strong>، ولن يتم تحصيل الإجمالي
-      (${money(Number(order.total))}) نظرًا لأن الدفع كان عند الاستلام.
-    </p>
-    <p>إذا لم يكن هذا أنت، أو كان لديك أي أسئلة، تواصل معنا وسنقوم بحل الأمر.</p>
-  `.trim();
+  const vars = {
+    customerName: esc(order.deliveryName),
+    orderNumber: esc(order.orderNumber),
+    total: money(Number(order.total)),
+  };
+  const rendered = await renderEmailTemplate('order.cancelled', vars, vars);
 
   try {
     const info = await transporter.sendMail({
       from,
       to,
-      subject: bilingualSubject(`Order cancelled — ${order.orderNumber}`, `تم إلغاء الطلب — ${order.orderNumber}`),
+      subject: bilingualSubject(rendered.subjectEn, rendered.subjectAr),
       text: bilingualText(textEn, textAr),
-      html: bilingualHtml(htmlEn, htmlAr),
+      html: bilingualHtml(rendered.htmlEn, rendered.htmlAr),
     });
     console.log('[mailer] order-cancelled email sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send order-cancelled email', err);
+    logSendFailure('order-cancelled', to, err);
     return false;
   }
 }
@@ -570,42 +524,33 @@ export async function sendOrderShippedEmail(
     `تتبع طلبك: ${trackUrl}\n\n` +
     `الدفع عند الاستلام — يرجى تجهيز ${money(Number(order.total))}.`;
 
-  const htmlEn = `
-    <p>Hi ${esc(order.deliveryName)},</p>
-    <p>
-      Good news — your order <strong>${esc(order.orderNumber)}</strong> has shipped and is on its way to
-      ${esc(deliveryLine(order, 'en'))}.
-    </p>
-    <p>${etaEn}</p>
-    <p><a href="${esc(trackUrl)}">Track your order</a></p>
-    <p>Payment is cash on delivery — please have ${money(Number(order.total))} ready.</p>
-  `.trim();
-  const htmlAr = `
-    <p>مرحبًا ${esc(order.deliveryName)}،</p>
-    <p>
-      أخبار سارة — تم شحن طلبك <strong>${esc(order.orderNumber)}</strong> وهو في طريقه إلى
-      ${esc(deliveryLine(order, 'ar'))}.
-    </p>
-    <p>${etaAr}</p>
-    <p><a href="${esc(trackUrl)}">تتبع طلبك</a></p>
-    <p>الدفع عند الاستلام — يرجى تجهيز ${money(Number(order.total))}.</p>
-  `.trim();
+  const varsEn = {
+    customerName: esc(order.deliveryName),
+    orderNumber: esc(order.orderNumber),
+    deliveryAddress: esc(deliveryLine(order, 'en')),
+    etaLine: etaEn,
+    trackUrl: esc(trackUrl),
+    total: money(Number(order.total)),
+  };
+  const varsAr = {
+    ...varsEn,
+    deliveryAddress: esc(deliveryLine(order, 'ar')),
+    etaLine: etaAr,
+  };
+  const rendered = await renderEmailTemplate('order.shipped', varsEn, varsAr);
 
   try {
     const info = await transporter.sendMail({
       from,
       to,
-      subject: bilingualSubject(
-        `Your order has shipped — ${order.orderNumber}`,
-        `تم شحن طلبك — ${order.orderNumber}`
-      ),
+      subject: bilingualSubject(rendered.subjectEn, rendered.subjectAr),
       text: bilingualText(textEn, textAr),
-      html: bilingualHtml(htmlEn, htmlAr),
+      html: bilingualHtml(rendered.htmlEn, rendered.htmlAr),
     });
     console.log('[mailer] order-shipped email sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send order-shipped email', err);
+    logSendFailure('order-shipped', to, err);
     return false;
   }
 }
@@ -635,37 +580,31 @@ export async function sendOwnerOrderCancelledAlertEmail(to: string, order: Order
     `العميل: ${order.deliveryName} — ${order.deliveryPhone}` +
     (order.guestEmail ? `\nالبريد الإلكتروني: ${order.guestEmail}` : '');
 
-  const htmlEn = `
-    <p><strong>Order cancelled.</strong></p>
-    <p>
-      Order ${esc(order.orderNumber)}<br>
-      Total: ${money(Number(order.total))}<br>
-      Customer: ${esc(order.deliveryName)} — ${esc(order.deliveryPhone)}
-      ${order.guestEmail ? `<br>Email: ${esc(order.guestEmail)}` : ''}
-    </p>
-  `.trim();
-  const htmlAr = `
-    <p><strong>تم إلغاء الطلب.</strong></p>
-    <p>
-      الطلب ${esc(order.orderNumber)}<br>
-      الإجمالي: ${money(Number(order.total))}<br>
-      العميل: ${esc(order.deliveryName)} — ${esc(order.deliveryPhone)}
-      ${order.guestEmail ? `<br>البريد الإلكتروني: ${esc(order.guestEmail)}` : ''}
-    </p>
-  `.trim();
+  const varsEn = {
+    orderNumber: esc(order.orderNumber),
+    total: money(Number(order.total)),
+    customerName: esc(order.deliveryName),
+    phone: esc(order.deliveryPhone),
+    customerEmailLine: order.guestEmail ? `<br>Email: ${esc(order.guestEmail)}` : '',
+  };
+  const varsAr = {
+    ...varsEn,
+    customerEmailLine: order.guestEmail ? `<br>البريد الإلكتروني: ${esc(order.guestEmail)}` : '',
+  };
+  const rendered = await renderEmailTemplate('owner.order_cancelled_alert', varsEn, varsAr);
 
   try {
     const info = await transporter.sendMail({
       from,
       to,
-      subject: bilingualSubject(`Order cancelled ${order.orderNumber}`, `تم إلغاء الطلب ${order.orderNumber}`),
+      subject: bilingualSubject(rendered.subjectEn, rendered.subjectAr),
       text: bilingualText(textEn, textAr),
-      html: bilingualHtml(htmlEn, htmlAr),
+      html: bilingualHtml(rendered.htmlEn, rendered.htmlAr),
     });
     console.log('[mailer] owner cancellation alert sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send owner cancellation alert', err);
+    logSendFailure('owner-cancellation-alert', to, err);
     return false;
   }
 }
@@ -692,32 +631,21 @@ export async function sendCheckoutOtpEmail(to: string, code: string, ttlMinutes:
     `رمز التحقق الخاص بك في Ali'sStore هو ${code}.\n\n` +
     `تنتهي صلاحيته خلال ${ttlMinutes} دقيقة. إذا لم تطلب ذلك، يمكنك تجاهل هذا البريد الإلكتروني.`;
 
-  const htmlEn = `
-    <p>Your Ali'sStore verification code is:</p>
-    <p style="font-size: 1.5em; font-weight: bold; letter-spacing: 0.1em;">${esc(code)}</p>
-    <p>It expires in ${ttlMinutes} minutes. If you didn't request this, you can ignore this email.</p>
-  `.trim();
-  const htmlAr = `
-    <p>رمز التحقق الخاص بك في Ali'sStore هو:</p>
-    <p style="font-size: 1.5em; font-weight: bold; letter-spacing: 0.1em;">${esc(code)}</p>
-    <p>تنتهي صلاحيته خلال ${ttlMinutes} دقيقة. إذا لم تطلب ذلك، يمكنك تجاهل هذا البريد الإلكتروني.</p>
-  `.trim();
+  const vars = { code: esc(code), ttlMinutes: String(ttlMinutes) };
+  const rendered = await renderEmailTemplate('checkout.otp', vars, vars);
 
   try {
     const info = await transporter.sendMail({
       from,
       to,
-      subject: bilingualSubject(
-        `${code} is your Ali'sStore verification code`,
-        `${code} هو رمز التحقق الخاص بك في Ali'sStore`
-      ),
+      subject: bilingualSubject(rendered.subjectEn, rendered.subjectAr),
       text: bilingualText(textEn, textAr),
-      html: bilingualHtml(htmlEn, htmlAr),
+      html: bilingualHtml(rendered.htmlEn, rendered.htmlAr),
     });
     console.log('[mailer] checkout-OTP email sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send checkout-OTP email', err);
+    logSendFailure('checkout-otp', to, err);
     return false;
   }
 }
@@ -740,7 +668,7 @@ export async function sendLoyaltyRewardEmail(
   }
   const { transporter, from } = conn;
 
-  const reward = coupon.type === 'PERCENT' ? `${Number(coupon.value)}% off` : `${money(Number(coupon.value))} off`;
+  const rewardEn = coupon.type === 'PERCENT' ? `${Number(coupon.value)}% off` : `${money(Number(coupon.value))} off`;
   const rewardAr =
     coupon.type === 'PERCENT' ? `خصم ${Number(coupon.value)}%` : `خصم ${money(Number(coupon.value))}`;
   const expiryEn = coupon.endsAt ? ` It's valid until ${coupon.endsAt.toDateString()}.` : '';
@@ -748,7 +676,7 @@ export async function sendLoyaltyRewardEmail(
 
   const textEn =
     `Thank you for being a loyal customer!\n\n` +
-    `You've earned a reward for "${rule.nameEn}": ${reward} your next order.\n\n` +
+    `You've earned a reward for "${rule.nameEn}": ${rewardEn} your next order.\n\n` +
     `Use this code at checkout: ${coupon.code}\n` +
     `${expiryEn}`.trim();
   const textAr =
@@ -757,40 +685,43 @@ export async function sendLoyaltyRewardEmail(
     `استخدم هذا الرمز عند الدفع: ${coupon.code}\n` +
     `${expiryAr}`.trim();
 
-  const htmlEn = `
-    <p>Thank you for being a loyal customer!</p>
-    <p>You've earned a reward for <strong>${esc(rule.nameEn)}</strong>: ${esc(reward)} your next order.</p>
-    <p style="font-size: 1.25em; font-weight: bold; letter-spacing: 0.05em;">${esc(coupon.code)}</p>
-    ${expiryEn ? `<p>${esc(expiryEn.trim())}</p>` : ''}
-  `.trim();
-  const htmlAr = `
-    <p>شكرًا لكونك عميلًا مخلصًا!</p>
-    <p>لقد ربحت مكافأة عن <strong>${esc(rule.nameAr)}</strong>: ${esc(rewardAr)} على طلبك القادم.</p>
-    <p style="font-size: 1.25em; font-weight: bold; letter-spacing: 0.05em;">${esc(coupon.code)}</p>
-    ${expiryAr ? `<p>${esc(expiryAr.trim())}</p>` : ''}
-  `.trim();
+  const varsEn = {
+    ruleName: esc(rule.nameEn),
+    reward: esc(rewardEn),
+    couponCode: esc(coupon.code),
+    expiryLine: expiryEn ? `<p>${esc(expiryEn.trim())}</p>` : '',
+  };
+  const varsAr = {
+    ruleName: esc(rule.nameAr),
+    reward: esc(rewardAr),
+    couponCode: esc(coupon.code),
+    expiryLine: expiryAr ? `<p>${esc(expiryAr.trim())}</p>` : '',
+  };
+  const rendered = await renderEmailTemplate('loyalty.reward', varsEn, varsAr);
 
   try {
     const info = await transporter.sendMail({
       from,
       to,
-      subject: bilingualSubject(`A reward for you, from Ali'sStore`, `مكافأة لك، من Ali'sStore`),
+      subject: bilingualSubject(rendered.subjectEn, rendered.subjectAr),
       text: bilingualText(textEn, textAr),
-      html: bilingualHtml(htmlEn, htmlAr),
+      html: bilingualHtml(rendered.htmlEn, rendered.htmlAr),
     });
     console.log('[mailer] loyalty-reward email sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send loyalty-reward email', err);
+    logSendFailure('loyalty-reward', to, err);
     return false;
   }
 }
 
 /**
  * Sent to the NEW address when a signed-in user requests an account email
- * change (Task 3) — proof of control: `User.email` is only updated once this
- * link is clicked (see account/email-change.service.ts's confirmEmailChange).
- * Same never-throws contract as the other mailer functions.
+ * change — proof of control: `User.email` is only updated once this link is
+ * clicked (see account/email-change.service.ts's confirmEmailChange). Same
+ * never-throws contract as the other mailer functions. Not template-driven
+ * (unlike the nine senders above) — account-security notices, kept as
+ * hardcoded bilingual copy like the rest of the auth flow.
  */
 export async function sendEmailChangeConfirmationEmail(
   to: string,
@@ -832,14 +763,14 @@ export async function sendEmailChangeConfirmationEmail(
     const info = await transporter.sendMail({
       from,
       to,
-      subject: bilingualSubject('Confirm your new Ali\'s Store email', 'أكد بريدك الإلكتروني الجديد في Ali\'s Store'),
+      subject: bilingualSubject("Confirm your new Ali's Store email", 'أكد بريدك الإلكتروني الجديد في Ali\'s Store'),
       text: bilingualText(textEn, textAr),
       html: bilingualHtml(htmlEn, htmlAr),
     });
     console.log('[mailer] email-change confirmation sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send email-change confirmation', err);
+    logSendFailure('email-change-confirmation', to, err);
     return false;
   }
 }
@@ -886,7 +817,7 @@ export async function sendEmailChangeRequestedNoticeEmail(to: string, newEmail: 
       from,
       to,
       subject: bilingualSubject(
-        'Email change requested on your Ali\'s Store account',
+        "Email change requested on your Ali's Store account",
         'تم طلب تغيير البريد الإلكتروني لحسابك في Ali\'s Store'
       ),
       text: bilingualText(textEn, textAr),
@@ -895,7 +826,7 @@ export async function sendEmailChangeRequestedNoticeEmail(to: string, newEmail: 
     console.log('[mailer] email-change request notice sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send email-change request notice', err);
+    logSendFailure('email-change-requested-notice', to, err);
     return false;
   }
 }
@@ -939,7 +870,7 @@ export async function sendEmailChangedNoticeEmail(to: string, newEmail: string):
       from,
       to,
       subject: bilingualSubject(
-        'Your Ali\'s Store account email was changed',
+        "Your Ali's Store account email was changed",
         'تم تغيير البريد الإلكتروني لحسابك في Ali\'s Store'
       ),
       text: bilingualText(textEn, textAr),
@@ -948,7 +879,7 @@ export async function sendEmailChangedNoticeEmail(to: string, newEmail: string):
     console.log('[mailer] email-changed notice sent', info.messageId);
     return true;
   } catch (err) {
-    console.error('[mailer] failed to send email-changed notice', err);
+    logSendFailure('email-changed-notice', to, err);
     return false;
   }
 }

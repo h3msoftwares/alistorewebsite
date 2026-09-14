@@ -9,6 +9,7 @@ import {
   createPromotionSchema,
   updatePromotionSchema,
   promotionIdParamSchema,
+  previewPromotionCoverageSchema,
 } from './promotion.schema';
 import {
   createCouponSchema,
@@ -27,6 +28,7 @@ import {
   updateCouponHandler,
   deleteCouponHandler,
   validateCouponHandler,
+  previewPromotionCoverageHandler,
 } from './promotion.controller';
 
 const passThrough: RequestHandler = (_req, _res, next) => next();
@@ -83,6 +85,14 @@ export function promotionRoutes(opts: { validateCouponRateLimit?: boolean } = {}
     ...canManage,
     validate({ body: createPromotionSchema }),
     asyncHandler(createPromotionHandler)
+  );
+  // Read-only: "which live products would this (possibly still-unsaved)
+  // target set cover" — the admin form calls this on demand while editing.
+  router.post(
+    '/promotions/preview-coverage',
+    ...canView,
+    validate({ body: previewPromotionCoverageSchema }),
+    asyncHandler(previewPromotionCoverageHandler)
   );
   router.patch(
     '/promotions/:id',

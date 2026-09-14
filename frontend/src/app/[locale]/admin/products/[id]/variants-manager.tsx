@@ -1,16 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import { Save, Trash2 } from 'lucide-react';
-import { Alert, Field, Icon, Input } from '@/components/ui';
-import { ColorPicker } from '@/components/admin/color-picker';
-import { useAddProductVariant, useDeleteProductVariant, useUpdateProductVariant } from '@/hooks/use-catalog';
+import { Alert, Button } from '@/components/ui';
+import { useSetProductVariants } from '@/hooks/use-catalog';
 import type { ProductVariant } from '@/lib/types';
+import {
+  VariantsMatrix,
+  validateVariantRows,
+  type DraftVariantRow,
+  type VariantFieldErrors,
+} from '@/components/admin/variants-matrix';
 
-type RowValues = { sku: string; size: string; color: string; priceOverride: string; stockQuantity: string };
-
-function toRowValues(v: ProductVariant): RowValues {
+function toDraftRow(v: ProductVariant): DraftVariantRow {
   return {
+    key: v.id,
+    id: v.id,
     sku: v.sku,
     size: v.size ?? '',
     color: v.color ?? '',
@@ -19,124 +23,11 @@ function toRowValues(v: ProductVariant): RowValues {
   };
 }
 
-const PRICE_RE = /^$|^\d+(\.\d{1,2})?$/;
-
-function validate(values: RowValues, t: (en: string, ar: string) => string) {
-  const errors: Partial<Record<keyof RowValues, string>> = {};
-  if (!values.sku.trim()) errors.sku = t('Required', 'مطلوب');
-  if (!PRICE_RE.test(values.priceOverride)) {
-    errors.priceOverride = t('Must be empty or a positive number', 'يجب أن يكون فارغًا أو رقمًا موجبًا');
-  }
-  const qty = Number(values.stockQuantity);
-  if (!Number.isFinite(qty) || !Number.isInteger(qty)) {
-    errors.stockQuantity = t('Must be a whole number', 'يجب أن يكون رقمًا صحيحًا');
-  }
-  return errors;
-}
-
-/** One variant's editable row — used both for existing variants (Save +
- *  Delete, calling the update/delete sub-resource mutations) and for the
- *  "add a variant" row at the bottom (Add only, no delete). */
-function VariantRow({
-  values,
-  onChange,
-  errors,
-  locale,
-  busy,
-  onSave,
-  onDelete,
-  saveLabel,
-  deleteDisabled,
-}: {
-  values: RowValues;
-  onChange: (values: RowValues) => void;
-  errors: Partial<Record<keyof RowValues, string>>;
-  locale: 'en' | 'ar';
-  busy: boolean;
-  onSave: () => void;
-  onDelete?: () => void;
-  saveLabel: string;
-  deleteDisabled?: boolean;
-}) {
-  const isAr = locale === 'ar';
-  const t = (en: string, ar: string) => (isAr ? ar : en);
-  return (
-    <div className="admin-variant-row">
-      <Field label={t('SKU', 'رمز')} error={errors.sku} required>
-        {(p) => <Input {...p} value={values.sku} onChange={(e) => onChange({ ...values, sku: e.target.value })} disabled={busy} />}
-      </Field>
-      <Field label={t('Size', 'المقاس')}>
-        {(p) => <Input {...p} value={values.size} onChange={(e) => onChange({ ...values, size: e.target.value })} disabled={busy} />}
-      </Field>
-      <Field label={t('Colour', 'اللون')}>
-        {(p) => (
-          <ColorPicker
-            {...p}
-            value={values.color}
-            onChange={(color) => onChange({ ...values, color })}
-            locale={locale}
-            disabled={busy}
-          />
-        )}
-      </Field>
-      <Field label={t('Price override', 'سعر خاص')} error={errors.priceOverride}>
-        {(p) => (
-          <Input
-            {...p}
-            type="text"
-            inputMode="decimal"
-            placeholder={t('Same as product', 'كسعر المنتج')}
-            value={values.priceOverride}
-            onChange={(e) => onChange({ ...values, priceOverride: e.target.value })}
-            disabled={busy}
-          />
-        )}
-      </Field>
-      <Field label={t('Stock', 'المخزون')} error={errors.stockQuantity}>
-        {(p) => (
-          <Input
-            {...p}
-            type="number"
-            step="1"
-            value={values.stockQuantity}
-            onChange={(e) => onChange({ ...values, stockQuantity: e.target.value })}
-            disabled={busy}
-          />
-        )}
-      </Field>
-      <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-        <button
-          type="button"
-          className="icon-btn icon-btn--bordered"
-          onClick={onSave}
-          disabled={busy}
-          aria-label={saveLabel}
-          title={saveLabel}
-        >
-          <Icon as={Save} size={16} />
-        </button>
-        {onDelete && (
-          <button
-            type="button"
-            className="icon-btn icon-btn--bordered"
-            onClick={onDelete}
-            disabled={busy || deleteDisabled}
-            aria-label={t('Delete variant', 'حذف الخيار')}
-            title={t('Delete variant', 'حذف الخيار')}
-          >
-            <Icon as={Trash2} size={16} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /**
- * Variants for an EXISTING product are managed as independent line items
- * (unlike the create page's single field-array submit) — each row has its
- * own Save/Delete calling the variant sub-resource endpoints directly, since
- * `useUpdateProduct` intentionally excludes `variants` from its body.
+ * Variants for an EXISTING product, edited as one matrix and saved in a
+ * single bulk call (`PUT /:id/variants`) instead of one request per row —
+ * the create page's VariantsMatrix usage, reused here rather than a second,
+ * divergent editor.
  */
 export function VariantsManager({
   productId,
@@ -149,93 +40,39 @@ export function VariantsManager({
 }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const setVariants = useSetProductVariants();
 
-  const addVariant = useAddProductVariant();
-  const updateVariant = useUpdateProductVariant();
-  const deleteVariant = useDeleteProductVariant();
+  const [rows, setRows] = useState<DraftVariantRow[]>(() => variants.map(toDraftRow));
+  const [errorsByKey, setErrorsByKey] = useState<Record<string, VariantFieldErrors>>({});
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
-  const [rows, setRows] = useState<Record<string, RowValues>>(() =>
-    Object.fromEntries(variants.map((v) => [v.id, toRowValues(v)]))
-  );
-  const [rowErrors, setRowErrors] = useState<Record<string, Partial<Record<keyof RowValues, string>>>>({});
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const busy = setVariants.isPending;
 
-  const [newRow, setNewRow] = useState<RowValues>({ sku: '', size: '', color: '', priceOverride: '', stockQuantity: '0' });
-  const [newRowErrors, setNewRowErrors] = useState<Partial<Record<keyof RowValues, string>>>({});
-
-  const rowValuesFor = (v: ProductVariant) => rows[v.id] ?? toRowValues(v);
-
-  const handleSave = async (variantId: string) => {
-    const current = variants.find((v) => v.id === variantId);
-    if (!current) return;
-    const values = rows[variantId] ?? toRowValues(current);
-    const errs = validate(values, t);
-    setRowErrors((prev) => ({ ...prev, [variantId]: errs }));
-    if (Object.keys(errs).length > 0) return;
-    setError(null);
-    setSavingId(variantId);
+  const onSave = async () => {
+    setSaved(false);
+    const { errorsByKey: errs, formError: fe, valid } = validateVariantRows(rows, t);
+    setErrorsByKey(errs);
+    setFormError(fe);
+    if (!valid) return;
     try {
-      await updateVariant.mutateAsync({
+      const saved = await setVariants.mutateAsync({
         id: productId,
-        variantId,
-        body: {
-          sku: values.sku,
-          size: values.size || null,
-          color: values.color || null,
-          price: values.priceOverride ? Number(values.priceOverride) : null,
-          stockQuantity: Number(values.stockQuantity),
-        },
+        variants: rows.map((r) => ({
+          id: r.id,
+          sku: r.sku,
+          size: r.size || null,
+          color: r.color || null,
+          price: r.priceOverride ? Number(r.priceOverride) : null,
+          stockQuantity: Number(r.stockQuantity),
+        })),
       });
+      // Re-key freshly-created rows to their real ids so the next save
+      // updates them instead of creating duplicates.
+      setRows(saved.map(toDraftRow));
+      setSaved(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('Save failed', 'فشل الحفظ'));
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  const handleDelete = async (variantId: string) => {
-    if (variants.length <= 1) return;
-    if (!window.confirm(t('Delete this variant?', 'حذف هذا الخيار؟'))) return;
-    setError(null);
-    setSavingId(variantId);
-    try {
-      await deleteVariant.mutateAsync({ id: productId, variantId });
-      setRows((prev) => {
-        const next = { ...prev };
-        delete next[variantId];
-        return next;
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t('Delete failed', 'فشل الحذف'));
-    } finally {
-      setSavingId(null);
-    }
-  };
-
-  const handleAdd = async () => {
-    const errs = validate(newRow, t);
-    setNewRowErrors(errs);
-    if (Object.keys(errs).length > 0) return;
-    setError(null);
-    setSavingId('__new__');
-    try {
-      await addVariant.mutateAsync({
-        id: productId,
-        body: {
-          sku: newRow.sku,
-          size: newRow.size || null,
-          color: newRow.color || null,
-          price: newRow.priceOverride ? Number(newRow.priceOverride) : null,
-          stockQuantity: Number(newRow.stockQuantity),
-        },
-      });
-      setNewRow({ sku: '', size: '', color: '', priceOverride: '', stockQuantity: '0' });
-      setNewRowErrors({});
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t('Add failed', 'فشل الإضافة'));
-    } finally {
-      setSavingId(null);
+      setFormError(e instanceof Error ? e.message : t('Save failed', 'فشل الحفظ'));
     }
   };
 
@@ -243,37 +80,24 @@ export function VariantsManager({
     <div className="admin-form__section">
       <p className="admin-form__section-title">{t('Variants', 'المقاسات والألوان')}</p>
 
-      {error && <Alert tone="danger">{error}</Alert>}
+      <VariantsMatrix rows={rows} onChange={setRows} errors={errorsByKey} busy={busy} locale={locale} minRows={1} />
 
-      <div className="admin-variants-list">
-        {variants.map((v) => (
-          <VariantRow
-            key={v.id}
-            values={rowValuesFor(v)}
-            onChange={(values) => setRows((prev) => ({ ...prev, [v.id]: values }))}
-            errors={rowErrors[v.id] ?? {}}
-            locale={locale}
-            busy={savingId === v.id}
-            onSave={() => handleSave(v.id)}
-            onDelete={() => handleDelete(v.id)}
-            deleteDisabled={variants.length <= 1}
-            saveLabel={t('Save', 'حفظ')}
-          />
-        ))}
+      {formError && (
+        <Alert tone="danger" className="stack">
+          {formError}
+        </Alert>
+      )}
+      {saved && !formError && (
+        <Alert tone="success" className="stack">
+          {t('Variants saved', 'تم حفظ الخيارات')}
+        </Alert>
+      )}
+
+      <div className="admin-form__actions">
+        <Button type="button" onClick={onSave} loading={busy}>
+          {t('Save all variants', 'حفظ كل الخيارات')}
+        </Button>
       </div>
-
-      <p className="admin-form__section-title" style={{ marginTop: 'var(--space-2)' }}>
-        {t('Add a variant', 'إضافة خيار')}
-      </p>
-      <VariantRow
-        values={newRow}
-        onChange={setNewRow}
-        errors={newRowErrors}
-        locale={locale}
-        busy={savingId === '__new__'}
-        onSave={handleAdd}
-        saveLabel={t('Add', 'إضافة')}
-      />
     </div>
   );
 }

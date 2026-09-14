@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { createCollectionSchema, updateCollectionSchema, setCollectionRulesSchema } from './collection.schema';
 import type { CreateImageInput, UpdateImageInput } from './image.schema';
 import { cleanupCatalogImageIfOrphaned } from './image-cleanup.service';
-import { collectionMembershipFilter } from './collection-rules';
+import { collectionMembershipFilter, evaluateCollectionRules } from './collection-rules';
 
 type CreateCollectionInput = z.infer<typeof createCollectionSchema>;
 type UpdateCollectionInput = z.infer<typeof updateCollectionSchema>;
@@ -45,14 +45,33 @@ export async function listCollections(opts: ListCollectionsOpts = {}) {
       : {}),
   };
 
-  return prisma.collection.findMany({
+  const collections = await prisma.collection.findMany({
     where,
     orderBy: { sortOrder: 'asc' },
     include: {
       images: imageOrder,
-      _count: { select: { products: true } },
+      // Correct as-is for MANUAL (membership: INCLUDE rows are the whole
+      // story). For AUTOMATED/HYBRID this is just a placeholder — those
+      // types' real membership comes from their rules, not this join table
+      // (an AUTOMATED collection has no rows here at all by design), so it's
+      // overridden below rather than shown to the admin as-is.
+      _count: { select: { products: { where: { membership: 'INCLUDE' } } } },
     },
   });
+
+  const ruleBased = collections.filter((c) => c.type !== 'MANUAL');
+  const ruleCounts = await Promise.all(
+    ruleBased.map((c) =>
+      collectionMembershipFilter(c).then((filter) =>
+        prisma.product.count({ where: { isActive: true, deletedAt: null, ...filter } })
+      )
+    )
+  );
+  const countByID = new Map(ruleBased.map((c, i) => [c.id, ruleCounts[i]]));
+
+  return collections.map((c) =>
+    countByID.has(c.id) ? { ...c, _count: { products: countByID.get(c.id)! } } : c
+  );
 }
 
 export async function getCollectionById(id: string) {
@@ -250,6 +269,31 @@ export async function setCollectionRules(id: string, rules: SetCollectionRulesIn
     }),
   ]);
   return getCollectionById(id);
+}
+
+export interface CollectionRulesPreview {
+  count: number;
+  sample: { id: string; nameEn: string; nameAr: string; sku: string }[];
+}
+
+/** "Which live products would this (possibly still-unsaved) rule set match"
+ *  — the rule editor calls this on demand so an admin can see the effect of
+ *  a change before committing to Save Rules. */
+export async function previewCollectionRules(rules: SetCollectionRulesInput['rules']): Promise<CollectionRulesPreview> {
+  const ruleFilter = await evaluateCollectionRules(
+    rules.map((r) => ({ ...r, value: (r.value ?? null) as Prisma.JsonValue }))
+  );
+  const where: Prisma.ProductWhereInput = { isActive: true, deletedAt: null, ...ruleFilter };
+  const [count, sample] = await Promise.all([
+    prisma.product.count({ where }),
+    prisma.product.findMany({
+      where,
+      select: { id: true, nameEn: true, nameAr: true, sku: true },
+      orderBy: { dateCreated: 'desc' },
+      take: 8,
+    }),
+  ]);
+  return { count, sample };
 }
 
 // ---- Images (sub-resource) ----

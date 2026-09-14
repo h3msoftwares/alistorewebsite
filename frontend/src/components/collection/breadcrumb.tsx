@@ -2,7 +2,10 @@ import Link from 'next/link';
 
 export interface Crumb {
   label: string;
-  /** Omit for the current page — rendered as the page's <h1>, not a link. */
+  /** Omit for the current page — rendered as the page's <h1>, not a link.
+   *  Also omit for a non-current crumb that has nothing to link to (e.g. an
+   *  archived category whose own listing page 404s) — it renders as plain
+   *  text instead of a dead link. */
   href?: string;
 }
 
@@ -35,10 +38,12 @@ export function Breadcrumb({
                 ) : (
                   <span className="breadcrumb__current">{item.label}</span>
                 )
-              ) : (
-                <Link href={item.href!} className="breadcrumb__link">
+              ) : item.href ? (
+                <Link href={item.href} className="breadcrumb__link">
                   {item.label}
                 </Link>
+              ) : (
+                <span className="breadcrumb__link breadcrumb__link--disabled">{item.label}</span>
               )}
               {!isLast && (
                 <span className="breadcrumb__sep" aria-hidden>

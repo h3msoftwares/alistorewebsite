@@ -1,5 +1,13 @@
 import { api } from './client';
-import type { Coupon, CouponBody, Promotion, PromotionBody, ResolvedCoupon, UUID } from '../types';
+import type {
+  Coupon,
+  CouponBody,
+  Promotion,
+  PromotionBody,
+  PromotionCoveragePreview,
+  ResolvedCoupon,
+  UUID,
+} from '../types';
 
 // ---- Promotions (admin) ----
 // Route/permission namespace stays "discounts" — renaming Role.permissions
@@ -7,6 +15,10 @@ import type { Coupon, CouponBody, Promotion, PromotionBody, ResolvedCoupon, UUID
 
 export function listPromotions() {
   return api.get<{ promotions: Promotion[] }>('/api/promotions').then((r) => r.promotions);
+}
+
+export function getPromotion(id: UUID) {
+  return api.get<{ promotion: Promotion }>(`/api/promotions/${id}`).then((r) => r.promotion);
 }
 
 export function createPromotion(body: PromotionBody) {
@@ -19,6 +31,17 @@ export function updatePromotion(id: UUID, body: Partial<PromotionBody>) {
 
 export function deletePromotion(id: UUID) {
   return api.del(`/api/promotions/${id}`);
+}
+
+export interface PreviewPromotionCoverageBody {
+  appliesToAll: boolean;
+  productIds: UUID[];
+  categoryTargets: { categoryId: UUID; includeDescendants: boolean }[];
+  collectionIds: UUID[];
+}
+
+export function previewPromotionCoverage(body: PreviewPromotionCoverageBody) {
+  return api.post<PromotionCoveragePreview>('/api/promotions/preview-coverage', body);
 }
 
 // ---- Coupons (admin) ----

@@ -25,6 +25,7 @@ import { DELIVERY_REGIONS } from '@/lib/regions';
 import type { SiteSettingsBody } from '@/lib/types';
 import { CurationPanel } from './curation-panel';
 import { NotificationsPanel } from './notifications-panel';
+import { EmailTemplatesPanel } from './email-templates-panel';
 
 // Admin-side day labels for the opening-hours editor. Index 0 = Monday … 6 =
 // Sunday, matching StoreHours.dayOfWeek and its storefront render order.
@@ -188,7 +189,8 @@ type TabId =
   | 'story'
   | 'reviews'
   | 'curation'
-  | 'notifications';
+  | 'notifications'
+  | 'emailTemplates';
 
 const SECTIONS: { id: TabId; en: string; ar: string; terms: string }[] = [
   {
@@ -264,6 +266,16 @@ const SECTIONS: { id: TabId; en: string; ar: string; terms: string }[] = [
     terms:
       'notifications push order alert alerts enable device browser web push ' +
       'إشعارات فورية تنبيه طلب تفعيل جهاز متصفح',
+  },
+  {
+    id: 'emailTemplates',
+    en: 'Email templates',
+    ar: 'قوالب البريد',
+    terms:
+      'email templates order confirmation shipped cancelled password reset verification checkout otp loyalty ' +
+      'subject body html placeholder variables test send ' +
+      'قوالب البريد الإلكتروني تأكيد الطلب شحن إلغاء إعادة تعيين كلمة المرور التحقق رمز الدفع الولاء ' +
+      'العنوان المحتوى متغيرات اختبار إرسال',
   },
 ];
 
@@ -1092,6 +1104,10 @@ export default function AdminSettingsPage() {
 
       <div id="set-notifications" hidden={!shows('notifications')} style={{ marginTop: 'var(--space-6)' }}>
         <NotificationsPanel locale={locale} />
+      </div>
+
+      <div id="set-emailTemplates" hidden={!shows('emailTemplates')} style={{ marginTop: 'var(--space-6)' }}>
+        <EmailTemplatesPanel locale={locale} />
       </div>
     </div>
   );

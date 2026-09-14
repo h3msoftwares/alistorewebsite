@@ -132,6 +132,13 @@ export interface CollectionRule {
   value?: unknown;
 }
 
+/** `POST /api/collections/:id/rules/preview` — "which live products would
+ *  this (possibly still-unsaved) rule set match", computed on demand. */
+export interface CollectionRulesPreview {
+  count: number;
+  sample: Pick<Product, 'id' | 'nameEn' | 'nameAr' | 'sku'>[];
+}
+
 /** The permanent navigation tree (Men → Shoes → Sport Shoes → ...),
  *  unlimited depth, self-referencing via `parentID`. Fully decoupled from
  *  Collection. `path`/`depth` are read-only, server-computed (a Postgres
@@ -301,6 +308,14 @@ export interface Promotion {
 export interface PromotionCategoryTarget {
   categoryId: UUID;
   includeDescendants: boolean;
+}
+
+/** `POST /api/promotions/preview-coverage` — "which live products would this
+ *  (possibly still-unsaved) target set cover", computed on demand from the
+ *  admin form's current draft. */
+export interface PromotionCoveragePreview {
+  count: number;
+  sample: Pick<Product, 'id' | 'nameEn' | 'nameAr' | 'sku'>[];
 }
 
 export interface PromotionBody {
@@ -857,6 +872,44 @@ export type SiteSettingsBody = Partial<
   }[];
 };
 
+/** One admin-editable transactional email (`GET /api/admin/email-templates`).
+ *  `key` is a fixed, server-defined catalogue (order confirmation, password
+ *  reset, ...) — `variables` lists exactly which `{{placeholders}}` this key
+ *  supports, for the admin form to show and to validate against. */
+export type EmailTemplateKey =
+  | 'password.reset'
+  | 'email.verification'
+  | 'order.confirmed'
+  | 'order.shipped'
+  | 'order.cancelled'
+  | 'owner.order_alert'
+  | 'owner.order_cancelled_alert'
+  | 'checkout.otp'
+  | 'loyalty.reward';
+
+/** Every email is bilingual (English + Arabic in the same message — see the
+ *  backend's mailer.ts bilingualSubject/bilingualHtml), so both languages'
+ *  subject/body are always present and edited together. */
+export interface EmailTemplate {
+  key: EmailTemplateKey;
+  label: string;
+  trigger: string;
+  variables: string[];
+  subjectEn: string;
+  subjectAr: string;
+  htmlBodyEn: string;
+  htmlBodyAr: string;
+  isCustomized: boolean;
+  updatedAt: IsoDateTime | null;
+}
+
+export interface EmailTemplateBody {
+  subjectEn: string;
+  subjectAr: string;
+  htmlBodyEn: string;
+  htmlBodyAr: string;
+}
+
 // ---- Request payloads (write endpoints) ----
 
 /** Registration requires an email (verification is email-based) and a full
@@ -1005,6 +1058,13 @@ export interface VariantBody {
   /** Omit or `null` to fall back to the product's own price. */
   price?: number | null;
   stockQuantity?: number;
+}
+
+/** `PUT /api/products/:id/variants` — replace the whole variant set in one
+ *  call: an entry with `id` updates that existing variant, one without `id`
+ *  creates a new one, and any existing variant not present here is deleted. */
+export interface BulkVariantBody extends VariantBody {
+  id?: UUID;
 }
 
 export interface ProductBody {

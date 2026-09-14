@@ -16,6 +16,7 @@ import {
   updateProductSchema,
   createVariantSchema,
   updateVariantSchema,
+  bulkSetVariantsSchema,
   createProductImageSchema,
   updateProductImageSchema,
 } from './product.schema';
@@ -34,6 +35,7 @@ type CreateProductInput = z.infer<typeof createProductSchema>;
 type UpdateProductInput = z.infer<typeof updateProductSchema>;
 type CreateVariantInput = z.infer<typeof createVariantSchema>;
 type UpdateVariantInput = z.infer<typeof updateVariantSchema>;
+type BulkSetVariantsInput = z.infer<typeof bulkSetVariantsSchema>['variants'];
 type CreateProductImageInput = z.infer<typeof createProductImageSchema>;
 type UpdateProductImageInput = z.infer<typeof updateProductImageSchema>;
 
@@ -776,6 +778,99 @@ export async function deleteVariant(productId: string, variantId: string) {
     throw new AppError('CONFLICT', "Cannot delete a product's last variant. Delete the product instead, or add another variant first.");
   }
   await prisma.productVariant.delete({ where: { id: variantId } });
+}
+
+/** Replace this product's whole variant set in one call — the matrix
+ *  editor's "Save all", instead of one request per row. Each entry with an
+ *  `id` updates that existing variant; one without `id` creates a new one;
+ *  any existing variant NOT present in `input` is deleted. Same guards as
+ *  the single-row functions above (no duplicate size/colour, can't drop
+ *  below one variant, can't remove a variant that's in a past order), just
+ *  checked once against the final set instead of once per request. */
+export async function setVariants(productId: string, input: BulkSetVariantsInput, actorId?: string) {
+  await ensureProductExists(productId);
+  // The schema already enforces `.min(1)` at the HTTP boundary, but the same
+  // invariant deleteVariant() guards belongs here too — a service function
+  // shouldn't rely on its only caller to keep it safe.
+  if (input.length === 0) {
+    throw new AppError('CONFLICT', 'A product must keep at least one variant.');
+  }
+  assertNoDuplicateVariants(input);
+
+  const existing = await prisma.productVariant.findMany({ where: { productID: productId } });
+  const existingByID = new Map(existing.map((v) => [v.id, v]));
+
+  for (const v of input) {
+    if (v.id && !existingByID.has(v.id)) {
+      throw new AppError('NOT_FOUND', 'Variant not found');
+    }
+  }
+
+  const incomingIds = new Set(input.filter((v) => v.id).map((v) => v.id as string));
+  const toDelete = existing.filter((v) => !incomingIds.has(v.id));
+  if (toDelete.length) {
+    const stillOrdered = await prisma.orderItem.count({
+      where: { variantID: { in: toDelete.map((v) => v.id) } },
+    });
+    if (stillOrdered > 0) {
+      throw new AppError(
+        'CONFLICT',
+        'Cannot remove a variant that appears in past orders. Keep it and set its stock to 0 instead.'
+      );
+    }
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      if (toDelete.length) {
+        await tx.productVariant.deleteMany({ where: { id: { in: toDelete.map((v) => v.id) } } });
+      }
+
+      const result = [];
+      for (const v of input) {
+        if (v.id) {
+          const before = existingByID.get(v.id)!;
+          const delta = v.stockQuantity - before.stockQuantity;
+          const updated = await tx.productVariant.update({
+            where: { id: v.id },
+            data: {
+              sku: v.sku,
+              size: v.size ?? null,
+              color: v.color ?? null,
+              price: v.price ?? null,
+              stockQuantity: v.stockQuantity,
+            },
+          });
+          if (delta !== 0) {
+            await tx.stockMovement.create({
+              data: { variantID: v.id, quantity: delta, type: 'ADJUSTMENT', actorID: actorId, reason: 'Bulk variant edit' },
+            });
+          }
+          result.push(updated);
+        } else {
+          const created = await tx.productVariant.create({
+            data: {
+              productID: productId,
+              sku: v.sku,
+              size: v.size ?? null,
+              color: v.color ?? null,
+              price: v.price ?? null,
+              stockQuantity: v.stockQuantity,
+            },
+          });
+          if (v.stockQuantity > 0) {
+            await tx.stockMovement.create({
+              data: { variantID: created.id, quantity: v.stockQuantity, type: 'INITIAL', reason: 'Variant created' },
+            });
+          }
+          result.push(created);
+        }
+      }
+      return result;
+    });
+  } catch (e) {
+    throw mapPrismaError(e);
+  }
 }
 
 export async function updateStock(variantId: string, stockQuantity: number, actorId?: string) {

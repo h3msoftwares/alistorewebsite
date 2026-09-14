@@ -225,12 +225,21 @@ export function ProductDetail({
   // leaf category here is never the last crumb the way it is on a listing
   // page, and Breadcrumb renders this last crumb as plain text rather than
   // a second <h1> (see currentAsHeading below).
+  // A category's listing page 404s once it (or any ancestor) is archived
+  // (see backend/src/modules/catalog/category.service.ts's getCategoryBySlug).
+  // The chain is root-first, so once one link is archived every category
+  // after it is unreachable too — track that instead of checking each node
+  // in isolation.
+  let archivedFromHere = false;
   const crumbs: Crumb[] = [
     { label: t('Home', 'الرئيسية'), href: `/${locale}` },
-    ...categoryChain.map((c) => ({
-      label: isAr ? c.nameAr : c.nameEn,
-      href: `/${locale}/category/${c.slug}`,
-    })),
+    ...categoryChain.map((c) => {
+      archivedFromHere = archivedFromHere || Boolean(c.archivedAt);
+      return {
+        label: isAr ? c.nameAr : c.nameEn,
+        href: archivedFromHere ? undefined : `/${locale}/category/${c.slug}`,
+      };
+    }),
     { label: name },
   ];
 

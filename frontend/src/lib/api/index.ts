@@ -16,6 +16,7 @@ export * as customersApi from './customers';
 export * as backupApi from './backup';
 export * as smtpApi from './smtp';
 export * as blacklistApi from './blacklist';
+export * as emailTemplatesApi from './email-templates';
 
 export { api, apiRequest, API_URL, refreshAccessToken } from './client';
 export { ApiError, isApiError } from './errors';

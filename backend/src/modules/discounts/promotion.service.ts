@@ -69,19 +69,58 @@ function validateShape(input: {
   }
 }
 
-async function assertTargetsExist(productIds: string[], categoryTargets: CategoryTarget[], collectionIds: string[]) {
+// `existing` is the target set the promotion already had *before* this save
+// (omitted on create, where nothing is existing yet). A target that's newly
+// added must be a live, reachable product/category/collection — but
+// resubmitting one the promotion already targets must still succeed even if
+// it's since been archived/deleted, or the promotion could never be edited
+// again for any reason once one of its targets goes away. Same principle as
+// product.service.ts's assertCategoriesAssignable.
+async function assertTargetsExist(
+  productIds: string[],
+  categoryTargets: CategoryTarget[],
+  collectionIds: string[],
+  existing?: { productIds: string[]; categoryIds: string[]; collectionIds: string[] }
+) {
   if (productIds.length) {
-    const found = await prisma.product.count({ where: { id: { in: productIds } } });
-    if (found !== new Set(productIds).size) throw new AppError('NOT_FOUND', 'One or more productIds were not found');
+    const found = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, deletedAt: true },
+    });
+    if (found.length !== new Set(productIds).size) {
+      throw new AppError('NOT_FOUND', 'One or more productIds were not found');
+    }
+    const existingIds = new Set(existing?.productIds ?? []);
+    if (found.some((p) => p.deletedAt && !existingIds.has(p.id))) {
+      throw new AppError('CONFLICT', 'Cannot target a deleted product');
+    }
   }
   if (categoryTargets.length) {
     const ids = categoryTargets.map((t) => t.categoryId);
-    const found = await prisma.category.count({ where: { id: { in: ids } } });
-    if (found !== new Set(ids).size) throw new AppError('NOT_FOUND', 'One or more category targets were not found');
+    const found = await prisma.category.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, archivedAt: true },
+    });
+    if (found.length !== new Set(ids).size) {
+      throw new AppError('NOT_FOUND', 'One or more category targets were not found');
+    }
+    const existingIds = new Set(existing?.categoryIds ?? []);
+    if (found.some((c) => c.archivedAt && !existingIds.has(c.id))) {
+      throw new AppError('CONFLICT', 'Cannot target an archived category');
+    }
   }
   if (collectionIds.length) {
-    const found = await prisma.collection.count({ where: { id: { in: collectionIds } } });
-    if (found !== new Set(collectionIds).size) throw new AppError('NOT_FOUND', 'One or more collectionIds were not found');
+    const found = await prisma.collection.findMany({
+      where: { id: { in: collectionIds } },
+      select: { id: true, archivedAt: true },
+    });
+    if (found.length !== new Set(collectionIds).size) {
+      throw new AppError('NOT_FOUND', 'One or more collectionIds were not found');
+    }
+    const existingIds = new Set(existing?.collectionIds ?? []);
+    if (found.some((c) => c.archivedAt && !existingIds.has(c.id))) {
+      throw new AppError('CONFLICT', 'Cannot target an archived collection');
+    }
   }
 }
 
@@ -134,7 +173,11 @@ export async function updatePromotion(id: string, input: UpdatePromotionInput) {
   };
   validateShape(merged);
   if (input.productIds !== undefined || input.categoryTargets !== undefined || input.collectionIds !== undefined) {
-    await assertTargetsExist(merged.productIds, merged.categoryTargets, merged.collectionIds);
+    await assertTargetsExist(merged.productIds, merged.categoryTargets, merged.collectionIds, {
+      productIds: existing.products.map((p) => p.productID),
+      categoryIds: existing.categories.map((c) => c.categoryID),
+      collectionIds: existing.collections.map((c) => c.collectionID),
+    });
   }
 
   try {
@@ -325,6 +368,70 @@ export function promotionCoverageFilter(promotions: PromotionCandidate[]): Prism
   for (const t of categoryTargets) or.push(productInCategoryPathFilter(t.path, t.includeDescendants));
 
   return or.length ? { OR: or } : { id: { in: [] } };
+}
+
+export interface PromotionCoveragePreview {
+  count: number;
+  sample: { id: string; nameEn: string; nameAr: string; sku: string }[];
+}
+
+/** "Which live products would this promotion actually cover" — computed
+ *  directly from a draft target set (before or after the promotion is
+ *  saved), so the admin form can show it while still editing. Mirrors
+ *  activePromotions()'s AUTOMATED/HYBRID collection resolution rather than
+ *  the simpler manual-membership-only check promotionCoverageFilter() uses,
+ *  since that one only works from an already-persisted promotion's resolved
+ *  `productIds`. */
+export async function previewPromotionCoverage(input: {
+  appliesToAll: boolean;
+  productIds: string[];
+  categoryTargets: CategoryTarget[];
+  collectionIds: string[];
+}): Promise<PromotionCoveragePreview> {
+  const base: Prisma.ProductWhereInput = { isActive: true, deletedAt: null };
+  let where: Prisma.ProductWhereInput;
+
+  if (input.appliesToAll) {
+    where = base;
+  } else {
+    const or: Prisma.ProductWhereInput[] = [];
+
+    if (input.productIds.length) or.push({ id: { in: input.productIds } });
+
+    if (input.categoryTargets.length) {
+      const categories = await prisma.category.findMany({
+        where: { id: { in: input.categoryTargets.map((t) => t.categoryId) } },
+        select: { id: true, path: true },
+      });
+      const pathByID = new Map(categories.map((c) => [c.id, c.path]));
+      for (const t of input.categoryTargets) {
+        const path = pathByID.get(t.categoryId);
+        if (path) or.push(productInCategoryPathFilter(path, t.includeDescendants));
+      }
+    }
+
+    if (input.collectionIds.length) {
+      const collections = await prisma.collection.findMany({
+        where: { id: { in: input.collectionIds } },
+        select: { id: true, type: true },
+      });
+      for (const c of collections) or.push(await collectionMembershipFilter(c));
+    }
+
+    where = or.length ? { AND: [base, { OR: or }] } : { id: { in: [] } };
+  }
+
+  const [count, sample] = await Promise.all([
+    prisma.product.count({ where }),
+    prisma.product.findMany({
+      where,
+      select: { id: true, nameEn: true, nameAr: true, sku: true },
+      orderBy: { dateCreated: 'desc' },
+      take: 8,
+    }),
+  ]);
+
+  return { count, sample };
 }
 
 export function mapPrismaError(e: unknown) {

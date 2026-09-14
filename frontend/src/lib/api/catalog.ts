@@ -1,5 +1,6 @@
 import { api } from './client';
 import type {
+  BulkVariantBody,
   CatalogImage,
   CatalogListQuery,
   Category,
@@ -7,6 +8,7 @@ import type {
   Collection,
   CollectionBody,
   CollectionRule,
+  CollectionRulesPreview,
   ImageBody,
   Product,
   ProductBody,
@@ -15,7 +17,6 @@ import type {
   ProductListResult,
   ProductVariant,
   UUID,
-  VariantBody,
 } from '../types';
 
 // ---- Collections (public) ----
@@ -90,6 +91,12 @@ export function setCollectionRules(id: UUID, rules: CollectionRule[]) {
   return api
     .put<{ collection: Collection }>(`/api/collections/${id}/rules`, { rules })
     .then((r) => r.collection);
+}
+
+/** "Which live products would this (possibly still-unsaved) rule set match"
+ *  — the rule editor calls this on demand before Save Rules commits it. */
+export function previewCollectionRules(id: UUID, rules: CollectionRule[]) {
+  return api.post<CollectionRulesPreview>(`/api/collections/${id}/rules/preview`, { rules });
 }
 
 export function addCollectionImage(id: UUID, body: ImageBody) {
@@ -255,20 +262,11 @@ export function permanentDeleteProduct(id: UUID) {
   return api.del(`/api/products/${id}/permanent`);
 }
 
-export function addProductVariant(id: UUID, body: VariantBody) {
+/** Replace a product's whole variant set in one call — see BulkVariantBody. */
+export function setProductVariants(id: UUID, variants: BulkVariantBody[]) {
   return api
-    .post<{ variant: ProductVariant }>(`/api/products/${id}/variants`, body)
-    .then((r) => r.variant);
-}
-
-export function updateProductVariant(id: UUID, variantId: UUID, body: Partial<VariantBody>) {
-  return api
-    .patch<{ variant: ProductVariant }>(`/api/products/${id}/variants/${variantId}`, body)
-    .then((r) => r.variant);
-}
-
-export function deleteProductVariant(id: UUID, variantId: UUID) {
-  return api.del(`/api/products/${id}/variants/${variantId}`);
+    .put<{ variants: ProductVariant[] }>(`/api/products/${id}/variants`, { variants })
+    .then((r) => r.variants);
 }
 
 export function addProductImage(id: UUID, body: ProductImageBody) {

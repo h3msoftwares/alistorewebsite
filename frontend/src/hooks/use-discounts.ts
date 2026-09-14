@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { discountsApi } from '@/lib/api';
+import type { PreviewPromotionCoverageBody } from '@/lib/api/discounts';
 import type { CouponBody, PromotionBody, UUID } from '@/lib/types';
 
 const PROMOTIONS_KEY = ['promotions'] as const;
@@ -11,6 +12,14 @@ const COUPONS_KEY = ['coupons'] as const;
 
 export function usePromotions() {
   return useQuery({ queryKey: PROMOTIONS_KEY, queryFn: discountsApi.listPromotions });
+}
+
+export function usePromotion(id: UUID | undefined) {
+  return useQuery({
+    queryKey: [...PROMOTIONS_KEY, id],
+    queryFn: () => discountsApi.getPromotion(id as UUID),
+    enabled: Boolean(id),
+  });
 }
 
 export function useCreatePromotion() {
@@ -48,10 +57,28 @@ export function useDeletePromotion() {
   });
 }
 
+// Read-only, on demand — no query key/cache needed (a mutation just for its
+// "call this whenever, get a promise back" shape, not because it mutates
+// anything).
+export function usePreviewPromotionCoverage() {
+  return useMutation({
+    mutationFn: (body: PreviewPromotionCoverageBody) => discountsApi.previewPromotionCoverage(body),
+  });
+}
+
 // ---- Coupons ----
 
 export function useCoupons() {
   return useQuery({ queryKey: COUPONS_KEY, queryFn: discountsApi.listCoupons });
+}
+
+// No dedicated GET /api/coupons/:id — coupons are always a short admin-
+// managed list, so the edit page just reads it out of the same list query
+// every other coupon view already uses (fetching automatically if it isn't
+// cached yet, e.g. a direct link/refresh straight to the edit page).
+export function useCoupon(id: UUID | undefined) {
+  const { data, ...rest } = useCoupons();
+  return { ...rest, data: data?.find((c) => c.id === id) };
 }
 
 export function useCreateCoupon() {

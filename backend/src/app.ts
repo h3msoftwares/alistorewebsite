@@ -31,6 +31,7 @@ import { smtpCredentialRoutes } from './modules/settings/smtp-credential.routes'
 import { backupRoutes } from './modules/backup/backup.routes';
 import { promotionRoutes } from './modules/discounts/promotion.routes';
 import { loyaltyRoutes } from './modules/loyalty/loyalty.routes';
+import emailTemplateRoutes from './modules/email-templates/email-templates.routes';
 
 export function buildApp(
   opts: {
@@ -267,6 +268,11 @@ export function buildApp(
     '/api/admin/smtp',
     smtpCredentialRoutes({ rateLimit: opts.smtpCredentialRateLimit ?? env.NODE_ENV !== 'test' })
   );
+  // Same "mount before the broader '/api/admin' prefix" reasoning as backup
+  // above — not required for correctness here (adminRoutes' own blanket
+  // requireAuth/requireRole would just fall through to this router anyway),
+  // but avoids running that check twice on every request.
+  app.use('/api/admin/email-templates', emailTemplateRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/uploads', uploadRoutes);
   app.use('/api/settings', settingsRoutes);

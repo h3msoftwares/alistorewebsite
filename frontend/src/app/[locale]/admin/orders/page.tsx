@@ -23,6 +23,8 @@ import { OrderReceipt } from '@/components/orders/order-receipt';
 import { useAdminOrders, useMarkOrderCollected, useReviewOrder, useUpdateOrderStatus } from '@/hooks/use-orders';
 import { usePrintPreferences } from '@/hooks/use-print-preferences';
 import { useSettings } from '@/hooks/use-settings';
+import { useStepUp } from '@/hooks/use-auth';
+import { isApiError } from '@/lib/api';
 import { DELIVERY_REGIONS } from '@/lib/regions';
 import type { ReceiptFormat } from '@/lib/print-preferences';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
@@ -98,11 +100,20 @@ export default function AdminOrdersPage() {
     window.addEventListener('afterprint', onAfterPrint);
     return () => window.removeEventListener('afterprint', onAfterPrint);
   }, []);
+  // A sensitive write (status change, collected toggle, ...) came back
+  // 403 STEP_UP_REQUIRED — the session is stale, not wrong. We stash the
+  // exact retry so a correct password re-runs the original action instead
+  // of making the admin redo the click, and the only alternative used to be
+  // a full logout/login.
+  const [stepUpPrompt, setStepUpPrompt] = useState<{ id: string; fn: () => Promise<unknown>; failMsg: string } | null>(null);
+  const [stepUpPassword, setStepUpPassword] = useState('');
+  const [stepUpError, setStepUpError] = useState<string | null>(null);
 
   const { data, isPending, isError, refetch } = useAdminOrders(status || undefined, flaggedOnly || undefined);
   const updateStatus = useUpdateOrderStatus();
   const markCollected = useMarkOrderCollected();
   const reviewOrder = useReviewOrder();
+  const stepUp = useStepUp();
 
   const total = data?.length ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -118,10 +129,34 @@ export default function AdminOrdersPage() {
     try {
       await fn();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : failMsg);
+      if (isApiError(e) && e.code === 'STEP_UP_REQUIRED') {
+        setStepUpPrompt({ id, fn, failMsg });
+      } else {
+        setActionError(e instanceof Error ? e.message : failMsg);
+      }
     } finally {
       setBusyId(null);
     }
+  };
+
+  const closeStepUp = () => {
+    setStepUpPrompt(null);
+    setStepUpPassword('');
+    setStepUpError(null);
+  };
+
+  const submitStepUp = async () => {
+    if (!stepUpPrompt) return;
+    setStepUpError(null);
+    try {
+      await stepUp.mutateAsync(stepUpPassword);
+    } catch {
+      setStepUpError(t('Incorrect password.', 'كلمة المرور غير صحيحة.'));
+      return;
+    }
+    const { id, fn, failMsg } = stepUpPrompt;
+    closeStepUp();
+    await run(id, fn, failMsg);
   };
 
   const openDaysModal = (o: Order, mode: 'ship' | 'edit') => {
@@ -585,6 +620,52 @@ export default function AdminOrdersPage() {
       )}
 
       {printOrder && <OrderReceipt order={printOrder} locale={locale} brandName={brandName} format={receiptFormat} />}
+
+      {stepUpPrompt && (
+        <Modal
+          open
+          onClose={closeStepUp}
+          title={t('Re-enter your password', 'أعد إدخال كلمة المرور')}
+          closeLabel={t('Close', 'إغلاق')}
+        >
+          <form
+            className="admin-modal"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submitStepUp();
+            }}
+          >
+            <h2 className="admin-modal__title">{t('Re-enter your password', 'أعد إدخال كلمة المرور')}</h2>
+            <p className="admin-modal__body">
+              {t(
+                'Your session needs a fresh password check before making this change.',
+                'يحتاج جلستك إلى تحقق حديث من كلمة المرور قبل إجراء هذا التغيير.'
+              )}
+            </p>
+            <Field label={t('Password', 'كلمة المرور')}>
+              {(p) => (
+                <Input
+                  {...p}
+                  type="password"
+                  autoFocus
+                  value={stepUpPassword}
+                  onChange={(e) => setStepUpPassword(e.target.value)}
+                  disabled={stepUp.isPending}
+                />
+              )}
+            </Field>
+            {stepUpError && <Alert tone="danger">{stepUpError}</Alert>}
+            <div className="admin-modal__actions">
+              <Button type="button" variant="ghost" onClick={closeStepUp} disabled={stepUp.isPending}>
+                {t('Cancel', 'إلغاء')}
+              </Button>
+              <Button type="submit" variant="primary" loading={stepUp.isPending} disabled={!stepUpPassword}>
+                {t('Confirm', 'تأكيد')}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }

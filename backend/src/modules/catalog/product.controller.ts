@@ -71,6 +71,11 @@ export async function deleteVariantHandler(req: Request, res: Response) {
   res.status(204).send();
 }
 
+export async function setVariantsHandler(req: Request, res: Response) {
+  const variants = await productService.setVariants(paramString(req.params.id), req.body.variants, req.user?.id);
+  res.json({ variants });
+}
+
 export async function updateStockHandler(req: Request, res: Response) {
   const variant = await productService.updateStock(
     paramString(req.params.variantId),

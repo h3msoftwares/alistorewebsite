@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { catalogApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 import type {
+  BulkVariantBody,
   CatalogListQuery,
   CategoryBody,
   CollectionBody,
@@ -13,7 +14,6 @@ import type {
   ProductImageBody,
   ProductListQuery,
   UUID,
-  VariantBody,
 } from '@/lib/types';
 
 // ---------------------------------------------------------------- queries ----
@@ -339,6 +339,14 @@ export function useSetCollectionRules() {
   });
 }
 
+// Read-only, on demand — no query key/cache needed.
+export function usePreviewCollectionRules() {
+  return useMutation({
+    mutationFn: ({ id, rules }: { id: UUID; rules: CollectionRule[] }) =>
+      catalogApi.previewCollectionRules(id, rules),
+  });
+}
+
 export function useCreateCategory() {
   const inv = useInvalidator();
   return useMutation({
@@ -445,29 +453,13 @@ export function usePermanentDeleteProduct() {
   });
 }
 
-export function useAddProductVariant() {
+/** Replace a product's whole variant set in one call (the matrix editor's
+ *  "Save all") instead of one request per row. */
+export function useSetProductVariants() {
   const inv = useInvalidator();
   return useMutation({
-    mutationFn: ({ id, body }: { id: UUID; body: VariantBody }) =>
-      catalogApi.addProductVariant(id, body),
-    onSuccess: inv.products,
-  });
-}
-
-export function useUpdateProductVariant() {
-  const inv = useInvalidator();
-  return useMutation({
-    mutationFn: ({ id, variantId, body }: { id: UUID; variantId: UUID; body: Partial<VariantBody> }) =>
-      catalogApi.updateProductVariant(id, variantId, body),
-    onSuccess: inv.products,
-  });
-}
-
-export function useDeleteProductVariant() {
-  const inv = useInvalidator();
-  return useMutation({
-    mutationFn: ({ id, variantId }: { id: UUID; variantId: UUID }) =>
-      catalogApi.deleteProductVariant(id, variantId),
+    mutationFn: ({ id, variants }: { id: UUID; variants: BulkVariantBody[] }) =>
+      catalogApi.setProductVariants(id, variants),
     onSuccess: inv.products,
   });
 }

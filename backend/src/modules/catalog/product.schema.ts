@@ -133,6 +133,15 @@ export const updateProductSchema = z.object(productShape).partial().extend({
 export const createVariantSchema = variantInputSchema;
 export const updateVariantSchema = variantInputSchema.partial();
 
+// Body for PUT /:id/variants — replace this product's variant set wholesale
+// in one call (the matrix editor's "Save all"): each entry with an `id`
+// updates that existing variant, one without `id` creates a new one, and any
+// existing variant NOT present in the array is deleted. Same "replace-all on
+// save" convention as setCollectionProducts/setCollectionRules.
+export const bulkSetVariantsSchema = z.object({
+  variants: z.array(variantInputSchema.extend({ id: z.string().uuid().optional() })).min(1).max(100),
+});
+
 // Product images extend the shared Collection/Category/Product image shape
 // with an optional colour tag — ties the image to one of the product's
 // colour options so the product page can swap to it when that colour is

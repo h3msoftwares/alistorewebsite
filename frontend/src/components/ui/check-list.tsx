@@ -7,6 +7,9 @@ export interface CheckListItem {
    *  breadcrumb ("Men › Shoes"), so two same-named options from different
    *  branches (a "Shoes" under Women, Men, and Kids) are distinguishable. */
   sublabel?: ReactNode;
+  /** Blocks *checking* this row (e.g. it's archived) — never blocks
+   *  *unchecking* it. Without that distinction, an item that becomes
+   *  archived after it was already selected can never be removed again. */
   disabled?: boolean;
 }
 
@@ -52,12 +55,16 @@ export function CheckList({
         <p className="check-list__empty">{emptyLabel}</p>
       ) : (
         items.map((item) => {
-          const rowDisabled = disabled || item.disabled;
+          const checked = value.includes(item.id);
+          // The form-level `disabled` (busy/saving) always applies; the
+          // per-item one only blocks adding a new selection, never removing
+          // one that's already checked.
+          const rowDisabled = disabled || (item.disabled && !checked);
           return (
             <label key={item.id} className="check-list__row" data-disabled={rowDisabled ? '' : undefined}>
               <input
                 type="checkbox"
-                checked={value.includes(item.id)}
+                checked={checked}
                 disabled={rowDisabled}
                 onChange={() => toggle(item.id)}
               />

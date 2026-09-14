@@ -13,7 +13,12 @@ import { AppError } from '../lib/AppError';
  *     immediately followed by a letter, "!", "/" or "?". The storefront
  *     stores and renders plain text only (React escapes on output, and
  *     there is no dangerouslySetInnerHTML anywhere), so nothing legitimate
- *     needs markup. "a < b" with a space still passes.
+ *     needs markup. "a < b" with a space still passes. The one deliberate
+ *     exception is `htmlBody` (email-templates.schema.ts's updateEmailTemplateSchema)
+ *     — an admin-authored email template body IS markup by design; every
+ *     value dropped into it at send time is still HTML-escaped in mailer.ts,
+ *     the same output-encoding control this rule is only defense-in-depth on
+ *     top of.
  *  3. Drops the prototype-pollution keys (__proto__, constructor,
  *     prototype) instead of copying them into the sanitized object.
  *  4. Leaves password / passphrase fields completely untouched — they are
@@ -56,6 +61,11 @@ const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 // display field wouldn't accidentally opt out of sanitisation.
 const OPAQUE_KEY = /^(?:current|new|old|confirm)?password$|^passphrase$/i;
 
+// The one field allowed to contain HTML markup — see point 2 above. Exact
+// match only (not a suffix/prefix match), so nothing else can opt out of
+// this check just by reusing the name.
+const MARKUP_ALLOWED_KEY = /^htmlBody$/;
+
 const MAX_DEPTH = 20;
 
 function scrub(value: string): string {
@@ -89,10 +99,15 @@ function sanitizeValue(node: unknown, path: string, depth: number): unknown {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(node)) {
       if (FORBIDDEN_KEYS.has(key)) continue;
-      out[key] =
-        OPAQUE_KEY.test(key) && typeof value === 'string'
-          ? value
-          : sanitizeValue(value, path ? `${path}.${key}` : key, depth + 1);
+      if (OPAQUE_KEY.test(key) && typeof value === 'string') {
+        out[key] = value;
+      } else if (MARKUP_ALLOWED_KEY.test(key) && typeof value === 'string') {
+        // Same control-char scrub as everything else — just skips the
+        // HTML-tag rejection this one field is meant to hold.
+        out[key] = scrub(value);
+      } else {
+        out[key] = sanitizeValue(value, path ? `${path}.${key}` : key, depth + 1);
+      }
     }
     return out;
   }

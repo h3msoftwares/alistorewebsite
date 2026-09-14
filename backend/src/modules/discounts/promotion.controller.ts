@@ -27,6 +27,10 @@ export async function deletePromotionHandler(req: Request, res: Response) {
   res.status(204).end();
 }
 
+export async function previewPromotionCoverageHandler(req: Request, res: Response) {
+  res.json(await promotions.previewPromotionCoverage(req.body));
+}
+
 // ---- Coupons (admin) ----
 
 export async function listCouponsHandler(_req: Request, res: Response) {

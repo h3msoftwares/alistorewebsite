@@ -64,5 +64,16 @@ export const updatePromotionSchema = z.object(promotionShape).partial();
 
 export const promotionIdParamSchema = z.object({ id: z.string().uuid() });
 
+// Same target fields as create/update, minus everything else — the admin
+// form calls this with its current (possibly unsaved) draft to answer "which
+// products would this actually cover", before or after the promotion exists.
+export const previewPromotionCoverageSchema = z.object({
+  appliesToAll: z.boolean().default(false),
+  productIds: z.array(z.string().uuid()).max(500).default([]),
+  categoryTargets: z.array(categoryTargetSchema).max(100).default([]),
+  collectionIds: z.array(z.string().uuid()).max(100).default([]),
+});
+
 export type CreatePromotionInput = z.infer<typeof createPromotionSchema>;
 export type UpdatePromotionInput = z.infer<typeof updatePromotionSchema>;
+export type PreviewPromotionCoverageInput = z.infer<typeof previewPromotionCoverageSchema>;

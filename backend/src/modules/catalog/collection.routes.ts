@@ -26,6 +26,7 @@ import {
   deleteCollectionHandler,
   setCollectionProductsHandler,
   setCollectionRulesHandler,
+  previewCollectionRulesHandler,
   addCollectionImageHandler,
   updateCollectionImageHandler,
   deleteCollectionImageHandler,
@@ -99,6 +100,14 @@ router.put(
   ...admin,
   validate({ params: collectionIdParamSchema, body: setCollectionRulesSchema }),
   asyncHandler(setCollectionRulesHandler)
+);
+// Read-only: "which live products would this (possibly still-unsaved) rule
+// set match" — the rule editor calls this on demand while editing.
+router.post(
+  '/:id/rules/preview',
+  ...admin,
+  validate({ params: collectionIdParamSchema, body: setCollectionRulesSchema }),
+  asyncHandler(previewCollectionRulesHandler)
 );
 
 // ---- Images ----

@@ -12,6 +12,7 @@ import {
   updateProductSchema,
   createVariantSchema,
   updateVariantSchema,
+  bulkSetVariantsSchema,
   createProductImageSchema,
   updateProductImageSchema,
 } from './product.schema';
@@ -26,6 +27,7 @@ import {
   addVariantHandler,
   updateVariantHandler,
   deleteVariantHandler,
+  setVariantsHandler,
   addProductImageHandler,
   updateProductImageHandler,
   deleteProductImageHandler,
@@ -95,6 +97,14 @@ router.delete(
   ...admin,
   validate({ params: productVariantParamSchema }),
   asyncHandler(deleteVariantHandler)
+);
+// Replace the whole variant set in one call — the matrix editor's "Save
+// all", instead of one request per row.
+router.put(
+  '/:id/variants',
+  ...admin,
+  validate({ params: productIdParamSchema, body: bulkSetVariantsSchema }),
+  asyncHandler(setVariantsHandler)
 );
 
 // ---- Images ----

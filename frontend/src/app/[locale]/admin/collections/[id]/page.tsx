@@ -17,25 +17,80 @@ import {
   useRestoreCollection,
   useSetCollectionProducts,
   useSetCollectionRules,
+  usePreviewCollectionRules,
   useUpdateCollection,
 } from '@/hooks/use-catalog';
 import { buildCategoryPaths } from '@/lib/category-path';
 import type { Collection, CollectionRule, CollectionRuleField, CollectionRuleOperator } from '@/lib/types';
 import { CollectionForm, type CollectionFormValues } from '../collection-form';
 
-/** Manual product membership — search the catalog and add/remove products;
- *  every change replaces the whole membership set (same "replace-all on
- *  save" convention used elsewhere). The whole membership for MANUAL; an
- *  INCLUDE overlay on top of the rule-computed set for HYBRID (see
- *  CollectionRulesPanel below) — meaningless for AUTOMATED, so the parent
- *  page only renders this for the other two types. */
-function CollectionProductsPanel({ id, locale }: { id: string; locale: 'en' | 'ar' }) {
+const COLLECTION_TYPE_COPY: Record<
+  Collection['type'],
+  { badgeEn: string; badgeAr: string; en: string; ar: string; tone: string }
+> = {
+  MANUAL: {
+    badgeEn: 'Manual',
+    badgeAr: 'يدوي',
+    en: 'Membership is picked by hand below — nothing here is computed.',
+    ar: 'يتم اختيار العضوية يدويًا أدناه — لا شيء هنا محسوب تلقائيًا.',
+    tone: 'draft',
+  },
+  AUTOMATED: {
+    badgeEn: 'Automated',
+    badgeAr: 'تلقائي',
+    en: 'Membership is computed entirely from the rules below — the product list is read-only.',
+    ar: 'تُحسب العضوية بالكامل من القواعد أدناه — قائمة المنتجات للعرض فقط.',
+    tone: 'scheduled',
+  },
+  HYBRID: {
+    badgeEn: 'Hybrid',
+    badgeAr: 'مختلط',
+    en: 'Membership follows the rules below, plus any product you add or remove by hand here.',
+    ar: 'تتبع العضوية القواعد أدناه، بالإضافة إلى أي منتج تضيفه أو تزيله يدويًا هنا.',
+    tone: 'live',
+  },
+};
+
+function CollectionTypeExplainer({ type, isAr }: { type: Collection['type']; isAr: boolean }) {
+  const copy = COLLECTION_TYPE_COPY[type];
+  return (
+    <div
+      style={{
+        marginTop: 'var(--space-7)',
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 'var(--space-3)',
+        flexWrap: 'wrap',
+      }}
+    >
+      <span className={`status status--${copy.tone}`}>{isAr ? copy.badgeAr : copy.badgeEn}</span>
+      <p className="admin-form__hint" style={{ margin: 0 }}>
+        {isAr ? copy.ar : copy.en}
+      </p>
+    </div>
+  );
+}
+
+/** Product membership. Manual add/remove for MANUAL (the whole membership)
+ *  and HYBRID (an INCLUDE overlay on top of the rule-computed set, see
+ *  CollectionRulesPanel below) — read-only for AUTOMATED, where membership
+ *  comes entirely from rules: still worth showing so an admin editing rules
+ *  can see what currently matches, just without add/remove controls. */
+function CollectionProductsPanel({
+  id,
+  locale,
+  readOnly = false,
+}: {
+  id: string;
+  locale: 'en' | 'ar';
+  readOnly?: boolean;
+}) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { data: linked, isPending } = useCollectionProducts(id);
   const setProducts = useSetCollectionProducts();
   const [search, setSearch] = useState('');
-  const { data: results } = useProducts({ search, pageSize: 10 }, { enabled: search.trim().length >= 2 });
+  const { data: results } = useProducts({ search, pageSize: 10 }, { enabled: !readOnly && search.trim().length >= 2 });
 
   const linkedIds = (linked ?? []).map((p) => p.id);
   const addProduct = (productId: string) => {
@@ -48,12 +103,27 @@ function CollectionProductsPanel({ id, locale }: { id: string; locale: 'en' | 'a
 
   return (
     <div className="admin-form" style={{ marginTop: 'var(--space-7)' }}>
-      <p className="admin-form__section-title">{t('Products', 'المنتجات')}</p>
+      <p className="admin-form__section-title">
+        {t('Products', 'المنتجات')}
+        {!isPending && ` (${(linked ?? []).length})`}
+      </p>
+      {readOnly && (
+        <p className="admin-form__hint">
+          {t(
+            'Computed live from the rules below — read-only here.',
+            'يُحسب تلقائيًا من القواعد أدناه — للعرض فقط هنا.'
+          )}
+        </p>
+      )}
 
       {isPending ? (
         <ProductGridSkeleton count={3} />
       ) : (linked ?? []).length === 0 ? (
-        <p className="admin-form__hint">{t('No products in this collection yet.', 'لا توجد منتجات في هذه المجموعة بعد.')}</p>
+        <p className="admin-form__hint">
+          {readOnly
+            ? t('No products currently match these rules.', 'لا توجد منتجات مطابقة لهذه القواعد حاليًا.')
+            : t('No products in this collection yet.', 'لا توجد منتجات في هذه المجموعة بعد.')}
+        </p>
       ) : (
         <ul role="list" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 'var(--space-2)' }}>
           {(linked ?? []).map((p) => (
@@ -65,51 +135,55 @@ function CollectionProductsPanel({ id, locale }: { id: string; locale: 'en' | 'a
                 <span>{isAr ? p.nameAr : p.nameEn}</span>
                 <span style={{ color: 'var(--color-text-muted)' }}>{p.sku}</span>
               </span>
-              <button
-                type="button"
-                className="icon-btn icon-btn--bordered"
-                aria-label={t('Remove', 'إزالة')}
-                title={t('Remove', 'إزالة')}
-                onClick={() => removeProduct(p.id)}
-                disabled={setProducts.isPending}
-              >
-                <Icon as={X} size={14} />
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  className="icon-btn icon-btn--bordered"
+                  aria-label={t('Remove', 'إزالة')}
+                  title={t('Remove', 'إزالة')}
+                  onClick={() => removeProduct(p.id)}
+                  disabled={setProducts.isPending}
+                >
+                  <Icon as={X} size={14} />
+                </button>
+              )}
             </li>
           ))}
         </ul>
       )}
 
-      <div style={{ marginTop: 'var(--space-4)' }}>
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t('Search products to add…', 'ابحث عن منتجات لإضافتها…')}
-        />
-        {results && results.items.length > 0 && (
-          <ul
-            role="list"
-            style={{ listStyle: 'none', padding: 0, margin: 'var(--space-2) 0 0', display: 'grid', gap: 'var(--space-2)' }}
-          >
-            {results.items
-              .filter((p) => !linkedIds.includes(p.id))
-              .map((p) => (
-                <li
-                  key={p.id}
-                  style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', justifyContent: 'space-between' }}
-                >
-                  <span style={{ display: 'flex', gap: 'var(--space-3)' }}>
-                    <span>{isAr ? p.nameAr : p.nameEn}</span>
-                    <span style={{ color: 'var(--color-text-muted)' }}>{p.sku}</span>
-                  </span>
-                  <Button type="button" variant="outline" size="sm" onClick={() => addProduct(p.id)} disabled={setProducts.isPending}>
-                    {t('Add', 'إضافة')}
-                  </Button>
-                </li>
-              ))}
-          </ul>
-        )}
-      </div>
+      {!readOnly && (
+        <div style={{ marginTop: 'var(--space-4)' }}>
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('Search products to add…', 'ابحث عن منتجات لإضافتها…')}
+          />
+          {results && results.items.length > 0 && (
+            <ul
+              role="list"
+              style={{ listStyle: 'none', padding: 0, margin: 'var(--space-2) 0 0', display: 'grid', gap: 'var(--space-2)' }}
+            >
+              {results.items
+                .filter((p) => !linkedIds.includes(p.id))
+                .map((p) => (
+                  <li
+                    key={p.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', justifyContent: 'space-between' }}
+                  >
+                    <span style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                      <span>{isAr ? p.nameAr : p.nameEn}</span>
+                      <span style={{ color: 'var(--color-text-muted)' }}>{p.sku}</span>
+                    </span>
+                    <Button type="button" variant="outline" size="sm" onClick={() => addProduct(p.id)} disabled={setProducts.isPending}>
+                      {t('Add', 'إضافة')}
+                    </Button>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -247,6 +321,7 @@ function CollectionRulesPanel({ id, locale, collection }: { id: string; locale: 
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const setRules = useSetCollectionRules();
+  const previewRules = usePreviewCollectionRules();
   const [rules, setRulesState] = useState<DraftRule[]>(() =>
     (collection.rules ?? []).map((r) => ({ ...r, key: r.id ?? newRuleKey() }))
   );
@@ -256,19 +331,28 @@ function CollectionRulesPanel({ id, locale, collection }: { id: string; locale: 
 
   const updateRule = (key: string, patch: Partial<DraftRule>) => {
     setSaved(false);
+    previewRules.reset();
     setRulesState((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   };
   const removeRule = (key: string) => {
     setSaved(false);
+    previewRules.reset();
     setRulesState((rs) => rs.filter((r) => r.key !== key));
   };
   const addRule = () => {
     setSaved(false);
+    previewRules.reset();
     const nextGroup = rules.length ? Math.max(...rules.map((r) => r.groupNumber)) + 1 : 0;
     setRulesState((rs) => [
       ...rs,
       { key: newRuleKey(), groupNumber: nextGroup, field: 'PRICE', operator: 'GREATER_THAN_OR_EQUAL', value: 0 },
     ]);
+  };
+  const runPreview = () => {
+    previewRules.mutate({
+      id,
+      rules: rules.map(({ groupNumber, field, operator, value }) => ({ groupNumber, field, operator, value })),
+    });
   };
 
   const onSave = async () => {
@@ -380,6 +464,31 @@ function CollectionRulesPanel({ id, locale, collection }: { id: string; locale: 
               </Button>
             </div>
           ))}
+        </div>
+      )}
+
+      {rules.length > 0 && (
+        <div style={{ marginTop: 'var(--space-4)' }}>
+          <Button type="button" variant="outline" size="sm" loading={previewRules.isPending} onClick={runPreview}>
+            {t('Preview matching products', 'معاينة المنتجات المطابقة')}
+          </Button>
+          {previewRules.data && (
+            <p className="admin-form__hint" style={{ marginTop: 'var(--space-2)' }}>
+              {t(
+                `These rules currently match ${previewRules.data.count} live product(s).`,
+                `تطابق هذه القواعد حاليًا ${previewRules.data.count} منتج حيّ.`
+              )}
+              {previewRules.data.sample.length > 0 &&
+                ` ${t('For example:', 'على سبيل المثال:')} ${previewRules.data.sample
+                  .map((s) => (isAr ? s.nameAr : s.nameEn))
+                  .join(', ')}${previewRules.data.count > previewRules.data.sample.length ? '…' : ''}`}
+            </p>
+          )}
+          {previewRules.isError && (
+            <Alert tone="danger" className="stack">
+              {t('Could not compute the preview.', 'تعذّر حساب المعاينة.')}
+            </Alert>
+          )}
         </div>
       )}
 
@@ -568,7 +677,8 @@ export default function EditCollectionPage() {
         />
       </div>
 
-      {collection.type !== 'AUTOMATED' && <CollectionProductsPanel id={id} locale={locale} />}
+      <CollectionTypeExplainer type={collection.type} isAr={isAr} />
+      <CollectionProductsPanel id={id} locale={locale} readOnly={collection.type === 'AUTOMATED'} />
       {collection.type !== 'MANUAL' && <CollectionRulesPanel id={id} locale={locale} collection={collection} />}
     </div>
   );

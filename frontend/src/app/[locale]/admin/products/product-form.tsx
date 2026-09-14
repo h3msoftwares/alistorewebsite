@@ -14,11 +14,9 @@ import { buildCategoryPaths } from '@/lib/category-path';
 // left to a number. Two decimal places, matching Decimal(12,2) server-side.
 const priceStringSchema = z.string().regex(/^$|^\d+(\.\d{1,2})?$/, 'Must be empty or a positive number (e.g. 19.99)');
 
-// The object schema (not yet refined) so admin/products/new/page.tsx can
-// .extend() it with a variants field — z.object().refine() returns a
-// ZodEffects, which can't be extended, so the refine is applied last, by
-// both this schema and the create page's extended one, via the same
-// `saleNeedsValue` check below.
+// The object schema, refined below into productCoreSchema (variants are
+// handled entirely separately — see components/admin/variants-matrix.tsx —
+// so nothing here needs to .extend() this with a variants field anymore).
 //
 // No `quantity` field here on purpose (fix-list.md #16) — `Product.quantity`
 // is a dead, free-standing DB column never derived from or validated against
@@ -68,9 +66,10 @@ export const productCoreDefaults: ProductCoreValues = {
 };
 
 /** The product-level fields shared by the create and edit pages — not a
- *  <form> itself (the caller owns that, since create additionally embeds a
- *  variants field-array in the same form/submit, while edit manages
- *  variants as independent line items below this). */
+ *  <form> itself (the caller owns that). Variants are a separate concern on
+ *  both pages: a VariantsMatrix rendered alongside this, saved together with
+ *  the rest on create and independently (its own "Save all variants") on
+ *  edit. */
 export function ProductCoreFields<T extends ProductCoreValues>({
   register,
   control,

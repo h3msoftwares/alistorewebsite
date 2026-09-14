@@ -1,27 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createWrapper } from '@/test/utils';
 
-vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en' }) }));
+vi.mock('next/navigation', () => ({
+  useParams: () => ({ locale: 'en' }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 vi.mock('@/lib/api', () => ({
   discountsApi: {
     listPromotions: vi.fn(),
-    createPromotion: vi.fn(),
-    updatePromotion: vi.fn(),
-    deletePromotion: vi.fn(),
     listCoupons: vi.fn(),
-    createCoupon: vi.fn(),
-    updateCoupon: vi.fn(),
+    deletePromotion: vi.fn(),
+    updatePromotion: vi.fn(),
+    createPromotion: vi.fn(),
     deleteCoupon: vi.fn(),
   },
-}));
-
-vi.mock('@/hooks/use-catalog', () => ({
-  useAdminCollections: () => ({ data: [] }),
-  useAdminCategories: () => ({ data: [] }),
-  useProducts: () => ({ data: { items: [], total: 0, page: 1, pageSize: 500 } }),
 }));
 
 import { discountsApi } from '@/lib/api';
@@ -54,6 +49,9 @@ const coupon = {
   isActive: true,
   startsAt: null,
   endsAt: null,
+  maxRedemptions: null,
+  maxPerCustomer: null,
+  timesRedeemed: 0,
   dateCreated: '2026-09-01T00:00:00.000Z',
 };
 
@@ -66,18 +64,30 @@ beforeEach(() => {
   vi.clearAllMocks();
   mock.listPromotions.mockResolvedValue([promotion] as never);
   mock.listCoupons.mockResolvedValue([coupon] as never);
-  mock.createPromotion.mockResolvedValue(promotion as never);
 });
 
-describe('AdminDiscountsPage', () => {
-  it('lists promotions on the first tab', async () => {
+describe('AdminDiscountsPage (list)', () => {
+  it('lists promotions on the first tab, each linking to its own edit page', async () => {
     renderPage();
     expect(await screen.findByText('Summer sale')).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '15%' })).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: 'All items' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute(
+      'href',
+      '/en/admin/discounts/promotions/p1'
+    );
   });
 
-  it('switches to the Coupons tab and lists coupons', async () => {
+  it('links "New promotion" to the create page rather than an inline form', async () => {
+    renderPage();
+    await screen.findByText('Summer sale');
+    expect(screen.getByRole('link', { name: /New promotion/ })).toHaveAttribute(
+      'href',
+      '/en/admin/discounts/promotions/new'
+    );
+  });
+
+  it('switches to the Coupons tab and lists coupons, linking Edit to its own page', async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('Summer sale');
@@ -85,36 +95,6 @@ describe('AdminDiscountsPage', () => {
     await user.click(screen.getByRole('button', { name: 'Coupons' }));
     expect(await screen.findByText('WELCOME10')).toBeInTheDocument();
     expect(screen.getByText('$10.00')).toBeInTheDocument();
-  });
-
-  it('submits a new promotion that applies to all items', async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await screen.findByText('Summer sale');
-
-    await user.type(screen.getByLabelText(/Name \(English\)/), 'Flash');
-    await user.type(screen.getByLabelText(/Name \(Arabic\)/), 'فلاش');
-    await user.click(screen.getByLabelText('Applies to all items'));
-    await user.click(screen.getByRole('button', { name: 'Add promotion' }));
-
-    await waitFor(() => expect(mock.createPromotion).toHaveBeenCalled());
-    expect(mock.createPromotion.mock.calls[0][0]).toMatchObject({
-      nameEn: 'Flash',
-      appliesToAll: true,
-      type: 'PERCENT',
-    });
-  });
-
-  it('rejects a promotion with no target and not applying to all items', async () => {
-    const user = userEvent.setup();
-    renderPage();
-    await screen.findByText('Summer sale');
-
-    await user.type(screen.getByLabelText(/Name \(English\)/), 'Flash');
-    await user.type(screen.getByLabelText(/Name \(Arabic\)/), 'فلاش');
-    await user.click(screen.getByRole('button', { name: 'Add promotion' }));
-
-    expect(await screen.findByText(/Pick at least one target/)).toBeInTheDocument();
-    expect(mock.createPromotion).not.toHaveBeenCalled();
+    expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/en/admin/discounts/coupons/c1');
   });
 });

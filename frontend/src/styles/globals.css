@@ -1767,6 +1767,8 @@ main > .container.section:first-child {
 .breadcrumb__item { display: inline-flex; align-items: center; gap: var(--space-1); }
 .breadcrumb__link { color: var(--color-text-muted); white-space: nowrap; }
 .breadcrumb__link:hover { color: var(--color-text); text-decoration: underline; }
+.breadcrumb__link--disabled { color: var(--color-text-disabled); cursor: default; }
+.breadcrumb__link--disabled:hover { color: var(--color-text-disabled); text-decoration: none; }
 .breadcrumb__sep { color: var(--color-text-disabled); }
 .breadcrumb__current {
   margin: 0;
@@ -2594,7 +2596,9 @@ a.home-card__name:hover { text-decoration: underline; }
 @media (max-width: 767px) {
   .checkout__grid { grid-template-columns: 1fr; }
 }
-.checkout__summary { position: sticky; top: var(--space-4); }
+/* Sticky offset must clear the sticky topbar (--header-height), not just a
+   spacing token — otherwise the summary scrolls up underneath it. */
+.checkout__summary { position: sticky; top: calc(var(--header-height) + var(--space-4)); z-index: 1; }
 .checkout__lines {
   list-style: none;
   margin: 0;
@@ -3055,6 +3059,14 @@ a.home-card__name:hover { text-decoration: underline; }
 .status--delivered { background: var(--color-success-bg); color: var(--color-success-text); }
 .status--cancelled,
 .status--returned  { background: var(--color-danger-bg);  color: var(--color-danger-text); }
+
+/* Promotion effective-status pills (derived from status + startsAt/endsAt,
+   not the raw stored enum — see the discounts admin page). */
+.status--draft,
+.status--expired   { background: var(--color-border);     color: var(--color-text-muted); }
+.status--scheduled { background: var(--color-info-bg);     color: var(--color-info-text); }
+.status--live      { background: var(--color-success-bg);  color: var(--color-success-text); }
+.status--paused    { background: var(--color-warning-bg);  color: var(--color-warning-text); }
 
 /* ---- 5.6 Form fields ---- */
 .field { display: block; margin-bottom: var(--space-4); }
