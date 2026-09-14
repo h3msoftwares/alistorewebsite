@@ -64,7 +64,7 @@ const envSchema = z.object({
   SMTP_PORT: z.coerce.number().default(587),
   SMTP_USER: z.string().default(''),
   SMTP_PASSWORD: z.string().default(''),
-  SMTP_FROM: z.string().default("Ali's Store <no-reply@example.com>"),
+  SMTP_FROM: z.string().default("Ali'sStore <no-reply@example.com>"),
   // Password-reset token lifetime, in minutes.
   RESET_TOKEN_TTL_MIN: z.coerce.number().default(30),
   // Email-verification token lifetime, in minutes. Longer than the reset

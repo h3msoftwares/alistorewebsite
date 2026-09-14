@@ -69,7 +69,7 @@ export function ForgotPasswordForm({
 
   return (
     <div className="section" style={{ maxWidth: '22rem', marginInline: 'auto' }}>
-      <p className="eyebrow">{t("Ali's Store", 'متجر علي')}</p>
+      <p className="eyebrow">{"Ali'sStore"}</p>
       <h1>{t('Forgot your password?', 'نسيت كلمة المرور؟')}</h1>
 
       {status === 'success' ? (

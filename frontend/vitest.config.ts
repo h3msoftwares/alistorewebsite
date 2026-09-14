@@ -17,5 +17,13 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,
     restoreMocks: true,
+    // Report-only — no thresholds enforced yet (a first baseline, not a
+    // gate). Run via `npm run test:coverage`; `npm test` stays unaffected.
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/**/*.d.ts'],
+    },
   },
 });

@@ -111,13 +111,13 @@ export async function sendPasswordResetEmail(
   const from = await resolveFrom();
 
   const text =
-    `You requested a password reset for your Ali's Store account.\n\n` +
+    `You requested a password reset for your Ali'sStore account.\n\n` +
     `Reset your password: ${resetUrl}\n\n` +
     `This link expires in ${ttlMinutes} minutes. If you didn't request this, you can ` +
     `safely ignore this email — your password won't be changed.`;
 
   const html = `
-    <p>You requested a password reset for your Ali's Store account.</p>
+    <p>You requested a password reset for your Ali'sStore account.</p>
     <p><a href="${esc(resetUrl)}">Reset your password</a></p>
     <p>This link expires in ${ttlMinutes} minutes. If you didn't request this, you can
     safely ignore this email — your password won't be changed.</p>
@@ -127,7 +127,7 @@ export async function sendPasswordResetEmail(
     const info = await transporter.sendMail({
       from,
       to,
-      subject: "Reset your Ali's Store password",
+      subject: "Reset your Ali'sStore password",
       text,
       html,
     });
@@ -160,12 +160,12 @@ export async function sendVerificationEmail(
   const validFor = hours >= 1 ? `${hours} hour${hours === 1 ? '' : 's'}` : `${ttlMinutes} minutes`;
 
   const text =
-    `Welcome to Ali's Store! Confirm your email address to finish setting up your account.\n\n` +
+    `Welcome to Ali'sStore! Confirm your email address to finish setting up your account.\n\n` +
     `Verify your email: ${verifyUrl}\n\n` +
     `This link is valid for ${validFor}. If you didn't create an account, you can ignore this email.`;
 
   const html = `
-    <p>Welcome to Ali's Store! Confirm your email address to finish setting up your account.</p>
+    <p>Welcome to Ali'sStore! Confirm your email address to finish setting up your account.</p>
     <p><a href="${esc(verifyUrl)}">Verify your email</a></p>
     <p>This link is valid for ${validFor}. If you didn't create an account, you can ignore this email.</p>
   `.trim();
@@ -174,7 +174,7 @@ export async function sendVerificationEmail(
     const info = await transporter.sendMail({
       from,
       to,
-      subject: "Verify your Ali's Store email",
+      subject: "Verify your Ali'sStore email",
       text,
       html,
     });
@@ -224,7 +224,7 @@ export async function sendOrderConfirmationEmail(
     `${deliveryLine(order)}\n` +
     `Phone: ${order.deliveryPhone}` +
     (order.deliveryNotes ? `\nDelivery notes: ${order.deliveryNotes}` : '') +
-    `\n\nWe'll call ${order.deliveryPhone} to confirm delivery. Thanks for shopping with Ali's Store!\n\n` +
+    `\n\nWe'll call ${order.deliveryPhone} to confirm delivery. Thanks for shopping with Ali'sStore!\n\n` +
     `Track this order or cancel it any time before it ships: ${orderUrl}`;
 
   const itemRows = order.items
@@ -248,7 +248,7 @@ export async function sendOrderConfirmationEmail(
       Phone: ${esc(order.deliveryPhone)}
       ${order.deliveryNotes ? `<br>Delivery notes: ${esc(order.deliveryNotes)}` : ''}
     </p>
-    <p>We'll call ${esc(order.deliveryPhone)} to confirm delivery. Thanks for shopping with Ali's Store!</p>
+    <p>We'll call ${esc(order.deliveryPhone)} to confirm delivery. Thanks for shopping with Ali'sStore!</p>
     <p><a href="${esc(orderUrl)}">Track this order or cancel it</a> any time before it ships.</p>
   `.trim();
 
@@ -496,11 +496,11 @@ export async function sendCheckoutOtpEmail(to: string, code: string, ttlMinutes:
   const from = await resolveFrom();
 
   const text =
-    `Your Ali's Store verification code is ${code}.\n\n` +
+    `Your Ali'sStore verification code is ${code}.\n\n` +
     `It expires in ${ttlMinutes} minutes. If you didn't request this, you can ignore this email.`;
 
   const html = `
-    <p>Your Ali's Store verification code is:</p>
+    <p>Your Ali'sStore verification code is:</p>
     <p style="font-size: 1.5em; font-weight: bold; letter-spacing: 0.1em;">${esc(code)}</p>
     <p>It expires in ${ttlMinutes} minutes. If you didn't request this, you can ignore this email.</p>
   `.trim();
@@ -509,7 +509,7 @@ export async function sendCheckoutOtpEmail(to: string, code: string, ttlMinutes:
     const info = await transporter.sendMail({
       from,
       to,
-      subject: `${code} is your Ali's Store verification code`,
+      subject: `${code} is your Ali'sStore verification code`,
       text,
       html,
     });
@@ -558,7 +558,7 @@ export async function sendLoyaltyRewardEmail(
     const info = await transporter.sendMail({
       from,
       to,
-      subject: `A reward for you, from Ali's Store`,
+      subject: `A reward for you, from Ali'sStore`,
       text,
       html,
     });

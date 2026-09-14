@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useFieldArray, useForm } from 'react-hook-form';
+import { Controller, useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Plus, Trash2 } from 'lucide-react';
 import { Alert, Button, Field, Icon, Input } from '@/components/ui';
+import { ColorPicker } from '@/components/admin/color-picker';
 import { useCreateProduct } from '@/hooks/use-catalog';
 import { ProductCoreFields, productCoreDefaults, productCoreObjectSchema, saleNeedsValue } from '../product-form';
 
@@ -105,7 +106,15 @@ export default function NewProductPage() {
                 {(p) => <Input {...p} {...register(`variants.${i}.size` as const)} disabled={busy} />}
               </Field>
               <Field label={t('Colour', 'اللون')}>
-                {(p) => <Input {...p} {...register(`variants.${i}.color` as const)} disabled={busy} />}
+                {(p) => (
+                  <Controller
+                    control={control}
+                    name={`variants.${i}.color` as const}
+                    render={({ field }) => (
+                      <ColorPicker {...p} value={field.value} onChange={field.onChange} locale={locale} disabled={busy} />
+                    )}
+                  />
+                )}
               </Field>
               <Field label={t('Price override', 'سعر خاص')} error={errors.variants?.[i]?.priceOverride?.message}>
                 {(p) => (

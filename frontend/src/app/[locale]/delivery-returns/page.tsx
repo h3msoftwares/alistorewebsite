@@ -3,7 +3,7 @@ import { DeliveryReturnsView } from './delivery-returns-view';
 
 export const metadata: Metadata = {
   title: 'Delivery & Returns',
-  description: 'How delivery, returns, exchanges, and refunds work at Ali’s Store.',
+  description: "How delivery, returns, exchanges, and refunds work at Ali'sStore.",
 };
 
 export default async function DeliveryReturnsPage({

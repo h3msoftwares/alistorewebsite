@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Save, Trash2 } from 'lucide-react';
 import { Alert, Field, Icon, Input } from '@/components/ui';
+import { ColorPicker } from '@/components/admin/color-picker';
 import { useAddProductVariant, useDeleteProductVariant, useUpdateProductVariant } from '@/hooks/use-catalog';
 import type { ProductVariant } from '@/lib/types';
 
@@ -68,7 +69,15 @@ function VariantRow({
         {(p) => <Input {...p} value={values.size} onChange={(e) => onChange({ ...values, size: e.target.value })} disabled={busy} />}
       </Field>
       <Field label={t('Colour', 'اللون')}>
-        {(p) => <Input {...p} value={values.color} onChange={(e) => onChange({ ...values, color: e.target.value })} disabled={busy} />}
+        {(p) => (
+          <ColorPicker
+            {...p}
+            value={values.color}
+            onChange={(color) => onChange({ ...values, color })}
+            locale={locale}
+            disabled={busy}
+          />
+        )}
       </Field>
       <Field label={t('Price override', 'سعر خاص')} error={errors.priceOverride}>
         {(p) => (

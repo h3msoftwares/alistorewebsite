@@ -8,15 +8,12 @@ import { CartVariantPicker } from '@/components/cart/cart-variant-picker';
 import { useCart, useClearCart, useRemoveCartItem, useUpdateCartItem } from '@/hooks/use-cart';
 import { useSettings } from '@/hooks/use-settings';
 import { cartItemToGaItem, trackRemoveFromCart } from '@/lib/analytics/ga';
+import { formatCurrency } from '@/lib/format';
 import type { CartItem } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
 
-const money = (n: number, locale: Locale) =>
-  new Intl.NumberFormat(locale === 'ar' ? 'ar-EG' : 'en-US', {
-    style: 'currency',
-    currency: 'USD',
-  }).format(n);
+const money = (n: number, locale: Locale) => formatCurrency(n, locale);
 
 export function CartView({ locale }: { locale: Locale }) {
   const isAr = locale === 'ar';

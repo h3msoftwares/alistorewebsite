@@ -556,10 +556,10 @@ export default function AdminSettingsPage() {
         <div className="admin-form__row">
           <Field
             label={t('Outgoing email name', 'اسم مرسِل البريد')}
-            hint={t('Shown as the sender name, e.g. "Ali’s Store"', 'يظهر كاسم المرسل، مثل "متجر علي"')}
+            hint={t('Shown as the sender name, e.g. "Ali\'sStore"', 'يظهر كاسم المرسل، مثل "Ali\'sStore"')}
             error={errors.mailFromName?.message}
           >
-            {(p) => <Input {...p} {...register('mailFromName')} placeholder="Ali's Store" disabled={busy} />}
+            {(p) => <Input {...p} {...register('mailFromName')} placeholder="Ali'sStore" disabled={busy} />}
           </Field>
           <Field
             label={t('Outgoing email address', 'عنوان بريد الإرسال')}

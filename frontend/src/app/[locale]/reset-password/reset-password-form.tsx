@@ -145,7 +145,7 @@ export function ResetPasswordForm({ locale, token }: { locale: Locale; token: st
 
   return wrap(
     <>
-      <p className="eyebrow">{t("Ali's Store", 'متجر علي')}</p>
+      <p className="eyebrow">{"Ali'sStore"}</p>
       <h1>{t('Choose a new password', 'اختر كلمة مرور جديدة')}</h1>
 
       {status === 'error' && (

@@ -30,7 +30,7 @@ export async function generateMetadata({
   if (!col) return {};
   const isAr = locale === 'ar';
   return {
-    title: `${isAr ? col.nameAr : col.nameEn} · Ali's Store`,
+    title: `${isAr ? col.nameAr : col.nameEn} · Ali'sStore`,
     description: (isAr ? col.descriptionAr : col.descriptionEn) ?? undefined,
   };
 }

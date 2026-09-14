@@ -123,7 +123,7 @@ export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; de
 
   return wrap(
     <>
-      <p className="eyebrow">{t("Ali's Store", 'متجر علي')}</p>
+      <p className="eyebrow">{"Ali'sStore"}</p>
       <h1>{t('Create your account', 'أنشئ حسابك')}</h1>
 
       {error !== 'none' && (

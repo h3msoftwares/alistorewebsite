@@ -1,4 +1,4 @@
-// Ali's Store — e-commerce schema
+// Ali'sStore — e-commerce schema
 // Convention carried over from the original pos-backend schema:
 // - uuid primary keys, PascalCase models mapped to lowercase tables (@@map)
 // - camelCase columns, Decimal for money, soft-delete via deletedAt where relevant
@@ -1110,8 +1110,8 @@ model OrderItem {
 // social / contact links.
 model SiteSetting {
   id                  Int     @id @default(1)
-  brandNameEn         String  @default("Ali's Store")
-  brandNameAr         String  @default("متجر علي")
+  brandNameEn         String  @default("Ali'sStore")
+  brandNameAr         String  @default("Ali'sStore")
   announcementActive  Boolean @default(true)
   heroEyebrowEn       String  @default("Limited stock")
   heroEyebrowAr       String  @default("كمية محدودة")

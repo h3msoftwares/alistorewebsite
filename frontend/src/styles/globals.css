@@ -534,6 +534,27 @@ main > .container.section:first-child {
   width: auto;
 }
 
+/* Typewriter caret beside the animated brand name (hooks/use-typewriter.ts).
+   The name itself is duplicated as plain text in a .visually-hidden span so
+   the link's accessible name is stable and complete from first paint,
+   independent of how far the animation has progressed. */
+.topbar__logo-caret {
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  margin-inline-start: 2px;
+  vertical-align: -0.1em;
+  background: currentColor;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .topbar__logo-caret {
+    animation: topbar-caret-blink 1s step-end infinite;
+  }
+}
+@keyframes topbar-caret-blink {
+  50% { opacity: 0; }
+}
+
 .site-header__nav {
   display: flex;
   align-items: center;
@@ -709,17 +730,103 @@ main > .container.section:first-child {
   padding-inline: calc(var(--gutter) + 28px);
   position: relative;
 }
-.offers-strip__message {
-  margin: 0;
+.offers-strip__marquee {
+  position: relative; /* containing block for .offers-strip__probe below */
   min-width: 0;
-  text-align: center;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  /* Forced regardless of page direction: `translateX()` on .offers-strip__track
+     is a physical (not logical) transform, always moving toward +x, but
+     `justify-content` is resolved against *this* (the flex container's) own
+     direction — under the page's dir="rtl" for Arabic, `flex-start` was
+     anchoring the track's *right* edge to the marquee instead of its left,
+     which the translateX math doesn't account for, so the whole track
+     drifted completely off past the left edge for most of the Arabic cycle.
+     Pinning this container to `ltr` keeps "flex-start = physical left" true
+     in both locales; offers-strip.tsx adds `dir="auto"` to each item span so
+     the Arabic text itself still shapes and orders correctly within its own
+     run despite the forced-ltr ancestor.
+     Centred (the base, non-animated value) is only correct for the
+     reduced-motion static line below (one unrepeated copy, sized to its own
+     content) — once the ticker is actually animating, centring the
+     *oversized* two-copy track would add a constant (viewport-width / 2)
+     offset on top of the translateX loop, which read as the ticker
+     glitching/restarting mid-strip rather than the next line sliding in
+     cleanly, so the no-preference override below goes back to flex-start. */
+  justify-content: center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .offers-strip__marquee { justify-content: flex-start; direction: ltr; }
+}
+.offers-strip__track {
+  margin: 0;
+  display: flex;
+  width: max-content;
+  white-space: nowrap;
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  /* never let a long promo line get edge-clipped by html{overflow-x:clip} —
-     wrap it instead (min-height grows to fit) */
-  overflow-wrap: anywhere;
 }
-[lang='ar'] .offers-strip__message { letter-spacing: 0; text-transform: none; }
+[lang='ar'] .offers-strip__track { letter-spacing: 0; text-transform: none; }
+/* Out of flow and invisible — exists only so its rendered width can be
+   measured (see offers-strip.tsx's ResizeObserver) without affecting the
+   marquee's own layout. */
+.offers-strip__probe {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+.offers-strip__copy,
+.offers-strip__repeat { display: flex; }
+.offers-strip__item { display: inline-flex; align-items: center; }
+/* Wide, clearly-visible gap either side of the divider — a lone "/" set in
+   generous space, not the tight " / " a plain joined string would give. */
+.offers-strip__sep {
+  margin-inline: var(--space-6);
+  opacity: 0.6;
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Duration is set per-instance via the --offers-strip-duration custom
+     property (offers-strip.tsx), computed from the measured content width
+     at a fixed px/second — a flat duration here would visibly speed up as
+     `repeats` grows the distance travelled per cycle. 22s is just the
+     fallback for the brief window before the first measurement lands. */
+  .offers-strip__track { animation: offers-strip-scroll var(--offers-strip-duration, 22s) linear infinite; }
+  /* Both halves move toward the end of the reading direction: right in `en`
+     (the keyframe's default direction), left in `ar` (played in reverse). */
+  [lang='ar'] .offers-strip__track { animation-direction: reverse; }
+}
+@keyframes offers-strip-scroll {
+  from { transform: translateX(-50%); }
+  to { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Ticker off: one static, centred, wrapping line — same as before this
+     became a marquee (html{overflow-x:clip} means a long line must wrap
+     rather than get edge-clipped, so undo the ticker's nowrap here). */
+  .offers-strip__track {
+    animation: none;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  /* Only the duplicate half (see offers-strip.tsx's `copy(key, duplicate)`)
+     is hidden — a plain :nth-child(2) here would also match nested spans one
+     level down, since it's a descendant selector, not a direct-child one. */
+  .offers-strip__copy--duplicate { display: none; }
+  /* And within the remaining half, only its first repeat — the extra repeats
+     exist purely to keep a *moving* ticker full-width; a static line only
+     needs each announcement once. */
+  .offers-strip__copy:not(.offers-strip__copy--duplicate) .offers-strip__repeat:not(:first-child) {
+    display: none;
+  }
+  /* No dangling "/" after the last line once it's a single static line. */
+  .offers-strip__copy:not(.offers-strip__copy--duplicate)
+    .offers-strip__repeat:first-child
+    .offers-strip__item:last-child
+    .offers-strip__sep {
+    display: none;
+  }
+}
 .offers-strip__close {
   position: absolute;
   inset-inline-end: max(var(--space-1), calc(var(--gutter) - var(--space-2)));
@@ -735,7 +842,7 @@ main > .container.section:first-child {
 }
 .offers-strip__close:hover { opacity: 1; }
 @media (max-width: 560px) {
-  .offers-strip__message { text-transform: none; letter-spacing: 0; }
+  .offers-strip__track { text-transform: none; letter-spacing: 0; }
   /* tighter, symmetric gutters (keeps the line dead-centre) with room for the
      32px close button; anything still too long wraps rather than clipping */
   .offers-strip__inner { padding-inline: calc(var(--space-3) + 30px); }
@@ -743,6 +850,7 @@ main > .container.section:first-child {
 
 /* ---- Topbar (composed into .site-header by SiteHeader) ---- */
 .topbar__inner {
+  position: relative; /* anchors .topbar__nav's fixed centring below */
   min-height: var(--header-height);
   display: flex;
   align-items: center;
@@ -751,8 +859,15 @@ main > .container.section:first-child {
 .topbar__menu-btn,
 .topbar__logo { flex: none; }
 .topbar__menu-btn { display: none; }
+/* Centred on the header itself (not "the space between logo and actions") so
+   the animated brand name (hooks/use-typewriter.ts) typing/deleting doesn't
+   shift it — `margin-inline: auto` in a flex row re-centres on every width
+   change of either sibling, which reads as the nav jittering in sync with
+   the caret. */
 .topbar__nav {
-  margin-inline: auto; /* centres the nav between logo and actions */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   min-width: 0;
 }
 .topbar__actions {
@@ -760,6 +875,7 @@ main > .container.section:first-child {
   align-items: center;
   gap: var(--space-1);
   flex: none;
+  margin-inline-start: auto; /* pins to the end now .topbar__nav is out of flow */
 }
 .topbar__account {
   width: auto;
@@ -993,6 +1109,27 @@ main > .container.section:first-child {
   color: var(--color-text-on-dark);
 }
 .hero__title em { font-style: italic; color: var(--bright-gold); }
+/* Headline words stagger in as the surrounding .hero__lead reveal fires (see
+   hooks/use-reveal.ts) — same fade+rise used for home-row tiles, just word by
+   word instead of card by card. */
+/* `display: inline-block` makes the per-word stagger animation possible
+   (transforms don't apply to plain inline boxes), but that same inline-block
+   boundary swallows a trailing space text node — so the word gap is a real
+   margin instead of a space character in the JSX. */
+.hero__title-word { display: inline-block; margin-inline-end: 0.28em; }
+.hero__title-word:last-child { margin-inline-end: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .reveal .hero__title-word { opacity: 0; }
+  .reveal.is-visible .hero__title-word {
+    animation: tile-reveal 0.5s var(--drawer-ease, ease) both;
+  }
+  .reveal.is-visible .hero__title-word:nth-child(1) { animation-delay: 0.15s; }
+  .reveal.is-visible .hero__title-word:nth-child(2) { animation-delay: 0.21s; }
+  .reveal.is-visible .hero__title-word:nth-child(3) { animation-delay: 0.27s; }
+  .reveal.is-visible .hero__title-word:nth-child(4) { animation-delay: 0.33s; }
+  .reveal.is-visible .hero__title-word:nth-child(5) { animation-delay: 0.39s; }
+  .reveal.is-visible .hero__title-word:nth-child(n + 6) { animation-delay: 0.45s; }
+}
 .hero__lede {
   font-size: clamp(1rem, 0.95rem + 0.5vw, 1.125rem);
   color: var(--color-text-muted-on-dark);
@@ -1797,23 +1934,89 @@ main > .container.section:first-child {
   color: var(--color-text-muted);
 }
 
-.product-preview-card__body { display: flex; flex-direction: column; gap: var(--space-2); }
-.product-preview-card__name { font-weight: var(--fw-semibold); }
+/* Hover-scroll position dots — hovering the card steps through that
+   colour's gallery every HOVER_SCROLL_MS (see product-preview-card.tsx and
+   lib/product-variants.ts's pickImageGallery); same pattern as the home
+   page's .home-card__scrub. Gated on the whole media-wrap, not just the
+   image link, since the favourite/zoom buttons sit on top of it too. */
+.product-preview-card__scrub {
+  position: absolute;
+  inset-block-end: var(--space-2);
+  inset-inline: 0;
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  pointer-events: none;
+}
+.product-preview-card__media-wrap:hover .product-preview-card__scrub,
+.product-preview-card__media-wrap:focus-within .product-preview-card__scrub { opacity: 1; }
+.product-preview-card__scrub > span {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  opacity: 0.55;
+}
+.product-preview-card__scrub > span[data-on] { opacity: 1; transform: scale(1.25); }
+
+/* `flex: 1` fills the card's full height — the grid stretches every card in
+   a row to match the tallest one, and without this the body's own content
+   height would leave dead space below it instead of handing that space to
+   the add-to-cart button's `margin-top: auto` below. */
+.product-preview-card__body { display: flex; flex-direction: column; gap: var(--space-2); flex: 1; }
+
+/* Clamped to a fixed 2-line box (blank second line for a short name) so the
+   price/swatches/chips/button below start at the same height on every card
+   in a row regardless of name length — a long name still shows in full up
+   to 2 lines, only clipping (with an ellipsis) past that. */
+.product-preview-card__name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-weight: var(--fw-semibold);
+  line-height: 1.3;
+  min-height: calc(1.3em * 2);
+}
 .product-preview-card__name:hover { text-decoration: underline; }
 
-.product-preview-card__chips.chip-group { gap: var(--space-1); }
+/* Single row, scrolling horizontally instead of wrapping — a product with
+   many sizes/colours keeps every option reachable (nothing hidden) without
+   growing taller than a product with few, which would otherwise misalign
+   everything below it across the row. */
+.product-preview-card__chips.chip-group {
+  gap: var(--space-1);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.product-preview-card__chips.chip-group::-webkit-scrollbar { display: none; }
 .product-preview-card__chips .chip {
   min-height: 28px;
   padding-inline: var(--space-2);
   font-size: var(--fs-2xs);
+  flex: none;
 }
 
-.product-preview-card__swatches.swatch-group { gap: var(--space-1); }
-.product-preview-card__swatches .swatch { width: 26px; height: 26px; padding: 2px; }
+.product-preview-card__swatches.swatch-group {
+  gap: var(--space-1);
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.product-preview-card__swatches.swatch-group::-webkit-scrollbar { display: none; }
+.product-preview-card__swatches .swatch { width: 26px; height: 26px; padding: 2px; flex: none; }
 .product-preview-card__swatches .swatch[data-selected='true'] { padding: 1px; }
 
+/* `margin-top: auto` pins the button to the bottom of the (now `flex: 1`)
+   body, so it lines up across a row no matter how much a given card's name/
+   swatches/chips take up above it. */
 .product-preview-card__add-to-cart {
   align-self: flex-end;
+  margin-top: auto;
   width: 36px;
   height: 36px;
 }
@@ -2320,7 +2523,20 @@ a.home-card__name:hover { text-decoration: underline; }
   width: 100%;
 }
 .checkout__coupon-entry .input { flex: 1; min-width: 0; }
-.checkout .is-numeric { font-variant-numeric: tabular-nums; }
+/* Belt-and-suspenders alongside checkout-view.tsx's `lang="en"` spans: some
+   Arabic webfonts (Cairo included) carry a `locl` OpenType substitution that
+   swaps plain Latin digit glyphs for Arabic-Indic ones purely at render time
+   under an Arabic language context — invisible in the DOM/string (which is
+   already forced to real Latin digits via Intl's numberingSystem: 'latn' in
+   lib/format.ts), so it has to be defeated at the font-feature level too.
+   font-language-override pins the OpenType language system a font resolves
+   substitutions against; "locl" 0 additionally disables that feature
+   outright as a second layer. */
+.checkout .is-numeric {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "locl" 0;
+  font-language-override: "ENG";
+}
 .admin-form__section-title {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
@@ -2361,8 +2577,9 @@ a.home-card__name:hover { text-decoration: underline; }
 /* Edit-page variant line items — each row saves/deletes independently. */
 .admin-variants-list { display: flex; flex-direction: column; gap: var(--space-3); }
 
-/* Colour picker field (collection accent) — a round native swatch + the hex
-   value + a clear button, since the accent is optional. */
+/* Colour field (components/admin/color-picker.tsx, used for a variant's
+   colour) — a round native RGB colour-wheel swatch (input[type=color]) + the
+   hex value + a clear button, since the colour is optional. */
 .colour-field { display: flex; align-items: center; gap: var(--space-3); }
 .colour-field__swatch {
   inline-size: 2.25rem;
@@ -2813,10 +3030,19 @@ a.home-card__name:hover { text-decoration: underline; }
   background-repeat: no-repeat;
   padding-inline-end: var(--space-8);
 }
+/* Only the caret's background-position needs a manual RTL flip — plain
+   pixel offsets aren't direction-aware like the padding above, which
+   already reserves room on the correct (logical-end) side in either
+   direction via padding-inline-end alone (a previous explicit override
+   here swapped it onto the WRONG side, cramming the caret into the small
+   --space-3 gap instead of the --space-8 room meant for it — fixed by
+   just not restating padding here at all).
+   The two gradient triangles must also keep their LTR left/right order
+   (45deg triangle left of the 135deg one) for the pair to still meet as a
+   "v" — mirroring only the offsets without swapping them between the two
+   gradients flips that order and renders an inverted "^" instead. */
 [dir='rtl'] .select {
-  background-position: 20px center, 15px center;
-  padding-inline-end: var(--space-3);
-  padding-inline-start: var(--space-8);
+  background-position: 15px center, 20px center;
 }
 
 /* checkbox / radio */

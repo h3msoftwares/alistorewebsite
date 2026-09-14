@@ -6,7 +6,7 @@ import { prisma } from './config/prisma';
 const app = buildApp();
 
 const server: Server = app.listen(env.PORT, env.HOST, () => {
-  console.log(`[server] Ali's Store API listening on ${env.HOST}:${env.PORT} (${env.NODE_ENV})`);
+  console.log(`[server] Ali'sStore API listening on ${env.HOST}:${env.PORT} (${env.NODE_ENV})`);
 });
 
 // Behind a reverse proxy (Nginx / Railway / Fly) the proxy keeps upstream

@@ -95,14 +95,18 @@ export function Hero({ locale }: { locale: string }) {
         <div ref={leadRef} className={`hero__lead ${leadClass}`} style={leadStyle}>
           <p className="eyebrow hero__eyebrow">{eyebrow}</p>
           <h1 id="hero-title" className="hero__title">
-            {headline}
+            {headline.split(' ').map((word, i) => (
+              <span className="hero__title-word" key={i}>
+                {word}
+              </span>
+            ))}
           </h1>
         </div>
 
         <div ref={mediaRef} className={`hero__media ${mediaClass}`} style={mediaStyle}>
           <Image
             src="/home-hero-bg.png"
-            alt={t("Ali — Ali's Store", 'علي — متجر علي')}
+            alt={"Ali — Ali'sStore"}
             className="hero__img"
             width={549}
             height={722}

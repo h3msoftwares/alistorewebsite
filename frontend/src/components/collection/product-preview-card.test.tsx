@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createWrapper } from '@/test/utils';
 import { ProductPreviewCard } from './product-preview-card';
@@ -105,5 +105,17 @@ describe('ProductPreviewCard image selection (fix-list.md #7 broader scope)', ()
     await user.click(screen.getByRole('button', { name: 'Colour: Red' }));
 
     expect(screen.getByRole('img', { name: 'Red colourway' })).toBeInTheDocument();
+  });
+
+  it('advances to the next photo on hover before any swatch is picked, and resets on mouse leave', () => {
+    const { Wrapper } = createWrapper();
+    render(<ProductPreviewCard product={productWithImages} locale="en" />, { wrapper: Wrapper });
+    const mediaWrap = screen.getByRole('img', { name: 'Front (generic)' }).closest('.product-preview-card__media-wrap')!;
+
+    fireEvent.mouseEnter(mediaWrap);
+    expect(screen.getByRole('img', { name: 'Red colourway' })).toBeInTheDocument();
+
+    fireEvent.mouseLeave(mediaWrap);
+    expect(screen.getByRole('img', { name: 'Front (generic)' })).toBeInTheDocument();
   });
 });

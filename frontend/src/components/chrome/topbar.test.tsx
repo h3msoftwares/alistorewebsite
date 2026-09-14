@@ -18,7 +18,11 @@ vi.mock('next/navigation', () => ({ usePathname: () => '/en' }));
 
 const auth = { user: null as { name: string } | null, isAuthenticated: false };
 vi.mock('@/hooks/use-auth', () => ({ useAuth: () => auth }));
-vi.mock('@/hooks/use-catalog', () => ({ useNavCategories: () => ({ data: [], isPending: false }) }));
+vi.mock('@/hooks/use-catalog', () => ({
+  useNavCategories: () => ({ data: [], isPending: false }),
+  useTopLevelCategories: () => ({ data: [], isPending: false }),
+  useCollections: () => ({ data: [], isPending: false }),
+}));
 vi.mock('@/hooks/use-settings', () => ({ useSettings: () => ({ data: null }) }));
 vi.mock('./search-overlay', () => ({ SearchOverlay: () => null }));
 vi.mock('./cart-drawer', () => ({ CartDrawer: () => null }));
@@ -54,7 +58,7 @@ describe('initialsOf', () => {
 describe('<Topbar> logo', () => {
   it('shows the traced-A mark beside the brand name, linking home', () => {
     renderBar();
-    const link = screen.getByRole('link', { name: "Ali's Store" });
+    const link = screen.getByRole('link', { name: "Ali'sStore" });
     expect(link).toHaveAttribute('href', '/en');
     expect(link.querySelector('img')).toHaveAttribute('src', '/ali-store-A-traced.png');
   });

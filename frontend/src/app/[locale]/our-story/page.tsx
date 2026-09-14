@@ -3,7 +3,7 @@ import { OurStoryView } from './our-story-view';
 
 export const metadata: Metadata = {
   title: 'Our story',
-  description: 'How Ali’s Store began and what we care about.',
+  description: "How Ali'sStore began and what we care about.",
 };
 
 export default async function OurStoryPage({ params }: { params: Promise<{ locale: string }> }) {

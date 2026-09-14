@@ -1,8 +1,12 @@
 import type { ButtonHTMLAttributes } from 'react';
 
 export interface SwatchProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  /** Colour name — becomes the accessible label ("Colour: Navy"). */
+  /** Colour name, already in the caller's display language — becomes the
+   *  accessible label ("Colour: Navy" / "اللون: كحلي"). See
+   *  lib/product-variants.ts's `colorNameLabel` for the AR translation. */
   colorName: string;
+  /** Which language the "Colour:" label prefix itself renders in. */
+  locale?: 'en' | 'ar';
   /** Product photo for this colourway (Saxon shows the garment, not a flat dot). */
   imageUrl?: string;
   /** Fallback flat colour when no photo is available. */
@@ -18,6 +22,7 @@ export interface SwatchProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 /** Colour swatch — a product-photo thumbnail per colourway, on the .swatch class. */
 export function Swatch({
   colorName,
+  locale = 'en',
   imageUrl,
   swatchColor,
   selected = false,
@@ -31,6 +36,7 @@ export function Swatch({
   const img =
     // eslint-disable-next-line @next/next/no-img-element -- 44px decorative thumbnail; next/image fill is overkill here
     imageUrl ? <img className="swatch__img" src={imageUrl} alt="" /> : null;
+  const label = `${locale === 'ar' ? 'اللون' : 'Colour'}: ${colorName}`;
 
   if (readOnly) {
     return (
@@ -38,7 +44,7 @@ export function Swatch({
         className={['swatch', className].filter(Boolean).join(' ')}
         aria-disabled={outOfStock || undefined}
         title={colorName}
-        aria-label={`Colour: ${colorName}`}
+        aria-label={label}
         style={swatchStyle}
       >
         {img}
@@ -54,7 +60,7 @@ export function Swatch({
       aria-pressed={selected}
       aria-disabled={outOfStock || undefined}
       disabled={outOfStock}
-      aria-label={`Colour: ${colorName}`}
+      aria-label={label}
       title={colorName}
       style={swatchStyle}
       {...rest}
