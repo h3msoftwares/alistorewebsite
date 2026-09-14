@@ -104,6 +104,7 @@ model User {
   oauthAccounts           OAuthAccount[]
   passwordResetTokens     PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
+  emailChangeRequests     EmailChangeRequest[]
   auditLogs               AuditLog[] // rows where this user was the actor
   stockMovements          StockMovement[] // manual stock adjustments made by this user
   blacklistEntries        BlacklistEntry[] // entries this admin created
@@ -187,6 +188,27 @@ model EmailVerificationToken {
 
   @@index([userID])
   @@map("emailverificationtoken")
+}
+
+// Account email change (Task 3): the new address only lands on User.email
+// once this token is confirmed FROM a link sent TO that new address — proof
+// of control, same shape as EmailVerificationToken but kept as its own table
+// since a successful verify here does something different (replace
+// User.email + stamp emailVerified, not just stamp emailVerified) and the
+// two token spaces must never be interchangeable.
+model EmailChangeRequest {
+  id        String    @id @default(uuid()) @db.Uuid
+  userID    String    @db.Uuid
+  newEmail  String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userID], references: [id], onDelete: Cascade)
+
+  @@index([userID])
+  @@map("emailchangerequest")
 }
 
 // External identity (Google today; enum leaves room for more). One row per
@@ -1309,6 +1331,37 @@ model DriveCredential {
   updatedAt      DateTime  @updatedAt
 
   @@map("drivecredential")
+}
+
+// The admin-configurable "send emails as" account (Task: admin panel →
+// change the outgoing SMTP account, given an email + app password). Same
+// DB-row-takes-priority-over-env pattern as DriveCredential above — once
+// this row has a `user`, mailer.ts's getTransporter() uses it instead of the
+// SMTP_* env vars; clearing it (user/encryptedPassword: null) reverts to the
+// env fallback. Deliberately its own table, not a SiteSetting column, for
+// the same reason as DriveCredential: SiteSetting is returned whole by the
+// public GET /api/settings, and this is a standing, directly-usable
+// credential that must never be serialized into a public response.
+//
+// The app password is NOT stored in plaintext — `encryptedPassword` is
+// AES-256-GCM ciphertext (see lib/secret-encryption.ts), keyed from
+// JWT_ACCESS_SECRET with a domain-separation label. Unlike a Drive refresh
+// token (useless without also knowing the OAuth client secret, and
+// revocable at Google), an SMTP app password works the instant it's read —
+// so DB access control alone isn't enough here, it gets real encryption.
+model SmtpCredential {
+  id                Int       @id @default(1)
+  // The Gmail address this app authenticates as (SMTP AUTH user) — also
+  // used as the connectivity-status display value. host/port are not
+  // admin-configurable: the "app password" concept this flow asks for is
+  // specifically Gmail's, so smtp-credential.service.ts hardcodes
+  // smtp.gmail.com:587 for this path.
+  user              String?
+  encryptedPassword String?
+  updatedAt         DateTime  @updatedAt
+  updatedByID       String?
+
+  @@map("smtpcredential")
 }
 
 enum BackupFrequency {

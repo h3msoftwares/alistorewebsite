@@ -9,7 +9,7 @@ import { Alert, Badge, Button, EmptyState, Field, Input, Select, Skeleton, Statu
 import { LogoutButton } from '@/components/chrome/logout-button';
 import { useDeliveryRegionOptions } from '@/lib/use-delivery-region-options';
 import { regionLabel } from '@/lib/regions';
-import { useAuth, useChangePassword } from '@/hooks/use-auth';
+import { useAuth, useChangePassword, useRequestEmailChange } from '@/hooks/use-auth';
 import {
   useAddresses,
   useCreateAddress,
@@ -65,6 +65,12 @@ const passwordSchema = z
     message: 'Choose a password different from your current one',
   });
 type PasswordValues = z.infer<typeof passwordSchema>;
+
+const emailChangeSchema = z.object({
+  newEmail: z.string().trim().email(),
+  currentPassword: z.string().min(1),
+});
+type EmailChangeValues = z.infer<typeof emailChangeSchema>;
 
 export function AccountView({ locale }: { locale: Locale }) {
   const isAr = locale === 'ar';
@@ -144,6 +150,7 @@ export function AccountView({ locale }: { locale: Locale }) {
       {tab === 'details' ? (
         <div role="tabpanel" id="account-panel-details" aria-labelledby="account-tab-details">
           <ProfileSection locale={locale} />
+          <EmailSection locale={locale} />
           <SecuritySection locale={locale} />
           <AddressesSection locale={locale} />
         </div>
@@ -216,6 +223,108 @@ function OrdersSection({ locale }: { locale: Locale }) {
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+function EmailSection({ locale }: { locale: Locale }) {
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
+  const { data: profile } = useProfile();
+  const requestChange = useRequestEmailChange();
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<EmailChangeValues>({ resolver: zodResolver(emailChangeSchema) });
+
+  const onSubmit = handleSubmit(async (values) => {
+    try {
+      await requestChange.mutateAsync({
+        newEmail: values.newEmail,
+        currentPassword: values.currentPassword,
+        locale,
+      });
+      reset({ newEmail: '', currentPassword: '' });
+    } catch {
+      /* surfaced below */
+    }
+  });
+
+  const wrongCurrent =
+    requestChange.isError && isApiError(requestChange.error) && requestChange.error.status === 400;
+  const rateLimited =
+    requestChange.isError && isApiError(requestChange.error) && requestChange.error.status === 429;
+  const busy = isSubmitting || requestChange.isPending;
+
+  return (
+    <section style={{ marginBlockStart: 'var(--space-6)' }}>
+      <h2 style={{ fontSize: 'var(--fs-md)' }}>{t('Email', 'البريد الإلكتروني')}</h2>
+
+      {profile?.email && (
+        <p className="prose" style={{ fontSize: 'var(--fs-sm)' }}>
+          {t('Current email: ', 'البريد الإلكتروني الحالي: ')}
+          <strong>{profile.email}</strong>
+        </p>
+      )}
+
+      {requestChange.isSuccess && (
+        <div style={{ marginBlock: 'var(--space-2)' }}>
+          <Alert tone="success">
+            {t(
+              'If that email is available, a confirmation link has been sent to it. Nothing changes until you click it.',
+              'إذا كان هذا البريد متاحًا، فقد تم إرسال رابط تأكيد إليه. لن يتغيّر شيء حتى تنقر عليه.'
+            )}
+          </Alert>
+        </div>
+      )}
+      {requestChange.isError && (
+        <div style={{ marginBlock: 'var(--space-2)' }}>
+          <Alert tone="danger">
+            {wrongCurrent
+              ? t('Your current password is incorrect.', 'كلمة المرور الحالية غير صحيحة.')
+              : rateLimited
+                ? t('Too many attempts. Try again later.', 'محاولات كثيرة. حاول لاحقًا.')
+                : t('Could not request the change. Try again.', 'تعذّر طلب التغيير. حاول مرة أخرى.')}
+          </Alert>
+        </div>
+      )}
+
+      <form onSubmit={onSubmit} noValidate className="stack" style={{ marginBlockStart: 'var(--space-3)' }}>
+        <Field
+          label={t('New email', 'البريد الإلكتروني الجديد')}
+          error={errors.newEmail && t('Enter a valid email', 'أدخل بريدًا إلكترونيًا صالحًا')}
+        >
+          {(p) => (
+            <Input
+              {...p}
+              {...register('newEmail')}
+              type="email"
+              autoComplete="email"
+              disabled={busy}
+            />
+          )}
+        </Field>
+        <Field
+          label={t('Current password', 'كلمة المرور الحالية')}
+          error={errors.currentPassword && t('Required', 'مطلوب')}
+        >
+          {(p) => (
+            <Input
+              {...p}
+              {...register('currentPassword')}
+              type="password"
+              autoComplete="current-password"
+              disabled={busy}
+            />
+          )}
+        </Field>
+        <Button type="submit" loading={busy}>
+          {t('Send confirmation link', 'إرسال رابط التأكيد')}
+        </Button>
+      </form>
     </section>
   );
 }

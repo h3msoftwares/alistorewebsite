@@ -24,8 +24,10 @@ import { orderRoutes } from './modules/orders/order.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import addressRoutes from './modules/account/address.routes';
 import userRoutes from './modules/account/user.routes';
+import { emailChangeRoutes } from './modules/account/email-change.routes';
 import uploadRoutes from './modules/uploads/upload.routes';
 import settingsRoutes from './modules/settings/settings.routes';
+import { smtpCredentialRoutes } from './modules/settings/smtp-credential.routes';
 import { backupRoutes } from './modules/backup/backup.routes';
 import { promotionRoutes } from './modules/discounts/promotion.routes';
 import { loyaltyRoutes } from './modules/loyalty/loyalty.routes';
@@ -50,6 +52,8 @@ export function buildApp(
     orderLookupRateLimit?: boolean;
     orderCheckoutRateLimit?: boolean;
     backupRunRateLimit?: boolean;
+    smtpCredentialRateLimit?: boolean;
+    emailChangeRateLimit?: boolean;
     // The app-wide per-IP baseline limiter (skips GET/HEAD/OPTIONS — see
     // below). Same on/off-under-test convention as the others; a focused
     // test passes `true`.
@@ -241,6 +245,10 @@ export function buildApp(
   );
   app.use('/api/addresses', addressRoutes);
   app.use('/api/users', userRoutes);
+  app.use(
+    '/api/account/email-change',
+    emailChangeRoutes({ rateLimit: opts.emailChangeRateLimit ?? env.NODE_ENV !== 'test' })
+  );
   // Standalone from adminRoutes on purpose: that router gates on STAFF-or-
   // ADMIN + per-route permissions, but backups are ADMIN-only, full stop —
   // and its Drive OAuth callback has no auth header at all (Google's own
@@ -252,6 +260,12 @@ export function buildApp(
   app.use(
     '/api/admin/backup',
     backupRoutes({ rateLimit: opts.backupRunRateLimit ?? env.NODE_ENV !== 'test' })
+  );
+  // Same standalone-from-adminRoutes reasoning as backup above: ADMIN-only,
+  // full stop, credentials-adjacent.
+  app.use(
+    '/api/admin/smtp',
+    smtpCredentialRoutes({ rateLimit: opts.smtpCredentialRateLimit ?? env.NODE_ENV !== 'test' })
   );
   app.use('/api/admin', adminRoutes);
   app.use('/api/uploads', uploadRoutes);

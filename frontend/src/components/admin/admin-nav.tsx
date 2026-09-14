@@ -17,11 +17,16 @@ export function AdminNav({ locale }: { locale: string }) {
 
   const sections = ADMIN_SECTIONS.filter((s) => has(s.permission));
 
-  // Database backups: gated on the role itself (ADMIN only), not the
-  // permission system every other section uses — a STAFF account can't be
-  // granted into this one, so it's not part of ADMIN_SECTIONS/PERMISSION_AREAS.
+  // Database backups & outgoing mail: gated on the role itself (ADMIN only),
+  // not the permission system every other section uses — a STAFF account
+  // can't be granted into either one, so neither is part of
+  // ADMIN_SECTIONS/PERMISSION_AREAS. Two separate links, not one menu —
+  // backups and the outgoing mail account share nothing but both being
+  // ADMIN-only infrastructure.
   const backupHref = `${base}/backup`;
   const backupActive = pathname.startsWith(backupHref);
+  const mailHref = `${base}/mail`;
+  const mailActive = pathname.startsWith(mailHref);
 
   return (
     <nav className="admin-nav" aria-label={isAr ? 'تنقل الإدارة' : 'Admin navigation'}>
@@ -37,6 +42,11 @@ export function AdminNav({ locale }: { locale: string }) {
       {user?.role === 'ADMIN' && (
         <Link href={backupHref} className="admin-nav__link" data-active={backupActive || undefined}>
           {isAr ? 'النسخ الاحتياطي' : 'Backups'}
+        </Link>
+      )}
+      {user?.role === 'ADMIN' && (
+        <Link href={mailHref} className="admin-nav__link" data-active={mailActive || undefined}>
+          {isAr ? 'البريد الصادر' : 'Mail'}
         </Link>
       )}
     </nav>
