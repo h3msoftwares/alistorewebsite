@@ -19,7 +19,7 @@ gitignored, only `.env.example` (placeholders) is tracked.
 | `JWT_REFRESH_SECRET` | Signs/verifies refresh tokens | Attacker can mint refresh tokens (but they're also DB-checked, so only alongside a DB write) | **No** — see §2.1 |
 | `DATABASE_URL` | Full DB access (all PII, order history, password *hashes*) | Total data compromise | Yes — rotate DB password, update var, redeploy |
 | `SEED_ADMIN_PASSWORD` | Initial admin login (seed only) | First admin account | Should be **unset** in prod after first boot; rotate via §4 |
-| `SMTP_PASSWORD` | Outbound mail account | Spoofed mail from the store's address | Yes — rotate at provider, update var |
+| `SMTP_PASSWORD` (or the `SmtpCredential` DB row, if set via the admin panel — see §5) | Outbound mail account | Spoofed mail from the store's address; whoever controls this account also receives a copy of every password-reset / verification / checkout-OTP email sent while it's active (their own Sent folder) | Yes — rotate at provider, update var, **or** the admin panel's "Outgoing mail account" card |
 | `HCAPTCHA_SECRET` | Server-side captcha verification | Bot gate at checkout becomes bypassable | Yes — new key pair at hCaptcha, update both tiers |
 | `VAPID_PRIVATE_KEY` | Signs Web Push messages | Attacker can push notifications to subscribed admin browsers | Yes — new pair; existing subscriptions must re-subscribe |
 | `IMAGEKIT_PRIVATE_KEY` | Signs upload tokens for the ImageKit account | Attacker can upload/transform in the account | Yes — regenerate in ImageKit dashboard |
@@ -232,3 +232,54 @@ To reset the password directly, replace `passwordHash` with a fresh Argon2 hash
   — see `security/owasp-top-10.md` A06).
 - **No centralised log retention** — application logs are whatever the host
   keeps. Decide a retention window and ship `auditlog` somewhere durable.
+
+## 6. Outgoing mail account & account email changes
+
+Two related, ADMIN-gated features layered on top of the mail system:
+
+**Every outgoing email is bilingual.** `lib/mailer.ts`'s `bilingualText` /
+`bilingualHtml` / `bilingualSubject` helpers put the English copy first and
+the Arabic translation underneath, in one message — not two separate sends.
+Static coverage: `tests/unit/mailer-bilingual.test.ts` asserts every
+`send*Email` function composes through these helpers.
+
+**Outgoing mail account** (`SmtpCredential`, `modules/settings/smtp-credential.*`):
+the admin panel's own **Mail** page (`/admin/mail` — separate from Backups;
+the two share nothing but both being ADMIN-only infrastructure) lets an
+ADMIN set the Gmail address + app password every outgoing email sends as,
+instead of editing `SMTP_*` env vars and redeploying. Once the DB row is
+set, it takes priority over the env vars (same pattern as `DriveCredential`
+— see §3); clearing it reverts to the env fallback.
+  - The app password is AES-256-GCM encrypted at rest (`lib/secret-encryption.ts`),
+    keyed from `JWT_ACCESS_SECRET` with a domain-separation label — not just
+    DB access control, since (unlike a Drive refresh token) it's a standing,
+    directly-usable credential the instant it's read.
+  - `PATCH /api/admin/smtp` runs a real SMTP handshake (`transporter.verify()`)
+    *before* persisting anything, so a typo'd app password 400s immediately
+    instead of silently breaking every future email.
+  - Strictly ADMIN (not STAFF), step-up gated (`requireFreshAuth`), rate
+    limited (5/15min), and every set/clear is audit-logged — the password
+    value itself is never in the audit metadata.
+  - **Why this is worth protecting**: whoever controls the configured Gmail
+    account receives a copy of every password-reset / email-verification /
+    checkout-OTP email sent while it's active, in that account's own Sent
+    folder — redirecting outgoing mail is a path to harvesting other users'
+    reset tokens and OTP codes, not just "spoofed mail from the store".
+
+**Account email change** (`EmailChangeRequest`, `modules/account/email-change.*`):
+any authenticated user (customer, STAFF, or ADMIN — not role-gated) can
+change the email on their own account from `/account`. The current password
+is re-verified server-side (same bar as change-password); the new address
+only takes effect once a confirmation link sent *to that address* is
+clicked — proof of control, same shape as email-verification tokens. On
+confirm: `User.email` is replaced, `emailVerified` re-stamped, every other
+session for the account is revoked (a changed identity ends other sessions,
+same as change-password), and the *old* address gets a final notice email.
+The old address is also notified the moment the change is *requested*
+(before confirmation) — so the real owner finds out even if a
+hijacked/borrowed session made the request, in time to react before the new
+address ever confirms it. Requesting a change to an email already in use by
+another account is enumeration-resistant: same generic response either way,
+no confirmation email sent, but the old-address notice still fires (it
+defends against exactly the "hijacked session probing for taken emails"
+scenario).

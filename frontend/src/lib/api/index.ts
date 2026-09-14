@@ -14,6 +14,7 @@ export * as loyaltyApi from './loyalty';
 export * as rbacApi from './rbac';
 export * as customersApi from './customers';
 export * as backupApi from './backup';
+export * as smtpApi from './smtp';
 export * as blacklistApi from './blacklist';
 
 export { api, apiRequest, API_URL, refreshAccessToken } from './client';
