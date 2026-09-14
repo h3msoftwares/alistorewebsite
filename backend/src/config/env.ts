@@ -70,9 +70,14 @@ const envSchema = z.object({
   // Email-verification token lifetime, in minutes. Longer than the reset
   // token — a fresh signup may not check their inbox for a while.
   EMAIL_VERIFICATION_TTL_MIN: z.coerce.number().default(1440), // 24h
+  // Account email-change confirmation link lifetime, in minutes — an
+  // authenticated, deliberate action (unlike signup), so a tighter window
+  // than email verification is appropriate.
+  EMAIL_CHANGE_TTL_MIN: z.coerce.number().default(60), // 1h
   // Base URL the reset / verification links are built against:
   // `${FRONTEND_URL}/{locale}/reset-password?token=...`
   // `${FRONTEND_URL}/{locale}/verify-email?token=...`
+  // `${FRONTEND_URL}/{locale}/confirm-email-change?token=...`
   FRONTEND_URL: z.string().default('http://localhost:3000'),
 
   // ImageKit — signs the admin image uploader's short-lived upload token

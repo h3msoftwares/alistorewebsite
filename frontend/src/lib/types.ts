@@ -917,6 +917,33 @@ export interface AuthResult {
   user?: AuthUser;
 }
 
+/** Requests an account email change — the current password is required and
+ *  verified server-side, same bar as ChangePasswordBody. A confirmation link
+ *  is sent to `newEmail`; nothing changes until that link is clicked. */
+export interface RequestEmailChangeBody {
+  newEmail: string;
+  currentPassword: string;
+  locale?: 'en' | 'ar';
+}
+
+export interface ConfirmEmailChangeBody {
+  token: string;
+}
+
+export interface SmtpStatus {
+  configured: boolean;
+  source: 'database' | 'env' | 'none';
+  user: string | null;
+  updatedAt: string | null;
+}
+
+/** Admin panel's "outgoing mail account" form — a Gmail address + app
+ *  password (see backend smtp-credential.service.ts). */
+export interface SetSmtpCredentialBody {
+  email: string;
+  appPassword: string;
+}
+
 export interface ImageBody {
   url: string;
   fileId?: string;

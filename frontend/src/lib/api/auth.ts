@@ -2,9 +2,11 @@ import { api } from './client';
 import type {
   AuthUser,
   ChangePasswordBody,
+  ConfirmEmailChangeBody,
   ForgotPasswordBody,
   LoginBody,
   RegisterBody,
+  RequestEmailChangeBody,
   ResendVerificationBody,
   ResetPasswordBody,
   VerifyEmailBody,
@@ -53,6 +55,21 @@ export function resetPassword(body: ResetPasswordBody) {
  *  browser. */
 export function changePassword(body: ChangePasswordBody) {
   return api.post<{ accessToken: string }>('/api/auth/change-password', body);
+}
+
+/** Requests an account email change. Same generic response either way (see
+ *  backend enumeration-resistance note) — never branch UI on it beyond
+ *  "request accepted, check the new address". */
+export function requestEmailChange(body: RequestEmailChangeBody) {
+  return api.post<{ message: string }>('/api/account/email-change/request', body);
+}
+
+/** Consumes the token from the confirm-email-change link. Public (token-only)
+ *  — no session required, since the link may be opened on a different
+ *  device. The account's other sessions are revoked server-side, so the
+ *  browser that requested the change will need to sign in again too. */
+export function confirmEmailChange(body: ConfirmEmailChangeBody) {
+  return api.post<{ message: string }>('/api/account/email-change/confirm', body, { auth: false });
 }
 
 /** Re-verifies the signed-in user's password to unlock a step-up-protected

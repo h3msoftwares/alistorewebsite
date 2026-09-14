@@ -16,9 +16,11 @@ import { refreshAccessToken } from '@/lib/api/client';
 import { queryKeys } from '@/lib/query-keys';
 import type {
   ChangePasswordBody,
+  ConfirmEmailChangeBody,
   ForgotPasswordBody,
   LoginBody,
   RegisterBody,
+  RequestEmailChangeBody,
   ResendVerificationBody,
   ResetPasswordBody,
   VerifyEmailBody,
@@ -159,6 +161,26 @@ export function useChangePassword() {
       const { accessToken } = await authApi.changePassword(body);
       setAccessToken(accessToken);
     },
+  });
+}
+
+/** Requests an account email change. Same generic response whether or not
+ *  the address was actually free to claim — never branch UI on it beyond
+ *  "request accepted, check the new address". No session side-effects; the
+ *  change only takes effect once the emailed link is confirmed. */
+export function useRequestEmailChange() {
+  return useMutation({
+    mutationFn: (body: RequestEmailChangeBody) => authApi.requestEmailChange(body),
+  });
+}
+
+/** Consumes the token from the confirm-email-change link. Public — no
+ *  session required. The account's other sessions (including the one that
+ *  requested the change) are revoked server-side, so the user signs in again
+ *  afterwards with the new address. */
+export function useConfirmEmailChange() {
+  return useMutation({
+    mutationFn: (body: ConfirmEmailChangeBody) => authApi.confirmEmailChange(body),
   });
 }
 
