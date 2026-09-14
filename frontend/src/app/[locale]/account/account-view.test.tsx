@@ -20,6 +20,7 @@ const requestEmailChange = {
   mutateAsync: vi.fn().mockResolvedValue(undefined),
   isPending: false,
   isError: false,
+  isSuccess: false,
   error: null as unknown,
 };
 
@@ -89,6 +90,13 @@ beforeEach(() => {
     mutateAsync: vi.fn().mockResolvedValue(undefined),
     isPending: false,
     isError: false,
+    error: null,
+  });
+  Object.assign(requestEmailChange, {
+    mutateAsync: vi.fn().mockResolvedValue(undefined),
+    isPending: false,
+    isError: false,
+    isSuccess: false,
     error: null,
   });
   Object.assign(updateProfile, { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false, isError: false });
