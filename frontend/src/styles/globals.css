@@ -870,12 +870,21 @@ main > .container.section:first-child {
   transform: translateX(-50%);
   min-width: 0;
 }
+/* Pinned to the header's end edge, out of flex flow entirely — same reasoning
+   as .topbar__nav above. `margin-inline-start: auto` only pins reliably when
+   there's slack in the row; on a narrow screen, once the animated brand name
+   (hooks/use-typewriter.ts) has typed out most of its length there's little
+   slack left, so the auto-margin's pull on .topbar__actions weakens and the
+   icon cluster visibly shifts in step with the caret instead of holding
+   still. Absolute positioning removes that coupling regardless of width. */
 .topbar__actions {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  flex: none;
-  margin-inline-start: auto; /* pins to the end now .topbar__nav is out of flow */
 }
 .topbar__account {
   width: auto;
@@ -917,7 +926,6 @@ main > .container.section:first-child {
 @media (max-width: 900px) {
   .topbar__nav { display: none; }
   .topbar__menu-btn { display: inline-flex; }
-  .topbar__logo { margin-inline-end: auto; }
 }
 @media (max-width: 600px) {
   .topbar__inner { gap: var(--space-2); }
@@ -1662,6 +1670,19 @@ main > .container.section:first-child {
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   margin-block-end: var(--space-2);
+}
+
+/* On mobile the gallery (image + thumbs) sits above `.pdp__content` in
+   source order, but colour/size were the last thing in that column —
+   changing colour meant scrolling past title/price/description first,
+   then back up to see the photo update. Reordering `.pdp__options` to
+   the top of the (now flex) content column puts it right under the
+   thumbs, so switching colour and image both happen in the same
+   glance, no scrolling. Desktop is untouched — the gallery is already
+   sticky there, so the image stays in view regardless. */
+@media (max-width: 860px) {
+  .pdp__content { display: flex; flex-direction: column; }
+  .pdp__options { order: -1; margin-block-start: 0; }
 }
 
 .pdp__actions {
