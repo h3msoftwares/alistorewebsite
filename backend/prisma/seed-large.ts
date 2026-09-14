@@ -315,6 +315,42 @@ async function main() {
     }
   }
 
+  // ---- Promotions (Stage 2 catalog redesign — Promotion replaces the old
+  // flat Discount model; see seed.ts's fuller writeup). A modest, deterministic
+  // spread across the big catalog — one site-wide + one per root category —
+  // so pricing/admin-promo-banner/category-targeting have real coverage to
+  // exercise at this catalog's actual scale, not just seed.ts's hand-picked
+  // few. Fixed IDs in a distinct 5xxx range so a DB seeded from both scripts
+  // never collides with seed.ts's own 00f1–00f5 promotions. ----
+  const bigCatalogSale = await prisma.promotion.upsert({
+    where: { id: '00000000-0000-0000-0000-000000005000' },
+    update: { nameEn: 'Big Catalog Sale', nameAr: 'تخفيضات الكتالوج الكبير', status: 'ACTIVE', type: 'PERCENT', value: 10, priority: 0, stackable: true, appliesToAll: true },
+    create: { id: '00000000-0000-0000-0000-000000005000', nameEn: 'Big Catalog Sale', nameAr: 'تخفيضات الكتالوج الكبير', status: 'ACTIVE', type: 'PERCENT', value: 10, priority: 0, stackable: true, appliesToAll: true },
+  });
+  await prisma.promotionProduct.deleteMany({ where: { promotionID: bigCatalogSale.id } });
+  await prisma.promotionCategory.deleteMany({ where: { promotionID: bigCatalogSale.id } });
+  await prisma.promotionCollection.deleteMany({ where: { promotionID: bigCatalogSale.id } });
+
+  const rootPromotionDefs = [
+    { rootSlug: 'women', id: '00000000-0000-0000-0000-000000005001', nameEn: 'Women Seasonal Sale', nameAr: 'تخفيضات موسم النساء', type: 'PERCENT' as const, value: 15, priority: 1, stackable: true },
+    { rootSlug: 'men', id: '00000000-0000-0000-0000-000000005002', nameEn: 'Men Seasonal Sale', nameAr: 'تخفيضات موسم الرجال', type: 'PERCENT' as const, value: 15, priority: 1, stackable: true },
+    // Higher priority + non-stackable so it demonstrably wins over the
+    // site-wide sale above for kids products (single-winner-by-priority).
+    { rootSlug: 'kids', id: '00000000-0000-0000-0000-000000005003', nameEn: 'Kids VIP Deal', nameAr: 'عرض الأطفال المميز', type: 'AMOUNT' as const, value: 5, priority: 5, stackable: false },
+  ];
+  for (const p of rootPromotionDefs) {
+    const rootId = rootCategoryId.get(p.rootSlug)!;
+    const promo = await prisma.promotion.upsert({
+      where: { id: p.id },
+      update: { nameEn: p.nameEn, nameAr: p.nameAr, status: 'ACTIVE', type: p.type, value: p.value, priority: p.priority, stackable: p.stackable, appliesToAll: false },
+      create: { id: p.id, nameEn: p.nameEn, nameAr: p.nameAr, status: 'ACTIVE', type: p.type, value: p.value, priority: p.priority, stackable: p.stackable, appliesToAll: false },
+    });
+    await prisma.promotionProduct.deleteMany({ where: { promotionID: promo.id } });
+    await prisma.promotionCollection.deleteMany({ where: { promotionID: promo.id } });
+    await prisma.promotionCategory.deleteMany({ where: { promotionID: promo.id } });
+    await prisma.promotionCategory.create({ data: { promotionID: promo.id, categoryID: rootId, includeDescendants: true } });
+  }
+
   // ---- Site settings singleton + sample chrome (same as seed.ts) ----
   await prisma.siteSetting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
   if ((await prisma.announcementLine.count({ where: { settingID: 1 } })) === 0) {
@@ -350,7 +386,7 @@ async function main() {
   }
 
   console.log(
-    `[seed:large] done — ${productCount} products across ${rootCategoryDefs.length + categoryDefs.length} categories, ${imageCount} images (every product has some).`
+    `[seed:large] done — ${productCount} products across ${rootCategoryDefs.length + categoryDefs.length} categories, ${imageCount} images (every product has some), ${1 + rootPromotionDefs.length} promotions.`
   );
 }
 
