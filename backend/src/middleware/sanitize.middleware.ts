@@ -14,7 +14,8 @@ import { AppError } from '../lib/AppError';
  *     stores and renders plain text only (React escapes on output, and
  *     there is no dangerouslySetInnerHTML anywhere), so nothing legitimate
  *     needs markup. "a < b" with a space still passes. The one deliberate
- *     exception is `htmlBody` (email-templates.schema.ts's updateEmailTemplateSchema)
+ *     exception is `htmlBodyEn`/`htmlBodyAr` (email-templates.schema.ts's
+ *     updateEmailTemplateSchema)
  *     — an admin-authored email template body IS markup by design; every
  *     value dropped into it at send time is still HTML-escaped in mailer.ts,
  *     the same output-encoding control this rule is only defense-in-depth on
@@ -61,10 +62,10 @@ const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 // display field wouldn't accidentally opt out of sanitisation.
 const OPAQUE_KEY = /^(?:current|new|old|confirm)?password$|^passphrase$/i;
 
-// The one field allowed to contain HTML markup — see point 2 above. Exact
+// The fields allowed to contain HTML markup — see point 2 above. Exact
 // match only (not a suffix/prefix match), so nothing else can opt out of
 // this check just by reusing the name.
-const MARKUP_ALLOWED_KEY = /^htmlBody$/;
+const MARKUP_ALLOWED_KEY = /^htmlBody(?:En|Ar)$/;
 
 const MAX_DEPTH = 20;
 
