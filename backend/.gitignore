@@ -3,6 +3,7 @@ dist/
 .env
 .env.local
 *.log
+coverage/
 
 # local .env backups (may hold secrets) — never commit
 .env.bak

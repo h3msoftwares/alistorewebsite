@@ -332,6 +332,45 @@ describe('Coupons', () => {
       expect((await request(app).post('/api/coupons/validate').send({ code: bad })).status).toBe(404);
     }
   });
+
+  it('rejects updating a coupon to a percentage value outside 0-100, checked against the MERGED value', async () => {
+    const made = await postAdmin('/api/coupons', { code: 'MERGECHK', type: 'PERCENT', value: 20 });
+    // Only `value` is sent — `type` (PERCENT) must come from the existing row
+    // for this to be caught at all.
+    const res = await patchAdmin(`/api/coupons/${made.body.coupon.id}`, { value: 150 });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects an endsAt at or before startsAt, on both create and update', async () => {
+    const startsAt = new Date('2027-01-10T00:00:00.000Z').toISOString();
+    const endsAt = new Date('2027-01-01T00:00:00.000Z').toISOString();
+    expect(
+      (await postAdmin('/api/coupons', { code: 'BADWINDOW', type: 'PERCENT', value: 10, startsAt, endsAt })).status
+    ).toBe(400);
+
+    const ok = await postAdmin('/api/coupons', { code: 'GOODWINDOW', type: 'PERCENT', value: 10 });
+    expect((await patchAdmin(`/api/coupons/${ok.body.coupon.id}`, { startsAt, endsAt })).status).toBe(400);
+  });
+
+  it('maxPerCustomer: null (explicit unlimited) survives an update that does not touch it', async () => {
+    const made = await postAdmin('/api/coupons', {
+      code: 'UNLIMITED1',
+      type: 'PERCENT',
+      value: 10,
+      maxPerCustomer: null,
+    });
+    expect(made.body.coupon.maxPerCustomer).toBeNull();
+
+    const res = await patchAdmin(`/api/coupons/${made.body.coupon.id}`, { isActive: false });
+    expect(res.status).toBe(200);
+    expect(res.body.coupon.maxPerCustomer).toBeNull();
+  });
+
+  it('404s updating or deleting an unknown coupon id', async () => {
+    const missing = '00000000-0000-0000-0000-000000000000';
+    expect((await patchAdmin(`/api/coupons/${missing}`, { isActive: false })).status).toBe(404);
+    expect((await request(app).delete(`/api/coupons/${missing}`).set(bearer(adminToken))).status).toBe(404);
+  });
 });
 
 describe('Checkout with a coupon', () => {

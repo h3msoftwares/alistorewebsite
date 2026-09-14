@@ -22,7 +22,7 @@ describe('Site settings API', () => {
     expect(res.status).toBe(200);
     expect(res.body.settings).toMatchObject({
       id: 1,
-      brandNameEn: "Ali's Store",
+      brandNameEn: "Ali'sStore",
       announcementActive: true,
       instagramUrl: null,
       contactEmail: null,

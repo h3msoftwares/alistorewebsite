@@ -3,32 +3,16 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Badge, CatalogImage, PriceTag, SizeChip, Swatch } from '@/components/ui';
-import { colorNameToCss, getColorOptions, getSizeOptions, isOptionOutOfStock } from '@/lib/product-variants';
-import type { Product, ProductImage } from '@/lib/types';
-
-// While the pointer is over the photo it steps to the next image every
-// HOVER_MS and keeps looping; leaving snaps back to the first.
-const HOVER_MS = 1600;
-
-// The photos the hover carousel moves through for the shown colour: that
-// colour's tagged shots, else the generic (untagged) ones, else all of them.
-//
-// The generic bucket needs MORE than one photo to be worth cycling through —
-// the common catalog shape is a single untagged lead shot plus several
-// colour-tagged ones (see home-card.test.tsx's fixture), so before any
-// swatch is clicked a plain "> 0" check here left the hover hook nothing to
-// advance through at all (gallery.length stuck at 1, the effect's own guard
-// never firing) even though the product genuinely has more photos — hence
-// falling back to every photo instead. `forColor` doesn't need the same
-// widening: once a shopper has actually picked a colour, showing another
-// colour's photo on hover would be visually wrong even if that colour has
-// only one shot of its own.
-function pickGallery(images: ProductImage[], color: string | null): ProductImage[] {
-  const forColor = color ? images.filter((img) => img.color === color) : [];
-  if (forColor.length > 0) return forColor;
-  const generic = images.filter((img) => !img.color);
-  return generic.length > 1 ? generic : images;
-}
+import {
+  HOVER_SCROLL_MS,
+  colorNameLabel,
+  colorNameToCss,
+  getColorOptions,
+  getSizeOptions,
+  isOptionOutOfStock,
+  pickImageGallery,
+} from '@/lib/product-variants';
+import type { Product } from '@/lib/types';
 
 /**
  * The card used in the home page's horizontal rows. Same footprint and
@@ -73,14 +57,14 @@ export function HomeProductCard({
   // instant a product had any colour-tagged photo at all, unconditionally,
   // before the shopper touched anything (fix-list.md #7's broader-scope
   // finding).
-  const gallery = pickGallery(product.images, selectedColor);
+  const gallery = pickImageGallery(product.images, selectedColor);
 
   const image = gallery[frame % gallery.length] ?? product.images[0];
   const salePrice = product.onSale ? product.effectivePrice : null;
 
   useEffect(() => {
     if (!hovering || gallery.length < 2) return;
-    const id = setInterval(() => setFrame((f) => (f + 1) % gallery.length), HOVER_MS);
+    const id = setInterval(() => setFrame((f) => (f + 1) % gallery.length), HOVER_SCROLL_MS);
     return () => clearInterval(id);
   }, [hovering, gallery.length]);
 
@@ -140,7 +124,8 @@ export function HomeProductCard({
             {colors.map((color) => (
               <Swatch
                 key={color}
-                colorName={color}
+                colorName={colorNameLabel(color, locale)}
+                locale={locale}
                 imageUrl={product.images.find((img) => img.color === color)?.url}
                 swatchColor={colorNameToCss(color)}
                 selected={activeColor === color}

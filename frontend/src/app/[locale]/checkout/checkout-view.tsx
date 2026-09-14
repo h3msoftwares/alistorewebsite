@@ -353,10 +353,20 @@ export function CheckoutView({ locale }: { locale: Locale }) {
         <EmptyState
           icon={CheckCircle2}
           title={t('Order placed', 'تم تأكيد الطلب')}
-          body={t(
-            `Order ${placed.orderNumber} — total ${money(Number(placed.total))}. We'll call ${placed.deliveryPhone} to confirm delivery.`,
-            `الطلب ${placed.orderNumber} — الإجمالي ${money(Number(placed.total))}. سنتصل بـ ${placed.deliveryPhone} لتأكيد التوصيل.`
-          )}
+          body={
+            isAr ? (
+              <>
+                الطلب <span lang="en">{placed.orderNumber}</span> — الإجمالي{' '}
+                <span lang="en">{money(Number(placed.total))}</span>. سنتصل بـ{' '}
+                <span lang="en">{placed.deliveryPhone}</span> لتأكيد التوصيل.
+              </>
+            ) : (
+              <>
+                Order {placed.orderNumber} — total {money(Number(placed.total))}. We&apos;ll call{' '}
+                {placed.deliveryPhone} to confirm delivery.
+              </>
+            )
+          }
           action={
             <Link className="btn btn--primary" href={`/${locale}`}>
               {t('Continue shopping', 'متابعة التسوق')}
@@ -603,7 +613,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
                     <span>
                       {(isAr ? p.nameAr : p.nameEn)} × {i.quantity}
                     </span>
-                    <span className="is-numeric">{money(unit * i.quantity)}</span>
+                    <span className="is-numeric" lang="en">{money(unit * i.quantity)}</span>
                   </li>
                 );
               })}
@@ -641,17 +651,17 @@ export function CheckoutView({ locale }: { locale: Locale }) {
 
             <div className="checkout__row">
               <span>{t('Subtotal', 'المجموع الفرعي')}</span>
-              <span className="is-numeric">{money(subtotal)}</span>
+              <span className="is-numeric" lang="en">{money(subtotal)}</span>
             </div>
             {couponDiscount > 0 && (
               <div className="checkout__row">
                 <span>{t('Discount', 'الخصم')} ({appliedCoupon?.code})</span>
-                <span className="is-numeric">−{money(couponDiscount)}</span>
+                <span className="is-numeric" lang="en">−{money(couponDiscount)}</span>
               </div>
             )}
             <div className="checkout__row">
               <span>{t('Delivery', 'التوصيل')}</span>
-              <span className="is-numeric">
+              <span className="is-numeric" lang={!region || quote.isPending || deliveryFee === 0 ? undefined : 'en'}>
                 {!region
                   ? t('— pick a governorate', '— اختر محافظة')
                   : quote.isPending
@@ -671,7 +681,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
             )}
             <div className="checkout__row checkout__row--total">
               <span>{t('Total', 'الإجمالي')}</span>
-              <span className="is-numeric">{money(total)}</span>
+              <span className="is-numeric" lang="en">{money(total)}</span>
             </div>
           </div>
         </aside>

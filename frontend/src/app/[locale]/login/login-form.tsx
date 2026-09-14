@@ -69,7 +69,7 @@ export function LoginForm({ locale, next: nextRaw = null }: { locale: Locale; ne
 
   return (
     <div className="section" style={{ maxWidth: '22rem', marginInline: 'auto' }}>
-      <p className="eyebrow">{t("Ali's Store", 'متجر علي')}</p>
+      <p className="eyebrow">{"Ali'sStore"}</p>
       <h1>{t('Sign in', 'تسجيل الدخول')}</h1>
 
       {blocked ? (
@@ -177,7 +177,7 @@ export function LoginForm({ locale, next: nextRaw = null }: { locale: Locale; ne
         <Link href={`/${locale}/forgot-password`}>{t('Forgot your password?', 'نسيت كلمة المرور؟')}</Link>
       </p>
       <p className="prose">
-        {t('New to Ali’s Store? ', 'جديد في متجر علي؟ ')}
+        {t("New to Ali'sStore? ", "جديد في Ali'sStore؟ ")}
         <Link href={`/${locale}/register`}>{t('Create an account', 'أنشئ حسابًا')}</Link>
       </p>
     </div>

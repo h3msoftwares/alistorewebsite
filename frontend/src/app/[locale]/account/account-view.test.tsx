@@ -17,7 +17,7 @@ const changePassword = {
   error: null as unknown,
 };
 
-const auth = { status: 'authenticated' as 'authenticated' | 'loading' | 'guest' };
+const auth = { status: 'authenticated' as 'authenticated' | 'loading' | 'guest', isAdmin: false };
 const profile = {
   data: { id: 'u1', name: 'Ali', email: 'ali@test.dev', phone: '0790000000', emailVerified: '2026-01-01', role: 'CUSTOMER', isActive: true, dateCreated: 'x' },
   isPending: false,
@@ -69,6 +69,7 @@ const renderView = () => {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.status = 'authenticated';
+  auth.isAdmin = false;
   Object.assign(myOrders, {
     data: [
       { id: 'o1', orderNumber: 'AS-1001', dateCreated: '2026-02-03T10:00:00Z', total: '42.50', status: 'SHIPPED' },
@@ -221,5 +222,17 @@ describe('<AccountView>', () => {
     await user.click(screen.getByRole('button', { name: 'Log out' }));
     expect(logout.mutateAsync).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(routerReplace).toHaveBeenCalledWith('/en'));
+  });
+
+  it('shows an "Admin dashboard" link to /en/admin for a staff/admin user', () => {
+    auth.isAdmin = true;
+    renderView();
+    expect(screen.getByRole('link', { name: 'Admin dashboard' })).toHaveAttribute('href', '/en/admin');
+  });
+
+  it('hides the "Admin dashboard" link for a plain customer', () => {
+    auth.isAdmin = false;
+    renderView();
+    expect(screen.queryByRole('link', { name: 'Admin dashboard' })).not.toBeInTheDocument();
   });
 });

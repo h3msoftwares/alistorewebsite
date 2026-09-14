@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  colorNameLabel,
   colorNameToCss,
   firstPurchasableVariant,
   getColorOptions,
@@ -98,14 +99,37 @@ describe('isOptionOutOfStock', () => {
 });
 
 describe('colorNameToCss', () => {
-  it('lowercases and strips spaces from colour names', () => {
-    expect(colorNameToCss('Navy')).toBe('navy');
-    expect(colorNameToCss('Light Blue')).toBe('lightblue');
+  it('resolves a curated colour name to its real CSS value, case/whitespace-insensitively', () => {
+    expect(colorNameToCss('Navy')).toBe('#190066');
+    expect(colorNameToCss('navy')).toBe('#190066');
+    expect(colorNameToCss('Light Blue')).toBe('#add8e6');
+    expect(colorNameToCss('  light   blue ')).toBe('#add8e6');
   });
 
-  it('passes non-CSS-keyword names through unchanged in shape (caller-safe even if it will not paint)', () => {
-    expect(colorNameToCss('Assorted')).toBe('assorted');
-    expect(colorNameToCss('Rose')).toBe('rose');
+  it('falls back to the old strip-spaces heuristic for a name outside the curated map', () => {
+    // Not in the curated map, but collapses to a real CSS keyword.
+    expect(colorNameToCss('SeaGreen')).toBe('seagreen');
+  });
+
+  it('passes a truly unknown name through unchanged in shape (caller-safe even if it will not paint)', () => {
+    expect(colorNameToCss('Ali Blue')).toBe('aliblue');
+  });
+});
+
+describe('colorNameLabel', () => {
+  it('returns the raw name unchanged for the English locale', () => {
+    expect(colorNameLabel('Navy', 'en')).toBe('Navy');
+    expect(colorNameLabel('Assorted', 'en')).toBe('Assorted');
+  });
+
+  it('translates a curated colour name to Arabic', () => {
+    expect(colorNameLabel('Navy', 'ar')).toBe('كحلي');
+    expect(colorNameLabel('Light Blue', 'ar')).toBe('أزرق فاتح');
+    expect(colorNameLabel('navy', 'ar')).toBe('كحلي'); // case-insensitive
+  });
+
+  it('falls back to the raw name in Arabic for a name outside the curated map', () => {
+    expect(colorNameLabel('Ali Blue', 'ar')).toBe('Ali Blue');
   });
 });
 

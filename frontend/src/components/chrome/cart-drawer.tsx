@@ -8,6 +8,7 @@ import { Button, EmptyState, PriceTag, QuantityStepper, Skeleton } from '@/compo
 import { CartVariantPicker } from '@/components/cart/cart-variant-picker';
 import { useCart, useRemoveCartItem, useUpdateCartItem } from '@/hooks/use-cart';
 import { cartItemToGaItem, trackRemoveFromCart } from '@/lib/analytics/ga';
+import { formatCurrency } from '@/lib/format';
 import type { CartItem } from '@/lib/types';
 
 /**
@@ -39,8 +40,7 @@ export function CartDrawer({
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { data, isPending, isError, refetch } = useCart();
 
-  const money = (n: number) =>
-    new Intl.NumberFormat(isAr ? 'ar-EG' : 'en-US', { style: 'currency', currency: 'USD' }).format(n);
+  const money = (n: number) => formatCurrency(n, isAr ? 'ar' : 'en');
 
   return (
     <Drawer

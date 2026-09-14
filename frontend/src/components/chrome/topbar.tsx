@@ -12,8 +12,9 @@ import { useAppSelector } from '@/store/hooks';
 import { selectCartCount } from '@/store/slices/cartSlice';
 import { selectFavouritesCount } from '@/store/slices/favouritesSlice';
 import { useAuth } from '@/hooks/use-auth';
-import { useNavCategories } from '@/hooks/use-catalog';
+import { useCollections, useNavCategories, useTopLevelCategories } from '@/hooks/use-catalog';
 import { useSettings } from '@/hooks/use-settings';
+import { useTypewriter } from '@/hooks/use-typewriter';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 import { SearchOverlay } from './search-overlay';
 import { CartDrawer } from './cart-drawer';
@@ -56,6 +57,18 @@ export function Topbar({ locale }: { locale: string }) {
   const signedIn = useHydrated() && isAuthenticated;
 
   const { data: navCategories, isPending: navPending } = useNavCategories();
+  // The drawer lists every root category, not just the `showInNav`-curated
+  // subset the desktop pill switcher above shows.
+  const { data: topLevelCategories, isPending: allCategoriesPending } = useTopLevelCategories();
+  const allCategories = topLevelCategories?.slice().sort((a, b) => a.sortOrder - b.sortOrder);
+  // Plus the actual merchandising Collections (Sale, New Arrivals, …) —
+  // separate from the categories above since the catalog redesign (see the
+  // comment on the collection-switcher `<nav>` below); `useCollections()`
+  // defaults to active, non-archived ones only, same as any other
+  // storefront-facing list. Nothing else in the storefront links to these
+  // today, so the drawer is their only entry point.
+  const { data: collections, isPending: collectionsPending } = useCollections();
+  const sortedCollections = collections?.slice().sort((a, b) => a.sortOrder - b.sortOrder);
   const { data: settings } = useSettings();
   const brandName = settings
     ? isAr
@@ -64,6 +77,7 @@ export function Topbar({ locale }: { locale: string }) {
     : isAr
       ? DEFAULT_BRAND_NAME_AR
       : DEFAULT_BRAND_NAME_EN;
+  const typedBrandName = useTypewriter(brandName);
   const pathname = usePathname();
   // Nav items link to /[locale]/category/[slug] now (top-level categories,
   // not Collections — see the catalog redesign's nav/banner decision), so
@@ -118,7 +132,11 @@ export function Topbar({ locale }: { locale: string }) {
             className="site-header__logo-mark"
             preload
           />
-          <span>{brandName}</span>
+          <span className="visually-hidden">{brandName}</span>
+          <span className="topbar__logo-type" aria-hidden="true">
+            {typedBrandName}
+            <span className="topbar__logo-caret" />
+          </span>
         </Link>
 
         <nav className="collection-switcher topbar__nav" aria-label={t('Collections', 'الأقسام')}>
@@ -220,17 +238,40 @@ export function Topbar({ locale }: { locale: string }) {
         closeLabel={t('Close menu', 'إغلاق القائمة')}
       >
         <nav className="drawer__nav" aria-label={t('Collections', 'الأقسام')}>
-          {(navCategories ?? []).map((c) => (
-            <Link
-              key={c.id}
-              href={`/${locale}/category/${c.slug}`}
-              className="drawer__nav-link"
-              aria-current={activeSlug === c.slug ? 'page' : undefined}
-              onClick={() => setMenuOpen(false)}
-            >
-              {isAr ? c.nameAr : c.nameEn}
-            </Link>
-          ))}
+          {allCategoriesPending
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="drawer__nav-link" style={{ width: '6rem' }} />
+              ))
+            : (allCategories ?? []).map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/${locale}/category/${c.slug}`}
+                  className="drawer__nav-link"
+                  aria-current={activeSlug === c.slug ? 'page' : undefined}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {isAr ? c.nameAr : c.nameEn}
+                </Link>
+              ))}
+          {(collectionsPending || (sortedCollections?.length ?? 0) > 0) && (
+            <>
+              <hr className="drawer__divider" />
+              {collectionsPending
+                ? Array.from({ length: 2 }).map((_, i) => (
+                    <Skeleton key={i} className="drawer__nav-link" style={{ width: '6rem' }} />
+                  ))
+                : sortedCollections!.map((c) => (
+                    <Link
+                      key={c.id}
+                      href={`/${locale}/${c.slug}`}
+                      className="drawer__nav-link"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      {isAr ? c.nameAr : c.nameEn}
+                    </Link>
+                  ))}
+            </>
+          )}
           <hr className="drawer__divider" />
           <Link href={`/${locale}/favourites`} className="drawer__nav-link" onClick={() => setMenuOpen(false)}>
             {t('Favourites', 'المفضّلة')}

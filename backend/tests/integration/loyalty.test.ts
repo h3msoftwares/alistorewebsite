@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
@@ -80,6 +81,65 @@ describe('Loyalty program — rule CRUD', () => {
       .set(bearer(manager))
       .send({ nameEn: 'x', nameAr: 'x', metric: 'ORDER_COUNT', threshold: 5, rewardType: 'PERCENT', rewardValue: 150 });
     expect(res.status).toBe(400);
+  });
+
+  it('updates only the fields sent, leaving the rest untouched', async () => {
+    const { token: manager } = await createStaffWith(['loyalty:manage']);
+    const created = await request(app)
+      .post('/api/loyalty-rules')
+      .set(bearer(manager))
+      .send({ nameEn: 'Original', nameAr: 'أصلي', metric: 'ORDER_COUNT', threshold: 5, rewardType: 'PERCENT', rewardValue: 10 });
+    const id = created.body.rule.id as string;
+
+    const res = await request(app)
+      .patch(`/api/loyalty-rules/${id}`)
+      .set(bearer(manager))
+      .send({ threshold: 8 });
+    expect(res.status).toBe(200);
+    expect(Number(res.body.rule.threshold)).toBe(8);
+    expect(res.body.rule.nameEn).toBe('Original');
+    expect(Number(res.body.rule.rewardValue)).toBe(10); // untouched, still the original value
+  });
+
+  it('rejects an update that pushes the percentage reward out of range, checked against the MERGED value', async () => {
+    const { token: manager } = await createStaffWith(['loyalty:manage']);
+    const created = await request(app)
+      .post('/api/loyalty-rules')
+      .set(bearer(manager))
+      .send({ nameEn: 'x', nameAr: 'x', metric: 'ORDER_COUNT', threshold: 5, rewardType: 'PERCENT', rewardValue: 10 });
+    const id = created.body.rule.id as string;
+
+    // Only rewardValue is sent — rewardType (PERCENT) comes from the existing row.
+    const res = await request(app).patch(`/api/loyalty-rules/${id}`).set(bearer(manager)).send({ rewardValue: 150 });
+    expect(res.status).toBe(400);
+  });
+
+  it('404s updating or deleting an unknown rule id', async () => {
+    const { token: manager } = await createStaffWith(['loyalty:manage']);
+    const missing = randomUUID();
+    expect(
+      (await request(app).patch(`/api/loyalty-rules/${missing}`).set(bearer(manager)).send({ threshold: 1 })).status
+    ).toBe(404);
+    expect((await request(app).delete(`/api/loyalty-rules/${missing}`).set(bearer(manager))).status).toBe(404);
+  });
+
+  it('deleting a rule stops it from firing on a later DELIVERED order', async () => {
+    const { token: manager } = await createStaffWith(['loyalty:manage']);
+    const created = await request(app)
+      .post('/api/loyalty-rules')
+      .set(bearer(manager))
+      .send({ nameEn: 'Every order', nameAr: 'كل طلب', metric: 'ORDER_COUNT', threshold: 1, rewardType: 'PERCENT', rewardValue: 10 });
+    const id = created.body.rule.id as string;
+
+    const del = await request(app).delete(`/api/loyalty-rules/${id}`).set(bearer(manager));
+    expect(del.status).toBe(204);
+
+    const { user, token: customer } = await createCustomer();
+    const { token: staff } = await createStaffWith(['orders:manage']);
+    await placeAndDeliver(customer, staff);
+
+    expect(mockRewardEmail).not.toHaveBeenCalled();
+    expect(await prisma.loyaltyAward.count({ where: { userID: user.id } })).toBe(0);
   });
 });
 

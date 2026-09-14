@@ -31,7 +31,7 @@ export async function generateMetadata({
   const cat = await loadCategory(slug);
   if (!cat) return {};
   const isAr = locale === 'ar';
-  return { title: `${isAr ? cat.nameAr : cat.nameEn} · Ali's Store` };
+  return { title: `${isAr ? cat.nameAr : cat.nameEn} · Ali'sStore` };
 }
 
 export default async function CategoryPage({

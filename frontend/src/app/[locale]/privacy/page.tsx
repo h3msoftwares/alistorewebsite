@@ -3,7 +3,7 @@ import { PrivacyView } from './privacy-view';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
-  description: 'How Ali’s Store collects, uses, and protects your personal information.',
+  description: "How Ali'sStore collects, uses, and protects your personal information.",
 };
 
 export default async function PrivacyPage({ params }: { params: Promise<{ locale: string }> }) {

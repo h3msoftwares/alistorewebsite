@@ -163,7 +163,7 @@ async function main() {
     update: { emailVerified: new Date() },
     create: {
       email: 'admin@alistore.com',
-      name: "Ali's Store Admin",
+      name: "Ali'sStore Admin",
       role: 'ADMIN',
       passwordHash: adminPasswordHash,
       emailVerified: new Date(),

@@ -50,7 +50,7 @@ export function AdminLoginForm({ locale }: { locale: Locale }) {
 
   return (
     <div className="section" style={{ maxWidth: '22rem', marginInline: 'auto' }}>
-      <p className="eyebrow">{t("Ali's Store", 'متجر علي')}</p>
+      <p className="eyebrow">{"Ali'sStore"}</p>
       <h1>{t('Admin sign in', 'دخول لوحة الإدارة')}</h1>
 
       {adminLogin.isError && (

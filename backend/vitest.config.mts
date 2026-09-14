@@ -16,6 +16,14 @@ export default defineConfig({
     sequence: { concurrent: false },
     hookTimeout: 30_000,
     testTimeout: 20_000,
+    // Report-only — no thresholds enforced yet (this is a first baseline, not
+    // a gate). Run via `npm run test:coverage`; `npm test` stays unaffected.
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.d.ts', 'src/server.ts'],
+    },
     env: {
       NODE_ENV: 'test',
       DATABASE_URL: TEST_DATABASE_URL,
