@@ -227,18 +227,23 @@ function OrdersSection({ locale }: { locale: Locale }) {
   );
 }
 
+// Admin-only (see backend email-change.routes.ts's requireRole('ADMIN')) —
+// not a general customer/STAFF feature, so this renders nothing for anyone
+// else rather than showing a form that would just 403.
 function EmailSection({ locale }: { locale: Locale }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const { isAdmin } = useAuth();
   const { data: profile } = useProfile();
   const requestChange = useRequestEmailChange();
-
   const {
     register,
     handleSubmit,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<EmailChangeValues>({ resolver: zodResolver(emailChangeSchema) });
+
+  if (!isAdmin) return null;
 
   const onSubmit = handleSubmit(async (values) => {
     try {
