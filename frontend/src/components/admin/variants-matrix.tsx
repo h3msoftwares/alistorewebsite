@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Alert, Button, DataTable, Field, Icon, Input } from '@/components/ui';
+import { ColorPicker } from '@/components/admin/color-picker';
+import { colorNameToCss } from '@/lib/product-variants';
 
 /** One row of the matrix — a plain draft shape shared by the create page
  *  (no `id` yet) and the edit page (`id` present = an existing variant to
@@ -184,27 +186,33 @@ export function VariantsMatrix({
   const generateMatrix = () => {
     setGenError(null);
     const sizes = sizesInput.split(',').map((s) => s.trim()).filter(Boolean);
-    const colors = colorsInput.split(',').map((s) => s.trim()).filter(Boolean);
-    if (sizes.length === 0 && colors.length === 0) {
+    const colorNames = colorsInput.split(',').map((s) => s.trim()).filter(Boolean);
+    if (sizes.length === 0 && colorNames.length === 0) {
       setGenError(t('Enter at least one size or colour', 'أدخل مقاسًا أو لونًا واحدًا على الأقل'));
       return;
     }
     const axisSizes = sizes.length ? sizes : [''];
-    const axisColors = colors.length ? colors : [''];
+    // Typed as free-text names ("Black, White") but every row's colour is a
+    // real hex value once created, for the per-row colour-wheel picker below
+    // — colorNameToCss is the same name→hex lookup the storefront swatches
+    // use, so "Black" here and on the product page resolve to the same hex.
+    const axisColors = colorNames.length
+      ? colorNames.map((name) => ({ name, hex: colorNameToCss(name) }))
+      : [{ name: '', hex: '' }];
     const seen = new Set(rows.map((r) => `${r.size.trim().toLowerCase()}::${r.color.trim().toLowerCase()}`));
 
     const additions: DraftVariantRow[] = [];
     for (const size of axisSizes) {
       for (const color of axisColors) {
-        const dedupeKey = `${size.trim().toLowerCase()}::${color.trim().toLowerCase()}`;
+        const dedupeKey = `${size.trim().toLowerCase()}::${color.hex.trim().toLowerCase()}`;
         if (seen.has(dedupeKey)) continue;
         seen.add(dedupeKey);
-        const sku = [skuPrefix, size, color]
+        const sku = [skuPrefix, size, color.name]
           .filter(Boolean)
           .join('-')
           .toUpperCase()
           .replace(/\s+/g, '-');
-        additions.push({ ...blankVariantRow(), size, color, sku });
+        additions.push({ ...blankVariantRow(), size, color: color.hex, sku });
       }
     }
     if (additions.length === 0) {
@@ -303,7 +311,12 @@ export function VariantsMatrix({
                   <Input value={row.size} onChange={(e) => updateRow(row.key, { size: e.target.value })} disabled={busy} />
                 </td>
                 <td data-label={t('Colour', 'اللون')}>
-                  <Input value={row.color} onChange={(e) => updateRow(row.key, { color: e.target.value })} disabled={busy} />
+                  <ColorPicker
+                    value={row.color}
+                    onChange={(color) => updateRow(row.key, { color })}
+                    locale={locale}
+                    disabled={busy}
+                  />
                 </td>
                 <td data-label={t('Price override', 'سعر خاص')}>
                   <Input
