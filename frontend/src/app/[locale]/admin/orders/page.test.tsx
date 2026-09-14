@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createWrapper } from '@/test/utils';
 
 vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en' }) }));
+vi.mock('@/hooks/use-settings', () => ({ useSettings: () => ({ data: null }) }));
 
 vi.mock('@/lib/api', () => ({
   ordersApi: {

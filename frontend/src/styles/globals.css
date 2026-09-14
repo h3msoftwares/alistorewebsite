@@ -2289,6 +2289,91 @@ a.home-card__name:hover { text-decoration: underline; }
 }
 .admin-order-eta:hover:not(:disabled) { color: var(--color-text); border-color: var(--color-text); }
 
+/* Printable COD delivery receipt (admin Orders page's "Print receipt"
+   button — components/orders/order-receipt.tsx). Hidden on screen at all
+   times; @media print isolates it from the rest of the page (the
+   standard dependency-free "print one element" trick: hide everything,
+   re-reveal just this subtree, pull it out of the now-invisible-but-
+   still-occupying-space flow with position:absolute). No PDF library
+   needed — the browser's own print dialog already offers "Save as PDF"
+   alongside a physical printer. */
+.order-receipt { display: none; }
+@media print {
+  body * { visibility: hidden; }
+  .order-receipt, .order-receipt * { visibility: visible; }
+  .order-receipt {
+    display: block;
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    width: 100%;
+    padding: var(--space-6);
+  }
+}
+
+.order-receipt__head { text-align: center; margin-block-end: var(--space-5); }
+.order-receipt__head h1 { margin: 0 0 var(--space-1); font-size: var(--fs-xl); }
+.order-receipt__head p { margin: 0; color: var(--color-text-muted); }
+
+.order-receipt__meta {
+  display: flex;
+  justify-content: space-between;
+  margin-block-end: var(--space-4);
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+.order-receipt__customer {
+  margin-block-end: var(--space-5);
+  padding-block-end: var(--space-4);
+  border-block-end: 1px solid var(--color-border);
+  font-size: var(--fs-sm);
+}
+
+.order-receipt__items { width: 100%; border-collapse: collapse; margin-block-end: var(--space-5); font-size: var(--fs-sm); }
+.order-receipt__items th,
+.order-receipt__items td { padding: var(--space-2) 0; text-align: start; border-block-end: 1px solid var(--color-border); }
+.order-receipt__items .is-numeric { text-align: end; font-variant-numeric: tabular-nums; }
+
+.order-receipt__totals { margin-inline-start: auto; width: 60%; font-size: var(--fs-sm); }
+.order-receipt__totals > div { display: flex; justify-content: space-between; padding-block: var(--space-1); }
+.order-receipt__grand-total {
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-lg);
+  border-block-start: 1px solid var(--color-border);
+  margin-block-start: var(--space-2);
+  padding-block-start: var(--space-2) !important;
+}
+
+.order-receipt__payment { margin-block-start: var(--space-5); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
+.order-receipt__thanks { margin-block-start: var(--space-4); text-align: center; color: var(--color-text-muted); font-size: var(--fs-sm); }
+
+/* Compact/thermal-roll variant — the admin's saved "Receipt format" print
+   preference (lib/print-preferences.ts), applied via `format="compact"` on
+   <OrderReceipt>. Narrow monospace column with dashed dividers instead of
+   the full-page table, the supermarket-till look. `@page thermal` is a
+   Chromium-supported named page size — offers an 80mm sheet in the print
+   dialog to match, on top of whatever paper/printer the admin also picks
+   there (this can't select the printer itself; see print-preferences.ts). */
+.order-receipt--compact { page: thermal; }
+@page thermal { size: 80mm auto; margin: 4mm; }
+@media print {
+  .order-receipt--compact {
+    width: 76mm;
+    padding: 0;
+    font-family: ui-monospace, 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+}
+.order-receipt--compact .order-receipt__head h1 { font-size: 14px; }
+.order-receipt--compact .order-receipt__customer { border-block-end-style: dashed; }
+.order-receipt--compact .order-receipt__items th,
+.order-receipt--compact .order-receipt__items td { padding: 2px 0; border-block-end: none; }
+.order-receipt--compact .order-receipt__items thead th { border-block-end: 1px dashed currentColor; }
+.order-receipt--compact .order-receipt__totals { width: 100%; }
+.order-receipt--compact .order-receipt__grand-total { border-block-start-style: dashed; font-size: 13px; }
+
 /* Row-expander: a table cell's primary text doubling as the disclosure
    toggle (admin Customers → a customer's order history). */
 .admin-disclosure {
