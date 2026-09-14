@@ -16,6 +16,12 @@ const changePassword = {
   isError: false,
   error: null as unknown,
 };
+const requestEmailChange = {
+  mutateAsync: vi.fn().mockResolvedValue(undefined),
+  isPending: false,
+  isError: false,
+  error: null as unknown,
+};
 
 const auth = { status: 'authenticated' as 'authenticated' | 'loading' | 'guest', isAdmin: false };
 const profile = {
@@ -44,6 +50,7 @@ vi.mock('@/hooks/use-auth', () => ({
   useAuth: () => auth,
   useLogout: () => logout,
   useChangePassword: () => changePassword,
+  useRequestEmailChange: () => requestEmailChange,
 }));
 vi.mock('@/hooks/use-account', () => ({
   useProfile: () => profile,
