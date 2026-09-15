@@ -6,9 +6,9 @@ Ali's Store — a Next.js storefront/admin + an Express/Prisma API + Postgres.
 
 | Piece | Local | Recommended hosting |
 |---|---|---|
-| Frontend (`frontend/`) | `next dev` on :3000 | **Vercel** (Next.js 16, App Router) |
-| Backend API (`backend/`) | `tsx watch` on :4000 | **Railway** or **Fly.io** (Node service) |
-| Database | `docker compose up postgres` | **Neon** (serverless Postgres) |
+| Frontend (`frontend/`) | `next dev` on :3000 | **Netlify** (`@netlify/plugin-nextjs`, App Router) |
+| Backend API (`backend/`) | `tsx watch` on :4000 | **Railway** (Node service) |
+| Database | `docker compose up postgres` | **Supabase** (managed Postgres) |
 | Images | ImageKit (client-side signed upload) | ImageKit (same) |
 | Email | SMTP (any provider) | e.g. Resend / SES / Postmark SMTP |
 
@@ -45,7 +45,7 @@ ones that **must** be set per environment:
 
 | Var | Purpose |
 |---|---|
-| `DATABASE_URL` | Postgres connection string |
+| `DATABASE_URL` | Postgres connection string. On Supabase use the **Session pooler** URI (Project Settings → Database → Connection string → "Session pooler", port 5432) as the single value here — it supports both the app's normal queries and `prisma migrate deploy`. The **Transaction pooler** (port 6543, `pgbouncer=true`) breaks `prisma migrate deploy` (no prepared-statement/advisory-lock support) since this schema has no separate `directUrl`; don't use it. |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | ≥ 32 random chars each; rotate on a schedule |
 | `CORS_ORIGIN` | comma-separated allowed origins (the frontend URL) |
 | `FRONTEND_URL` | used to build email links (verify, reset, tracking, shipped) |
@@ -92,7 +92,7 @@ again after any `schema.prisma` change (`npm run prisma:generate`).
 2. **frontend** — `npm ci` → `typecheck` → `lint` → `test` → `build`.
 3. **audit** — `npm audit --audit-level=high` on both (report-only).
 4. **deploy-staging** — on `push` to `main` only, POSTs to
-   `VERCEL_DEPLOY_HOOK` / `RAILWAY_DEPLOY_HOOK` repo secrets (skips cleanly if
+   `NETLIFY_DEPLOY_HOOK` / `RAILWAY_DEPLOY_HOOK` repo secrets (skips cleanly if
    unset).
 
 Make jobs 1–2 required status checks on the `main` branch to block merges on
@@ -100,27 +100,47 @@ failure.
 
 ## Deploy steps (per environment)
 
-### Frontend → Vercel
+### Database → Supabase (set this up first — the other two need `DATABASE_URL`)
 
-1. Import the repo, set **Root Directory** = `frontend`.
-2. Add the `NEXT_PUBLIC_*` env vars.
-3. Build command `npm run build`, output auto-detected.
-4. (Optional) create a Deploy Hook and store it as `VERCEL_DEPLOY_HOOK` for CI.
+1. Create a project (choose a region close to the Railway region you'll use).
+2. Project Settings → Database → Connection string → **Session pooler** (port
+   5432) → copy it as `DATABASE_URL` (fill in the database password you set
+   at project creation).
+3. Migrations run via the backend's Railway start command (`migrate deploy`,
+   see below) — nothing to apply manually.
+4. Point-in-time recovery / daily backups are on by default on paid Supabase
+   tiers; confirm the retention window matches your needs.
 
-### Backend → Railway / Fly
+### Backend → Railway
 
-1. Service root = `backend`. Build: `npm ci && npm run build`. Start:
-   `npx prisma migrate deploy && npm run start`.
-2. Add all backend env vars; set `NODE_ENV=production`.
-3. Point `DATABASE_URL` at Neon (use the pooled connection string).
-4. (Optional) Deploy Hook → `RAILWAY_DEPLOY_HOOK` for CI.
+`backend/railway.json` in this repo already declares the build/start/health
+config below — Railway auto-detects it once the service's Root Directory is
+set.
 
-### Database → Neon
+1. New service from this repo, **Root Directory** = `backend`.
+2. Build: `npm ci && npm run prisma:generate && npm run build`. Start:
+   `npx prisma migrate deploy && npm run start`. Health check: `/health`.
+   (All three come from `backend/railway.json`.)
+3. Add all backend env vars from the table above; set `NODE_ENV=production`.
+4. `DATABASE_URL` = the Supabase Session pooler URI from the step above.
+5. `CORS_ORIGIN` / `FRONTEND_URL` = the Netlify site's URL (below).
+6. `BACKEND_URL` = this Railway service's own public URL (needed for the
+   Google Drive OAuth callback — see the table above).
+7. (Optional) Settings → Deploy Triggers → create a Deploy Hook, store it as
+   the `RAILWAY_DEPLOY_HOOK` repo secret for CI.
 
-1. Create a project + database; copy the **pooled** connection string into
-   `DATABASE_URL`.
-2. Migrations are applied by the backend's start command (`migrate deploy`).
-3. Enable automated backups / point-in-time restore.
+### Frontend → Netlify
+
+`netlify.toml` at the repo root already declares the base directory, build
+command, and the `@netlify/plugin-nextjs` runtime (installed automatically by
+Netlify even though it isn't in `frontend/package.json`).
+
+1. Import the repo — Netlify reads `netlify.toml` and needs no manual build
+   settings (base directory `frontend`, command `npm run build`).
+2. Add the `NEXT_PUBLIC_*` env vars (Site configuration → Environment
+   variables). `NEXT_PUBLIC_API_URL` = the Railway backend's public URL.
+3. (Optional) Site configuration → Build & deploy → Deploy notifications →
+   add a Build hook, store it as the `NETLIFY_DEPLOY_HOOK` repo secret for CI.
 
 ## Load test
 
@@ -143,7 +163,7 @@ npm run lhci                                # Lighthouse CI: builds, starts, ass
 - **Measure production, not `next dev`** — dev bundles are unminified + carry
   the React dev build, so the Lighthouse Performance score there is ~30–50
   points below the shipped app. Use `npm run build && npm start` (or the
-  Vercel URL) for a real number.
+  Netlify URL) for a real number.
 - `lighthouserc.json` gates: Performance ≥ 0.85, Accessibility ≥ 0.95, LCP
   < 2.5 s, TBT < 300 ms, CLS < 0.1. The `lighthouse` CI job runs it on every
   push/PR against a production build.
@@ -153,11 +173,12 @@ npm run lhci                                # Lighthouse CI: builds, starts, ass
 
 ## Rollback
 
-- **Frontend:** redeploy the previous Vercel deployment (instant).
-- **Backend:** redeploy the previous image/commit.
+- **Frontend:** Netlify → Deploys → pick the previous deploy → "Publish deploy"
+  (instant, no rebuild).
+- **Backend:** Railway → Deployments → redeploy the previous one.
 - **Database:** migrations are additive; if one must be undone, write a
-  forward "down" migration rather than editing history. Restore from Neon PITR
-  for data loss.
+  forward "down" migration rather than editing history. Restore from
+  Supabase's point-in-time recovery for data loss.
 
 ## Post-deploy smoke
 
@@ -169,12 +190,13 @@ curl -fsS "$API/api/settings" | jq .settings.id     # 1
 
 ## Handoff checklist
 
-- [ ] Repo secrets set: `VERCEL_DEPLOY_HOOK`, `RAILWAY_DEPLOY_HOOK` (optional),
+- [ ] Repo secrets set: `NETLIFY_DEPLOY_HOOK`, `RAILWAY_DEPLOY_HOOK` (optional),
       plus all runtime env vars in each host.
 - [ ] `SEED_ADMIN_PASSWORD` rotated and the seeded ADMIN password changed
       after first login; credentials handed over out-of-band.
 - [ ] JWT secrets are unique per environment and on a rotation schedule.
-- [ ] Neon backups verified (take one, restore it to a scratch branch).
+- [ ] Supabase backups verified (confirm PITR is on / take a manual backup
+      and check it restores).
 - [ ] `main` branch protection: require the `backend` + `frontend` CI checks.
 - [ ] GA4 service account + measurement ID set if analytics is wanted.
 - [ ] **Google Drive backups (modules/backup)** — see security/operations.md §3

@@ -1,0 +1,15 @@
+# Netlify site config for the frontend (Next.js App Router, `frontend/`).
+# The backend (Railway) and database (Supabase) are configured separately —
+# see docs/DEPLOYMENT.md.
+[build]
+  base = "frontend"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Runs the official Next.js Runtime — handles SSR/ISR/route handlers as
+# Netlify Functions and static assets via the CDN automatically. Netlify
+# installs this even though it isn't in frontend/package.json.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

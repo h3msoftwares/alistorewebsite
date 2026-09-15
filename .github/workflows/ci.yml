@@ -114,12 +114,12 @@ jobs:
     needs: [backend, frontend]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
-      - name: Trigger frontend (Vercel) deploy hook
+      - name: Trigger frontend (Netlify) deploy hook
         run: |
-          if [ -n "${{ secrets.VERCEL_DEPLOY_HOOK }}" ]; then
-            curl -fsS -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
+          if [ -n "${{ secrets.NETLIFY_DEPLOY_HOOK }}" ]; then
+            curl -fsS -X POST "${{ secrets.NETLIFY_DEPLOY_HOOK }}"
           else
-            echo "VERCEL_DEPLOY_HOOK secret not set — skipping frontend deploy."
+            echo "NETLIFY_DEPLOY_HOOK secret not set — skipping frontend deploy."
           fi
       - name: Trigger backend (Railway) deploy hook
         run: |

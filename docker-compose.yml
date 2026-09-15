@@ -1,5 +1,5 @@
-# Local development only. Production hosting is Vercel (frontend) +
-# Railway/Fly (backend) + Neon (Postgres) — see the project guide PDF.
+# Local development only. Production hosting is Netlify (frontend) +
+# Railway (backend) + Supabase (Postgres) — see docs/DEPLOYMENT.md.
 # No Redis service: refresh tokens live in Postgres (see backend/README.md).
 services:
   postgres:
