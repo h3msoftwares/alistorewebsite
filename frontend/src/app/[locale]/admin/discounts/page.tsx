@@ -550,8 +550,9 @@ const BLANK_COUPON: CouponForm = {
   isActive: true,
   startsAt: '',
   endsAt: '',
-  maxRedemptions: undefined,
-  // Single-use per customer by default — clear it for a multi-use / unlimited code.
+  // Fully single-use by default (one customer, one time) — clear either field
+  // for a multi-use / unlimited code.
+  maxRedemptions: 1,
   maxPerCustomer: 1,
 };
 

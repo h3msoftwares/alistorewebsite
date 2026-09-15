@@ -17,7 +17,7 @@ const baseCoupon = z.object({
   isActive: z.boolean().default(true),
   startsAt: z.string().datetime().nullish(),
   endsAt: z.string().datetime().nullish(),
-  // Usage caps — null/omitted = unlimited (the pre-existing behaviour).
+  // Usage caps — omitted = DB default of 1 (single-use); explicit null = unlimited.
   maxRedemptions: z.number().int().positive().max(1_000_000).nullish(),
   maxPerCustomer: z.number().int().positive().max(1000).nullish(),
 });
