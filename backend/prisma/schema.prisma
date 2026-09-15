@@ -703,8 +703,8 @@ model PromotionCollection {
 
 // A code the shopper enters at checkout for a discount off the (already
 // per-product-sale + catalog-discount reduced) cart subtotal. Time-boxed by
-// `startsAt` / `endsAt` (null ⇒ open-ended). No usage caps or per-customer
-// limits — the code just works while active and in-window.
+// `startsAt` / `endsAt` (null ⇒ open-ended). Single-use by default (both
+// globally and per customer) — see the usage-cap fields below.
 model Coupon {
   id             String       @id @default(uuid()) @db.Uuid
   code           String       @unique // stored upper-cased; compared case-insensitively
@@ -714,11 +714,13 @@ model Coupon {
   startsAt       DateTime?
   endsAt         DateTime?
   // Usage caps (enforced at checkout — see order.service.ts).
-  //  `maxRedemptions` — total across all shoppers; null = unlimited.
+  //  `maxRedemptions` — total across all shoppers; DEFAULTS TO 1 so a coupon
+  //    is fully single-use (one customer, one time) unless the admin opts
+  //    into more (or null for unlimited).
   //  `maxPerCustomer` — per account / per guest-email; DEFAULTS TO 1 so a
   //    coupon is single-use per customer unless the admin opts into more (or
   //    null for unlimited). `timesRedeemed` is the atomic global counter.
-  maxRedemptions Int?
+  maxRedemptions Int?         @default(1)
   maxPerCustomer Int?         @default(1)
   timesRedeemed  Int          @default(0)
   dateCreated    DateTime     @default(now())

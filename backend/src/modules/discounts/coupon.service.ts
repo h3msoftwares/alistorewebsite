@@ -46,10 +46,10 @@ export async function createCoupon(input: CreateCouponInput) {
           isActive: input.isActive,
           startsAt: input.startsAt ? new Date(input.startsAt) : null,
           endsAt: input.endsAt ? new Date(input.endsAt) : null,
-          maxRedemptions: input.maxRedemptions ?? null,
-          // Only override the DB default (1 = single-use per customer) when the
-          // admin actually sent a value — `null` here means "explicitly
-          // unlimited", not "not specified".
+          // Only override the DB defaults (1 = single-use, both globally and
+          // per customer) when the admin actually sent a value — `null` here
+          // means "explicitly unlimited", not "not specified".
+          ...(input.maxRedemptions !== undefined ? { maxRedemptions: input.maxRedemptions ?? null } : {}),
           ...(input.maxPerCustomer !== undefined ? { maxPerCustomer: input.maxPerCustomer ?? null } : {}),
         },
       });

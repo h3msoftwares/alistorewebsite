@@ -8,7 +8,9 @@ import { makeCollection, makeCategory, makeProduct } from '../helpers/factories'
 // Coupon usage caps (pentest V2b + "reuse still available" follow-up):
 //  - maxPerCustomer defaults to 1 — a coupon is single-use per customer
 //    unless an admin opts into more (or null = unlimited).
-//  - maxRedemptions (global) is enforced with an atomic guarded increment.
+//  - maxRedemptions defaults to 1 — a coupon is fully single-use (one
+//    customer, one time, ever) unless an admin opts into more (or null =
+//    unlimited), enforced with an atomic guarded increment.
 //  - every redemption is recorded in CouponRedemption.
 
 const app = buildApp();
@@ -48,30 +50,44 @@ async function orderWithCoupon(token: string, code: string) {
 }
 
 describe('Coupon usage caps', () => {
-  it('a coupon created with NO caps is single-use per customer by default', async () => {
+  it('a coupon created with NO caps is fully single-use — one customer, one time — by default', async () => {
     const created = await createCoupon({ code: 'DEF1' });
     expect(created.status).toBe(201);
     expect(created.body.coupon.maxPerCustomer).toBe(1);
+    expect(created.body.coupon.maxRedemptions).toBe(1);
 
     const { token } = await createCustomer();
     const first = await orderWithCoupon(token, 'DEF1');
     expect(first.status).toBe(201);
 
+    // The global cap of 1 is already spent, so the code no longer resolves
+    // at all — for the same customer or anyone else.
     const second = await orderWithCoupon(token, 'DEF1');
     expect(second.status).toBe(400);
-    expect(second.body.error.message).toMatch(/already used this coupon/i);
-
-    // …but a DIFFERENT customer can still use it once.
+    expect(second.body.error.message).toMatch(/not valid|no longer/i);
     const other = await createCustomer();
-    expect((await orderWithCoupon(other.token, 'DEF1')).status).toBe(201);
+    const third = await orderWithCoupon(other.token, 'DEF1');
+    expect(third.status).toBe(400);
+    expect(third.body.error.message).toMatch(/not valid|no longer/i);
 
     const coupon = await prisma.coupon.findUnique({ where: { code: 'DEF1' } });
-    expect(coupon?.timesRedeemed).toBe(2);
-    expect(await prisma.couponRedemption.count({ where: { couponID: coupon!.id } })).toBe(2);
+    expect(coupon?.timesRedeemed).toBe(1);
+    expect(await prisma.couponRedemption.count({ where: { couponID: coupon!.id } })).toBe(1);
+  });
+
+  it('an admin can still opt a coupon into per-customer-only reuse (maxRedemptions null, maxPerCustomer 1)', async () => {
+    await createCoupon({ code: 'PERCUST', maxRedemptions: null, maxPerCustomer: 1 });
+    const { token } = await createCustomer();
+    expect((await orderWithCoupon(token, 'PERCUST')).status).toBe(201);
+    expect((await orderWithCoupon(token, 'PERCUST')).status).toBe(400);
+
+    // a different customer can still use it once — this is the opt-in shared-code behaviour.
+    const other = await createCustomer();
+    expect((await orderWithCoupon(other.token, 'PERCUST')).status).toBe(201);
   });
 
   it('maxPerCustomer = 2 allows exactly two uses per customer', async () => {
-    await createCoupon({ code: 'TWICE', maxPerCustomer: 2 });
+    await createCoupon({ code: 'TWICE', maxPerCustomer: 2, maxRedemptions: null });
     const { token } = await createCustomer();
     expect((await orderWithCoupon(token, 'TWICE')).status).toBe(201);
     expect((await orderWithCoupon(token, 'TWICE')).status).toBe(201);
@@ -79,7 +95,7 @@ describe('Coupon usage caps', () => {
   });
 
   it('maxPerCustomer = null (explicit) restores unlimited reuse', async () => {
-    await createCoupon({ code: 'UNLIM', maxPerCustomer: null });
+    await createCoupon({ code: 'UNLIM', maxPerCustomer: null, maxRedemptions: null });
     const { token } = await createCustomer();
     expect((await orderWithCoupon(token, 'UNLIM')).status).toBe(201);
     expect((await orderWithCoupon(token, 'UNLIM')).status).toBe(201);
