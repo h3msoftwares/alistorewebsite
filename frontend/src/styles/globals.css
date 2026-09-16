@@ -3530,7 +3530,13 @@ a.home-card__name:hover { text-decoration: underline; }
   background: var(--color-surface-raised);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  overflow: hidden;
+  /* overflow-x stays hidden (rounded corners, e.g. the zoomed product image);
+     overflow-y scrolls instead of clipping — a modal whose content grows
+     past the 90vh cap (e.g. an error Alert appearing in a form) used to
+     silently clip its own action buttons off the bottom with no way to
+     reach them, since `overflow: hidden` cuts off in both directions. */
+  overflow-x: hidden;
+  overflow-y: auto;
   animation: modal-scale-in var(--transition-base);
 }
 .modal__close {
