@@ -105,6 +105,14 @@ const nextConfig = {
   reactStrictMode: true,
   // Drop the framework-fingerprinting `X-Powered-By: Next.js` header.
   poweredByHeader: false,
+  // Next's default (60s) is tuned for typical dev/CI hardware — a handful of
+  // the heavier admin pages (Recharts analytics dashboards, the big settings/
+  // products/roles forms) consistently exceeded it on Netlify's shared build
+  // machines even after Next's own 3 retries, despite building fine locally
+  // and in GitHub Actions. Raised rather than chasing which specific pages
+  // are slow this run — the failing subset shifts build-to-build under
+  // resource contention, not a fixed one.
+  staticPageGenerationTimeout: 180,
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
