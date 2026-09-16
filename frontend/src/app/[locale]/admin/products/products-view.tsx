@@ -1,0 +1,233 @@
+'use client';
+
+import Link from 'next/link';
+import { useState } from 'react';
+import { useParams } from 'next/navigation';
+import { Archive, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { Alert, Badge, Button, DataTable, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
+import { AdminThumb } from '@/components/admin/admin-thumb';
+import { AdminListControls } from '@/components/admin/admin-list-controls';
+import { AdminPager } from '@/components/admin/admin-pager';
+import {
+  useDeleteProduct,
+  usePermanentDeleteProduct,
+  useProducts,
+  useRestoreProduct,
+} from '@/hooks/use-catalog';
+import type { CatalogStatus, Product } from '@/lib/types';
+
+const PAGE_SIZE = 20;
+
+export function AdminProductsPage() {
+  const params = useParams();
+  const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
+
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<CatalogStatus>('active');
+  const [page, setPage] = useState(1);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const { data, isPending, isError, refetch } = useProducts({
+    page,
+    pageSize: PAGE_SIZE,
+    search: search || undefined,
+    status,
+  });
+  const archive = useDeleteProduct();
+  const restore = useRestoreProduct();
+  const permanentDelete = usePermanentDeleteProduct();
+
+  const items = data?.items ?? [];
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+
+  const name = (p: Product) => (isAr ? p.nameAr : p.nameEn);
+
+  const runAction = async (id: string, fn: () => Promise<unknown>, failMsg: string) => {
+    setActionError(null);
+    setBusyId(id);
+    try {
+      await fn();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : failMsg);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const onArchive = (p: Product) => {
+    if (!window.confirm(t(`Archive "${name(p)}"? It will be hidden from the storefront but kept.`, `أرشفة "${name(p)}"؟ سيُخفى من المتجر مع الاحتفاظ به.`))) return;
+    void runAction(p.id, () => archive.mutateAsync(p.id), t('Archive failed', 'فشلت الأرشفة'));
+  };
+  const onRestore = (p: Product) =>
+    void runAction(p.id, () => restore.mutateAsync(p.id), t('Restore failed', 'فشلت الاستعادة'));
+  const onPermanentDelete = (p: Product) => {
+    if (!window.confirm(t(`Permanently delete "${name(p)}"? This cannot be undone.`, `حذف "${name(p)}" نهائيًا؟ لا يمكن التراجع.`))) return;
+    void runAction(p.id, () => permanentDelete.mutateAsync(p.id), t('Delete failed', 'فشل الحذف'));
+  };
+
+  return (
+    <div className="section--tight">
+      <div className="admin-page__head">
+        <h1>{t('Products', 'المنتجات')}</h1>
+        <Link href={`/${locale}/admin/products/new`} className="btn btn--primary">
+          <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+          {t('New product', 'منتج جديد')}
+        </Link>
+      </div>
+
+      <AdminListControls
+        search={search}
+        onSearchChange={(v) => {
+          setSearch(v);
+          setPage(1);
+        }}
+        status={status}
+        onStatusChange={(v) => {
+          setStatus(v);
+          setPage(1);
+        }}
+        locale={locale}
+      />
+
+      {actionError && <Alert tone="danger" className="stack">{actionError}</Alert>}
+
+      {isPending ? (
+        <ProductGridSkeleton count={4} />
+      ) : isError ? (
+        <EmptyState
+          tone="alert"
+          title={t("Couldn't load products", 'تعذّر تحميل المنتجات')}
+          action={
+            <Button variant="primary" onClick={() => refetch()}>
+              {t('Retry', 'إعادة المحاولة')}
+            </Button>
+          }
+        />
+      ) : items.length === 0 ? (
+        <EmptyState
+          title={search || status !== 'active' ? t('No matches', 'لا نتائج') : t('No products yet', 'لا توجد منتجات بعد')}
+          action={
+            <Link href={`/${locale}/admin/products/new`} className="btn btn--primary">
+              {t('New product', 'منتج جديد')}
+            </Link>
+          }
+        />
+      ) : (
+        <>
+          <DataTable responsive>
+            <thead>
+              <tr>
+                <th aria-hidden="true" />
+                <th>{t('Name', 'الاسم')}</th>
+                <th>{t('SKU', 'رمز المنتج')}</th>
+                <th>{t('Category', 'الفئة')}</th>
+                <th>{t('Price', 'السعر')}</th>
+                <th>{t('Stock', 'المخزون')}</th>
+                <th>{t('Status', 'الحالة')}</th>
+                <th aria-hidden="true" />
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((p) => (
+                <tr key={p.id}>
+                  <td data-label={t('Image', 'الصورة')}>
+                    <AdminThumb url={p.images[0]?.url} alt={name(p)} />
+                  </td>
+                  <td data-label={t('Name', 'الاسم')}>
+                    <Link href={`/${locale}/admin/products/${p.id}`}>{name(p)}</Link>
+                  </td>
+                  <td data-label={t('SKU', 'رمز المنتج')}>{p.sku}</td>
+                  <td data-label={t('Category', 'الفئة')}>
+                    {p.primaryCategory ? (isAr ? p.primaryCategory.nameAr : p.primaryCategory.nameEn) : '—'}
+                  </td>
+                  <td data-label={t('Price', 'السعر')}>
+                    {p.onSale ? (
+                      <>
+                        <span style={{ textDecoration: 'line-through', color: 'var(--color-text-muted)' }}>{String(p.price)}</span>{' '}
+                        {p.effectivePrice}
+                      </>
+                    ) : (
+                      String(p.price)
+                    )}
+                  </td>
+                  {/* Real per-variant stock summed here, not `p.quantity` —
+                      that field is a dead, free-standing column never
+                      derived from or validated against variant stock (it
+                      reads 0 for every product in this catalog); it used to
+                      render here unconditionally and looked like real
+                      inventory data, which it never was (fix-list.md #16). */}
+                  <td data-label={t('Stock', 'المخزون')}>
+                    {p.variants.reduce((sum, v) => sum + v.stockQuantity, 0)}
+                  </td>
+                  <td data-label={t('Status', 'الحالة')}>
+                    {p.deletedAt ? (
+                      <Badge variant="low-stock" className="admin-status-badge--archived">
+                        {t('Archived', 'مؤرشف')}
+                      </Badge>
+                    ) : p.isActive ? (
+                      <Badge variant="new">{t('Active', 'مفعّل')}</Badge>
+                    ) : (
+                      <Badge variant="low-stock">{t('Hidden', 'مخفي')}</Badge>
+                    )}
+                  </td>
+                  <td data-label={t('Actions', 'إجراءات')}>
+                    <span className="admin-row-actions">
+                      <Link
+                        href={`/${locale}/admin/products/${p.id}`}
+                        className="icon-btn icon-btn--bordered"
+                        aria-label={t('Edit', 'تعديل')}
+                        title={t('Edit', 'تعديل')}
+                      >
+                        <Icon as={Pencil} size={16} />
+                      </Link>
+                      {p.deletedAt ? (
+                        <>
+                          <button
+                            type="button"
+                            className="icon-btn icon-btn--bordered"
+                            onClick={() => onRestore(p)}
+                            disabled={busyId === p.id}
+                            aria-label={t('Restore', 'استعادة')}
+                            title={t('Restore', 'استعادة')}
+                          >
+                            <Icon as={RotateCcw} size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            className="icon-btn icon-btn--bordered"
+                            onClick={() => onPermanentDelete(p)}
+                            disabled={busyId === p.id}
+                            aria-label={t('Delete permanently', 'حذف نهائي')}
+                            title={t('Delete permanently', 'حذف نهائي')}
+                          >
+                            <Icon as={Trash2} size={16} />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="icon-btn icon-btn--bordered"
+                          onClick={() => onArchive(p)}
+                          disabled={busyId === p.id}
+                          aria-label={t('Archive', 'أرشفة')}
+                          title={t('Archive', 'أرشفة')}
+                        >
+                          <Icon as={Archive} size={16} />
+                        </button>
+                      )}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+
+          <AdminPager page={data?.page ?? page} totalPages={totalPages} onPageChange={setPage} locale={locale} />
+        </>
+      )}
+    </div>
+  );
+}
