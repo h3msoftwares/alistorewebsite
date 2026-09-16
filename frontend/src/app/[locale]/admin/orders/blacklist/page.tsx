@@ -9,6 +9,7 @@ import { Trash2 } from 'lucide-react';
 import {
   Alert,
   Button,
+  Choice,
   ConfirmModal,
   DataTable,
   EmptyState,
@@ -19,6 +20,7 @@ import {
   Select,
 } from '@/components/ui';
 import { usePermissions } from '@/lib/rbac';
+import { useRowSelection } from '@/hooks/use-row-selection';
 import { useBlacklist, useCreateBlacklistEntry, useDeleteBlacklistEntry } from '@/hooks/use-blacklist';
 
 const entrySchema = z.object({
@@ -64,8 +66,22 @@ export default function AdminBlacklistPage() {
     }
   };
 
-  const [confirmRemove, setConfirmRemove] = useState<{ id: string; value: string } | null>(null);
-  const onRemove = (id: string, value: string) => setConfirmRemove({ id, value });
+  const [confirmRemove, setConfirmRemove] = useState<{ id: string; value: string }[] | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const onRemove = (id: string, value: string) => setConfirmRemove([{ id, value }]);
+  const selection = useRowSelection((entries ?? []).map((e) => e.id));
+
+  const runRemove = async () => {
+    if (!confirmRemove) return;
+    setConfirmBusy(true);
+    try {
+      await Promise.all(confirmRemove.map((e) => remove.mutateAsync(e.id)));
+      selection.clear();
+    } finally {
+      setConfirmRemove(null);
+      setConfirmBusy(false);
+    }
+  };
 
   if (!canManage) {
     return (
@@ -138,9 +154,40 @@ export default function AdminBlacklistPage() {
       ) : (entries ?? []).length === 0 ? (
         <EmptyState title={t('Nothing blocked yet', 'لا يوجد حظر بعد')} />
       ) : (
+        <>
+          {selection.count > 0 && (
+            <div className="admin-bulk-bar">
+              <span className="admin-bulk-bar__count">
+                {t(`${selection.count} selected`, `${selection.count} محدد`)}
+              </span>
+              <span className="admin-bulk-bar__actions">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="btn--danger-quiet"
+                  onClick={() => setConfirmRemove((entries ?? []).filter((e) => selection.selected.has(e.id)))}
+                >
+                  {t(`Remove (${selection.count})`, `إزالة (${selection.count})`)}
+                </Button>
+                <button type="button" className="admin-bulk-bar__clear" onClick={selection.clear}>
+                  {t('Clear', 'إلغاء التحديد')}
+                </button>
+              </span>
+            </div>
+          )}
+
         <DataTable responsive>
           <thead>
             <tr>
+              <th aria-hidden="true">
+                <Choice
+                  type="checkbox"
+                  checked={selection.allSelected}
+                  onChange={selection.toggleAll}
+                  label={<span className="visually-hidden">{t('Select all', 'تحديد الكل')}</span>}
+                />
+              </th>
               <th>{t('Type', 'النوع')}</th>
               <th>{t('Value', 'القيمة')}</th>
               <th>{t('Reason', 'السبب')}</th>
@@ -152,6 +199,14 @@ export default function AdminBlacklistPage() {
           <tbody>
             {(entries ?? []).map((e) => (
               <tr key={e.id}>
+                <td data-label={t('Select', 'تحديد')}>
+                  <Choice
+                    type="checkbox"
+                    checked={selection.selected.has(e.id)}
+                    onChange={() => selection.toggle(e.id)}
+                    label={<span className="visually-hidden">{t(`Select ${e.value}`, `تحديد ${e.value}`)}</span>}
+                  />
+                </td>
                 <td data-label={t('Type', 'النوع')}>
                   {e.type === 'PHONE' ? t('Phone', 'هاتف') : e.type === 'EMAIL' ? t('Email', 'بريد إلكتروني') : t('IP address', 'عنوان IP')}
                 </td>
@@ -174,22 +229,23 @@ export default function AdminBlacklistPage() {
             ))}
           </tbody>
         </DataTable>
+        </>
       )}
 
       <ConfirmModal
         open={confirmRemove !== null}
         onClose={() => setConfirmRemove(null)}
-        onConfirm={() => {
-          if (!confirmRemove) return;
-          remove.mutate(confirmRemove.id);
-          setConfirmRemove(null);
-        }}
-        title={t(`Remove "${confirmRemove?.value ?? ''}" from the block list?`, `إزالة "${confirmRemove?.value ?? ''}" من قائمة الحظر؟`)}
+        onConfirm={() => void runRemove()}
+        title={
+          confirmRemove?.length === 1
+            ? t(`Remove "${confirmRemove[0].value}" from the block list?`, `إزالة "${confirmRemove[0].value}" من قائمة الحظر؟`)
+            : t(`Remove ${confirmRemove?.length ?? 0} entries from the block list?`, `إزالة ${confirmRemove?.length ?? 0} عناصر من قائمة الحظر؟`)
+        }
         body={t('They will be able to place orders again.', 'سيتمكنون من تقديم الطلبات مرة أخرى.')}
         confirmLabel={t('Remove', 'إزالة')}
         cancelLabel={t('Cancel', 'إلغاء')}
         tone="danger"
-        loading={remove.isPending}
+        loading={confirmBusy}
       />
     </div>
   );
