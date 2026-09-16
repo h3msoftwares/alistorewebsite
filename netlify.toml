@@ -4,17 +4,21 @@
 [build]
   base = "frontend"
   command = "npm run build"
+  # Relative to `base` — the Next.js Runtime plugin needs this distinct from
+  # `base` itself (it manages .next as Netlify Functions + CDN assets, not a
+  # plain static publish dir). Set explicitly because this site's dashboard
+  # had "Publish directory" manually set to `frontend` (same as base) from
+  # initial site setup, which the plugin refuses outright — if this doesn't
+  # take effect, clear/update that field directly in Site configuration >
+  # Build & deploy > Build settings, since a UI-set value can outrank this file.
+  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
-  # The exact same ~8 pages hung past the static-generation timeout on every
-  # attempt regardless of bundler (Turbopack and webpack both hit the
-  # identical set) or how high the timeout was raised — that pattern points
-  # to memory exhaustion on Netlify's build container manifesting as a hang
-  # rather than a clean OOM crash, not any specific page being slow. Node's
-  # default old-space ceiling (~2GB) is tight for an 87-page Next.js build
-  # with Recharts/react-hook-form/zod pulled into several routes; raised
-  # explicitly rather than relying on Netlify's container default.
+  # Precautionary headroom above Node's default old-space ceiling (~2GB) for
+  # an 87-page Next.js build — not confirmed necessary (the actual cause of
+  # this build's earlier static-generation hangs was untimed backend fetches
+  # in the root layout, since fixed), but harmless to leave raised.
   NODE_OPTIONS = "--max-old-space-size=4096"
 
 # Runs the official Next.js Runtime — handles SSR/ISR/route handlers as
