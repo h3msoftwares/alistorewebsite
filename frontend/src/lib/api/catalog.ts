@@ -21,7 +21,10 @@ import type {
 
 // ---- Collections (public) ----
 
-export function listCollections(params?: CatalogListQuery & { includeInactive?: boolean }) {
+export function listCollections(
+  params?: CatalogListQuery & { includeInactive?: boolean },
+  opts?: { signal?: AbortSignal }
+) {
   return api
     .get<{ collections: Collection[] }>('/api/collections', {
       query: {
@@ -29,6 +32,7 @@ export function listCollections(params?: CatalogListQuery & { includeInactive?: 
         status: params?.status,
         includeInactive: params?.includeInactive,
       },
+      signal: opts?.signal,
     })
     .then((r) => r.collections);
 }
@@ -128,9 +132,9 @@ export function listCategories(params?: UUID | (CatalogListQuery & { parentId?: 
 }
 
 /** Root categories — no parent (`GET /api/categories?topLevel=true`). */
-export function listTopLevelCategories() {
+export function listTopLevelCategories(opts?: { signal?: AbortSignal }) {
   return api
-    .get<{ categories: Category[] }>('/api/categories', { query: { topLevel: true } })
+    .get<{ categories: Category[] }>('/api/categories', { query: { topLevel: true }, signal: opts?.signal })
     .then((r) => r.categories);
 }
 

@@ -51,10 +51,18 @@ export async function generateMetadata({
   const { locale } = await params;
   let brand = DEFAULT_BRAND_NAME_EN;
   try {
-    const settings = await settingsApi.getSettings();
+    // Every one of the ~170 page x locale renders in a static-generation
+    // pass hits this — with no timeout, an occasional slow/overloaded
+    // backend response (this fetch has none applied by default) blocked the
+    // whole page past Next's static-generation budget instead of falling
+    // through to the "unreachable" branch below, which is the actual
+    // behaviour this try/catch was designed for (fix-list: intermittent
+    // Netlify build timeouts on an otherwise-fixed set of pages, traced to
+    // this and the prefetches below never actually erroring — just hanging).
+    const settings = await settingsApi.getSettings({ signal: AbortSignal.timeout(8000) });
     brand = locale === 'ar' ? settings.brandNameAr : settings.brandNameEn;
   } catch {
-    // Backend unreachable at build/render time — the default is fine.
+    // Backend unreachable (or too slow) at build/render time — the default is fine.
   }
   return {
     title: brand,
@@ -91,20 +99,26 @@ export default async function LocaleLayout({
   // and the collections list (Sale/New Arrivals) so they render with data on
   // first paint instead of flashing skeletons. `prefetchQuery` never throws,
   // and only successful queries dehydrate — a build with no backend just
-  // falls back to client fetching.
+  // falls back to client fetching. Every one of these three ran with no
+  // timeout on every page x locale render (~170 times in one static-
+  // generation pass) — an occasional slow backend response hung the whole
+  // page past Next's static-generation budget instead of ever reaching that
+  // no-throw fallback, which only covers a fetch actually erroring, not one
+  // that just never resolves. `AbortSignal.timeout` turns "slow" into
+  // "unreachable" fast enough to stay well inside that budget either way.
   const queryClient = makeQueryClient();
   await Promise.all([
     queryClient.prefetchQuery({
       queryKey: queryKeys.categories.topLevel(),
-      queryFn: () => catalogApi.listTopLevelCategories(),
+      queryFn: () => catalogApi.listTopLevelCategories({ signal: AbortSignal.timeout(8000) }),
     }),
     queryClient.prefetchQuery({
       queryKey: queryKeys.collections.list(false),
-      queryFn: () => catalogApi.listCollections({ includeInactive: false }),
+      queryFn: () => catalogApi.listCollections({ includeInactive: false }, { signal: AbortSignal.timeout(8000) }),
     }),
     queryClient.prefetchQuery({
       queryKey: ['settings'],
-      queryFn: () => settingsApi.getSettings(),
+      queryFn: () => settingsApi.getSettings({ signal: AbortSignal.timeout(8000) }),
     }),
   ]);
 
