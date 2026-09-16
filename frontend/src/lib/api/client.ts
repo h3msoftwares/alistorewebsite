@@ -1,7 +1,19 @@
 import { getAccessToken, setAccessToken } from './token';
 import { ApiError } from './errors';
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+// Server-side calls (the root layout's build-time/SSR prefetches — see
+// app/[locale]/layout.tsx) run in Node, not a browser: a relative URL has no
+// base to resolve against there, so they always need Railway's real,
+// absolute URL. Browser-side calls instead want a relative path in
+// production (NEXT_PUBLIC_API_URL set to "") so the backend's
+// SameSite=Strict cookies stay same-origin via netlify.toml's proxy — see
+// that file's comment. API_SERVER_URL is a plain (non-NEXT_PUBLIC_) var, so
+// Next only makes it available server-side and it never leaks into the
+// browser bundle.
+export const API_URL =
+  typeof window === 'undefined'
+    ? process.env.API_SERVER_URL || 'http://localhost:4000'
+    : (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000');
 
 export type QueryValue = string | number | boolean | undefined | null;
 

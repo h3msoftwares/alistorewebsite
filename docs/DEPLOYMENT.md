@@ -64,7 +64,8 @@ ones that **must** be set per environment:
 
 | Var | Purpose |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | the backend base URL |
+| `NEXT_PUBLIC_API_URL` | **Browser-side** calls only. Local dev: the backend base URL (`http://localhost:4000`). **In Netlify, set this to an empty string.** The frontend (Netlify) and backend (Railway) are different domains; pointed straight at Railway, the backend's `SameSite=Strict` auth/CSRF/cart cookies are cross-site and the browser never sends them back, so every login/cart/checkout POST 403s with "Invalid or missing CSRF token" (confirmed live 2026-09-16). An empty value makes the frontend call relative `/api/...` paths, which `netlify.toml`'s `[[redirects]]` rule proxies to Railway same-origin — the browser then sees one origin and the cookies work as intended. |
+| `API_SERVER_URL` | **Server-side** (build-time/SSR) calls only — the root layout's prefetches run in Node, not a browser, so they need Railway's real absolute URL even though `NEXT_PUBLIC_API_URL` above is empty (a relative path has no base to resolve against server-side). Not `NEXT_PUBLIC_`-prefixed, so it stays server-only and never ships to the browser. In Netlify, set to the Railway backend's public URL. Leave unset in local dev. |
 | `NEXT_PUBLIC_IMAGEKIT_PUBLIC_KEY` | client-side ImageKit uploads |
 | `NEXT_PUBLIC_GA_MEASUREMENT_ID` (optional) | GA4 tag; only loads after cookie consent |
 
@@ -132,14 +133,26 @@ set.
 ### Frontend → Netlify
 
 `netlify.toml` at the repo root already declares the base directory, build
-command, and the `@netlify/plugin-nextjs` runtime (installed automatically by
-Netlify even though it isn't in `frontend/package.json`).
+command, the `@netlify/plugin-nextjs` runtime (installed automatically by
+Netlify even though it isn't in `frontend/package.json`), and a `/api/*`
+redirect proxying to the Railway backend so the browser only ever talks to
+this one Netlify origin — see that file's comment for why (in short: the
+backend's cookies are `SameSite=Strict`, which never round-trip if the
+frontend calls Railway's domain directly).
 
 1. Import the repo — Netlify reads `netlify.toml` and needs no manual build
    settings (base directory `frontend`, command `npm run build`).
-2. Add the `NEXT_PUBLIC_*` env vars (Site configuration → Environment
-   variables). `NEXT_PUBLIC_API_URL` = the Railway backend's public URL.
-3. (Optional) Site configuration → Build & deploy → Deploy notifications →
+2. Add the frontend env vars (Site configuration → Environment variables).
+   **`NEXT_PUBLIC_API_URL` = an empty string** — leave it blank, don't put
+   the Railway URL here. **`API_SERVER_URL` = the Railway backend's public
+   URL** — the opposite of `NEXT_PUBLIC_API_URL`, this one DOES need the
+   real Railway URL, since it's for server-side (build/SSR) calls only (see
+   the table above and `netlify.toml`'s `[[redirects]]` comment for why the
+   two differ).
+3. If `netlify.toml`'s hardcoded redirect target ever needs to change (e.g.
+   the Railway service is recreated under a new domain), update the `to =`
+   line in its `[[redirects]]` block — Netlify redirects don't read env vars.
+4. (Optional) Site configuration → Build & deploy → Deploy notifications →
    add a Build hook, store it as the `NETLIFY_DEPLOY_HOOK` repo secret for CI.
 
 ## Load test

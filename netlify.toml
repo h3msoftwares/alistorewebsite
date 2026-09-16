@@ -26,3 +26,29 @@
 # installs this even though it isn't in frontend/package.json.
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Proxy /api/* to the Railway backend so the browser sees one origin
+# (this Netlify domain) instead of two. Without this, the frontend
+# (alistoreclothing.netlify.app) and backend (*.up.railway.app) are
+# different registrable domains, which makes every auth/CSRF/cart cookie —
+# all set SameSite=Strict, see backend/src/middleware/csrf.middleware.ts
+# — cross-site from the browser's point of view. A SameSite=Strict cookie
+# is never sent back on a cross-site request, so the CSRF double-submit
+# check always failed: every login, cart, and checkout POST 403'd with
+# "Invalid or missing CSRF token" (confirmed live 2026-09-16). Proxying
+# here makes the request/response transaction look same-origin to the
+# browser, so Set-Cookie is scoped to THIS domain and SameSite=Strict
+# works as intended — no cookie policy needs to be weakened.
+#
+# Requires NEXT_PUBLIC_API_URL to be set to an EMPTY STRING in Netlify's
+# site environment variables (Site configuration > Environment variables)
+# so the frontend calls relative /api/... paths instead of the Railway
+# host directly — see frontend/.env.example.
+#
+# The target host below is this site's current Railway backend; update it
+# if the Railway service is ever recreated under a different domain.
+[[redirects]]
+  from = "/api/*"
+  to = "https://alistorewebsite-production.up.railway.app/api/:splat"
+  status = 200
+  force = true

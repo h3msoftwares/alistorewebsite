@@ -4,9 +4,12 @@ import bundleAnalyzer from '@next/bundle-analyzer';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
-// The API the browser talks to (fetch/XHR). Same value the client uses at
-// runtime; needed here so `connect-src` can name it.
-const apiOrigin = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/+$/, '');
+// The API the browser talks to (fetch/XHR). Same value + same `??` (not
+// `||`) as client.ts's own fallback: an unset var means local dev, but a
+// deliberately EMPTY string means production's same-origin Netlify-proxy
+// setup (see netlify.toml) — that case must stay empty, not fall back to
+// localhost, since 'self' below already covers same-origin calls.
+const apiOrigin = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/+$/, '');
 
 // The admin image uploader (lib/imagekit-upload.ts) POSTs files straight from
 // the browser to ImageKit's upload endpoint, so `connect-src` must name it.
@@ -69,7 +72,7 @@ function contentSecurityPolicy() {
     'font-src': ["'self'", 'data:', ...HCAPTCHA],
     'connect-src': [
       "'self'",
-      apiOrigin,
+      ...(apiOrigin ? [apiOrigin] : []),
       imagekitUploadOrigin,
       ...GA,
       'https://*.analytics.google.com',
