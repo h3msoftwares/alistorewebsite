@@ -7,6 +7,7 @@ import {
   Badge,
   Button,
   Choice,
+  ConfirmModal,
   DataTable,
   EmptyState,
   Field,
@@ -260,8 +261,14 @@ function RolesPanel({ locale }: { locale: 'en' | 'ar' }) {
     setEditing(null);
   };
 
-  const onDelete = async (r: Role) => {
-    if (!confirm(t(`Delete the "${r.name}" role?`, `حذف الدور "${r.name}"؟`))) return;
+  const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
+
+  const onDelete = (r: Role) => setConfirmDelete(r);
+
+  const doDelete = async () => {
+    if (!confirmDelete) return;
+    const r = confirmDelete;
+    setConfirmDelete(null);
     setListError(null);
     try {
       await remove.mutateAsync(r.id);
@@ -363,6 +370,18 @@ function RolesPanel({ locale }: { locale: 'en' | 'ar' }) {
           </tbody>
         </DataTable>
       )}
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => void doDelete()}
+        title={t(`Delete the "${confirmDelete?.name ?? ''}" role?`, `حذف الدور "${confirmDelete?.name ?? ''}"؟`)}
+        body={t('This cannot be undone.', 'لا يمكن التراجع عن هذا.')}
+        confirmLabel={t('Delete', 'حذف')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone="danger"
+        loading={remove.isPending}
+      />
     </div>
   );
 }
@@ -782,10 +801,10 @@ export function AdminRolesPage() {
         <h1>{t('Permissions & roles', 'الصلاحيات والأدوار')}</h1>
       </div>
 
-      <nav className="admin-nav settings-tabs" aria-label={t('Sections', 'الأقسام')}>
+      <nav className="tab-strip settings-tabs" aria-label={t('Sections', 'الأقسام')}>
         <button
           type="button"
-          className="admin-nav__link"
+          className="tab-strip__link"
           data-active={tab === 'roles' ? '' : undefined}
           aria-pressed={tab === 'roles'}
           onClick={() => setTab('roles')}
@@ -794,7 +813,7 @@ export function AdminRolesPage() {
         </button>
         <button
           type="button"
-          className="admin-nav__link"
+          className="tab-strip__link"
           data-active={tab === 'team' ? '' : undefined}
           aria-pressed={tab === 'team'}
           onClick={() => setTab('team')}

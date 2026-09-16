@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Archive, Plus, RotateCcw, Trash2, X } from 'lucide-react';
-import { Alert, Button, CheckList, Choice, EmptyState, Field, Icon, Input, ProductGridSkeleton, Select } from '@/components/ui';
+import { Alert, Button, CheckList, Choice, ConfirmModal, EmptyState, Field, Icon, Input, ProductGridSkeleton, Select } from '@/components/ui';
 import { ImageGallery } from '@/components/admin/image-gallery';
 import {
   useAddCollectionImage,
@@ -554,22 +554,15 @@ export default function EditCollectionPage() {
   // page (the mutations invalidate the collection-detail query, so the
   // header re-renders with the new state); only the real permanent delete
   // navigates away, since the collection no longer exists afterward.
-  const onArchiveCollection = async () => {
-    if (!collection) return;
-    const name = isAr ? collection.nameAr : collection.nameEn;
-    if (
-      !window.confirm(
-        t(
-          `Archive "${name}"? It will be hidden from the storefront but kept.`,
-          `أرشفة "${name}"؟ ستُخفى من المتجر مع الاحتفاظ بها.`
-        )
-      )
-    )
-      return;
+  const [confirmKind, setConfirmKind] = useState<'archive' | 'delete' | null>(null);
+
+  const doArchiveCollection = async () => {
     try {
       await archiveCollection.mutateAsync(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Archive failed', 'فشلت الأرشفة'));
+    } finally {
+      setConfirmKind(null);
     }
   };
 
@@ -581,17 +574,17 @@ export default function EditCollectionPage() {
     }
   };
 
-  const onPermanentDeleteCollection = async () => {
-    if (!collection) return;
-    const name = isAr ? collection.nameAr : collection.nameEn;
-    if (!window.confirm(t(`Permanently delete "${name}"? This cannot be undone.`, `حذف "${name}" نهائيًا؟ لا يمكن التراجع.`))) return;
+  const doPermanentDeleteCollection = async () => {
     try {
       await permanentDeleteCollection.mutateAsync(id);
       router.push(`/${locale}/admin/collections`);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Delete failed', 'فشل الحذف'));
+      setConfirmKind(null);
     }
   };
+
+  const collectionName = collection ? (isAr ? collection.nameAr : collection.nameEn) : '';
 
   if (isPending) {
     return (
@@ -628,19 +621,39 @@ export default function EditCollectionPage() {
                 <Icon as={RotateCcw} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
                 {t('Restore', 'استعادة')}
               </Button>
-              <Button variant="danger" onClick={onPermanentDeleteCollection} loading={permanentDeleteCollection.isPending}>
+              <Button variant="danger" onClick={() => setConfirmKind('delete')} loading={permanentDeleteCollection.isPending}>
                 <Icon as={Trash2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
                 {t('Delete permanently', 'حذف نهائي')}
               </Button>
             </>
           ) : (
-            <Button variant="danger" onClick={onArchiveCollection} loading={archiveCollection.isPending}>
+            <Button variant="danger" onClick={() => setConfirmKind('archive')} loading={archiveCollection.isPending}>
               <Icon as={Archive} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
               {t('Archive collection', 'أرشفة المجموعة')}
             </Button>
           )}
         </span>
       </div>
+
+      <ConfirmModal
+        open={confirmKind !== null}
+        onClose={() => setConfirmKind(null)}
+        onConfirm={() => void (confirmKind === 'archive' ? doArchiveCollection() : doPermanentDeleteCollection())}
+        title={
+          confirmKind === 'archive'
+            ? t(`Archive "${collectionName}"?`, `أرشفة "${collectionName}"؟`)
+            : t(`Permanently delete "${collectionName}"?`, `حذف "${collectionName}" نهائيًا؟`)
+        }
+        body={
+          confirmKind === 'archive'
+            ? t('It will be hidden from the storefront but kept.', 'ستُخفى من المتجر مع الاحتفاظ بها.')
+            : t('This cannot be undone.', 'لا يمكن التراجع عن هذا.')
+        }
+        confirmLabel={confirmKind === 'archive' ? t('Archive', 'أرشفة') : t('Delete', 'حذف')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone={confirmKind === 'delete' ? 'danger' : 'default'}
+        loading={confirmKind === 'archive' ? archiveCollection.isPending : permanentDeleteCollection.isPending}
+      />
 
       <CollectionForm
         locale={locale}

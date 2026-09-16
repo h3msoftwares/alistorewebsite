@@ -4,7 +4,8 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
-import { AdminNav } from '@/components/admin/admin-nav';
+import { AdminSidebar } from '@/components/admin/admin-sidebar';
+import { AdminMobileNav } from '@/components/admin/admin-mobile-nav';
 import { useAuth } from '@/hooks/use-auth';
 import { requiredPermissionForPath, usePermissions } from '@/lib/rbac';
 
@@ -64,23 +65,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const allowed = !required || has(required);
 
   return (
-    <div className="container admin-shell">
-      <AdminNav locale={locale} />
-      {allowed ? (
-        children
-      ) : (
-        <div className="section--tight">
-          <EmptyState
-            tone="alert"
-            title={isAr ? 'لا تملك صلاحية الوصول إلى هذه الصفحة' : "You don't have access to this page"}
-            body={
-              isAr
-                ? 'اطلب من مسؤول أن يمنح دورك الصلاحية المطلوبة من صفحة الأدوار.'
-                : 'Ask an admin to grant your role this permission from the Roles page.'
-            }
-          />
-        </div>
-      )}
+    <div className="admin-shell">
+      <AdminSidebar locale={locale} />
+      <main className="admin-shell__main">
+        {allowed ? (
+          children
+        ) : (
+          <div className="section--tight">
+            <EmptyState
+              tone="alert"
+              title={isAr ? 'لا تملك صلاحية الوصول إلى هذه الصفحة' : "You don't have access to this page"}
+              body={
+                isAr
+                  ? 'اطلب من مسؤول أن يمنح دورك الصلاحية المطلوبة من صفحة الأدوار.'
+                  : 'Ask an admin to grant your role this permission from the Roles page.'
+              }
+            />
+          </div>
+        )}
+      </main>
+      <AdminMobileNav locale={locale} />
     </div>
   );
 }

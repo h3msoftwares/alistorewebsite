@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { LoyaltyRulesPanel } from './loyalty-panel';
 import type { LoyaltyRule } from '@/lib/types';
@@ -37,7 +37,6 @@ vi.mock('@/hooks/use-loyalty', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(rulesQuery, { data: [rule], isPending: false, isError: false });
-  window.confirm = vi.fn().mockReturnValue(true);
 });
 
 describe('<LoyaltyRulesPanel>', () => {
@@ -100,7 +99,9 @@ describe('<LoyaltyRulesPanel>', () => {
     render(<LoyaltyRulesPanel isAr={false} />);
 
     await user.click(screen.getByRole('button', { name: 'Delete' }));
-    expect(window.confirm).toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog');
+    expect(remove.mutate).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
     expect(remove.mutate).toHaveBeenCalledWith('r1');
   });
 });

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Printer, Settings2 } from 'lucide-react';
+import { ChevronDown, Printer, Settings2 } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -84,6 +84,17 @@ export default function AdminOrdersPage() {
   const [daysInput, setDaysInput] = useState('');
   const [daysError, setDaysError] = useState<string | null>(null);
   const [printOrder, setPrintOrder] = useState<Order | null>(null);
+  // Which rows show their delivery-address detail (area/city/region + notes)
+  // — collapsed by default so the table reads less dense; the row's other
+  // controls (status, Mark reviewed, Mark collected, print) are unaffected.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) =>
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   // Fires window.print() once <OrderReceipt> below has mounted with the
   // picked order — printing synchronously inside the click handler would
@@ -338,20 +349,27 @@ export default function AdminOrdersPage() {
                       </span>
                     </td>
                     <td data-label={t('Delivery address', 'عنوان التوصيل')}>
-                      {o.deliveryAddress}
-                      <br />
-                      <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--fs-xs)' }}>
-                        {[o.deliveryArea, o.deliveryCity, regionLabel(o.deliveryRegion)]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </span>
-                      {o.deliveryNotes && (
-                        <>
-                          <br />
-                          <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--fs-xs)', fontStyle: 'italic' }}>
-                            {o.deliveryNotes}
+                      <div className="admin-order-address">
+                        <span>{o.deliveryAddress}</span>
+                        <button
+                          type="button"
+                          className="admin-order-address__toggle"
+                          onClick={() => toggleExpanded(o.id)}
+                          aria-expanded={expandedIds.has(o.id)}
+                        >
+                          <Icon as={ChevronDown} size={14} className={expandedIds.has(o.id) ? 'admin-order-address__chevron is-open' : 'admin-order-address__chevron'} />
+                          {t('Details', 'التفاصيل')}
+                        </button>
+                      </div>
+                      {expandedIds.has(o.id) && (
+                        <div className="admin-order-address__detail">
+                          <span>
+                            {[o.deliveryArea, o.deliveryCity, regionLabel(o.deliveryRegion)]
+                              .filter(Boolean)
+                              .join(' · ')}
                           </span>
-                        </>
+                          {o.deliveryNotes && <span className="admin-order-address__notes">{o.deliveryNotes}</span>}
+                        </div>
                       )}
                     </td>
                     <td className="is-numeric" data-label={t('Items', 'القطع')}>

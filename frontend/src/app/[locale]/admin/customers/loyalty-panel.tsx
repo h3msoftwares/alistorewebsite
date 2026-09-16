@@ -8,6 +8,7 @@ import {
   Alert,
   Button,
   Choice,
+  ConfirmModal,
   DataTable,
   EmptyState,
   Field,
@@ -69,6 +70,7 @@ export function LoyaltyRulesPanel({ isAr }: { isAr: boolean }) {
 
   const [editing, setEditing] = useState<LoyaltyRule | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<LoyaltyRule | null>(null);
   const busy = create.isPending || update.isPending || remove.isPending;
 
   const values: LoyaltyRuleForm = useMemo(
@@ -250,9 +252,7 @@ export function LoyaltyRulesPanel({ isAr }: { isAr: boolean }) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        if (confirm(t('Delete this loyalty rule?', 'حذف قاعدة الولاء هذه؟'))) remove.mutate(r.id);
-                      }}
+                      onClick={() => setConfirmDelete(r)}
                       disabled={busy}
                     >
                       {t('Delete', 'حذف')}
@@ -264,6 +264,21 @@ export function LoyaltyRulesPanel({ isAr }: { isAr: boolean }) {
           </tbody>
         </DataTable>
       )}
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => {
+          if (confirmDelete) remove.mutate(confirmDelete.id);
+          setConfirmDelete(null);
+        }}
+        title={t('Delete this loyalty rule?', 'حذف قاعدة الولاء هذه؟')}
+        body={t('This cannot be undone.', 'لا يمكن التراجع عن هذا.')}
+        confirmLabel={t('Delete', 'حذف')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone="danger"
+        loading={remove.isPending}
+      />
     </div>
   );
 }

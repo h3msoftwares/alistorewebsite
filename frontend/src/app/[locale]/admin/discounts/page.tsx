@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Plus } from 'lucide-react';
-import { Alert, Button, DataTable, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
+import { Alert, Button, ConfirmModal, DataTable, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
 import {
   useCoupons,
   useCreatePromotion,
@@ -53,6 +53,7 @@ function PromotionsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }
   const update = useUpdatePromotion();
   const remove = useDeletePromotion();
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Promotion | null>(null);
   const busy = create.isPending || update.isPending || remove.isPending;
 
   // A copy starts as a DRAFT, never ACTIVE — landing two identical live
@@ -182,9 +183,7 @@ function PromotionsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        if (confirm(t('Delete this promotion?', 'حذف هذا العرض؟'))) remove.mutate(p.id);
-                      }}
+                      onClick={() => setConfirmDelete(p)}
                       disabled={busy}
                     >
                       {t('Delete', 'حذف')}
@@ -196,6 +195,21 @@ function PromotionsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }
           </tbody>
         </DataTable>
       )}
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => {
+          if (confirmDelete) remove.mutate(confirmDelete.id);
+          setConfirmDelete(null);
+        }}
+        title={t('Delete this promotion?', 'حذف هذا العرض؟')}
+        body={t('This cannot be undone.', 'لا يمكن التراجع عن هذا.')}
+        confirmLabel={t('Delete', 'حذف')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone="danger"
+        loading={remove.isPending}
+      />
     </div>
   );
 }
@@ -204,6 +218,7 @@ function CouponsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }) {
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { data: coupons, isPending, isError, refetch } = useCoupons();
   const remove = useDeleteCoupon();
+  const [confirmDelete, setConfirmDelete] = useState<Coupon | null>(null);
   const busy = remove.isPending;
 
   return (
@@ -279,9 +294,7 @@ function CouponsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        if (confirm(t('Delete this coupon?', 'حذف هذه القسيمة؟'))) remove.mutate(c.id);
-                      }}
+                      onClick={() => setConfirmDelete(c)}
                       disabled={busy}
                     >
                       {t('Delete', 'حذف')}
@@ -293,6 +306,21 @@ function CouponsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }) {
           </tbody>
         </DataTable>
       )}
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => {
+          if (confirmDelete) remove.mutate(confirmDelete.id);
+          setConfirmDelete(null);
+        }}
+        title={t('Delete this coupon?', 'حذف هذه القسيمة؟')}
+        body={t('This cannot be undone.', 'لا يمكن التراجع عن هذا.')}
+        confirmLabel={t('Delete', 'حذف')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone="danger"
+        loading={remove.isPending}
+      />
     </div>
   );
 }
@@ -311,10 +339,10 @@ export default function AdminDiscountsPage() {
         <h1>{t('Discounts', 'الخصومات')}</h1>
       </div>
 
-      <nav className="admin-nav settings-tabs" aria-label={t('Discount sections', 'أقسام الخصومات')}>
+      <nav className="tab-strip settings-tabs" aria-label={t('Discount sections', 'أقسام الخصومات')}>
         <button
           type="button"
-          className="admin-nav__link"
+          className="tab-strip__link"
           data-active={tab === 'promotions' ? '' : undefined}
           aria-pressed={tab === 'promotions'}
           onClick={() => setTab('promotions')}
@@ -323,7 +351,7 @@ export default function AdminDiscountsPage() {
         </button>
         <button
           type="button"
-          className="admin-nav__link"
+          className="tab-strip__link"
           data-active={tab === 'coupons' ? '' : undefined}
           aria-pressed={tab === 'coupons'}
           onClick={() => setTab('coupons')}

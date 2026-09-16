@@ -515,12 +515,12 @@ export function AdminSettingsPage() {
         </span>
       </div>
 
-      <nav className="admin-nav settings-tabs" aria-label={t('Settings sections', 'أقسام الإعدادات')}>
+      <nav className="tab-strip settings-tabs" aria-label={t('Settings sections', 'أقسام الإعدادات')}>
         {SECTIONS.map((s) => (
           <button
             key={s.id}
             type="button"
-            className="admin-nav__link"
+            className="tab-strip__link"
             data-active={!searching && tab === s.id ? '' : undefined}
             aria-pressed={!searching && tab === s.id}
             hidden={searching && !matchedIds.has(s.id)}

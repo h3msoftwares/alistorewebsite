@@ -9,6 +9,7 @@ import { Trash2 } from 'lucide-react';
 import {
   Alert,
   Button,
+  ConfirmModal,
   DataTable,
   EmptyState,
   Field,
@@ -63,10 +64,8 @@ export default function AdminBlacklistPage() {
     }
   };
 
-  const onRemove = (id: string, value: string) => {
-    if (!window.confirm(t(`Remove "${value}" from the block list?`, `إزالة "${value}" من قائمة الحظر؟`))) return;
-    remove.mutate(id);
-  };
+  const [confirmRemove, setConfirmRemove] = useState<{ id: string; value: string } | null>(null);
+  const onRemove = (id: string, value: string) => setConfirmRemove({ id, value });
 
   if (!canManage) {
     return (
@@ -176,6 +175,22 @@ export default function AdminBlacklistPage() {
           </tbody>
         </DataTable>
       )}
+
+      <ConfirmModal
+        open={confirmRemove !== null}
+        onClose={() => setConfirmRemove(null)}
+        onConfirm={() => {
+          if (!confirmRemove) return;
+          remove.mutate(confirmRemove.id);
+          setConfirmRemove(null);
+        }}
+        title={t(`Remove "${confirmRemove?.value ?? ''}" from the block list?`, `إزالة "${confirmRemove?.value ?? ''}" من قائمة الحظر؟`)}
+        body={t('They will be able to place orders again.', 'سيتمكنون من تقديم الطلبات مرة أخرى.')}
+        confirmLabel={t('Remove', 'إزالة')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone="danger"
+        loading={remove.isPending}
+      />
     </div>
   );
 }

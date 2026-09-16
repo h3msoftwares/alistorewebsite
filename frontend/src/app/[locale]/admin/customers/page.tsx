@@ -40,10 +40,10 @@ export default function AdminCustomersPage() {
         <h1>{t('Customers', 'الزبائن')}</h1>
       </div>
 
-      <nav className="admin-nav settings-tabs" aria-label={t('Customer sections', 'أقسام الزبائن')}>
+      <nav className="tab-strip settings-tabs" aria-label={t('Customer sections', 'أقسام الزبائن')}>
         <button
           type="button"
-          className="admin-nav__link"
+          className="tab-strip__link"
           data-active={tab === 'customers' ? '' : undefined}
           aria-pressed={tab === 'customers'}
           onClick={() => setTab('customers')}
@@ -52,7 +52,7 @@ export default function AdminCustomersPage() {
         </button>
         <button
           type="button"
-          className="admin-nav__link"
+          className="tab-strip__link"
           data-active={tab === 'loyalty' ? '' : undefined}
           aria-pressed={tab === 'loyalty'}
           onClick={() => setTab('loyalty')}

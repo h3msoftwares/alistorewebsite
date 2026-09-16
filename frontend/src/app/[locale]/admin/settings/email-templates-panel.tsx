@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   Alert,
   Button,
+  ConfirmModal,
   EmptyState,
   Field,
   Input,
@@ -53,6 +54,7 @@ export function EmailTemplatesPanel({ locale }: { locale: 'en' | 'ar' }) {
   const [saved, setSaved] = useState(false);
   const [testTo, setTestTo] = useState(user?.email ?? '');
   const [testSent, setTestSent] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   // Load the selected template's current content into the editor: on the
   // initial "no explicit choice yet, defaulting to the first template"
@@ -102,16 +104,10 @@ export function EmailTemplatesPanel({ locale }: { locale: 'en' | 'ar' }) {
     }
   };
 
-  const onReset = async () => {
-    if (
-      !window.confirm(
-        t(
-          'Reset this template to its default? Your edits will be lost.',
-          'إعادة هذا القالب إلى الافتراضي؟ ستُفقد تعديلاتك.'
-        )
-      )
-    )
-      return;
+  const onReset = () => setConfirmReset(true);
+
+  const doReset = async () => {
+    setConfirmReset(false);
     setError(null);
     setSaved(false);
     try {
@@ -247,7 +243,7 @@ export function EmailTemplatesPanel({ locale }: { locale: 'en' | 'ar' }) {
         <Button
           type="button"
           variant="ghost"
-          onClick={() => void onReset()}
+          onClick={onReset}
           loading={reset.isPending}
           disabled={!selected.isCustomized}
         >
@@ -291,6 +287,18 @@ export function EmailTemplatesPanel({ locale }: { locale: 'en' | 'ar' }) {
           </Alert>
         )}
       </div>
+
+      <ConfirmModal
+        open={confirmReset}
+        onClose={() => setConfirmReset(false)}
+        onConfirm={() => void doReset()}
+        title={t('Reset this template to its default?', 'إعادة هذا القالب إلى الافتراضي؟')}
+        body={t('Your edits will be lost.', 'ستُفقد تعديلاتك.')}
+        confirmLabel={t('Reset', 'إعادة الضبط')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone="danger"
+        loading={reset.isPending}
+      />
     </div>
   );
 }

@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Archive, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
-import { Alert, Badge, Button, DataTable, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
+import { Alert, Badge, Button, Choice, ConfirmModal, DataTable, EmptyState, Icon, ProductGridSkeleton, RowActionsMenu } from '@/components/ui';
 import { AdminThumb } from '@/components/admin/admin-thumb';
 import { AdminListControls } from '@/components/admin/admin-list-controls';
 import { AdminPager } from '@/components/admin/admin-pager';
+import { useRowSelection } from '@/hooks/use-row-selection';
 import {
   useDeleteProduct,
   usePermanentDeleteProduct,
@@ -17,6 +18,8 @@ import {
 import type { CatalogStatus, Product } from '@/lib/types';
 
 const PAGE_SIZE = 20;
+
+type PendingConfirm = { kind: 'archive' | 'delete'; ids: string[] };
 
 export function AdminProductsPage() {
   const params = useParams();
@@ -29,6 +32,9 @@ export function AdminProductsPage() {
   const [page, setPage] = useState(1);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const { data, isPending, isError, refetch } = useProducts({
     page,
@@ -42,8 +48,10 @@ export function AdminProductsPage() {
 
   const items = data?.items ?? [];
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const selection = useRowSelection(items.map((p) => p.id));
 
   const name = (p: Product) => (isAr ? p.nameAr : p.nameEn);
+  const byId = (id: string) => items.find((p) => p.id === id);
 
   const runAction = async (id: string, fn: () => Promise<unknown>, failMsg: string) => {
     setActionError(null);
@@ -57,16 +65,60 @@ export function AdminProductsPage() {
     }
   };
 
-  const onArchive = (p: Product) => {
-    if (!window.confirm(t(`Archive "${name(p)}"? It will be hidden from the storefront but kept.`, `أرشفة "${name(p)}"؟ سيُخفى من المتجر مع الاحتفاظ به.`))) return;
-    void runAction(p.id, () => archive.mutateAsync(p.id), t('Archive failed', 'فشلت الأرشفة'));
+  const onRestoreRow = (p: Product) => void runAction(p.id, () => restore.mutateAsync(p.id), t('Restore failed', 'فشلت الاستعادة'));
+
+  const selectedItems = items.filter((p) => selection.selected.has(p.id));
+  const selectedActive = selectedItems.filter((p) => !p.deletedAt);
+  const selectedArchived = selectedItems.filter((p) => p.deletedAt);
+
+  const onBulkRestore = async () => {
+    setActionError(null);
+    setBulkBusy(true);
+    try {
+      await Promise.all(selectedArchived.map((p) => restore.mutateAsync(p.id)));
+      selection.clear();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : t('Restore failed', 'فشلت الاستعادة'));
+    } finally {
+      setBulkBusy(false);
+    }
   };
-  const onRestore = (p: Product) =>
-    void runAction(p.id, () => restore.mutateAsync(p.id), t('Restore failed', 'فشلت الاستعادة'));
-  const onPermanentDelete = (p: Product) => {
-    if (!window.confirm(t(`Permanently delete "${name(p)}"? This cannot be undone.`, `حذف "${name(p)}" نهائيًا؟ لا يمكن التراجع.`))) return;
-    void runAction(p.id, () => permanentDelete.mutateAsync(p.id), t('Delete failed', 'فشل الحذف'));
+
+  const runConfirmed = async () => {
+    if (!confirm) return;
+    setConfirmBusy(true);
+    setActionError(null);
+    try {
+      if (confirm.kind === 'archive') {
+        await Promise.all(confirm.ids.map((id) => archive.mutateAsync(id)));
+      } else {
+        await Promise.all(confirm.ids.map((id) => permanentDelete.mutateAsync(id)));
+      }
+      selection.clear();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : t('Action failed', 'فشل الإجراء'));
+    } finally {
+      // Close either way: an error alert rendered on the page would be
+      // hidden behind the still-open modal overlay otherwise.
+      setConfirm(null);
+      setConfirmBusy(false);
+    }
   };
+
+  const confirmCount = confirm?.ids.length ?? 0;
+  const confirmSingle = confirmCount === 1 ? byId(confirm!.ids[0]) : undefined;
+  const confirmTitle =
+    confirm?.kind === 'archive'
+      ? confirmSingle
+        ? t(`Archive "${name(confirmSingle)}"?`, `أرشفة "${name(confirmSingle)}"؟`)
+        : t(`Archive ${confirmCount} products?`, `أرشفة ${confirmCount} منتجات؟`)
+      : confirmSingle
+        ? t(`Permanently delete "${name(confirmSingle)}"?`, `حذف "${name(confirmSingle)}" نهائيًا؟`)
+        : t(`Permanently delete ${confirmCount} products?`, `حذف ${confirmCount} منتجات نهائيًا؟`);
+  const confirmBody =
+    confirm?.kind === 'archive'
+      ? t('Archived products are hidden from the storefront but kept — you can restore them later.', 'المنتجات المؤرشفة تُخفى عن المتجر مع الاحتفاظ بها — يمكنك استعادتها لاحقًا.')
+      : t('This cannot be undone.', 'لا يمكن التراجع عن هذا.');
 
   return (
     <div className="section--tight">
@@ -117,9 +169,45 @@ export function AdminProductsPage() {
         />
       ) : (
         <>
+          {selection.count > 0 && (
+            <div className="admin-bulk-bar">
+              <span className="admin-bulk-bar__count">
+                {t(`${selection.count} selected`, `${selection.count} محدد`)}
+              </span>
+              <span className="admin-bulk-bar__actions">
+                {selectedActive.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirm({ kind: 'archive', ids: selectedActive.map((p) => p.id) })}
+                  >
+                    {t(`Archive (${selectedActive.length})`, `أرشفة (${selectedActive.length})`)}
+                  </Button>
+                )}
+                {selectedArchived.length > 0 && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => void onBulkRestore()} loading={bulkBusy}>
+                    {t(`Restore (${selectedArchived.length})`, `استعادة (${selectedArchived.length})`)}
+                  </Button>
+                )}
+                <button type="button" className="admin-bulk-bar__clear" onClick={selection.clear}>
+                  {t('Clear', 'إلغاء التحديد')}
+                </button>
+              </span>
+            </div>
+          )}
+
           <DataTable responsive>
             <thead>
               <tr>
+                <th aria-hidden="true">
+                  <Choice
+                    type="checkbox"
+                    checked={selection.allSelected}
+                    onChange={selection.toggleAll}
+                    label={<span className="visually-hidden">{t('Select all', 'تحديد الكل')}</span>}
+                  />
+                </th>
                 <th aria-hidden="true" />
                 <th>{t('Name', 'الاسم')}</th>
                 <th>{t('SKU', 'رمز المنتج')}</th>
@@ -133,6 +221,14 @@ export function AdminProductsPage() {
             <tbody>
               {items.map((p) => (
                 <tr key={p.id}>
+                  <td data-label={t('Select', 'تحديد')}>
+                    <Choice
+                      type="checkbox"
+                      checked={selection.selected.has(p.id)}
+                      onChange={() => selection.toggle(p.id)}
+                      label={<span className="visually-hidden">{t(`Select ${name(p)}`, `تحديد ${name(p)}`)}</span>}
+                    />
+                  </td>
                   <td data-label={t('Image', 'الصورة')}>
                     <AdminThumb url={p.images[0]?.url} alt={name(p)} />
                   </td>
@@ -183,41 +279,33 @@ export function AdminProductsPage() {
                       >
                         <Icon as={Pencil} size={16} />
                       </Link>
-                      {p.deletedAt ? (
-                        <>
-                          <button
-                            type="button"
-                            className="icon-btn icon-btn--bordered"
-                            onClick={() => onRestore(p)}
-                            disabled={busyId === p.id}
-                            aria-label={t('Restore', 'استعادة')}
-                            title={t('Restore', 'استعادة')}
-                          >
-                            <Icon as={RotateCcw} size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-btn icon-btn--bordered"
-                            onClick={() => onPermanentDelete(p)}
-                            disabled={busyId === p.id}
-                            aria-label={t('Delete permanently', 'حذف نهائي')}
-                            title={t('Delete permanently', 'حذف نهائي')}
-                          >
-                            <Icon as={Trash2} size={16} />
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn--bordered"
-                          onClick={() => onArchive(p)}
-                          disabled={busyId === p.id}
-                          aria-label={t('Archive', 'أرشفة')}
-                          title={t('Archive', 'أرشفة')}
-                        >
-                          <Icon as={Archive} size={16} />
-                        </button>
-                      )}
+                      <RowActionsMenu
+                        label={t('More actions', 'المزيد من الإجراءات')}
+                        actions={
+                          p.deletedAt
+                            ? [
+                                {
+                                  label: t('Restore', 'استعادة'),
+                                  icon: RotateCcw,
+                                  onClick: () => onRestoreRow(p),
+                                  disabled: busyId === p.id,
+                                },
+                                {
+                                  label: t('Delete permanently', 'حذف نهائي'),
+                                  icon: Trash2,
+                                  tone: 'danger',
+                                  onClick: () => setConfirm({ kind: 'delete', ids: [p.id] }),
+                                },
+                              ]
+                            : [
+                                {
+                                  label: t('Archive', 'أرشفة'),
+                                  icon: Archive,
+                                  onClick: () => setConfirm({ kind: 'archive', ids: [p.id] }),
+                                },
+                              ]
+                        }
+                      />
                     </span>
                   </td>
                 </tr>
@@ -228,6 +316,18 @@ export function AdminProductsPage() {
           <AdminPager page={data?.page ?? page} totalPages={totalPages} onPageChange={setPage} locale={locale} />
         </>
       )}
+
+      <ConfirmModal
+        open={confirm !== null}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => void runConfirmed()}
+        title={confirmTitle}
+        body={confirmBody}
+        confirmLabel={confirm?.kind === 'delete' ? t('Delete', 'حذف') : t('Archive', 'أرشفة')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone={confirm?.kind === 'delete' ? 'danger' : 'default'}
+        loading={confirmBusy}
+      />
     </div>
   );
 }

@@ -4,9 +4,7 @@ import { dehydrate } from '@tanstack/react-query';
 import { StoreProvider } from '@/store/provider';
 import { GoogleAnalytics } from '@/components/analytics/google-analytics';
 import { CookieConsent } from '@/components/chrome/cookie-consent';
-import { WhatsappBubble } from '@/components/chrome/whatsapp-bubble';
-import { SiteHeader } from '@/components/site-header';
-import { SiteFooter } from '@/components/site-footer';
+import { StorefrontChrome } from '@/components/chrome/storefront-chrome';
 import { makeQueryClient } from '@/lib/query-client';
 import { queryKeys } from '@/lib/query-keys';
 import { catalogApi, settingsApi } from '@/lib/api';
@@ -134,10 +132,9 @@ export default async function LocaleLayout({
           <a href="#main" className="skip-link">
             {skipLabel}
           </a>
-          <SiteHeader locale={locale} />
-          <main id="main">{children}</main>
-          <SiteFooter locale={locale} />
-          <WhatsappBubble locale={locale} />
+          <StorefrontChrome locale={locale}>
+            <main id="main">{children}</main>
+          </StorefrontChrome>
           <CookieConsent locale={locale} />
         </StoreProvider>
       </body>
