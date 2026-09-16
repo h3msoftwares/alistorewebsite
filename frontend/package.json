@@ -4,14 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "analyze": "ANALYZE=true next build",
+    "analyze": "ANALYZE=true next build --webpack",
     "lhci": "lhci autorun"
   },
   "dependencies": {
