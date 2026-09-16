@@ -39,6 +39,22 @@ describe('useCart', () => {
     renderHook(() => useCart({ enabled: false }), { wrapper: Wrapper });
     expect(mockCart.getCart).not.toHaveBeenCalled();
   });
+
+  // CartDrawer/CartView both do `data.items.length` with no guard, trusting
+  // the CartView contract's `items: CartItem[]` — a compile-time promise
+  // only, not a runtime one. A response missing `items` (seen against the
+  // live backend, cause not fully pinned down) crashed both with "Cannot
+  // read properties of undefined (reading 'length')" instead of falling
+  // through to their own "cart is empty" state. Normalized here so every
+  // consumer always gets a real (possibly empty) array.
+  it('normalizes a response with no items array to an empty cart, not a crash', async () => {
+    mockCart.getCart.mockResolvedValue({ subtotal: 0 } as never);
+    const { Wrapper } = createWrapper(makeGuestStore());
+    const { result } = renderHook(() => useCart(), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.items).toEqual([]);
+  });
 });
 
 describe('cart mutations', () => {

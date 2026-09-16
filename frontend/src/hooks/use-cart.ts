@@ -32,6 +32,11 @@ export function useCart(opts?: { enabled?: boolean }) {
     queryKey: queryKeys.cart.root(),
     queryFn: cartApi.getCart,
     enabled: (opts?.enabled ?? true) && authStatus !== 'loading',
+    // Every consumer (CartDrawer, the /cart page) reads `.items` assuming
+    // it's always an array, per the CartView contract — but that's only a
+    // compile-time guarantee, not a runtime one. Normalized here, once,
+    // rather than defensively re-guarding `data.items` in each consumer.
+    select: (data): CartView => ({ ...data, items: data.items ?? [] }),
   });
 
   useEffect(() => {
