@@ -5,7 +5,14 @@
 // - dateCreated / createdAt naming kept per-model to match what pos-backend used
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "native" covers local dev (Windows/macOS) and CI (Debian 11, openssl-1.1.x).
+  // Railway's Nixpacks build/runtime images use Debian 12 (openssl-3.0.x) —
+  // without this explicit target the client only ships the engine "native"
+  // resolved to at build time, and boots with "could not locate the Query
+  // Engine for runtime debian-openssl-3.0.x" on Railway even though the
+  // build itself succeeds.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
