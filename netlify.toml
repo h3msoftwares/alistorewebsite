@@ -7,6 +7,15 @@
 
 [build.environment]
   NODE_VERSION = "20"
+  # The exact same ~8 pages hung past the static-generation timeout on every
+  # attempt regardless of bundler (Turbopack and webpack both hit the
+  # identical set) or how high the timeout was raised — that pattern points
+  # to memory exhaustion on Netlify's build container manifesting as a hang
+  # rather than a clean OOM crash, not any specific page being slow. Node's
+  # default old-space ceiling (~2GB) is tight for an 87-page Next.js build
+  # with Recharts/react-hook-form/zod pulled into several routes; raised
+  # explicitly rather than relying on Netlify's container default.
+  NODE_OPTIONS = "--max-old-space-size=4096"
 
 # Runs the official Next.js Runtime — handles SSR/ISR/route handlers as
 # Netlify Functions and static assets via the CDN automatically. Netlify
