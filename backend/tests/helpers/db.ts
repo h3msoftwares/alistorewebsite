@@ -4,7 +4,7 @@ import { prisma } from '../../src/config/prisma';
 // clears them regardless of FK order; RESTART IDENTITY resets any sequences.
 const TABLES = [
   'backupsettings',
-  'smtpcredential',
+  'gmailsendcredential',
   'drivecredential',
   'storehours',
   'storelocation',

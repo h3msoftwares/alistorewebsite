@@ -10,7 +10,7 @@ Ali's Store — a Next.js storefront/admin + an Express/Prisma API + Postgres.
 | Backend API (`backend/`) | `tsx watch` on :4000 | **Railway** (Node service) |
 | Database | `docker compose up postgres` | **Supabase** (managed Postgres) |
 | Images | ImageKit (client-side signed upload) | ImageKit (same) |
-| Email | SMTP (any provider) | e.g. Resend / SES / Postmark SMTP |
+| Email | Gmail API (OAuth, not SMTP) | admin panel "Connect Gmail account" |
 
 No Redis: refresh tokens and rate-limit counters live in Postgres / memory
 (see `backend/README.md`).
@@ -49,7 +49,7 @@ ones that **must** be set per environment:
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | ≥ 32 random chars each; rotate on a schedule |
 | `CORS_ORIGIN` | comma-separated allowed origins (the frontend URL) |
 | `FRONTEND_URL` | used to build email links (verify, reset, tracking, shipped) |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` | transactional email; unset ⇒ emails are logged, not sent |
+| `GMAIL_SEND_CLIENT_ID` / `GMAIL_SEND_CLIENT_SECRET` | OAuth "Web application" client backing the admin panel's "Connect Gmail account" (see `backend/.env.example`) — the only outgoing-mail transport. Not raw SMTP: Railway's free/hobby tier blocks outbound SMTP outright, so an SMTP-based sender could never actually deliver mail here. Left unset (and nothing connected via the admin panel) ⇒ emails are logged, not sent. |
 | `IMAGEKIT_PRIVATE_KEY` | signs client upload tokens |
 | `HCAPTCHA_SECRET` | checkout email-OTP bot check |
 | `OWNER_NOTIFICATION_EMAIL` | where new-order / cancellation alerts go |

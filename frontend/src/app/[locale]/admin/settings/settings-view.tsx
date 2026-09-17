@@ -576,8 +576,8 @@ export function AdminSettingsPage() {
           <Field
             label={t('Outgoing email address', 'عنوان بريد الإرسال')}
             hint={t(
-              'Replaces SMTP_FROM. Must be an address your email provider lets you send from.',
-              'يحل محل SMTP_FROM. يجب أن يكون عنوانًا يسمح مزوّد البريد بالإرسال منه.'
+              'Must match the Gmail account connected on the Mail page.',
+              'يجب أن يطابق حساب Gmail المتصل في صفحة البريد.'
             )}
             error={errors.mailFromEmail?.message}
           >

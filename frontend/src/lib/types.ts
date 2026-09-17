@@ -807,7 +807,7 @@ export interface SiteSettings {
   contactEmail: string | null;
   contactPhone: string | null;
   /** Sender identity for outgoing customer/owner email — null falls back to
-   *  SMTP_FROM from the environment (see backend lib/mailer.ts). */
+   *  the connected Gmail account's own address (see backend lib/mailer.ts). */
   mailFromName: string | null;
   mailFromEmail: string | null;
   announcementLines: AnnouncementLine[];
@@ -983,19 +983,6 @@ export interface ConfirmEmailChangeBody {
   token: string;
 }
 
-export interface SmtpStatus {
-  configured: boolean;
-  source: 'database' | 'env' | 'none';
-  user: string | null;
-  updatedAt: string | null;
-}
-
-/** Admin panel's "outgoing mail account" form — a Gmail address + app
- *  password (see backend smtp-credential.service.ts). */
-export interface SetSmtpCredentialBody {
-  email: string;
-  appPassword: string;
-}
 
 export interface ImageBody {
   url: string;

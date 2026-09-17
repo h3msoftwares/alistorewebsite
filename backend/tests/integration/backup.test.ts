@@ -149,12 +149,21 @@ describe('backup endpoints — role gate', () => {
   });
 });
 
+// A short poll — the backup itself runs void-and-catch after the response
+// (Netlify's proxy rewrite times out long-running requests at 26s, well
+// under a real dump + Drive upload; see backup.controller.ts's
+// runBackupHandler doc comment), same established pattern as
+// order-shipping.test.ts's flushAsync.
+async function flushAsync() {
+  await new Promise((r) => setTimeout(r, 50));
+}
+
 describe('POST /api/admin/backup — admin', () => {
   beforeEach(() => {
     vi.mocked(runBackup).mockReset();
   });
 
-  it('runs the backup and audit-logs the trigger with the actor', async () => {
+  it('responds immediately, then runs the backup and audit-logs the trigger with the actor', async () => {
     const { user, token } = await createAdmin();
     vi.mocked(runBackup).mockResolvedValue({
       ok: true,
@@ -165,8 +174,10 @@ describe('POST /api/admin/backup — admin', () => {
     });
 
     const res = await request(app).post('/api/admin/backup').set(bearer(token));
-    expect(res.status).toBe(200);
-    expect(res.body.ok).toBe(true);
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ ok: true, started: true });
+
+    await flushAsync();
     expect(runBackup).toHaveBeenCalledWith('manual');
 
     const audit = await prisma.auditLog.findFirst({
@@ -177,13 +188,14 @@ describe('POST /api/admin/backup — admin', () => {
     expect(audit!.entityID).toBe('drive-file-1');
   });
 
-  it('audit-logs a failed trigger and surfaces the error', async () => {
+  it('still responds 202 immediately even when the backup itself later fails, and audit-logs the failure', async () => {
     const { user, token } = await createAdmin();
     vi.mocked(runBackup).mockRejectedValue(new Error('Drive is not configured.'));
 
     const res = await request(app).post('/api/admin/backup').set(bearer(token));
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(202);
 
+    await flushAsync();
     const audit = await prisma.auditLog.findFirst({
       where: { entityType: 'Backup', action: 'backup.run.failed', actorID: user.id },
       orderBy: { createdAt: 'desc' },
