@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Mail, MailWarning } from 'lucide-react';
+import { Cloud, CloudOff, Mail, MailWarning } from 'lucide-react';
 import { Alert, Button, EmptyState, Field, Icon, Input, Modal } from '@/components/ui';
 import { useAuth, useStepUp } from '@/hooks/use-auth';
 import { useSmtpStatus, useSetSmtpCredential, useClearSmtpCredential } from '@/hooks/use-smtp';
+import { useGmailStatus, useConnectGmail, useDisconnectGmail } from '@/hooks/use-mail-gmail';
 import { isApiError } from '@/lib/api';
 
 /**
@@ -79,12 +80,20 @@ function MailPanel({ locale }: { locale: 'en' | 'ar' }) {
         )}
       </p>
 
+      <GmailConnectionCard locale={locale} />
+
       <div className="list-item">
         <div className={`stat-icon ${configured ? 'is-success' : 'is-warning'}`}>
           <Icon as={configured ? Mail : MailWarning} size={20} />
         </div>
         <div className="list-item-body">
-          <h3 className="list-item-title">{t('Outgoing mail account', 'حساب البريد الصادر')}</h3>
+          <h3 className="list-item-title">{t('Outgoing mail account (app password)', 'حساب البريد الصادر (كلمة مرور التطبيق)')}</h3>
+          <p className="text-sm text-secondary">
+            {t(
+              'Fallback path — used only if Gmail isn’t connected above. Requires the host to allow outbound SMTP (Railway’s free/hobby tier does not).',
+              'مسار احتياطي — يُستخدم فقط إذا لم يكن Gmail متصلاً أعلاه. يتطلب أن يسمح المضيف باتصالات SMTP الصادرة (خطة Railway المجانية لا تسمح بذلك).'
+            )}
+          </p>
 
           {clear.isSuccess && (
             <Alert tone="success">
@@ -130,6 +139,83 @@ function MailPanel({ locale }: { locale: 'en' | 'ar' }) {
         </div>
 
         {editing && <SmtpCredentialDialog locale={locale} onClose={() => setEditing(false)} />}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Send outgoing mail via the Gmail API instead of SMTP — the recommended
+ * path (see modules/mail/gmail.client.ts's module doc): Railway's free/
+ * hobby tier blocks outbound SMTP entirely (confirmed live), but the Gmail
+ * API is a plain HTTPS call, so it isn't affected. Same
+ * popup-OAuth-round-trip pattern as the Backups page's Google Drive card —
+ * "Connect" opens a popup so the admin's own tab/session is never disturbed.
+ */
+function GmailConnectionCard({ locale }: { locale: 'en' | 'ar' }) {
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
+
+  const { data: status, isPending } = useGmailStatus();
+  const connect = useConnectGmail();
+  const disconnect = useDisconnectGmail();
+
+  const busy = connect.isPending || disconnect.isPending;
+
+  function handleConnect() {
+    // Opened synchronously, in direct response to the click — see
+    // useConnectGmail's doc comment for why this can't happen after an await.
+    const popup = window.open('about:blank', 'h3m-gmail-connect', 'width=520,height=680');
+    connect.mutate(popup);
+  }
+
+  return (
+    <div className="list-item">
+      <div className={`stat-icon ${status?.connectedEmail ? 'is-success' : 'is-warning'}`}>
+        <Icon as={status?.connectedEmail ? Cloud : CloudOff} size={20} />
+      </div>
+      <div className="list-item-body">
+        <h3 className="list-item-title">{t('Send via Gmail (recommended)', 'الإرسال عبر Gmail (موصى به)')}</h3>
+
+        {connect.isSuccess && connect.data === 'connected' && (
+          <Alert tone="success">{t('Gmail connected.', 'تم الاتصال بـ Gmail.')}</Alert>
+        )}
+        {(connect.isError || connect.data === 'error') && (
+          <Alert tone="danger">{t('Could not connect Gmail. Try again.', 'تعذّر الاتصال بـ Gmail. حاول مجددًا.')}</Alert>
+        )}
+        {disconnect.isError && (
+          <Alert tone="danger">{t('Could not disconnect. Try again.', 'تعذّر قطع الاتصال. حاول مجددًا.')}</Alert>
+        )}
+
+        {!isPending && (
+          <p className="text-sm text-secondary" style={{ marginTop: 'var(--space-1)' }}>
+            {status?.connectedEmail
+              ? t(`Sending as ${status.connectedEmail}.`, `يُرسل باسم ${status.connectedEmail}.`)
+              : t(
+                  'Not connected — sends fall back to the app-password account below, if set.',
+                  'غير متصل — يعود الإرسال إلى حساب كلمة مرور التطبيق أدناه، إن وُجد.'
+                )}
+          </p>
+        )}
+
+        <div style={{ marginTop: 'var(--space-3)' }}>
+          {status?.connectedEmail ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => disconnect.mutate()}
+              loading={disconnect.isPending}
+              disabled={busy}
+            >
+              {t('Disconnect', 'قطع الاتصال')}
+            </Button>
+          ) : (
+            <Button type="button" size="sm" onClick={handleConnect} loading={connect.isPending} disabled={busy}>
+              {t('Connect Gmail account', 'ربط حساب Gmail')}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { prisma } from '../config/prisma';
 import { recordAudit } from './audit';
 import { renderEmailTemplate } from './email-templates';
 import { getEffectiveSmtpConfig } from '../modules/settings/smtp-credential.service';
+import * as gmailClient from '../modules/mail/gmail.client';
 import { DELIVERY_REGIONS } from './regions';
 
 type OrderWithItems = Order & { items: OrderItem[] };
@@ -98,18 +99,46 @@ export function bilingualSubject(en: string, ar: string): string {
   return `${en} | ${ar}`;
 }
 
+/** The subset of nodemailer's Transporter interface every send function
+ *  below actually uses — small enough that the Gmail-API path (below) can
+ *  implement it too, so none of the 11 send functions need to know or care
+ *  which transport is actually backing a given call. */
+export interface MailTransport {
+  sendMail(msg: { from: string; to: string; subject: string; text: string; html: string }): Promise<{ messageId: string }>;
+}
+
 /**
- * Builds the nodemailer transporter for outgoing mail. Reads credentials
- * fresh each call (never cached across calls) so an admin-configured
- * send-as account (`SmtpCredential`, DB-encrypted app password) takes effect
- * immediately, falling back to the `SMTP_*` env vars when nothing has been
- * configured in the admin panel. `null` means every send function below
- * becomes a logged no-op instead of throwing, so mail delivery can never
- * change the calling endpoint's response. Exported so
- * email-templates.service.ts's "send test email" shares the exact same
- * connection logic as a real send, rather than building its own.
+ * Resolves the outgoing-mail transport. Reads credentials fresh each call
+ * (never cached across calls) so a newly-connected/configured account takes
+ * effect immediately. Priority order: the Gmail API connection (admin panel
+ * "Connect Gmail account" — see modules/mail/gmail.client.ts) > the
+ * SmtpCredential DB row (admin panel app-password form) > the SMTP_* env
+ * vars. The Gmail API goes first deliberately: it's the only one of the
+ * three that works on a host blocking outbound SMTP (Railway's free/hobby
+ * tier, confirmed live — see docs/DEPLOYMENT.md), and if an admin has gone
+ * to the trouble of connecting it, that's a clear signal it's the intended
+ * path.
+ *
+ * `null` means every send function below becomes a logged no-op instead of
+ * throwing, so mail delivery can never change the calling endpoint's
+ * response. Exported so email-templates.service.ts's "send test email"
+ * shares the exact same connection logic as a real send, rather than
+ * building its own.
  */
-export async function getTransporter(): Promise<{ transporter: ReturnType<typeof nodemailer.createTransport>; from: string } | null> {
+export async function getTransporter(): Promise<{ transporter: MailTransport; from: string } | null> {
+  if (await gmailClient.isConfigured()) {
+    const status = await gmailClient.getConnectionStatus();
+    if (status.connectedEmail) {
+      const transporter: MailTransport = {
+        sendMail: async (msg) => {
+          const { id } = await gmailClient.sendMail(msg);
+          return { messageId: id };
+        },
+      };
+      return { transporter, from: await resolveFrom(status.connectedEmail) };
+    }
+  }
+
   const cfg = await getEffectiveSmtpConfig();
   if (!cfg) return null;
   const transporter = nodemailer.createTransport({

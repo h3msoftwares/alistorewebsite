@@ -15,6 +15,7 @@ export * as rbacApi from './rbac';
 export * as customersApi from './customers';
 export * as backupApi from './backup';
 export * as smtpApi from './smtp';
+export * as gmailMailApi from './mail-gmail';
 export * as blacklistApi from './blacklist';
 export * as emailTemplatesApi from './email-templates';
 
