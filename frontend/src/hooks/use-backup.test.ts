@@ -66,14 +66,47 @@ describe('read hooks', () => {
 });
 
 describe('write hooks', () => {
-  it('useRunBackupNow calls through with no args', async () => {
-    mockApi.runBackupNow.mockResolvedValue({ ok: true, at: 'now', trigger: 'manual' });
+  it('useRunBackupNow starts the backup, then polls listBackups until the new file appears', async () => {
+    vi.useFakeTimers();
+    const before = { id: '1', name: 'old.dump', bytes: 1, createdAt: 'x' };
+    const fresh = { id: '2', name: 'new.dump', bytes: 2, createdAt: 'y' };
+    mockApi.listBackups
+      .mockResolvedValueOnce({ backups: [before], retentionCount: 7 })
+      .mockResolvedValueOnce({ backups: [before, fresh], retentionCount: 7 });
+    mockApi.runBackupNow.mockResolvedValue({ ok: true, started: true });
+
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useRunBackupNow(), { wrapper: Wrapper });
-    await act(async () => {
-      await result.current.mutateAsync();
+
+    let promise!: ReturnType<typeof result.current.mutateAsync>;
+    act(() => {
+      promise = result.current.mutateAsync();
     });
+    await act(() => vi.advanceTimersByTimeAsync(4000));
+
+    await expect(promise).resolves.toEqual({ ok: true, file: fresh });
     expect(mockApi.runBackupNow).toHaveBeenCalledTimes(1);
+    expect(mockApi.listBackups).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('useRunBackupNow reports timedOut if no new file shows up within the poll window', async () => {
+    vi.useFakeTimers();
+    const before = { id: '1', name: 'old.dump', bytes: 1, createdAt: 'x' };
+    mockApi.listBackups.mockResolvedValue({ backups: [before], retentionCount: 7 });
+    mockApi.runBackupNow.mockResolvedValue({ ok: true, started: true });
+
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useRunBackupNow(), { wrapper: Wrapper });
+
+    let promise!: ReturnType<typeof result.current.mutateAsync>;
+    act(() => {
+      promise = result.current.mutateAsync();
+    });
+    await act(() => vi.advanceTimersByTimeAsync(3 * 60_000));
+
+    await expect(promise).resolves.toEqual({ ok: false, timedOut: true });
+    vi.useRealTimers();
   });
 
   it('useRestoreBackup calls through with the backup id', async () => {
