@@ -63,6 +63,18 @@ export function runPgDump(): Promise<DumpResult> {
     const args = [
       `--dbname=${libpqSafeUrl(env.DATABASE_URL)}`,
       '--format=custom',
+      // This app's entire data model lives in `public` — every Prisma model
+      // maps there, no other schema is used. On Supabase, dumping the whole
+      // database also captures Supabase's own managed schemas (storage,
+      // auth, extensions, ...), which pg_restore can't later restore under
+      // the app's own database role ("must be owner of table
+      // vector_indexes" — confirmed live; see pg-restore.ts's matching
+      // --schema flag, which is what actually matters for backups already
+      // taken before this existed). Scoping the dump itself keeps backups
+      // smaller and avoids capturing objects that were never restorable
+      // anyway. Doesn't cover event triggers (not schema-scoped at all —
+      // see pg-restore.ts), which is why that fix stays restore-side.
+      '--schema=public',
       '--no-owner',
       '--no-privileges',
       '--file',

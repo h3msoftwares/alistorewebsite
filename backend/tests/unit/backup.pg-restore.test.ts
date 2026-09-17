@@ -77,6 +77,9 @@ describe('restoreFromFile', () => {
     expect(args).toContain('--single-transaction');
     expect(args).toContain('--exit-on-error');
     expect(args).toContain('--use-list');
+    // Restricted to the app's own schema — Supabase's managed schemas
+    // (storage, auth, ...) are never restorable under the app's own role.
+    expect(args[args.indexOf('--schema') + 1]).toBe('public');
   });
 
   it('comments out EVENT TRIGGER entries in the filtered TOC list handed to --use-list', () => {

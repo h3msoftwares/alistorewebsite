@@ -48,18 +48,20 @@ export function inspectDumpFile(filePath: string): DumpInspection {
 // Supabase's managed Postgres pre-installs several event triggers (PostgREST
 // schema-cache-reload hooks, pgsodium, pg_graphql, ...) owned by its own
 // internal `supabase_admin` role, not the app's own database role. pg_dump
-// captures them like any other database object (event triggers aren't
-// schema-scoped, so no --schema/--exclude-schema flag filters them out —
-// confirmed: neither pg_dump nor pg_restore has an --exclude-event-trigger
-// flag), and pg_restore then fails restoring them ("must be owner of event
-// trigger pgrst_drop_watch") since the app's role never owned them in the
-// first place — confirmed live in production. They're Supabase-internal
-// plumbing the platform re-provisions itself, not app data, so excluding
-// them from the restore is exactly what Supabase's own `supabase db dump`
-// CLI does by default (it excludes the schemas these objects live in).
-// Comments out every "EVENT TRIGGER" line in the table-of-contents before
-// restoring — the standard pg_restore technique for excluding specific
-// objects a plain flag can't reach (see pg_restore(1)'s -L/--use-list).
+// captures them like any other database object — event triggers aren't
+// schema-scoped at all (no schema column in pg_event_trigger; PostgreSQL's
+// own docs describe their names as unique "within the database", the same
+// phrasing used for every other non-namespaced object type), so restoring
+// only the `public` schema below does NOT reliably exclude them — confirmed
+// this is a separate problem from the storage/auth/etc. one restoreFromFile
+// handles via --schema=public. pg_restore then fails restoring them ("must
+// be owner of event trigger pgrst_drop_watch") since the app's role never
+// owned them in the first place — confirmed live in production. They're
+// Supabase-internal plumbing the platform re-provisions itself, not app
+// data. Comments out every "EVENT TRIGGER" line in the table-of-contents
+// before restoring — the standard pg_restore technique for excluding
+// specific objects a plain flag can't reach (see pg_restore(1)'s
+// -L/--use-list).
 function buildFilteredTocList(tocText: string): string {
   return tocText
     .split('\n')
@@ -86,6 +88,18 @@ export function restoreFromFile(filePath: string): RestoreResult {
       [
         '--dbname', libpqSafeUrl(env.DATABASE_URL),
         '--use-list', tocListPath,
+        // This app's entire data model lives in `public` (every Prisma
+        // model maps there, no other schema is used) — restrict the
+        // restore to it. Confirmed live: a dump taken on Supabase also
+        // captures Supabase's own managed schemas (storage, auth, ...),
+        // and restoring e.g. storage.vector_indexes fails the same way as
+        // the event triggers above ("must be owner of table
+        // vector_indexes") since those tables are owned by a Supabase-
+        // internal role too. --schema is a POSITIVE filter (restore only
+        // what's named) rather than an exclude list, so it stays correct
+        // even if Supabase adds more managed schemas later — no need to
+        // enumerate every one of them here.
+        '--schema', 'public',
         '--clean',
         '--if-exists',
         '--no-owner',
