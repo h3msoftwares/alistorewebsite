@@ -30,6 +30,21 @@ const TOC_LISTING_WITH_EVENT_TRIGGERS = [
   '3201; 0 0 EVENT TRIGGER - pgrst_drop_watch supabase_admin',
 ].join('\n');
 
+// A backup taken before pg-dump.ts started excluding _prisma_migrations at
+// dump time still carries it — see pg-restore.ts's buildFilteredTocList doc
+// comment for the exact production incident this must never repeat:
+// restoring one of these clobbered the LIVE migration history with the
+// backup's old snapshot, leaving the app unable to boot.
+const TOC_LISTING_WITH_OLD_MIGRATIONS_TABLE = [
+  ';',
+  '; Archive created at 2026-01-01 00:00:00',
+  ';',
+  '3959; 0 0 COMMENT - EXTENSION pg_trgm ',
+  '3000; 0 0 TABLE DATA public User alistore',
+  '3400; 0 0 TABLE public _prisma_migrations alistore',
+  '3401; 0 0 TABLE DATA public _prisma_migrations alistore',
+].join('\n');
+
 describe('inspectDumpFile', () => {
   beforeEach(() => vi.mocked(spawnSync).mockReset());
 
@@ -105,6 +120,28 @@ describe('restoreFromFile', () => {
     // The non-event-trigger entries are untouched.
     expect(writtenAtRestoreTime).toContain('3000; 0 0 TABLE DATA public User alistore');
     // The temp TOC file is cleaned up after the restore runs.
+    expect(fs.existsSync(tocListPath)).toBe(false);
+  });
+
+  it('comments out _prisma_migrations entries in the filtered TOC list, for old backups predating the dump-time exclude', () => {
+    let tocListPath = '';
+    let writtenAtRestoreTime = '';
+    vi.mocked(spawnSync)
+      .mockReturnValueOnce({ status: 0, stdout: TOC_LISTING_WITH_OLD_MIGRATIONS_TABLE, stderr: '' } as never) // --list
+      .mockImplementationOnce((_cmd, args) => {
+        const a = args as string[];
+        tocListPath = a[a.indexOf('--use-list') + 1];
+        writtenAtRestoreTime = fs.readFileSync(tocListPath, 'utf8');
+        return { status: 0, stdout: '', stderr: '' } as never;
+      });
+
+    const res = restoreFromFile('/tmp/old-backup.dump');
+    expect(res.ok).toBe(true);
+
+    expect(writtenAtRestoreTime).toContain(';3400; 0 0 TABLE public _prisma_migrations alistore');
+    expect(writtenAtRestoreTime).toContain(';3401; 0 0 TABLE DATA public _prisma_migrations alistore');
+    // The non-migrations entries are untouched.
+    expect(writtenAtRestoreTime).toContain('3000; 0 0 TABLE DATA public User alistore');
     expect(fs.existsSync(tocListPath)).toBe(false);
   });
 
