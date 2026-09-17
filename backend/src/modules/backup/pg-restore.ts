@@ -13,6 +13,10 @@
 // call it.
 
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { env } from '../../config/env';
 import { libpqSafeUrl } from './pg-dump';
 
@@ -20,6 +24,9 @@ export interface DumpInspection {
   ok: boolean;
   relations?: number;
   error?: string;
+  /** Raw `pg_restore --list` output — reused by restoreFromFile to build a
+   *  filtered table-of-contents rather than re-invoking `--list`. */
+  tocText?: string;
 }
 
 /** Parse-check a candidate file without changing anything. */
@@ -35,7 +42,29 @@ export function inspectDumpFile(filePath: string): DumpInspection {
     };
   }
   const relations = (res.stdout.match(/^\d+;.*\bTABLE DATA\b/gm) || []).length;
-  return { ok: true, relations };
+  return { ok: true, relations, tocText: res.stdout };
+}
+
+// Supabase's managed Postgres pre-installs several event triggers (PostgREST
+// schema-cache-reload hooks, pgsodium, pg_graphql, ...) owned by its own
+// internal `supabase_admin` role, not the app's own database role. pg_dump
+// captures them like any other database object (event triggers aren't
+// schema-scoped, so no --schema/--exclude-schema flag filters them out —
+// confirmed: neither pg_dump nor pg_restore has an --exclude-event-trigger
+// flag), and pg_restore then fails restoring them ("must be owner of event
+// trigger pgrst_drop_watch") since the app's role never owned them in the
+// first place — confirmed live in production. They're Supabase-internal
+// plumbing the platform re-provisions itself, not app data, so excluding
+// them from the restore is exactly what Supabase's own `supabase db dump`
+// CLI does by default (it excludes the schemas these objects live in).
+// Comments out every "EVENT TRIGGER" line in the table-of-contents before
+// restoring — the standard pg_restore technique for excluding specific
+// objects a plain flag can't reach (see pg_restore(1)'s -L/--use-list).
+function buildFilteredTocList(tocText: string): string {
+  return tocText
+    .split('\n')
+    .map((line) => (/EVENT TRIGGER/.test(line) && !line.trimStart().startsWith(';') ? `;${line}` : line))
+    .join('\n');
 }
 
 export interface RestoreResult {
@@ -46,31 +75,39 @@ export interface RestoreResult {
 
 export function restoreFromFile(filePath: string): RestoreResult {
   const inspection = inspectDumpFile(filePath);
-  if (!inspection.ok) return { ok: false, error: inspection.error };
+  if (!inspection.ok || !inspection.tocText) return { ok: false, error: inspection.error };
 
-  const res = spawnSync(
-    env.PG_RESTORE_BIN,
-    [
-      '--dbname', libpqSafeUrl(env.DATABASE_URL),
-      '--clean',
-      '--if-exists',
-      '--no-owner',
-      '--no-privileges',
-      '--single-transaction',
-      '--exit-on-error',
-      filePath,
-    ],
-    { encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 }
-  );
+  const tocListPath = path.join(os.tmpdir(), `restore-toc-${randomUUID().slice(0, 8)}.list`);
+  fs.writeFileSync(tocListPath, buildFilteredTocList(inspection.tocText), 'utf8');
 
-  if (res.status !== 0) {
-    return {
-      ok: false,
-      error:
-        'Restore failed and was rolled back — existing data is unchanged. ' +
-        (res.stderr || res.stdout || '').trim().split('\n').slice(-3).join(' / '),
-    };
+  try {
+    const res = spawnSync(
+      env.PG_RESTORE_BIN,
+      [
+        '--dbname', libpqSafeUrl(env.DATABASE_URL),
+        '--use-list', tocListPath,
+        '--clean',
+        '--if-exists',
+        '--no-owner',
+        '--no-privileges',
+        '--single-transaction',
+        '--exit-on-error',
+        filePath,
+      ],
+      { encoding: 'utf8', windowsHide: true, maxBuffer: 64 * 1024 * 1024 }
+    );
+
+    if (res.status !== 0) {
+      return {
+        ok: false,
+        error:
+          'Restore failed and was rolled back — existing data is unchanged. ' +
+          (res.stderr || res.stdout || '').trim().split('\n').slice(-3).join(' / '),
+      };
+    }
+
+    return { ok: true, relations: inspection.relations };
+  } finally {
+    fs.rmSync(tocListPath, { force: true });
   }
-
-  return { ok: true, relations: inspection.relations };
 }
