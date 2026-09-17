@@ -1394,6 +1394,27 @@ model SmtpCredential {
   @@map("smtpcredential")
 }
 
+// The admin-configurable "send emails via the Gmail API" connection —
+// replaces SmtpCredential above wherever mail.gmail.client.ts's connection
+// exists (mailer.ts's getTransporter() prefers this over SmtpCredential
+// over the SMTP_* env vars, in that order). Deliberately outbound over
+// HTTPS (Gmail API), not raw SMTP: on hosts that block outbound SMTP
+// (Railway's free/hobby tier, confirmed live — see docs/DEPLOYMENT.md),
+// this is the only way to actually send as a real Gmail address rather
+// than switching providers. Same OAuth shape as DriveCredential (a
+// distinct Google Cloud OAuth "Web application" client, its own
+// GMAIL_SEND_CLIENT_ID/_SECRET — not reused from Drive's, since it's a
+// separate Google Cloud project set up for this specifically).
+model GmailSendCredential {
+  id             Int       @id @default(1)
+  refreshToken   String?
+  connectedEmail String?
+  connectedAt    DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  @@map("gmailsendcredential")
+}
+
 enum BackupFrequency {
   DAILY
   WEEKLY

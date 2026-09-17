@@ -166,6 +166,16 @@ const envSchema = z.object({
   // account. Generic by design — this is a reusable tool, not branded to one
   // client's store name.
   GOOGLE_DRIVE_FOLDER_NAME: z.string().default('Database Backups'),
+  // "Connect Gmail account" (modules/mail/gmail.client.ts) — sends outgoing
+  // mail via the Gmail API (HTTPS) instead of raw SMTP, which Railway's
+  // free/hobby tier blocks outright (confirmed live — see
+  // docs/DEPLOYMENT.md). A SEPARATE Google Cloud OAuth "Web application"
+  // client from the Drive one above — its own Google Cloud project, not
+  // reused — so the two connections are entirely independent. Same
+  // "must be In production, not Testing" trap as Drive's consent screen:
+  // left in Testing, Google silently expires the refresh token after 7 days.
+  GMAIL_SEND_CLIENT_ID: z.string().default(''),
+  GMAIL_SEND_CLIENT_SECRET: z.string().default(''),
   // Rolling retention: how many of this tool's own dumps to keep on Drive:
   // after each successful upload, older ones beyond this count are deleted.
   BACKUP_RETENTION_COUNT: z.coerce.number().int().positive().default(7),
