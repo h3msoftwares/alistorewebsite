@@ -45,27 +45,46 @@ export function inspectDumpFile(filePath: string): DumpInspection {
   return { ok: true, relations, tocText: res.stdout };
 }
 
-// Supabase's managed Postgres pre-installs several event triggers (PostgREST
-// schema-cache-reload hooks, pgsodium, pg_graphql, ...) owned by its own
-// internal `supabase_admin` role, not the app's own database role. pg_dump
-// captures them like any other database object — event triggers aren't
-// schema-scoped at all (no schema column in pg_event_trigger; PostgreSQL's
-// own docs describe their names as unique "within the database", the same
-// phrasing used for every other non-namespaced object type), so restoring
-// only the `public` schema below does NOT reliably exclude them — confirmed
-// this is a separate problem from the storage/auth/etc. one restoreFromFile
-// handles via --schema=public. pg_restore then fails restoring them ("must
-// be owner of event trigger pgrst_drop_watch") since the app's role never
-// owned them in the first place — confirmed live in production. They're
-// Supabase-internal plumbing the platform re-provisions itself, not app
-// data. Comments out every "EVENT TRIGGER" line in the table-of-contents
-// before restoring — the standard pg_restore technique for excluding
-// specific objects a plain flag can't reach (see pg_restore(1)'s
-// -L/--use-list).
+// Two classes of table-of-contents entry get commented out of every
+// restore, regardless of --schema=public below (neither is reachable by a
+// plain pg_restore flag — see each comment for why):
+//
+// 1. EVENT TRIGGER — Supabase's managed Postgres pre-installs several
+//    (PostgREST schema-cache-reload hooks, pgsodium, pg_graphql, ...) owned
+//    by its own internal `supabase_admin` role, not the app's own database
+//    role. Event triggers aren't schema-scoped at all (no schema column in
+//    pg_event_trigger; PostgreSQL's own docs describe their names as unique
+//    "within the database", the same phrasing used for every other
+//    non-namespaced object type), so --schema=public doesn't reach them.
+//    pg_restore fails restoring them ("must be owner of event trigger
+//    pgrst_drop_watch") since the app's role never owned them — confirmed
+//    live in production. They're Supabase-internal plumbing the platform
+//    re-provisions itself, not app data.
+//
+// 2. _prisma_migrations — Prisma's own migration-tracking table. It DOES
+//    live in `public` (so --schema=public alone doesn't exclude it), but
+//    restoring it clobbers the LIVE migration history with whatever it was
+//    at backup time. Confirmed live: restoring a backup taken before a
+//    since-applied migration silently reverted the tracking table to "that
+//    migration never ran", while the table that migration created was left
+//    untouched (--clean only drops objects present in the archive being
+//    restored) -- the live database ended up simultaneously missing the
+//    migration record AND already having the table it creates, so the next
+//    `prisma migrate deploy` failed with "relation already exists" and the
+//    app couldn't boot at all. New backups exclude it at dump time (see
+//    pg-dump.ts's --exclude-table) but backups taken before that fix still
+//    carry it, so it's also filtered here for those.
+//
+// Commenting out TOC lines (pg_restore(1)'s -L/--use-list) is the standard
+// technique for excluding specific objects no plain flag reaches.
 function buildFilteredTocList(tocText: string): string {
   return tocText
     .split('\n')
-    .map((line) => (/EVENT TRIGGER/.test(line) && !line.trimStart().startsWith(';') ? `;${line}` : line))
+    .map((line) =>
+      (/EVENT TRIGGER/.test(line) || /\b_prisma_migrations\b/.test(line)) && !line.trimStart().startsWith(';')
+        ? `;${line}`
+        : line
+    )
     .join('\n');
 }
 

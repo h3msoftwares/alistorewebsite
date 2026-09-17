@@ -75,6 +75,23 @@ export function runPgDump(): Promise<DumpResult> {
       // anyway. Doesn't cover event triggers (not schema-scoped at all —
       // see pg-restore.ts), which is why that fix stays restore-side.
       '--schema=public',
+      // Prisma's own migration-tracking table lives in `public` alongside
+      // the app's real data, so a plain dump captures it too — and
+      // restoring later replaces the LIVE migration history with whatever
+      // it was at backup time. Confirmed live: restoring a backup taken
+      // before a since-applied migration silently reverted the tracking
+      // table to "that migration never ran," while the table it created
+      // was untouched (pg_restore --clean only drops objects present in
+      // the archive) — the live database ended up simultaneously missing
+      // the migration record AND already having the table it creates,
+      // so the next `prisma migrate deploy` failed with "relation already
+      // exists" and the app couldn't boot at all. Migration history must
+      // track the currently DEPLOYED CODE, never a data snapshot, so it's
+      // excluded from backups entirely — restoring data should never be
+      // able to move schema/migration state backward. `_` is a SQL LIKE
+      // wildcard in pg_dump's pattern matching; quoting forces an exact
+      // match instead of "any single char + prisma_migrations".
+      '--exclude-table="_prisma_migrations"',
       '--no-owner',
       '--no-privileges',
       '--file',
