@@ -10,13 +10,13 @@ export interface BackupItem {
   createdAt: string;
 }
 
-export interface BackupRunResult {
+/** A dump + Drive upload can run well past Netlify's 26s proxy timeout, so
+ *  the backend responds immediately with just this — not the finished
+ *  result — and keeps working in the background. useRunBackupNow polls
+ *  listBackups() afterward to notice the new file. */
+export interface BackupStartResult {
   ok: boolean;
-  at: string;
-  trigger: 'manual' | 'schedule';
-  file?: { name: string; bytes: number; driveId: string };
-  pruned?: string[];
-  error?: string;
+  started: true;
 }
 
 export function listBackups() {
@@ -24,7 +24,7 @@ export function listBackups() {
 }
 
 export function runBackupNow() {
-  return api.post<BackupRunResult>('/api/admin/backup');
+  return api.post<BackupStartResult>('/api/admin/backup');
 }
 
 export interface RestoreResult {

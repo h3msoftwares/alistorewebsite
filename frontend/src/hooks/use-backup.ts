@@ -13,10 +13,39 @@ export function useBackups() {
   return useQuery({ queryKey: BACKUPS_KEY, queryFn: backupApi.listBackups });
 }
 
+export type BackupRunOutcome =
+  | { ok: true; file: import('@/lib/api/backup').BackupItem }
+  | { ok: false; timedOut: true };
+
+/**
+ * A real dump + Drive upload can run well past Netlify's proxy timeout
+ * (26s — confirmed live: the backup completed and landed on Drive, but the
+ * browser still saw the request fail because Netlify's edge gave up first).
+ * The POST now only confirms the backup STARTED (see BackupStartResult) —
+ * this polls listBackups() afterward for a file that wasn't there before,
+ * so the button's loading state and the eventual success/failure message
+ * reflect when the backup actually finishes, not when the request that
+ * kicked it off returned.
+ */
 export function useRunBackupNow() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => backupApi.runBackupNow(),
+    mutationFn: async (): Promise<BackupRunOutcome> => {
+      const before = await backupApi.listBackups();
+      const beforeNames = new Set(before.backups.map((b) => b.name));
+      await backupApi.runBackupNow();
+
+      const POLL_INTERVAL_MS = 4000;
+      const MAX_WAIT_MS = 3 * 60_000;
+      const deadline = Date.now() + MAX_WAIT_MS;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        const after = await backupApi.listBackups();
+        const fresh = after.backups.find((b) => !beforeNames.has(b.name));
+        if (fresh) return { ok: true, file: fresh };
+      }
+      return { ok: false, timedOut: true };
+    },
     onSettled: () => qc.invalidateQueries({ queryKey: BACKUPS_KEY }),
   });
 }

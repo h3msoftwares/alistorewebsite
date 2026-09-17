@@ -19,27 +19,39 @@ function drivePopupCloserUrl(result: 'connected' | 'error'): string {
   return `${env.FRONTEND_URL}/drive-connect-result?result=${result}`;
 }
 
+/**
+ * A real dump + Drive upload can run well past Netlify's 26s proxy-rewrite
+ * timeout (confirmed live: the backup completed and landed on Drive, but the
+ * browser still got a failed request because Netlify's edge gave up on the
+ * connection first) — Netlify's own docs recommend exactly this pattern for
+ * a long-running origin call: respond immediately, do the work in the
+ * background. The frontend polls GET /api/admin/backup afterward to notice
+ * the new file (see useRunBackupNow) instead of waiting on this response.
+ */
 export async function runBackupHandler(req: Request, res: Response) {
-  const result = await backupService.runBackup('manual').catch(async (err: Error) => {
-    await recordAudit({
-      entityType: 'Backup',
-      entityID: 'manual',
-      action: 'backup.run.failed',
-      actorID: req.user!.id,
-      metadata: { error: err.message },
-    });
-    throw err;
-  });
+  res.status(202).json({ ok: true, started: true });
 
-  await recordAudit({
-    entityType: 'Backup',
-    entityID: result.file?.driveId ?? 'manual',
-    action: 'backup.run',
-    actorID: req.user!.id,
-    metadata: { file: result.file?.name, bytes: result.file?.bytes, pruned: result.pruned },
-  });
-
-  res.json(result);
+  const actorID = req.user!.id;
+  backupService
+    .runBackup('manual')
+    .then((result) =>
+      recordAudit({
+        entityType: 'Backup',
+        entityID: result.file?.driveId ?? 'manual',
+        action: 'backup.run',
+        actorID,
+        metadata: { file: result.file?.name, bytes: result.file?.bytes, pruned: result.pruned },
+      })
+    )
+    .catch((err: Error) =>
+      recordAudit({
+        entityType: 'Backup',
+        entityID: 'manual',
+        action: 'backup.run.failed',
+        actorID,
+        metadata: { error: err.message },
+      })
+    );
 }
 
 export async function listBackupsHandler(_req: Request, res: Response) {
