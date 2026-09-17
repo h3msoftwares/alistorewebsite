@@ -1,0 +1,10 @@
+# Railway builds this service with Nixpacks (see railway.json), which
+# auto-detects a plain Node.js app and only installs Node/npm — it has no
+# way to know the backup module (pg-dump.ts/pg-restore.ts) needs pg_dump/
+# pg_restore/psql at runtime. The "..." keeps Nixpacks' own auto-detected
+# packages (nodejs etc.) and appends postgresql alongside them — omitting
+# "..." would REPLACE the auto-detected packages instead and break the
+# Node build entirely. See https://nixpacks.com/docs/guides/configuring-builds
+# ("Install additional packages").
+[phases.setup]
+nixPkgs = ["...", "postgresql"]
