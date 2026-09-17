@@ -10,17 +10,24 @@ import os from 'node:os';
 import path from 'node:path';
 import { env } from '../../config/env';
 
-// Prisma's connection string carries `?schema=public`, which is not a valid
-// libpq connection-URI parameter — pg_dump rejects it outright ("invalid URI
-// query parameter: schema"). Strip any non-libpq params so pg_dump gets a URI
-// it accepts.
+// Prisma's connection string carries query params libpq doesn't recognize —
+// pg_dump/pg_restore reject the URI outright on the first one they hit
+// ("invalid URI query parameter: ..."), so ALL of Prisma's own params need
+// stripping, not just `schema` (see docs/DEPLOYMENT.md's DATABASE_URL
+// example: `?sslmode=require&connection_limit=8&pool_timeout=10&
+// connect_timeout=5` — the connection_limit/pool_timeout pair is exactly
+// what a production DB found this failing on). `sslmode` and
+// `connect_timeout` ARE real libpq parameters, so those are left alone.
+const PRISMA_ONLY_PARAMS = ['schema', 'connection_limit', 'pool_timeout', 'pgbouncer', 'statement_cache_size'];
 export function libpqSafeUrl(url: string): string {
   try {
     const u = new URL(url);
-    u.searchParams.delete('schema');
+    for (const p of PRISMA_ONLY_PARAMS) u.searchParams.delete(p);
     return u.toString();
   } catch {
-    return url.replace(/[?&]schema=[^&]*/i, '').replace(/\?$/, '');
+    let out = url;
+    for (const p of PRISMA_ONLY_PARAMS) out = out.replace(new RegExp(`[?&]${p}=[^&]*`, 'i'), '');
+    return out.replace(/\?&/, '?').replace(/\?$/, '');
   }
 }
 
