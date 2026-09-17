@@ -19,7 +19,7 @@ gitignored, only `.env.example` (placeholders) is tracked.
 | `JWT_REFRESH_SECRET` | Signs/verifies refresh tokens | Attacker can mint refresh tokens (but they're also DB-checked, so only alongside a DB write) | **No** — see §2.1 |
 | `DATABASE_URL` | Full DB access (all PII, order history, password *hashes*) | Total data compromise | Yes — rotate DB password, update var, redeploy |
 | `SEED_ADMIN_PASSWORD` | Initial admin login (seed only) | First admin account | Should be **unset** in prod after first boot; rotate via §4 |
-| `SMTP_PASSWORD` (or the `SmtpCredential` DB row, if set via the admin panel — see §5) | Outbound mail account | Spoofed mail from the store's address; whoever controls this account also receives a copy of every password-reset / verification / checkout-OTP email sent while it's active (their own Sent folder) | Yes — rotate at provider, update var, **or** the admin panel's "Outgoing mail account" card |
+| `GMAIL_SEND_CLIENT_SECRET` (or the `GmailSendCredential` DB row's refresh token, once connected via the admin panel — see §5) | Outbound mail account (Gmail API, not SMTP) | Spoofed mail from the store's address; whoever controls this account also receives a copy of every password-reset / verification / checkout-OTP email sent while it's active (their own Sent folder) | Yes — the admin panel's Mail page "Disconnect" + "Connect Gmail account" revokes the old token at Google; the client secret itself rotates in Google Cloud Console |
 | `HCAPTCHA_SECRET` | Server-side captcha verification | Bot gate at checkout becomes bypassable | Yes — new key pair at hCaptcha, update both tiers |
 | `VAPID_PRIVATE_KEY` | Signs Web Push messages | Attacker can push notifications to subscribed admin browsers | Yes — new pair; existing subscriptions must re-subscribe |
 | `IMAGEKIT_PRIVATE_KEY` | Signs upload tokens for the ImageKit account | Attacker can upload/transform in the account | Yes — regenerate in ImageKit dashboard |
@@ -57,7 +57,7 @@ exposure, laptop loss, ex-staff with prod access).
 
 ### 2.2 Everything else — semi-annually, or on staff offboarding
 
-`DATABASE_URL`, `SMTP_PASSWORD`, `HCAPTCHA_SECRET`, `VAPID_*`,
+`DATABASE_URL`, `GMAIL_SEND_CLIENT_SECRET`, `HCAPTCHA_SECRET`, `VAPID_*`,
 `IMAGEKIT_PRIVATE_KEY`, `GA4_SA_PRIVATE_KEY`, `GOOGLE_DRIVE_CLIENT_SECRET`,
 `GOOGLE_DRIVE_REFRESH_TOKEN`: rotate at the provider, update the env var,
 redeploy (and update the GitHub Actions repository secret for the last two, so
@@ -243,24 +243,21 @@ the Arabic translation underneath, in one message — not two separate sends.
 Static coverage: `tests/unit/mailer-bilingual.test.ts` asserts every
 `send*Email` function composes through these helpers.
 
-**Outgoing mail account** (`SmtpCredential`, `modules/settings/smtp-credential.*`):
+**Outgoing mail account** (`GmailSendCredential`, `modules/mail/gmail.client.ts`):
 the admin panel's own **Mail** page (`/admin/mail` — separate from Backups;
 the two share nothing but both being ADMIN-only infrastructure) lets an
-ADMIN set the Gmail address + app password every outgoing email sends as,
-instead of editing `SMTP_*` env vars and redeploying. Once the DB row is
-set, it takes priority over the env vars (same pattern as `DriveCredential`
-— see §3); clearing it reverts to the env fallback.
-  - The app password is AES-256-GCM encrypted at rest (`lib/secret-encryption.ts`),
-    keyed from `JWT_ACCESS_SECRET` with a domain-separation label — not just
-    DB access control, since (unlike a Drive refresh token) it's a standing,
-    directly-usable credential the instant it's read.
-  - `PATCH /api/admin/smtp` runs a real SMTP handshake (`transporter.verify()`)
-    *before* persisting anything, so a typo'd app password 400s immediately
-    instead of silently breaking every future email.
-  - Strictly ADMIN (not STAFF), step-up gated (`requireFreshAuth`), rate
-    limited (5/15min), and every set/clear is audit-logged — the password
-    value itself is never in the audit metadata.
-  - **Why this is worth protecting**: whoever controls the configured Gmail
+ADMIN connect a Gmail account via OAuth — the only outgoing-mail transport.
+Raw SMTP was removed entirely: Railway's free/hobby tier blocks outbound
+SMTP outright, so an SMTP-based sender could never actually deliver mail in
+production (confirmed live). The Gmail API is a plain HTTPS call instead, so
+it isn't affected.
+  - Same OAuth-connection pattern as `DriveCredential` (§3) — a refresh
+    token stored in the DB, not an env var, revocable at Google via the
+    admin panel's "Disconnect". Its own, separate Google Cloud OAuth "Web
+    application" client (`GMAIL_SEND_CLIENT_ID`/`_SECRET`) from the Drive
+    one, so the two connections are fully independent.
+  - Strictly ADMIN (not STAFF), and every connect/disconnect is audit-logged.
+  - **Why this is worth protecting**: whoever controls the connected Gmail
     account receives a copy of every password-reset / email-verification /
     checkout-OTP email sent while it's active, in that account's own Sent
     folder — redirecting outgoing mail is a path to harvesting other users'

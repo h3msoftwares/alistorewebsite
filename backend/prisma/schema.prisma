@@ -1363,48 +1363,15 @@ model DriveCredential {
   @@map("drivecredential")
 }
 
-// The admin-configurable "send emails as" account (Task: admin panel →
-// change the outgoing SMTP account, given an email + app password). Same
-// DB-row-takes-priority-over-env pattern as DriveCredential above — once
-// this row has a `user`, mailer.ts's getTransporter() uses it instead of the
-// SMTP_* env vars; clearing it (user/encryptedPassword: null) reverts to the
-// env fallback. Deliberately its own table, not a SiteSetting column, for
-// the same reason as DriveCredential: SiteSetting is returned whole by the
-// public GET /api/settings, and this is a standing, directly-usable
-// credential that must never be serialized into a public response.
-//
-// The app password is NOT stored in plaintext — `encryptedPassword` is
-// AES-256-GCM ciphertext (see lib/secret-encryption.ts), keyed from
-// JWT_ACCESS_SECRET with a domain-separation label. Unlike a Drive refresh
-// token (useless without also knowing the OAuth client secret, and
-// revocable at Google), an SMTP app password works the instant it's read —
-// so DB access control alone isn't enough here, it gets real encryption.
-model SmtpCredential {
-  id                Int       @id @default(1)
-  // The Gmail address this app authenticates as (SMTP AUTH user) — also
-  // used as the connectivity-status display value. host/port are not
-  // admin-configurable: the "app password" concept this flow asks for is
-  // specifically Gmail's, so smtp-credential.service.ts hardcodes
-  // smtp.gmail.com:587 for this path.
-  user              String?
-  encryptedPassword String?
-  updatedAt         DateTime  @updatedAt
-  updatedByID       String?
-
-  @@map("smtpcredential")
-}
-
-// The admin-configurable "send emails via the Gmail API" connection —
-// replaces SmtpCredential above wherever mail.gmail.client.ts's connection
-// exists (mailer.ts's getTransporter() prefers this over SmtpCredential
-// over the SMTP_* env vars, in that order). Deliberately outbound over
-// HTTPS (Gmail API), not raw SMTP: on hosts that block outbound SMTP
-// (Railway's free/hobby tier, confirmed live — see docs/DEPLOYMENT.md),
-// this is the only way to actually send as a real Gmail address rather
-// than switching providers. Same OAuth shape as DriveCredential (a
-// distinct Google Cloud OAuth "Web application" client, its own
-// GMAIL_SEND_CLIENT_ID/_SECRET — not reused from Drive's, since it's a
-// separate Google Cloud project set up for this specifically).
+// The admin-configurable "send emails via the Gmail API" connection — the
+// ONLY outgoing-mail transport (mailer.ts's getTransporter()); raw SMTP was
+// removed entirely, since Railway's free/hobby tier blocks outbound SMTP
+// outright (confirmed live — see docs/DEPLOYMENT.md) and could never
+// actually deliver mail in production. Deliberately outbound over HTTPS
+// (Gmail API), not SMTP, so it isn't affected by that block. Same OAuth
+// shape as DriveCredential (a distinct Google Cloud OAuth "Web application"
+// client, its own GMAIL_SEND_CLIENT_ID/_SECRET — not reused from Drive's,
+// since it's a separate Google Cloud project set up for this specifically).
 model GmailSendCredential {
   id             Int       @id @default(1)
   refreshToken   String?

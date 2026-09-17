@@ -27,7 +27,6 @@ import userRoutes from './modules/account/user.routes';
 import { emailChangeRoutes } from './modules/account/email-change.routes';
 import uploadRoutes from './modules/uploads/upload.routes';
 import settingsRoutes from './modules/settings/settings.routes';
-import { smtpCredentialRoutes } from './modules/settings/smtp-credential.routes';
 import { mailRoutes } from './modules/mail/mail.routes';
 import { backupRoutes } from './modules/backup/backup.routes';
 import { promotionRoutes } from './modules/discounts/promotion.routes';
@@ -54,7 +53,6 @@ export function buildApp(
     orderLookupRateLimit?: boolean;
     orderCheckoutRateLimit?: boolean;
     backupRunRateLimit?: boolean;
-    smtpCredentialRateLimit?: boolean;
     mailGmailRateLimit?: boolean;
     emailChangeRateLimit?: boolean;
     // The app-wide per-IP baseline limiter (skips GET/HEAD/OPTIONS — see
@@ -265,14 +263,8 @@ export function buildApp(
     backupRoutes({ rateLimit: opts.backupRunRateLimit ?? env.NODE_ENV !== 'test' })
   );
   // Same standalone-from-adminRoutes reasoning as backup above: ADMIN-only,
-  // full stop, credentials-adjacent.
-  app.use(
-    '/api/admin/smtp',
-    smtpCredentialRoutes({ rateLimit: opts.smtpCredentialRateLimit ?? env.NODE_ENV !== 'test' })
-  );
-  // Same standalone-from-adminRoutes reasoning as backup/smtp above, and its
-  // Gmail OAuth callback has no auth header at all (Google's own redirect) —
-  // same as backup's Drive callback.
+  // full stop, credentials-adjacent. Its Gmail OAuth callback has no auth
+  // header at all (Google's own redirect) — same as backup's Drive callback.
   app.use('/api/admin/mail', mailRoutes({ rateLimit: opts.mailGmailRateLimit ?? env.NODE_ENV !== 'test' }));
   // Same "mount before the broader '/api/admin' prefix" reasoning as backup
   // above — not required for correctness here (adminRoutes' own blanket

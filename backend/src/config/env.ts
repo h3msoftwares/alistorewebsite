@@ -55,16 +55,6 @@ const envSchema = z.object({
   // value, so leaving it unset changes nothing.
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
 
-  // Email (forgot-password). Defaulted to empty rather than required — a
-  // checkout without SMTP configured yet should still boot; lib/mailer.ts
-  // treats an unset SMTP_HOST as "not configured" and no-ops (logging a
-  // warning) instead of throwing, so the endpoint's response is never
-  // affected either way.
-  SMTP_HOST: z.string().default(''),
-  SMTP_PORT: z.coerce.number().default(587),
-  SMTP_USER: z.string().default(''),
-  SMTP_PASSWORD: z.string().default(''),
-  SMTP_FROM: z.string().default("Ali'sStore <no-reply@example.com>"),
   // Password-reset token lifetime, in minutes.
   RESET_TOKEN_TTL_MIN: z.coerce.number().default(30),
   // Email-verification token lifetime, in minutes. Longer than the reset
@@ -81,9 +71,9 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().default('http://localhost:3000'),
 
   // ImageKit — signs the admin image uploader's short-lived upload token
-  // (see modules/uploads). Defaulted to empty rather than required, same
-  // reasoning as SMTP_HOST: the server still boots, the upload-auth endpoint
-  // just 503s with a clear "not configured" message instead.
+  // (see modules/uploads). Defaulted to empty rather than required: the
+  // server still boots, the upload-auth endpoint just 503s with a clear
+  // "not configured" message instead.
   IMAGEKIT_PRIVATE_KEY: z.string().default(''),
 
   // Google Analytics 4 Data API — feeds the traffic / visitor / funnel widgets
@@ -97,7 +87,7 @@ const envSchema = z.object({
   GA4_SA_PRIVATE_KEY: z.string().default(''),
 
   // Order notifications — who the store owner is alerted at when a new order
-  // comes in. Same "boots without it" pattern as SMTP_HOST: empty ⇒
+  // comes in. Same "boots without it" pattern as IMAGEKIT_PRIVATE_KEY: empty ⇒
   // notification.service.ts skips it (logs and no-ops) instead of failing
   // checkout.
   OWNER_NOTIFICATION_EMAIL: z.string().default(''),
@@ -112,7 +102,7 @@ const envSchema = z.object({
   // Web Push (admin order-alert notifications). Generate once with
   // `node -e "console.log(require('web-push').generateVAPIDKeys())"` and
   // never rotate casually — doing so invalidates every admin's existing
-  // subscription. Same "boots without it" pattern as SMTP_HOST: empty ⇒
+  // subscription. Same "boots without it" pattern as IMAGEKIT_PRIVATE_KEY: empty ⇒
   // notification.service.ts skips the push channel (logs and no-ops).
   VAPID_PUBLIC_KEY: z.string().default(''),
   VAPID_PRIVATE_KEY: z.string().default(''),
@@ -122,7 +112,7 @@ const envSchema = z.object({
 
   // Google Drive database backups (modules/backup) — a dependency-free REST
   // OAuth client (no googleapis package), modeled on the H3M backup tool.
-  // Same "boots without it" pattern as SMTP_HOST/IMAGEKIT_PRIVATE_KEY: left
+  // Same "boots without it" pattern as IMAGEKIT_PRIVATE_KEY: left
   // unset, the backup endpoints 503 with a clear "not configured" message
   // instead of failing to boot.
   //
@@ -166,14 +156,16 @@ const envSchema = z.object({
   // account. Generic by design — this is a reusable tool, not branded to one
   // client's store name.
   GOOGLE_DRIVE_FOLDER_NAME: z.string().default('Database Backups'),
-  // "Connect Gmail account" (modules/mail/gmail.client.ts) — sends outgoing
-  // mail via the Gmail API (HTTPS) instead of raw SMTP, which Railway's
-  // free/hobby tier blocks outright (confirmed live — see
-  // docs/DEPLOYMENT.md). A SEPARATE Google Cloud OAuth "Web application"
-  // client from the Drive one above — its own Google Cloud project, not
-  // reused — so the two connections are entirely independent. Same
-  // "must be In production, not Testing" trap as Drive's consent screen:
-  // left in Testing, Google silently expires the refresh token after 7 days.
+  // "Connect Gmail account" (modules/mail/gmail.client.ts) — the ONLY way
+  // this app sends outgoing mail. Uses the Gmail API (HTTPS) instead of raw
+  // SMTP, which Railway's free/hobby tier blocks outright (confirmed live —
+  // see docs/DEPLOYMENT.md); until this is connected via the admin Mail
+  // page, every send is a logged no-op (see lib/mailer.ts's getTransporter).
+  // A SEPARATE Google Cloud OAuth "Web application" client from the Drive
+  // one above — its own Google Cloud project, not reused — so the two
+  // connections are entirely independent. Same "must be In production, not
+  // Testing" trap as Drive's consent screen: left in Testing, Google
+  // silently expires the refresh token after 7 days.
   GMAIL_SEND_CLIENT_ID: z.string().default(''),
   GMAIL_SEND_CLIENT_SECRET: z.string().default(''),
   // Rolling retention: how many of this tool's own dumps to keep on Drive:

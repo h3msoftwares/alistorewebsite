@@ -14,7 +14,7 @@ export interface PushPayload {
  * Pushes `payload` to every STAFF/ADMIN user's saved subscription — see
  * PushSubscription in schema.prisma. No-ops (and logs) when VAPID keys
  * aren't configured, same "boots without it" pattern as the rest of the
- * notification stack (mailer.ts's SMTP_HOST check).
+ * notification stack (mailer.ts's Gmail-connected check).
  *
  * Never throws: each subscription is sent independently, and a dead one —
  * the push service returning 404/410, meaning the browser unsubscribed or
