@@ -9,8 +9,10 @@ export interface SplitDatum {
 }
 
 /** Donut for a categorical split (device, colour share, …). */
-export function SplitDonut({ data }: { data: SplitDatum[] }) {
-  if (data.length === 0) return <p className="chart-card__empty">No data in this range.</p>;
+export function SplitDonut({ data, isAr }: { data: SplitDatum[]; isAr: boolean }) {
+  if (data.length === 0) {
+    return <p className="chart-card__empty">{isAr ? 'لا توجد بيانات في هذه الفترة.' : 'No data in this range.'}</p>;
+  }
   return (
     <ResponsiveContainer width="100%" height="100%">
       <PieChart>

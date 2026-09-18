@@ -21,11 +21,15 @@ export interface BreakdownDatum {
 export function BreakdownBars({
   data,
   formatValue,
+  isAr,
 }: {
   data: BreakdownDatum[];
   formatValue?: (v: number) => string;
+  isAr: boolean;
 }) {
-  if (data.length === 0) return <p className="chart-card__empty">No data in this range.</p>;
+  if (data.length === 0) {
+    return <p className="chart-card__empty">{isAr ? 'لا توجد بيانات في هذه الفترة.' : 'No data in this range.'}</p>;
+  }
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={data} layout="vertical" margin={{ top: 4, right: 12, bottom: 4, left: 8 }}>

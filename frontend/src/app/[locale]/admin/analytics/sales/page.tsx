@@ -1,5 +1,6 @@
 'use client';
 
+import { useParams } from 'next/navigation';
 import {
   BreakdownBars,
   ChartCard,
@@ -18,11 +19,15 @@ const toSplit = (rows: Breakdown[]) =>
   rows.slice(0, 6).map((r) => ({ label: r.label, value: r.units }));
 
 export default function AnalyticsSalesPage() {
+  const params = useParams();
+  const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
   const { preset } = useAnalyticsRange();
   const query = useAnalyticsSales(preset);
 
   return (
-    <DashboardState query={query}>
+    <DashboardState query={query} isAr={isAr}>
       {(data) => {
         const series = data.revenueSeries.map((p) => ({
           x: bucketLabel(p.bucket),
@@ -31,32 +36,32 @@ export default function AnalyticsSalesPage() {
         }));
         return (
           <div className="analytics-page">
-            <ChartCard title="Revenue & average order value">
+            <ChartCard title={t('Revenue & average order value', 'الإيرادات ومتوسط قيمة الطلب')}>
               <TrendLine
                 data={series}
                 series={[
-                  { key: 'revenue', label: 'Revenue' },
-                  { key: 'aov', label: 'AOV' },
+                  { key: 'revenue', label: t('Revenue', 'الإيرادات') },
+                  { key: 'aov', label: t('AOV', 'متوسط قيمة الطلب') },
                 ]}
                 formatY={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
               />
             </ChartCard>
 
             <div className="analytics-page__row">
-              <ChartCard title="Revenue by category">
-                <BreakdownBars data={toBars(data.byCategory)} formatValue={money} />
+              <ChartCard title={t('Revenue by category', 'الإيرادات حسب الفئة')}>
+                <BreakdownBars data={toBars(data.byCategory)} formatValue={money} isAr={isAr} />
               </ChartCard>
-              <ChartCard title="Revenue by product">
-                <BreakdownBars data={toBars(data.byProduct)} formatValue={money} />
+              <ChartCard title={t('Revenue by product', 'الإيرادات حسب المنتج')}>
+                <BreakdownBars data={toBars(data.byProduct)} formatValue={money} isAr={isAr} />
               </ChartCard>
             </div>
 
             <div className="analytics-page__row">
-              <ChartCard title="Units by size">
-                <SplitDonut data={toSplit(data.bySize)} />
+              <ChartCard title={t('Units by size', 'الوحدات حسب المقاس')}>
+                <SplitDonut data={toSplit(data.bySize)} isAr={isAr} />
               </ChartCard>
-              <ChartCard title="Units by colour">
-                <SplitDonut data={toSplit(data.byColour)} />
+              <ChartCard title={t('Units by colour', 'الوحدات حسب اللون')}>
+                <SplitDonut data={toSplit(data.byColour)} isAr={isAr} />
               </ChartCard>
             </div>
 

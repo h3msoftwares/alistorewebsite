@@ -7,11 +7,14 @@ import { Alert, Button, Skeleton } from '@/components/ui';
 /** Loading / error gate shared by every analytics dashboard page. */
 export function DashboardState<T>({
   query,
+  isAr,
   children,
 }: {
   query: UseQueryResult<T>;
+  isAr: boolean;
   children: (data: T) => ReactNode;
 }) {
+  const t = (en: string, ar: string) => (isAr ? ar : en);
   if (query.isPending) {
     return (
       <div className="analytics-grid" aria-busy="true">
@@ -25,9 +28,9 @@ export function DashboardState<T>({
   if (query.isError) {
     return (
       <Alert tone="danger">
-        Couldn&apos;t load this report.{' '}
+        {t("Couldn't load this report.", 'تعذّر تحميل هذا التقرير.')}{' '}
         <Button variant="ghost" size="sm" onClick={() => query.refetch()}>
-          Retry
+          {t('Retry', 'إعادة المحاولة')}
         </Button>
       </Alert>
     );
@@ -37,11 +40,16 @@ export function DashboardState<T>({
 
 /** Shown where a GA4-backed widget would be when the GA4 service account is
  *  not configured. */
-export function GaNotConnected({ what = 'This widget' }: { what?: string }) {
+export function GaNotConnected({ what, isAr }: { what: string; isAr: boolean }) {
+  const t = (en: string, ar: string) => (isAr ? ar : en);
   return (
     <Alert tone="info">
-      {what} needs Google Analytics 4. Add the GA4 service-account keys to the
-      backend env (see <code>backend/docs/ga4-setup.md</code>).
+      {t(
+        `${what} needs Google Analytics 4. Add the GA4 service-account keys to the backend env (see `,
+        `يحتاج ${what} إلى Google Analytics 4. أضف مفاتيح حساب خدمة GA4 إلى بيئة الخادم (راجع `
+      )}
+      <code>backend/docs/ga4-setup.md</code>
+      {t(').', ').')}
     </Alert>
   );
 }
