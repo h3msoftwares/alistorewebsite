@@ -152,12 +152,13 @@ describe('AdminOrdersPage', () => {
     expect(mock.adminUpdateOrderStatus).not.toHaveBeenCalled();
   });
 
-  it('"Mark collected" toggles COD payment status', async () => {
+  it('"Mark collected" (in the row\'s More actions menu) toggles COD payment status', async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('AS-20260906-ABC123');
 
-    await user.click(screen.getByRole('button', { name: 'Mark collected' }));
+    await user.click(screen.getByRole('button', { name: /more actions for AS-20260906-ABC123/i }));
+    await user.click(screen.getByRole('menuitem', { name: 'Mark collected' }));
     await waitFor(() =>
       expect(mock.adminMarkCollected).toHaveBeenCalledWith('o1', true)
     );
@@ -198,14 +199,15 @@ describe('AdminOrdersPage', () => {
     await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, undefined, true));
   });
 
-  it('shows a Flagged badge and a "Mark reviewed" button for a flagged order, which clears the flag', async () => {
+  it('shows a Flagged badge and a "Mark reviewed" action for a flagged order, which clears the flag', async () => {
     mock.adminListOrders.mockResolvedValue([{ ...order, flaggedForReview: true }] as never);
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('AS-20260906-ABC123');
 
     expect(screen.getByText('Flagged')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Mark reviewed' }));
+    await user.click(screen.getByRole('button', { name: /more actions for AS-20260906-ABC123/i }));
+    await user.click(screen.getByRole('menuitem', { name: 'Mark reviewed' }));
     await waitFor(() => expect(mock.adminReviewOrder).toHaveBeenCalledWith('o1'));
   });
 

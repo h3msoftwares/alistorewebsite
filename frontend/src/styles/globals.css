@@ -2624,6 +2624,11 @@ a.home-card__name:hover { text-decoration: underline; }
 
 /* Header actions row (filters, buttons) beside an admin page's <h1>. */
 .admin-page__head-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4); }
+/* Groups filters separately from page-level buttons within .admin-page__head-actions
+   (e.g. admin/orders's status/flagged/COD filters vs. its Blacklist/Print-settings
+   buttons) so the header reads as two clusters instead of one undifferentiated row. */
+.admin-page__head-group { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
+.admin-page__head-group--divider { padding-inline-start: var(--space-4); border-inline-start: 1px solid var(--color-border); }
 .admin-inline { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .admin-status-badge--archived { opacity: 0.7; }
 

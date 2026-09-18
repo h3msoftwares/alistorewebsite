@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { ChevronDown, Printer, Settings2 } from 'lucide-react';
+import { Banknote, CheckCheck, ChevronDown, Printer, Settings2 } from 'lucide-react';
 import {
   Alert,
   Badge,
@@ -16,6 +16,7 @@ import {
   Input,
   Modal,
   ProductGridSkeleton,
+  RowActionsMenu,
   Select,
   StatusPill,
 } from '@/components/ui';
@@ -122,50 +123,54 @@ export default function AdminOrdersPage() {
       <div className="admin-page__head">
         <h1>{t('Orders', 'الطلبات')}</h1>
         <div className="admin-page__head-actions">
-          {canManageBlacklist && (
-            <Link href={`/${locale}/admin/orders/blacklist`} className="btn btn--outline">
-              {t('Blacklist', 'قائمة الحظر')}
-            </Link>
-          )}
-          <Button variant="outline" onClick={() => setPrintSettingsOpen(true)}>
-            <Icon as={Settings2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
-            {t('Print settings', 'إعدادات الطباعة')}
-          </Button>
-          <Choice
-            type="checkbox"
-            label={t('Flagged only', 'المُعلَّمة فقط')}
-            checked={flaggedOnly}
-            onChange={(e) => {
-              setFlaggedOnly(e.target.checked);
-              setPage(1);
-            }}
-          />
-          <Choice
-            type="checkbox"
-            label={t('Awaiting COD', 'بانتظار تحصيل الدفع')}
-            checked={awaitingCod}
-            onChange={(e) => {
-              setAwaitingCod(e.target.checked);
-              setPage(1);
-            }}
-          />
-          <label>
-            <span className="visually-hidden">{t('Filter by status', 'تصفية حسب الحالة')}</span>
-            <Select
-              value={statusFilter}
+          <span className="admin-page__head-group">
+            <Choice
+              type="checkbox"
+              label={t('Flagged only', 'المُعلَّمة فقط')}
+              checked={flaggedOnly}
               onChange={(e) => {
-                setStatusFilter(e.target.value);
+                setFlaggedOnly(e.target.checked);
                 setPage(1);
               }}
-            >
-              <option value="">{t('All statuses', 'كل الحالات')}</option>
-              {STATUS_FILTER_OPTIONS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {t(s.en, s.ar)}
-                </option>
-              ))}
-            </Select>
-          </label>
+            />
+            <Choice
+              type="checkbox"
+              label={t('Awaiting COD', 'بانتظار تحصيل الدفع')}
+              checked={awaitingCod}
+              onChange={(e) => {
+                setAwaitingCod(e.target.checked);
+                setPage(1);
+              }}
+            />
+            <label>
+              <span className="visually-hidden">{t('Filter by status', 'تصفية حسب الحالة')}</span>
+              <Select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">{t('All statuses', 'كل الحالات')}</option>
+                {STATUS_FILTER_OPTIONS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {t(s.en, s.ar)}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          </span>
+          <span className="admin-page__head-group admin-page__head-group--divider">
+            {canManageBlacklist && (
+              <Link href={`/${locale}/admin/orders/blacklist`} className="btn btn--outline">
+                {t('Blacklist', 'قائمة الحظر')}
+              </Link>
+            )}
+            <Button variant="outline" onClick={() => setPrintSettingsOpen(true)}>
+              <Icon as={Settings2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+              {t('Print settings', 'إعدادات الطباعة')}
+            </Button>
+          </span>
         </div>
       </div>
 
@@ -212,6 +217,7 @@ export default function AdminOrdersPage() {
                 <th className="is-numeric">{t('Total', 'الإجمالي')}</th>
                 <th>{t('Payment', 'الدفع')}</th>
                 <th>{t('Status', 'الحالة')}</th>
+                <th className="visually-hidden">{t('Actions', 'الإجراءات')}</th>
               </tr>
             </thead>
             <tbody>
@@ -281,36 +287,9 @@ export default function AdminOrdersPage() {
                       )}
                     </td>
                     <td data-label={t('Payment', 'الدفع')}>
-                      <span className="admin-row-actions">
-                        <Badge variant={collected ? 'new' : 'low-stock'}>
-                          {o.paymentMethod} · {o.paymentStatus}
-                        </Badge>
-                        {o.paymentMethod === 'COD' && o.paymentStatus !== 'REFUNDED' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => oa.toggleCollected(o, !collected)}
-                          >
-                            {collected ? t('Mark unpaid', 'إلغاء التحصيل') : t('Mark collected', 'تم التحصيل')}
-                          </Button>
-                        )}
-                        {o.paymentMethod === 'COD' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => printReceipt(o)}
-                            title={
-                              printerName
-                                ? t(`Print a delivery receipt — select "${printerName}" in the dialog`, `طباعة إيصال توصيل — اختر "${printerName}" من نافذة الطباعة`)
-                                : t('Print a delivery receipt to give the customer', 'طباعة إيصال توصيل لتسليمه للزبون')
-                            }
-                          >
-                            <Icon as={Printer} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
-                            {t('Print receipt', 'طباعة الإيصال')}
-                          </Button>
-                        )}
-                      </span>
+                      <Badge variant={collected ? 'new' : 'low-stock'}>
+                        {o.paymentMethod} · {o.paymentStatus}
+                      </Badge>
                     </td>
                     <td data-label={t('Status', 'الحالة')}>
                       <span className="admin-row-actions">
@@ -329,16 +308,6 @@ export default function AdminOrdersPage() {
                             )}
                           </button>
                         )}
-                        {o.flaggedForReview && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy}
-                            onClick={() => oa.markReviewed(o)}
-                          >
-                            {t('Mark reviewed', 'وضع علامة كمُراجَع')}
-                          </Button>
-                        )}
                         <Select
                           aria-label={t(`Change status for ${o.orderNumber}`, `تغيير حالة ${o.orderNumber}`)}
                           value={o.status}
@@ -352,6 +321,42 @@ export default function AdminOrdersPage() {
                           ))}
                         </Select>
                       </span>
+                    </td>
+                    <td>
+                      <RowActionsMenu
+                        label={t(`More actions for ${o.orderNumber}`, `المزيد من الإجراءات لـ ${o.orderNumber}`)}
+                        actions={[
+                          ...(o.paymentMethod === 'COD' && o.paymentStatus !== 'REFUNDED'
+                            ? [
+                                {
+                                  label: collected ? t('Mark unpaid', 'إلغاء التحصيل') : t('Mark collected', 'تم التحصيل'),
+                                  icon: Banknote,
+                                  disabled: busy,
+                                  onClick: () => oa.toggleCollected(o, !collected),
+                                },
+                              ]
+                            : []),
+                          ...(o.paymentMethod === 'COD'
+                            ? [
+                                {
+                                  label: t('Print receipt', 'طباعة الإيصال'),
+                                  icon: Printer,
+                                  onClick: () => printReceipt(o),
+                                },
+                              ]
+                            : []),
+                          ...(o.flaggedForReview
+                            ? [
+                                {
+                                  label: t('Mark reviewed', 'وضع علامة كمُراجَع'),
+                                  icon: CheckCheck,
+                                  disabled: busy,
+                                  onClick: () => oa.markReviewed(o),
+                                },
+                              ]
+                            : []),
+                        ]}
+                      />
                     </td>
                   </tr>
                 );
