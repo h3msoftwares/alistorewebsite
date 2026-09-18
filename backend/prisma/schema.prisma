@@ -61,6 +61,22 @@ enum StockMovementType {
   RESTOCK
 }
 
+// Per-item return lifecycle, independent of Order.status — an order stays
+// DELIVERED while individual lines move through their own return workflow.
+// REQUESTED/APPROVED/REJECTED/IN_TRANSIT/RECEIVED/CANCELLED are self-
+// explanatory; REFUNDED is bookkeeping only (this store is COD-only, no
+// payment gateway — "refunded" means an admin paid the customer back some
+// other way and is recording that here, not that money moved automatically).
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  IN_TRANSIT
+  RECEIVED
+  REFUNDED
+  CANCELLED
+}
+
 // How a product's sale is expressed: a percentage off (0–100) or a flat
 // amount off the price. Reused for the product's own sale, Promotion, and
 // Coupon — kept as PERCENT/AMOUNT (not renamed to the architecture doc's
@@ -117,6 +133,8 @@ model User {
   blacklistEntries        BlacklistEntry[] // entries this admin created
   pushSubscriptions       PushSubscription[] // this admin's opted-in browser/device(s)
   loyaltyAwards           LoyaltyAward[] // loyalty-program milestones this customer has earned
+  returnsRequested        Return[] // return requests this user submitted (null on the Return itself = a guest requested it)
+  notificationReads       NotificationRead[] // which admin-panel notifications this user has seen
 
   @@index([role])
   @@index([customRoleID])
@@ -880,21 +898,24 @@ model ProductVariant {
 // a row here recording the signed delta and why. `stockQuantity` stays as the
 // materialized current value.
 model StockMovement {
-  id        String            @id @default(uuid()) @db.Uuid
-  variantID String            @db.Uuid
-  quantity  Int // signed delta: negative for a sale, positive for a restock
-  type      StockMovementType
-  reason    String?
-  orderID   String?           @db.Uuid // set when the movement was caused by an order
-  actorID   String?           @db.Uuid // the staff/admin user for a manual adjustment
-  createdAt DateTime          @default(now())
+  id          String            @id @default(uuid()) @db.Uuid
+  variantID   String            @db.Uuid
+  quantity    Int // signed delta: negative for a sale, positive for a restock
+  type        StockMovementType
+  reason      String?
+  orderID     String?           @db.Uuid // set when the movement was caused by an order
+  orderItemID String?           @db.Uuid // set when caused by a per-item return (RECEIVED) — traces the restock back to the specific line, not just the order
+  actorID     String?           @db.Uuid // the staff/admin user for a manual adjustment
+  createdAt   DateTime          @default(now())
 
-  variant ProductVariant @relation(fields: [variantID], references: [id], onDelete: Cascade)
-  order   Order?         @relation(fields: [orderID], references: [id], onDelete: SetNull)
-  actor   User?          @relation(fields: [actorID], references: [id], onDelete: SetNull)
+  variant   ProductVariant @relation(fields: [variantID], references: [id], onDelete: Cascade)
+  order     Order?         @relation(fields: [orderID], references: [id], onDelete: SetNull)
+  orderItem OrderItem?     @relation(fields: [orderItemID], references: [id], onDelete: SetNull)
+  actor     User?          @relation(fields: [actorID], references: [id], onDelete: SetNull)
 
   @@index([variantID])
   @@index([orderID])
+  @@index([orderItemID])
   @@map("stockmovement")
 }
 
@@ -1006,6 +1027,7 @@ model Order {
   stockMovements   StockMovement[]
   accessTokens     OrderAccessToken[]
   couponRedemption CouponRedemption?
+  returns          Return[]
 
   @@index([userID])
   @@index([status])
@@ -1089,6 +1111,52 @@ model PushSubscription {
   @@map("pushsubscription")
 }
 
+// The durable, cross-device counterpart to PushSubscription's transient
+// browser push: one row per event (new order, cancellation, flag, return),
+// with per-user read state tracked separately in NotificationRead rather
+// than fanned out into one row per recipient at write time — the admin/
+// staff headcount here is small, so filtering a shared feed by permission
+// and read-state at read time is simpler and just as cheap as fan-out.
+// `type`/`entityType` are free-form strings (not enums), same convention as
+// AuditLog's own `action`/`entityType` — new event kinds are added by
+// calling createNotification() with a new string, not a migration.
+model Notification {
+  id                 String   @id @default(uuid()) @db.Uuid
+  type               String
+  title              String
+  body               String
+  url                String?
+  entityType         String?
+  entityID           String?
+  // Gates visibility the same way a push's requiredPermission does — null
+  // means every STAFF/ADMIN sees it regardless of their specific permissions.
+  requiredPermission String?
+  dateCreated        DateTime @default(now())
+
+  reads NotificationRead[]
+
+  @@index([dateCreated])
+  @@index([entityType, entityID])
+  @@map("notification")
+}
+
+// A read receipt: one row per (notification, user) once that user has seen
+// it. Absence of a row = unread for that user — this is the only state
+// tracked per-recipient, everything else on Notification is shared.
+model NotificationRead {
+  id             String   @id @default(uuid()) @db.Uuid
+  notificationID String   @db.Uuid
+  userID         String   @db.Uuid
+  readAt         DateTime @default(now())
+
+  notification Notification @relation(fields: [notificationID], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userID], references: [id], onDelete: Cascade)
+
+  @@unique([notificationID, userID])
+  @@index([userID])
+  @@map("notificationread")
+}
+
 // A guest's (or anyone's) proof of access to one order without a login
 // session — the checkout confirmation email links to
 // /orders/track/<raw token>; POST /api/orders/lookup mints an additional one
@@ -1125,12 +1193,66 @@ model OrderItem {
   quantity        Int
   unitPrice       Decimal @db.Decimal(12, 2)
   lineTotal       Decimal @db.Decimal(12, 2) // unitPrice * quantity at order time
+  // Materialized claim counter for per-item returns — mirrors
+  // ProductVariant.stockQuantity's own pattern. Every active (not
+  // REJECTED/CANCELLED) ReturnItem.quantity against this line is claimed
+  // here atomically at request time, so two concurrent return requests can
+  // never together return more than `quantity` units. See return.service.ts.
+  returnedQuantity Int @default(0)
 
-  order   Order          @relation(fields: [orderID], references: [id], onDelete: Cascade)
-  variant ProductVariant @relation(fields: [variantID], references: [id])
+  order       Order          @relation(fields: [orderID], references: [id], onDelete: Cascade)
+  variant     ProductVariant @relation(fields: [variantID], references: [id])
+  stockMovements StockMovement[]
+  returnItems ReturnItem[]
 
   @@index([orderID])
   @@map("orderitem")
+}
+
+// A customer's (or admin-on-their-behalf's) request to return some quantity
+// of one or more lines from a DELIVERED order. Deliberately NOT modeled as
+// another Order.status value — the order itself stays DELIVERED while
+// individual lines move through their own lifecycle below, since a customer
+// can return 3 of 5 units of one product while keeping the rest of the
+// order untouched. `refundAmount` is bookkeeping only: this store is
+// COD-only with no payment gateway, so nothing here moves money
+// automatically — an admin marks REFUNDED once they've paid the customer
+// back some other way. Order.paymentStatus is never touched by this model;
+// a partial refund must never be mistaken for the whole order being refunded.
+model Return {
+  id           String       @id @default(uuid()) @db.Uuid
+  orderID      String       @db.Uuid
+  status       ReturnStatus @default(REQUESTED)
+  reason       String?
+  requestedBy  String?      @db.Uuid // null = a guest order; set for a signed-in customer or an admin acting on their behalf
+  refundAmount Decimal?     @db.Decimal(12, 2) // sum of this return's ReturnItem.refundAmount, snapshotted at request time
+  dateCreated  DateTime     @default(now())
+  lastEdit     DateTime     @default(now()) @updatedAt
+
+  order     Order        @relation(fields: [orderID], references: [id], onDelete: Cascade)
+  requester User?        @relation(fields: [requestedBy], references: [id], onDelete: SetNull)
+  items     ReturnItem[]
+
+  @@index([orderID])
+  @@index([status])
+  @@map("return")
+}
+
+// One returned line within a Return — quantity may be less than the
+// OrderItem's own quantity (a partial return of that line).
+model ReturnItem {
+  id           String  @id @default(uuid()) @db.Uuid
+  returnID     String  @db.Uuid
+  orderItemID  String  @db.Uuid
+  quantity     Int
+  refundAmount Decimal @db.Decimal(12, 2) // OrderItem.unitPrice * quantity, snapshotted at request time
+
+  return    Return    @relation(fields: [returnID], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemID], references: [id], onDelete: Cascade)
+
+  @@index([returnID])
+  @@index([orderItemID])
+  @@map("returnitem")
 }
 
 // ============ SITE SETTINGS ============
