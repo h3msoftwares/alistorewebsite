@@ -3,20 +3,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { discountsApi } from '@/lib/api';
 import type { PreviewPromotionCoverageBody } from '@/lib/api/discounts';
+import { queryKeys } from '@/lib/query-keys';
 import type { CouponBody, PromotionBody, UUID } from '@/lib/types';
-
-const PROMOTIONS_KEY = ['promotions'] as const;
-const COUPONS_KEY = ['coupons'] as const;
 
 // ---- Promotions ----
 
 export function usePromotions() {
-  return useQuery({ queryKey: PROMOTIONS_KEY, queryFn: discountsApi.listPromotions });
+  return useQuery({ queryKey: queryKeys.discounts.promotions.all(), queryFn: discountsApi.listPromotions });
 }
 
 export function usePromotion(id: UUID | undefined) {
   return useQuery({
-    queryKey: [...PROMOTIONS_KEY, id],
+    queryKey: queryKeys.discounts.promotions.detail(id as UUID),
     queryFn: () => discountsApi.getPromotion(id as UUID),
     enabled: Boolean(id),
   });
@@ -27,9 +25,9 @@ export function useCreatePromotion() {
   return useMutation({
     mutationFn: (body: PromotionBody) => discountsApi.createPromotion(body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: PROMOTIONS_KEY });
+      qc.invalidateQueries({ queryKey: queryKeys.discounts.promotions.all() });
       // Prices everywhere depend on active promotions.
-      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: queryKeys.products.all() });
     },
   });
 }
@@ -40,8 +38,8 @@ export function useUpdatePromotion() {
     mutationFn: ({ id, body }: { id: UUID; body: Partial<PromotionBody> }) =>
       discountsApi.updatePromotion(id, body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: PROMOTIONS_KEY });
-      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: queryKeys.discounts.promotions.all() });
+      qc.invalidateQueries({ queryKey: queryKeys.products.all() });
     },
   });
 }
@@ -51,8 +49,8 @@ export function useDeletePromotion() {
   return useMutation({
     mutationFn: (id: UUID) => discountsApi.deletePromotion(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: PROMOTIONS_KEY });
-      qc.invalidateQueries({ queryKey: ['products'] });
+      qc.invalidateQueries({ queryKey: queryKeys.discounts.promotions.all() });
+      qc.invalidateQueries({ queryKey: queryKeys.products.all() });
     },
   });
 }
@@ -69,7 +67,7 @@ export function usePreviewPromotionCoverage() {
 // ---- Coupons ----
 
 export function useCoupons() {
-  return useQuery({ queryKey: COUPONS_KEY, queryFn: discountsApi.listCoupons });
+  return useQuery({ queryKey: queryKeys.discounts.coupons.all(), queryFn: discountsApi.listCoupons });
 }
 
 // No dedicated GET /api/coupons/:id — coupons are always a short admin-
@@ -85,7 +83,7 @@ export function useCreateCoupon() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CouponBody) => discountsApi.createCoupon(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: COUPONS_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.discounts.coupons.all() }),
   });
 }
 
@@ -94,7 +92,7 @@ export function useUpdateCoupon() {
   return useMutation({
     mutationFn: ({ id, body }: { id: UUID; body: Partial<CouponBody> }) =>
       discountsApi.updateCoupon(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: COUPONS_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.discounts.coupons.all() }),
   });
 }
 
@@ -102,6 +100,6 @@ export function useDeleteCoupon() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: UUID) => discountsApi.deleteCoupon(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: COUPONS_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.discounts.coupons.all() }),
   });
 }

@@ -4,13 +4,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { backupApi } from '@/lib/api';
 import type { BackupFrequency } from '@/lib/api/backup';
 import { DRIVE_CONNECT_MESSAGE_SOURCE, type DriveConnectMessage } from '@/lib/drive-connect-message';
-
-const BACKUPS_KEY = ['backup', 'list'] as const;
-const DRIVE_STATUS_KEY = ['backup', 'drive', 'status'] as const;
-const SETTINGS_KEY = ['backup', 'settings'] as const;
+import { queryKeys } from '@/lib/query-keys';
 
 export function useBackups() {
-  return useQuery({ queryKey: BACKUPS_KEY, queryFn: backupApi.listBackups });
+  return useQuery({ queryKey: queryKeys.backup.list(), queryFn: backupApi.listBackups });
 }
 
 export type BackupRunOutcome =
@@ -46,7 +43,7 @@ export function useRunBackupNow() {
       }
       return { ok: false, timedOut: true };
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: BACKUPS_KEY }),
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.backup.list() }),
   });
 }
 
@@ -82,12 +79,12 @@ export function useRestoreBackup() {
       }
       return { ok: false, timedOut: true };
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: BACKUPS_KEY }),
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.backup.list() }),
   });
 }
 
 export function useDriveStatus() {
-  return useQuery({ queryKey: DRIVE_STATUS_KEY, queryFn: backupApi.getDriveStatus });
+  return useQuery({ queryKey: queryKeys.backup.driveStatus(), queryFn: backupApi.getDriveStatus });
 }
 
 /**
@@ -150,7 +147,7 @@ export function useConnectDrive() {
         );
       });
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: DRIVE_STATUS_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.backup.driveStatus() }),
   });
 }
 
@@ -158,18 +155,18 @@ export function useDisconnectDrive() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => backupApi.disconnectDrive(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: DRIVE_STATUS_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.backup.driveStatus() }),
   });
 }
 
 export function useBackupSettings() {
-  return useQuery({ queryKey: SETTINGS_KEY, queryFn: backupApi.getBackupSettings });
+  return useQuery({ queryKey: queryKeys.backup.settings(), queryFn: backupApi.getBackupSettings });
 }
 
 export function useUpdateBackupSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (frequency: BackupFrequency) => backupApi.updateBackupSettings(frequency),
-    onSuccess: () => qc.invalidateQueries({ queryKey: SETTINGS_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.backup.settings() }),
   });
 }

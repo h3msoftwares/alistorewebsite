@@ -82,9 +82,10 @@ export interface BulkAddResult {
 /** Add several variants in one go (favourites → cart). Each line is attempted
  *  independently — one out-of-stock line doesn't sink the rest — and the cart
  *  query is invalidated (and the badge re-synced) once, after all settle. The
- *  mutation resolves to a per-line `BulkAddResult[]`; it only rejects if the
- *  whole batch was empty of successes AND every line errored, so callers
- *  should read the resolved array rather than relying on `isError`. */
+ *  mutation never rejects (`Promise.allSettled` absorbs every per-line
+ *  failure) and always resolves to a per-line `BulkAddResult[]`, so `isError`
+ *  will never be true here — callers must check each line's `ok`/`error` in
+ *  the resolved array instead. */
 export function useAddManyToCart() {
   const qc = useQueryClient();
   const dispatch = useAppDispatch();
