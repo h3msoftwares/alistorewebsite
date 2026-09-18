@@ -1,11 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createWrapper } from '@/test/utils';
 
 vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en', id: 'o1' }) }));
+vi.mock('@/hooks/use-settings', () => ({ useSettings: () => ({ data: null }) }));
 
 vi.mock('@/lib/api', () => ({
-  ordersApi: { getOrder: vi.fn() },
+  ordersApi: {
+    getOrder: vi.fn(),
+    adminUpdateOrderStatus: vi.fn(),
+    adminMarkCollected: vi.fn(),
+    adminReviewOrder: vi.fn(),
+  },
+  isApiError: (e: unknown) => e instanceof Error && 'code' in e,
 }));
 
 import { ordersApi } from '@/lib/api';
@@ -43,6 +51,9 @@ function renderPage() {
 beforeEach(() => {
   vi.clearAllMocks();
   mock.getOrder.mockResolvedValue(order as never);
+  mock.adminUpdateOrderStatus.mockResolvedValue({ ...order, status: 'CONFIRMED' } as never);
+  mock.adminMarkCollected.mockResolvedValue({ ...order, paymentStatus: 'COLLECTED' } as never);
+  mock.adminReviewOrder.mockResolvedValue({ ...order, flaggedForReview: false } as never);
 });
 
 describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
@@ -62,9 +73,15 @@ describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
     expect(screen.getByText(/Flagged.*velocity:phone/)).toBeInTheDocument();
   });
 
-  it('never renders a Cancel button — status changes stay on the list page', async () => {
+  it('never renders OrderDetailCard\'s customer-facing Cancel button — admin cancellation goes through the status Select instead', async () => {
     renderPage();
     await screen.findByRole('heading', { level: 1, name: 'AS-20260906-ABC123' });
+    // OrderDetailCard only ever renders its own "Cancel order" button when an
+    // `onCancel` prop is passed — this page still never passes one, since
+    // that button's PENDING/CONFIRMED-only gate is the customer/guest rule,
+    // not the admin one. The confirm modal's own "Cancel order" button (see
+    // the CANCELLED test below) only exists once that flow is opened.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /cancel order/i })).not.toBeInTheDocument();
   });
 
@@ -72,5 +89,45 @@ describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
     mock.getOrder.mockRejectedValue(new Error('boom'));
     renderPage();
     expect(await screen.findByText("Couldn't load this order")).toBeInTheDocument();
+  });
+
+  it('has a real Actions panel: a plain status change applies with no modal', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('heading', { level: 1, name: 'AS-20260906-ABC123' });
+
+    await user.selectOptions(screen.getByRole('combobox', { name: /change status for AS-20260906-ABC123/i }), 'CONFIRMED');
+    await waitFor(() => expect(mock.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'CONFIRMED', undefined));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('changing status to CANCELLED asks for confirmation before applying', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('heading', { level: 1, name: 'AS-20260906-ABC123' });
+
+    await user.selectOptions(screen.getByRole('combobox', { name: /change status for AS-20260906-ABC123/i }), 'CANCELLED');
+    await screen.findByRole('dialog');
+    await user.click(screen.getByRole('button', { name: 'Cancel order' }));
+    await waitFor(() => expect(mock.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'CANCELLED', undefined));
+  });
+
+  it('"Mark collected" toggles COD payment status', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('heading', { level: 1, name: 'AS-20260906-ABC123' });
+
+    await user.click(screen.getByRole('button', { name: 'Mark collected' }));
+    await waitFor(() => expect(mock.adminMarkCollected).toHaveBeenCalledWith('o1', true));
+  });
+
+  it('shows a "Mark reviewed" action for a flagged order, which clears the flag', async () => {
+    mock.getOrder.mockResolvedValue({ ...order, flaggedForReview: true } as never);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('heading', { level: 1, name: 'AS-20260906-ABC123' });
+
+    await user.click(screen.getByRole('button', { name: 'Mark reviewed' }));
+    await waitFor(() => expect(mock.adminReviewOrder).toHaveBeenCalledWith('o1'));
   });
 });

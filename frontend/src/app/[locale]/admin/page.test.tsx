@@ -32,6 +32,7 @@ const dashboard = {
   totalRevenue: 840,
   flaggedOrders: 1,
   awaitingCodCollection: 2,
+  confirmedNotDelivered: 7,
   lowStockVariants: 4,
   outOfStockVariants: 1,
   recentOrders: [
@@ -66,6 +67,8 @@ describe('AdminDashboardPage', () => {
     renderPage();
     expect(await screen.findByText('Pending orders')).toBeInTheDocument();
     expect(screen.getByText('of 12 total')).toBeInTheDocument();
+    expect(screen.getByText('Confirmed, not delivered')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
     expect(screen.getByText('Flagged for review')).toBeInTheDocument();
     expect(screen.getByText('Awaiting COD')).toBeInTheDocument();
     // low (4) + out of stock (1) shown as one tile

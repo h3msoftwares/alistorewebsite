@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { ChevronDown, Printer, Settings2 } from 'lucide-react';
 import {
   Alert,
   Badge,
   Button,
+  Choice,
   DataTable,
   EmptyState,
   Field,
@@ -19,12 +20,12 @@ import {
   StatusPill,
 } from '@/components/ui';
 import { AdminPager } from '@/components/admin/admin-pager';
-import { OrderReceipt } from '@/components/orders/order-receipt';
-import { useAdminOrders, useMarkOrderCollected, useReviewOrder, useUpdateOrderStatus } from '@/hooks/use-orders';
+import { OrderActionModals } from '@/components/orders/order-action-modals';
+import { useAdminOrders } from '@/hooks/use-orders';
+import { ORDER_STATUSES, useOrderActions } from '@/hooks/use-order-actions';
+import { useOrderReceiptPrint } from '@/hooks/use-order-receipt-print';
 import { usePrintPreferences } from '@/hooks/use-print-preferences';
 import { useSettings } from '@/hooks/use-settings';
-import { useStepUp } from '@/hooks/use-auth';
-import { isApiError } from '@/lib/api';
 import { DELIVERY_REGIONS } from '@/lib/regions';
 import type { ReceiptFormat } from '@/lib/print-preferences';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
@@ -33,26 +34,23 @@ import type { Order, OrderStatus } from '@/lib/types';
 
 const PAGE_SIZE = 20;
 
-const STATUSES: OrderStatus[] = [
-  'PENDING',
-  'CONFIRMED',
-  'SHIPPED',
-  'DELIVERED',
-  'CANCELLED',
-  'RETURNED',
+// The header filter's own option list — separate from STATUSES (which is the
+// per-row status-CHANGER's options, always a single real status) because
+// this one also offers a combined "in transit" bucket the dashboard's
+// "Confirmed but not delivered" tile links to.
+const STATUS_FILTER_OPTIONS: { value: string; en: string; ar: string }[] = [
+  { value: 'PENDING', en: 'Pending', ar: 'قيد الانتظار' },
+  { value: 'CONFIRMED,SHIPPED', en: 'Confirmed (not delivered)', ar: 'مؤكَّد (لم يُسلَّم)' },
+  { value: 'CONFIRMED', en: 'Confirmed', ar: 'مؤكَّد' },
+  { value: 'SHIPPED', en: 'Shipped', ar: 'تم الشحن' },
+  { value: 'DELIVERED', en: 'Delivered', ar: 'تم التسليم' },
+  { value: 'CANCELLED', en: 'Cancelled', ar: 'مُلغى' },
+  { value: 'RETURNED', en: 'Returned', ar: 'مُرتجَع' },
 ];
-
-// Status changes that get a confirmation modal (both are effectively
-// terminal; CANCELLED also restocks + emails the customer).
-const CONFIRM_STATUSES: OrderStatus[] = ['CANCELLED', 'RETURNED'];
-
-/** What the admin is mid-way through doing — drives which modal is open. */
-type PendingAction =
-  | { kind: 'confirm'; order: Order; status: OrderStatus }
-  | { kind: 'days'; order: Order; status: OrderStatus; mode: 'ship' | 'edit' };
 
 export default function AdminOrdersPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
@@ -61,6 +59,13 @@ export default function AdminOrdersPage() {
   const brandName = settings ? (isAr ? settings.brandNameAr : settings.brandNameEn) : isAr ? DEFAULT_BRAND_NAME_AR : DEFAULT_BRAND_NAME_EN;
   const { receiptFormat, printerName, setReceiptFormat, setPrinterName } = usePrintPreferences();
   const [printSettingsOpen, setPrintSettingsOpen] = useState(false);
+  const { print: printReceipt, receiptNode } = useOrderReceiptPrint(receiptFormat, brandName, locale);
+  const oa = useOrderActions({
+    statusChangeFailed: t('Status change failed', 'فشل تغيير الحالة'),
+    updateFailed: t('Update failed', 'فشل التحديث'),
+    daysRangeError: t('Enter a whole number of days (0–90), or leave blank.', 'أدخل عدد أيام صحيح (0–90)، أو اتركه فارغًا.'),
+    incorrectPassword: t('Incorrect password.', 'كلمة المرور غير صحيحة.'),
+  });
 
   const money = (n: number) =>
     new Intl.NumberFormat(isAr ? 'ar-EG' : 'en-US', {
@@ -75,15 +80,14 @@ export default function AdminOrdersPage() {
       day: 'numeric',
     });
 
-  const [status, setStatus] = useState<OrderStatus | ''>('');
-  const [flaggedOnly, setFlaggedOnly] = useState(false);
+  // Seeded once from the URL so the dashboard's "Pending orders" / "Flagged
+  // for review" / "Confirmed but not delivered" / "Awaiting COD" tiles can
+  // deep-link straight into a filtered view instead of dumping the admin on
+  // an unfiltered list they then have to filter by hand.
+  const [statusFilter, setStatusFilter] = useState<string>(() => searchParams?.get('status') ?? '');
+  const [flaggedOnly, setFlaggedOnly] = useState(() => searchParams?.get('flagged') === 'true');
+  const [awaitingCod, setAwaitingCod] = useState(() => searchParams?.get('awaitingCod') === 'true');
   const [page, setPage] = useState(1);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [pending, setPending] = useState<PendingAction | null>(null);
-  const [daysInput, setDaysInput] = useState('');
-  const [daysError, setDaysError] = useState<string | null>(null);
-  const [printOrder, setPrintOrder] = useState<Order | null>(null);
   // Which rows show their delivery-address detail (area/city/region + notes)
   // — collapsed by default so the table reads less dense; the row's other
   // controls (status, Mark reviewed, Mark collected, print) are unaffected.
@@ -96,35 +100,8 @@ export default function AdminOrdersPage() {
       return next;
     });
 
-  // Fires window.print() once <OrderReceipt> below has mounted with the
-  // picked order — printing synchronously inside the click handler would
-  // race that render, so this waits a frame instead. `afterprint` clears
-  // the selection whether the admin actually printed or cancelled the
-  // dialog.
-  useEffect(() => {
-    if (!printOrder) return;
-    const raf = requestAnimationFrame(() => window.print());
-    return () => cancelAnimationFrame(raf);
-  }, [printOrder]);
-  useEffect(() => {
-    const onAfterPrint = () => setPrintOrder(null);
-    window.addEventListener('afterprint', onAfterPrint);
-    return () => window.removeEventListener('afterprint', onAfterPrint);
-  }, []);
-  // A sensitive write (status change, collected toggle, ...) came back
-  // 403 STEP_UP_REQUIRED — the session is stale, not wrong. We stash the
-  // exact retry so a correct password re-runs the original action instead
-  // of making the admin redo the click, and the only alternative used to be
-  // a full logout/login.
-  const [stepUpPrompt, setStepUpPrompt] = useState<{ id: string; fn: () => Promise<unknown>; failMsg: string } | null>(null);
-  const [stepUpPassword, setStepUpPassword] = useState('');
-  const [stepUpError, setStepUpError] = useState<string | null>(null);
-
-  const { data, isPending, isError, refetch } = useAdminOrders(status || undefined, flaggedOnly || undefined);
-  const updateStatus = useUpdateOrderStatus();
-  const markCollected = useMarkOrderCollected();
-  const reviewOrder = useReviewOrder();
-  const stepUp = useStepUp();
+  const statuses = statusFilter ? (statusFilter.split(',') as OrderStatus[]) : undefined;
+  const { data, isPending, isError, refetch } = useAdminOrders(statuses, flaggedOnly || undefined, awaitingCod || undefined);
 
   const total = data?.length ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -133,103 +110,6 @@ export default function AdminOrdersPage() {
     () => (data ?? []).slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
     [data, safePage]
   );
-
-  const run = async (id: string, fn: () => Promise<unknown>, failMsg: string) => {
-    setActionError(null);
-    setBusyId(id);
-    try {
-      await fn();
-    } catch (e) {
-      if (isApiError(e) && e.code === 'STEP_UP_REQUIRED') {
-        setStepUpPrompt({ id, fn, failMsg });
-      } else {
-        setActionError(e instanceof Error ? e.message : failMsg);
-      }
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const closeStepUp = () => {
-    setStepUpPrompt(null);
-    setStepUpPassword('');
-    setStepUpError(null);
-  };
-
-  const submitStepUp = async () => {
-    if (!stepUpPrompt) return;
-    setStepUpError(null);
-    try {
-      await stepUp.mutateAsync(stepUpPassword);
-    } catch {
-      setStepUpError(t('Incorrect password.', 'كلمة المرور غير صحيحة.'));
-      return;
-    }
-    const { id, fn, failMsg } = stepUpPrompt;
-    closeStepUp();
-    await run(id, fn, failMsg);
-  };
-
-  const openDaysModal = (o: Order, mode: 'ship' | 'edit') => {
-    setDaysInput(o.estimatedDeliveryDays != null ? String(o.estimatedDeliveryDays) : '');
-    setDaysError(null);
-    setPending({ kind: 'days', order: o, status: mode === 'ship' ? 'SHIPPED' : o.status, mode });
-  };
-
-  // Called from the row's status <Select>. Confirmable statuses and the first
-  // move to SHIPPED open a modal; everything else applies immediately.
-  const changeStatus = (o: Order, next: OrderStatus) => {
-    if (next === o.status) return;
-    if (CONFIRM_STATUSES.includes(next)) {
-      setPending({ kind: 'confirm', order: o, status: next });
-      return;
-    }
-    if (next === 'SHIPPED') {
-      openDaysModal(o, 'ship');
-      return;
-    }
-    run(
-      o.id,
-      () => updateStatus.mutateAsync({ id: o.id, status: next }),
-      t('Status change failed', 'فشل تغيير الحالة')
-    );
-  };
-
-  const closeModal = () => setPending(null);
-
-  const confirmStatusChange = async () => {
-    if (pending?.kind !== 'confirm') return;
-    const { order, status: next } = pending;
-    closeModal();
-    await run(
-      order.id,
-      () => updateStatus.mutateAsync({ id: order.id, status: next }),
-      t('Status change failed', 'فشل تغيير الحالة')
-    );
-  };
-
-  const submitDays = async () => {
-    if (pending?.kind !== 'days') return;
-    const trimmed = daysInput.trim();
-    let estimatedDeliveryDays: number | null;
-    if (trimmed === '') {
-      estimatedDeliveryDays = null;
-    } else {
-      const n = Number(trimmed);
-      if (!Number.isInteger(n) || n < 0 || n > 90) {
-        setDaysError(t('Enter a whole number of days (0–90), or leave blank.', 'أدخل عدد أيام صحيح (0–90)، أو اتركه فارغًا.'));
-        return;
-      }
-      estimatedDeliveryDays = n;
-    }
-    const { order, status: next } = pending;
-    closeModal();
-    await run(
-      order.id,
-      () => updateStatus.mutateAsync({ id: order.id, status: next, estimatedDeliveryDays }),
-      t('Update failed', 'فشل التحديث')
-    );
-  };
 
   const itemCount = (o: Order) => o.items.reduce((n, i) => n + i.quantity, 0);
   const regionLabel = (value?: string | null) => {
@@ -241,7 +121,7 @@ export default function AdminOrdersPage() {
     <div className="section--tight">
       <div className="admin-page__head">
         <h1>{t('Orders', 'الطلبات')}</h1>
-        <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'center' }}>
+        <div className="admin-page__head-actions">
           {canManageBlacklist && (
             <Link href={`/${locale}/admin/orders/blacklist`} className="btn btn--outline">
               {t('Blacklist', 'قائمة الحظر')}
@@ -251,30 +131,37 @@ export default function AdminOrdersPage() {
             <Icon as={Settings2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
             {t('Print settings', 'إعدادات الطباعة')}
           </Button>
-          <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-            <input
-              type="checkbox"
-              checked={flaggedOnly}
-              onChange={(e) => {
-                setFlaggedOnly(e.target.checked);
-                setPage(1);
-              }}
-            />
-            {t('Flagged only', 'المُعلَّمة فقط')}
-          </label>
+          <Choice
+            type="checkbox"
+            label={t('Flagged only', 'المُعلَّمة فقط')}
+            checked={flaggedOnly}
+            onChange={(e) => {
+              setFlaggedOnly(e.target.checked);
+              setPage(1);
+            }}
+          />
+          <Choice
+            type="checkbox"
+            label={t('Awaiting COD', 'بانتظار تحصيل الدفع')}
+            checked={awaitingCod}
+            onChange={(e) => {
+              setAwaitingCod(e.target.checked);
+              setPage(1);
+            }}
+          />
           <label>
             <span className="visually-hidden">{t('Filter by status', 'تصفية حسب الحالة')}</span>
             <Select
-              value={status}
+              value={statusFilter}
               onChange={(e) => {
-                setStatus(e.target.value as OrderStatus | '');
+                setStatusFilter(e.target.value);
                 setPage(1);
               }}
             >
               <option value="">{t('All statuses', 'كل الحالات')}</option>
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
+              {STATUS_FILTER_OPTIONS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {t(s.en, s.ar)}
                 </option>
               ))}
             </Select>
@@ -282,9 +169,9 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
-      {actionError && (
+      {oa.actionError && (
         <Alert tone="danger" className="stack">
-          {actionError}
+          {oa.actionError}
         </Alert>
       )}
 
@@ -305,9 +192,11 @@ export default function AdminOrdersPage() {
           title={
             flaggedOnly
               ? t('No flagged orders', 'لا طلبات معلَّمة')
-              : status
-                ? t('No orders with this status', 'لا طلبات بهذه الحالة')
-                : t('No orders yet', 'لا توجد طلبات بعد')
+              : awaitingCod
+                ? t('No orders awaiting COD collection', 'لا طلبات بانتظار تحصيل الدفع')
+                : statusFilter
+                  ? t('No orders with this status', 'لا طلبات بهذه الحالة')
+                  : t('No orders yet', 'لا توجد طلبات بعد')
           }
         />
       ) : (
@@ -327,7 +216,7 @@ export default function AdminOrdersPage() {
             </thead>
             <tbody>
               {pageRows.map((o) => {
-                const busy = busyId === o.id;
+                const busy = oa.busyId === o.id;
                 const collected = o.paymentStatus === 'COLLECTED';
                 return (
                   <tr key={o.id} aria-busy={busy || undefined}>
@@ -401,13 +290,7 @@ export default function AdminOrdersPage() {
                             variant="ghost"
                             size="sm"
                             disabled={busy}
-                            onClick={() =>
-                              run(
-                                o.id,
-                                () => markCollected.mutateAsync({ id: o.id, collected: !collected }),
-                                t('Update failed', 'فشل التحديث')
-                              )
-                            }
+                            onClick={() => oa.toggleCollected(o, !collected)}
                           >
                             {collected ? t('Mark unpaid', 'إلغاء التحصيل') : t('Mark collected', 'تم التحصيل')}
                           </Button>
@@ -416,7 +299,7 @@ export default function AdminOrdersPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setPrintOrder(o)}
+                            onClick={() => printReceipt(o)}
                             title={
                               printerName
                                 ? t(`Print a delivery receipt — select "${printerName}" in the dialog`, `طباعة إيصال توصيل — اختر "${printerName}" من نافذة الطباعة`)
@@ -436,7 +319,7 @@ export default function AdminOrdersPage() {
                           <button
                             type="button"
                             className="admin-order-eta"
-                            onClick={() => openDaysModal(o, 'edit')}
+                            onClick={() => oa.openDaysModal(o, 'edit')}
                             disabled={busy}
                             title={t('Edit the delivery estimate', 'تعديل مدة التوصيل')}
                           >
@@ -451,13 +334,7 @@ export default function AdminOrdersPage() {
                             variant="ghost"
                             size="sm"
                             disabled={busy}
-                            onClick={() =>
-                              run(
-                                o.id,
-                                () => reviewOrder.mutateAsync(o.id),
-                                t('Update failed', 'فشل التحديث')
-                              )
-                            }
+                            onClick={() => oa.markReviewed(o)}
                           >
                             {t('Mark reviewed', 'وضع علامة كمُراجَع')}
                           </Button>
@@ -466,9 +343,9 @@ export default function AdminOrdersPage() {
                           aria-label={t(`Change status for ${o.orderNumber}`, `تغيير حالة ${o.orderNumber}`)}
                           value={o.status}
                           disabled={busy}
-                          onChange={(e) => changeStatus(o, e.target.value as OrderStatus)}
+                          onChange={(e) => oa.changeStatus(o, e.target.value as OrderStatus)}
                         >
-                          {STATUSES.map((s) => (
+                          {ORDER_STATUSES.map((s) => (
                             <option key={s} value={s}>
                               {s}
                             </option>
@@ -486,99 +363,7 @@ export default function AdminOrdersPage() {
         </>
       )}
 
-      {pending?.kind === 'confirm' && (
-        <Modal
-          open
-          onClose={closeModal}
-          title={t(`Change status of ${pending.order.orderNumber}`, `تغيير حالة ${pending.order.orderNumber}`)}
-          closeLabel={t('Close', 'إغلاق')}
-        >
-          <div className="admin-modal">
-            <h2 className="admin-modal__title">
-              {pending.status === 'CANCELLED'
-                ? t('Cancel this order?', 'إلغاء هذا الطلب؟')
-                : t('Mark this order as returned?', 'وضع علامة "مُرتجَع" على هذا الطلب؟')}
-            </h2>
-            <p className="admin-modal__body">
-              {pending.status === 'CANCELLED'
-                ? t(
-                    `Order ${pending.order.orderNumber} will be cancelled — its items go back into stock and the customer is emailed.`,
-                    `سيُلغى الطلب ${pending.order.orderNumber} — تُعاد قطعه إلى المخزون ويُرسَل بريد إلى الزبون.`
-                  )
-                : t(
-                    `Order ${pending.order.orderNumber} will be marked as returned.`,
-                    `سيوضع على الطلب ${pending.order.orderNumber} علامة "مُرتجَع".`
-                  )}
-            </p>
-            <div className="admin-modal__actions">
-              <Button variant="ghost" onClick={closeModal}>
-                {t('Keep as is', 'الإبقاء كما هو')}
-              </Button>
-              <Button
-                variant={pending.status === 'CANCELLED' ? 'danger' : 'primary'}
-                onClick={confirmStatusChange}
-              >
-                {pending.status === 'CANCELLED'
-                  ? t('Cancel order', 'إلغاء الطلب')
-                  : t('Mark returned', 'وضع علامة مُرتجَع')}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {pending?.kind === 'days' && (
-        <Modal
-          open
-          onClose={closeModal}
-          title={t('Delivery estimate', 'مدة التوصيل المتوقعة')}
-          closeLabel={t('Close', 'إغلاق')}
-        >
-          <form
-            className="admin-modal"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void submitDays();
-            }}
-          >
-            <h2 className="admin-modal__title">
-              {pending.mode === 'ship'
-                ? t(`Ship order ${pending.order.orderNumber}`, `شحن الطلب ${pending.order.orderNumber}`)
-                : t(`Delivery estimate — ${pending.order.orderNumber}`, `مدة التوصيل — ${pending.order.orderNumber}`)}
-            </h2>
-            <Field
-              label={t('Arrives in about (days)', 'يصل خلال (أيام)')}
-              hint={t(
-                'Leave blank if unknown. Shown to the customer in the shipped email.',
-                'اتركه فارغًا إن لم يكن معروفًا. يظهر للزبون في بريد الشحن.'
-              )}
-              error={daysError ?? undefined}
-            >
-              {(p) => (
-                <Input
-                  {...p}
-                  type="number"
-                  min={0}
-                  max={90}
-                  step={1}
-                  inputMode="numeric"
-                  value={daysInput}
-                  onChange={(e) => setDaysInput(e.target.value)}
-                  placeholder={t('e.g. 3', 'مثال: 3')}
-                />
-              )}
-            </Field>
-            <div className="admin-modal__actions">
-              <Button type="button" variant="ghost" onClick={closeModal}>
-                {t('Cancel', 'إلغاء')}
-              </Button>
-              <Button type="submit" variant="primary">
-                {pending.mode === 'ship' ? t('Ship order', 'شحن الطلب') : t('Save estimate', 'حفظ المدة')}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
+      <OrderActionModals locale={locale} oa={oa} />
 
       {printSettingsOpen && (
         <Modal
@@ -637,53 +422,7 @@ export default function AdminOrdersPage() {
         </Modal>
       )}
 
-      {printOrder && <OrderReceipt order={printOrder} locale={locale} brandName={brandName} format={receiptFormat} />}
-
-      {stepUpPrompt && (
-        <Modal
-          open
-          onClose={closeStepUp}
-          title={t('Re-enter your password', 'أعد إدخال كلمة المرور')}
-          closeLabel={t('Close', 'إغلاق')}
-        >
-          <form
-            className="admin-modal"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void submitStepUp();
-            }}
-          >
-            <h2 className="admin-modal__title">{t('Re-enter your password', 'أعد إدخال كلمة المرور')}</h2>
-            <p className="admin-modal__body">
-              {t(
-                'Your session needs a fresh password check before making this change.',
-                'يحتاج جلستك إلى تحقق حديث من كلمة المرور قبل إجراء هذا التغيير.'
-              )}
-            </p>
-            <Field label={t('Password', 'كلمة المرور')}>
-              {(p) => (
-                <Input
-                  {...p}
-                  type="password"
-                  autoFocus
-                  value={stepUpPassword}
-                  onChange={(e) => setStepUpPassword(e.target.value)}
-                  disabled={stepUp.isPending}
-                />
-              )}
-            </Field>
-            {stepUpError && <Alert tone="danger">{stepUpError}</Alert>}
-            <div className="admin-modal__actions">
-              <Button type="button" variant="ghost" onClick={closeStepUp} disabled={stepUp.isPending}>
-                {t('Cancel', 'إلغاء')}
-              </Button>
-              <Button type="submit" variant="primary" loading={stepUp.isPending} disabled={!stepUpPassword}>
-                {t('Confirm', 'تأكيد')}
-              </Button>
-            </div>
-          </form>
-        </Modal>
-      )}
+      {receiptNode}
     </div>
   );
 }

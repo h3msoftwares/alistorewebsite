@@ -35,10 +35,10 @@ export function useOrderByToken(token: string | undefined) {
   });
 }
 
-export function useAdminOrders(status?: OrderStatus, flagged?: boolean) {
+export function useAdminOrders(status?: OrderStatus[], flagged?: boolean, awaitingCod?: boolean) {
   return useQuery({
-    queryKey: queryKeys.orders.admin(status, flagged),
-    queryFn: () => ordersApi.adminListOrders(status, flagged),
+    queryKey: queryKeys.orders.admin(status, flagged, awaitingCod),
+    queryFn: () => ordersApi.adminListOrders(status, flagged, awaitingCod),
   });
 }
 
