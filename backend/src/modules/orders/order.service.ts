@@ -8,6 +8,7 @@ import {
   sendOrderPlacedNotifications,
   sendOrderCancelledNotifications,
   sendOrderShippedNotifications,
+  sendOwnerFlaggedNotification,
 } from '../../lib/notifications/notification.service';
 import { isBlacklisted } from '../blacklist/blacklist.service';
 import { activePromotions } from '../discounts/promotion.service';
@@ -148,12 +149,13 @@ async function mintAccessToken(db: DbClient, orderId: string): Promise<string> {
 }
 
 /** Looks up a live (unexpired) OrderAccessToken by its raw value. Used by
- *  both the tracking view and token-based cancellation — a token is never
+ *  the tracking view, token-based cancellation, and (exported) the token-
+ *  based return-request routes in return.service.ts — a token is never
  *  single-use, so no "consumed" bookkeeping here (unlike CheckoutOtp). */
-async function findValidAccessToken(rawToken: string) {
+export async function findValidAccessToken(rawToken: string) {
   return prisma.orderAccessToken.findFirst({
     where: { tokenHash: hashToken(rawToken), expiresAt: { gt: new Date() } },
-    include: { order: { include: { items: true } } },
+    include: { order: { include: { items: true, returns: { include: { items: true } } } } },
   });
 }
 
@@ -672,6 +674,9 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       action: 'order.flagged',
       metadata: { orderNumber: order.orderNumber, reason: order.flaggedReason },
     });
+    void sendOwnerFlaggedNotification(order).catch((err) => {
+      console.error('[order.service] failed to send order-flagged notification', err);
+    });
   }
 
   // Fired after the transaction commits — never before, so a customer can
@@ -698,7 +703,7 @@ export async function listMyOrders(userID: string) {
 export async function getOrderById(id: string, userID?: string) {
   const order = await prisma.order.findFirst({
     where: { id, ...(userID ? { userID } : {}) },
-    include: { items: true, address: true },
+    include: { items: true, address: true, returns: { include: { items: true } } },
   });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
   return order;
@@ -864,9 +869,17 @@ export async function lookupOrder(orderNumber: string, contact: string): Promise
 
 // ---- Admin ----
 
-export async function listAllOrders(status?: OrderStatus, flagged?: boolean) {
+export async function listAllOrders(statuses?: OrderStatus[], flagged?: boolean, awaitingCod?: boolean) {
+  // awaitingCod implies its own status (DELIVERED) — takes precedence over an
+  // explicit status list rather than combining into one `where.status` key
+  // (an object-spread merge would just let one silently clobber the other).
+  const statusFilter = awaitingCod
+    ? { status: 'DELIVERED' as const, paymentMethod: 'COD' as const, paymentStatus: 'PENDING' as const }
+    : statuses?.length
+      ? { status: { in: statuses } }
+      : {};
   return prisma.order.findMany({
-    where: { ...(status ? { status } : {}), ...(flagged ? { flaggedForReview: true } : {}) },
+    where: { ...statusFilter, ...(flagged ? { flaggedForReview: true } : {}) },
     orderBy: { dateCreated: 'desc' },
     include: { items: true, user: { select: { id: true, name: true, email: true, phone: true } } },
   });
@@ -932,6 +945,22 @@ export async function updateOrderStatus(
       // too would restore the same units a second time.
       if (existing.status === 'CANCELLED') {
         throw new AppError('CONFLICT', 'This order was cancelled and cannot be marked returned');
+      }
+      // This whole-order path predates per-item returns (see the Return
+      // model) and knows nothing about them — an admin force-restocking
+      // every line here after a Return already reached RECEIVED for one of
+      // them would restore those units a second time. Refuse and point at
+      // the Returns page instead, which already has an active claim on
+      // whichever quantities are in flight.
+      const activeReturn = await tx.return.findFirst({
+        where: { orderID: id, status: { in: ['REQUESTED', 'APPROVED', 'IN_TRANSIT', 'RECEIVED'] } },
+        select: { id: true },
+      });
+      if (activeReturn) {
+        throw new AppError(
+          'CONFLICT',
+          'This order has an active per-item return — use the Returns page instead of marking the whole order returned.'
+        );
       }
 
       const claim = await tx.order.updateMany({
@@ -1063,6 +1092,7 @@ export async function salesDashboard() {
     deliveredRevenue,
     flaggedOrders,
     awaitingCodCollection,
+    confirmedNotDelivered,
     lowStockVariants,
     outOfStockVariants,
     recentOrders,
@@ -1077,6 +1107,8 @@ export async function salesDashboard() {
     prisma.order.count({
       where: { paymentMethod: 'COD', paymentStatus: 'PENDING', status: 'DELIVERED' },
     }),
+    // Accepted and (maybe) shipped, but not yet at the customer.
+    prisma.order.count({ where: { status: { in: ['CONFIRMED', 'SHIPPED'] } } }),
     prisma.productVariant.count({
       where: { stockQuantity: { gt: 0, lte: LOW_STOCK_THRESHOLD }, product: { deletedAt: null } },
     }),
@@ -1106,6 +1138,7 @@ export async function salesDashboard() {
     totalRevenue: Number(deliveredRevenue._sum.subtotal ?? 0),
     flaggedOrders,
     awaitingCodCollection,
+    confirmedNotDelivered,
     lowStockVariants,
     outOfStockVariants,
     recentOrders,

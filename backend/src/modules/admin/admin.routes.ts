@@ -24,6 +24,8 @@ import blacklistRoutes from '../blacklist/blacklist.routes';
 import pushRoutes from '../push/push.routes';
 import roleRoutes from '../rbac/role.routes';
 import customerRoutes from '../customers/customers.routes';
+import returnRoutes from '../returns/return.routes';
+import notificationRoutes from '../notifications/notification.routes';
 
 const router = Router();
 
@@ -83,8 +85,15 @@ router.use('/customers', customerRoutes);
 
 // Anti-abuse block list sits with order operations.
 router.use('/blacklist', requirePermission('orders:manage'), blacklistRoutes);
+// Per-item returns — its own view/manage split, so it applies requirePermission
+// per-route itself rather than one blanket permission at the mount (see
+// return.routes.ts, same shape as rbac/role.routes.ts).
+router.use('/returns', returnRoutes);
 // Any admin can register their own device for push alerts — no extra permission.
 router.use('/push-subscriptions', pushRoutes);
+// Same "any admin, no extra permission" shape — row-level filtering inside
+// the service already scopes what each caller actually sees.
+router.use('/notifications', notificationRoutes);
 
 router.use('/', roleRoutes);
 

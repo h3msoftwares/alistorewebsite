@@ -69,9 +69,26 @@ export const updateOrderStatusSchema = z.object({
   estimatedDeliveryDays: z.number().int().min(0).max(90).nullish(),
 });
 
+// One status, or several as a comma-separated list (e.g. `?status=CONFIRMED,SHIPPED`
+// for the dashboard's "confirmed but not delivered" shortcut) — the admin
+// orders list only ever needed a single value until that shortcut needed an
+// OR across two statuses, so this stays additive/backward-compatible rather
+// than introducing a separate multi-value param.
+const statusListQuery = z
+  .preprocess(
+    (v) => (typeof v === 'string' ? v.split(',').map((s) => s.trim()).filter(Boolean) : v),
+    z.array(orderStatus).min(1)
+  )
+  .optional();
+
 export const adminListOrdersQuerySchema = z.object({
-  status: orderStatus.optional(),
+  status: statusListQuery,
   flagged: z.coerce.boolean().optional(),
+  // Delivered COD orders whose cash hasn't been marked collected — matches
+  // the dashboard's "Awaiting COD" tile exactly (see order.service.ts
+  // salesDashboard()). Mutually exclusive with `status` in practice (the
+  // service gives it precedence — see listAllOrders()).
+  awaitingCod: z.coerce.boolean().optional(),
 });
 
 export const markCollectedSchema = z.object({

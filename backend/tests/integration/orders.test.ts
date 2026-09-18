@@ -319,6 +319,45 @@ describe('Orders API', () => {
       expect((await request(app).get('/api/admin/orders?status=NOPE').set(bearer(token))).status).toBe(400);
     });
 
+    it('filters by a comma-separated status list, and by awaitingCod', async () => {
+      const admin = await createAdmin();
+
+      const buyerA = await createCustomer();
+      await request(app).post('/api/cart/items').set(bearer(buyerA.token)).send({ variantId, quantity: 1 });
+      const orderA = (await request(app).post('/api/orders/checkout').set(bearer(buyerA.token)).send(delivery)).body
+        .order;
+      await request(app)
+        .patch(`/api/admin/orders/${orderA.id}/status`)
+        .set(bearer(admin.token))
+        .send({ status: 'CONFIRMED' });
+
+      const buyerB = await createCustomer();
+      await request(app).post('/api/cart/items').set(bearer(buyerB.token)).send({ variantId, quantity: 1 });
+      const orderB = (await request(app).post('/api/orders/checkout').set(bearer(buyerB.token)).send(delivery)).body
+        .order;
+      for (const status of ['CONFIRMED', 'SHIPPED', 'DELIVERED'] as const) {
+        await request(app)
+          .patch(`/api/admin/orders/${orderB.id}/status`)
+          .set(bearer(admin.token))
+          .send({ status });
+      }
+      // orderB is now DELIVERED, COD, and not yet marked collected.
+
+      const inTransit = await request(app)
+        .get('/api/admin/orders?status=CONFIRMED,SHIPPED')
+        .set(bearer(admin.token));
+      expect(inTransit.body.orders.map((o: { id: string }) => o.id)).toEqual([orderA.id]);
+
+      const awaitingCod = await request(app).get('/api/admin/orders?awaitingCod=true').set(bearer(admin.token));
+      expect(awaitingCod.body.orders.map((o: { id: string }) => o.id)).toEqual([orderB.id]);
+
+      // awaitingCod takes precedence over an (incompatible) explicit status.
+      const both = await request(app)
+        .get('/api/admin/orders?status=PENDING&awaitingCod=true')
+        .set(bearer(admin.token));
+      expect(both.body.orders.map((o: { id: string }) => o.id)).toEqual([orderB.id]);
+    });
+
     it('updates status and marks COD collected; dashboard aggregates', async () => {
       const buyer = await createCustomer();
       await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId, quantity: 2 });
@@ -352,6 +391,8 @@ describe('Orders API', () => {
         flaggedOrders: 0,
         // order is DELIVERED and COD was marked collected above
         awaitingCodCollection: 0,
+        // order is DELIVERED, not CONFIRMED/SHIPPED
+        confirmedNotDelivered: 0,
         lowStockVariants: expect.any(Number),
         outOfStockVariants: expect.any(Number),
       });

@@ -28,7 +28,7 @@ vi.mock('web-push', () => ({
 
 import webpush from 'web-push';
 import { prisma } from '../../src/config/prisma';
-import { createUser } from '../helpers/auth';
+import { createUser, createStaffWith } from '../helpers/auth';
 import { sendPushToAllAdmins } from '../../src/lib/push';
 
 const mockSend = vi.mocked(webpush.sendNotification);
@@ -107,5 +107,31 @@ describe('sendPushToAllAdmins', () => {
     mockSend.mockRejectedValue(new Error('network down'));
 
     await expect(sendPushToAllAdmins({ title: 'x', body: 'y' })).resolves.toBeUndefined();
+  });
+
+  describe('requiredPermission filter', () => {
+    it('only pushes to subscribers who actually hold the permission', async () => {
+      mockSend.mockResolvedValue({ statusCode: 201, body: '', headers: {} });
+      const { user: admin } = await createUser({ role: 'ADMIN' }); // implicitly holds everything
+      const withView = await createStaffWith(['orders:view']);
+      const withoutView = await createStaffWith(['products:manage']);
+      await makeSubscription(admin.id);
+      await makeSubscription(withView.user.id);
+      await makeSubscription(withoutView.user.id);
+
+      await sendPushToAllAdmins({ title: 'New order', body: 'x' }, 'orders:view');
+
+      expect(mockSend).toHaveBeenCalledTimes(2);
+    });
+
+    it('with no requiredPermission, pushes to every STAFF/ADMIN regardless of their permissions', async () => {
+      mockSend.mockResolvedValue({ statusCode: 201, body: '', headers: {} });
+      const noPerms = await createStaffWith([]);
+      await makeSubscription(noPerms.user.id);
+
+      await sendPushToAllAdmins({ title: 'New order', body: 'x' });
+
+      expect(mockSend).toHaveBeenCalledTimes(1);
+    });
   });
 });
