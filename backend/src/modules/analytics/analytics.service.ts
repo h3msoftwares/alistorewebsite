@@ -338,16 +338,18 @@ export async function products(q: AnalyticsRangeQuery) {
 
   const [rows, views] = await Promise.all([
     prisma.$queryRaw<
-      { name: string; sku: string; units: number; revenue: number; orders: number; buyers: number }[]
+      { name: string; sku: string; productId: string; units: number; revenue: number; orders: number; buyers: number }[]
     >(Prisma.sql`
-      SELECT oi."productName" AS name, oi."productSKU" AS sku,
+      SELECT oi."productName" AS name, oi."productSKU" AS sku, pv."productID" AS "productId",
         SUM(oi."quantity")::int          AS units,
         SUM(oi."lineTotal")::float8      AS revenue,
         COUNT(DISTINCT oi."orderID")::int AS orders,
         COUNT(DISTINCT o."userID")::int   AS buyers
-      FROM "orderitem" oi JOIN "order" o ON o."id" = oi."orderID"
+      FROM "orderitem" oi
+      JOIN "order" o ON o."id" = oi."orderID"
+      JOIN "productvariant" pv ON pv."id" = oi."variantID"
       WHERE o."dateCreated" BETWEEN ${from} AND ${to} AND o."status" <> ${CANCELLED}
-      GROUP BY 1, 2
+      GROUP BY 1, 2, pv."productID"
       ORDER BY revenue DESC
       LIMIT 100
     `),
