@@ -29,17 +29,29 @@ export function useAdminNavItems(locale: string): AdminNavItem[] {
   const { has } = usePermissions();
   const { user } = useAuth();
 
-  const items: AdminNavItem[] = ADMIN_SECTIONS.filter((s) => has(s.permission)).map((s) => {
+  // Sections can nest (Orders `/orders` vs Returns `/orders/returns`), so a
+  // plain `startsWith` would light up both for a `/orders/returns` pathname.
+  // Only the most specific (longest-href) match should be active.
+  const candidates = ADMIN_SECTIONS.filter((s) => has(s.permission)).map((s) => {
     const href = `${base}${s.href}`;
-    return {
-      key: s.href || 'dashboard',
-      href,
-      label: isAr ? s.labelAr : s.labelEn,
-      icon: s.icon,
-      group: s.group,
-      active: s.href === '' ? pathname === base : pathname.startsWith(href),
-    };
+    const matches = s.href === '' ? pathname === base : pathname.startsWith(href);
+    return { section: s, href, matches };
   });
+  const bestMatch = candidates
+    .filter((c) => c.matches)
+    .reduce<(typeof candidates)[number] | null>(
+      (best, c) => (!best || c.href.length > best.href.length ? c : best),
+      null
+    );
+
+  const items: AdminNavItem[] = candidates.map(({ section: s, href }) => ({
+    key: s.href || 'dashboard',
+    href,
+    label: isAr ? s.labelAr : s.labelEn,
+    icon: s.icon,
+    group: s.group,
+    active: href === bestMatch?.href,
+  }));
 
   // Database backups & outgoing mail: gated on the role itself (ADMIN only),
   // not the permission system every other section uses — see the identical
