@@ -323,20 +323,20 @@ async function main() {
   // few. Fixed IDs in a distinct 5xxx range so a DB seeded from both scripts
   // never collides with seed.ts's own 00f1–00f5 promotions. ----
   const bigCatalogSale = await prisma.promotion.upsert({
-    where: { id: '00000000-0000-0000-0000-000000005000' },
+    where: { id: '00000000-0000-4000-8000-000000005000' },
     update: { nameEn: 'Big Catalog Sale', nameAr: 'تخفيضات الكتالوج الكبير', status: 'ACTIVE', type: 'PERCENT', value: 10, priority: 0, stackable: true, appliesToAll: true },
-    create: { id: '00000000-0000-0000-0000-000000005000', nameEn: 'Big Catalog Sale', nameAr: 'تخفيضات الكتالوج الكبير', status: 'ACTIVE', type: 'PERCENT', value: 10, priority: 0, stackable: true, appliesToAll: true },
+    create: { id: '00000000-0000-4000-8000-000000005000', nameEn: 'Big Catalog Sale', nameAr: 'تخفيضات الكتالوج الكبير', status: 'ACTIVE', type: 'PERCENT', value: 10, priority: 0, stackable: true, appliesToAll: true },
   });
   await prisma.promotionProduct.deleteMany({ where: { promotionID: bigCatalogSale.id } });
   await prisma.promotionCategory.deleteMany({ where: { promotionID: bigCatalogSale.id } });
   await prisma.promotionCollection.deleteMany({ where: { promotionID: bigCatalogSale.id } });
 
   const rootPromotionDefs = [
-    { rootSlug: 'women', id: '00000000-0000-0000-0000-000000005001', nameEn: 'Women Seasonal Sale', nameAr: 'تخفيضات موسم النساء', type: 'PERCENT' as const, value: 15, priority: 1, stackable: true },
-    { rootSlug: 'men', id: '00000000-0000-0000-0000-000000005002', nameEn: 'Men Seasonal Sale', nameAr: 'تخفيضات موسم الرجال', type: 'PERCENT' as const, value: 15, priority: 1, stackable: true },
+    { rootSlug: 'women', id: '00000000-0000-4000-8000-000000005001', nameEn: 'Women Seasonal Sale', nameAr: 'تخفيضات موسم النساء', type: 'PERCENT' as const, value: 15, priority: 1, stackable: true },
+    { rootSlug: 'men', id: '00000000-0000-4000-8000-000000005002', nameEn: 'Men Seasonal Sale', nameAr: 'تخفيضات موسم الرجال', type: 'PERCENT' as const, value: 15, priority: 1, stackable: true },
     // Higher priority + non-stackable so it demonstrably wins over the
     // site-wide sale above for kids products (single-winner-by-priority).
-    { rootSlug: 'kids', id: '00000000-0000-0000-0000-000000005003', nameEn: 'Kids VIP Deal', nameAr: 'عرض الأطفال المميز', type: 'AMOUNT' as const, value: 5, priority: 5, stackable: false },
+    { rootSlug: 'kids', id: '00000000-0000-4000-8000-000000005003', nameEn: 'Kids VIP Deal', nameAr: 'عرض الأطفال المميز', type: 'AMOUNT' as const, value: 5, priority: 5, stackable: false },
   ];
   for (const p of rootPromotionDefs) {
     const rootId = rootCategoryId.get(p.rootSlug)!;

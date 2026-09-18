@@ -2037,7 +2037,7 @@ async function main() {
     take: 12,
   });
   const sitePromotion = await prisma.promotion.upsert({
-    where: { id: '00000000-0000-0000-0000-0000000000f1' },
+    where: { id: '00000000-0000-4000-8000-0000000000f1' },
     update: {
       nameEn: 'Seasonal Promo',
       nameAr: 'عرض الموسم',
@@ -2049,7 +2049,7 @@ async function main() {
       appliesToAll: false,
     },
     create: {
-      id: '00000000-0000-0000-0000-0000000000f1',
+      id: '00000000-0000-4000-8000-0000000000f1',
       nameEn: 'Seasonal Promo',
       nameAr: 'عرض الموسم',
       status: 'ACTIVE',
@@ -2076,7 +2076,7 @@ async function main() {
   // sale — visibly, on the real product pages under that branch.
   const menShoesSport = categories.get('men-shoes-sport')!;
   const vipShoeDeal = await prisma.promotion.upsert({
-    where: { id: '00000000-0000-0000-0000-0000000000f2' },
+    where: { id: '00000000-0000-4000-8000-0000000000f2' },
     update: {
       nameEn: 'VIP Shoe Deal',
       nameAr: 'عرض الأحذية المميز',
@@ -2088,7 +2088,7 @@ async function main() {
       appliesToAll: false,
     },
     create: {
-      id: '00000000-0000-0000-0000-0000000000f2',
+      id: '00000000-0000-4000-8000-0000000000f2',
       nameEn: 'VIP Shoe Deal',
       nameAr: 'عرض الأحذية المميز',
       status: 'ACTIVE',
@@ -2107,7 +2107,7 @@ async function main() {
   // Lowest priority AND paused — never actually applies (status gate), even
   // though it targets everything. Proves a PAUSED promotion is inert.
   const flashWeekend = await prisma.promotion.upsert({
-    where: { id: '00000000-0000-0000-0000-0000000000f3' },
+    where: { id: '00000000-0000-4000-8000-0000000000f3' },
     update: {
       nameEn: 'Flash Weekend',
       nameAr: 'عرض نهاية الأسبوع',
@@ -2119,7 +2119,7 @@ async function main() {
       appliesToAll: true,
     },
     create: {
-      id: '00000000-0000-0000-0000-0000000000f3',
+      id: '00000000-0000-4000-8000-0000000000f3',
       nameEn: 'Flash Weekend',
       nameAr: 'عرض نهاية الأسبوع',
       status: 'PAUSED',
@@ -2138,7 +2138,7 @@ async function main() {
   // (below) gets this AMOUNT-off bonus. Explicit startsAt/endsAt window (both
   // in range) so the admin UI actually has date values to show.
   const loyaltyBonus = await prisma.promotion.upsert({
-    where: { id: '00000000-0000-0000-0000-0000000000f4' },
+    where: { id: '00000000-0000-4000-8000-0000000000f4' },
     update: {
       nameEn: 'Loyalty Collection Bonus',
       nameAr: 'مكافأة الولاء',
@@ -2152,7 +2152,7 @@ async function main() {
       endsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     },
     create: {
-      id: '00000000-0000-0000-0000-0000000000f4',
+      id: '00000000-0000-4000-8000-0000000000f4',
       nameEn: 'Loyalty Collection Bonus',
       nameAr: 'مكافأة الولاء',
       status: 'ACTIVE',
@@ -2174,7 +2174,7 @@ async function main() {
   // distinction: this must NOT apply anywhere despite being "ACTIVE".
   const expiredProduct = await prisma.product.findUnique({ where: { sku: 'MEN-SHO-005' }, select: { id: true } });
   const expiredDeal = await prisma.promotion.upsert({
-    where: { id: '00000000-0000-0000-0000-0000000000f5' },
+    where: { id: '00000000-0000-4000-8000-0000000000f5' },
     update: {
       nameEn: 'Expired Deal',
       nameAr: 'عرض منتهي',
@@ -2187,7 +2187,7 @@ async function main() {
       endsAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
     },
     create: {
-      id: '00000000-0000-0000-0000-0000000000f5',
+      id: '00000000-0000-4000-8000-0000000000f5',
       nameEn: 'Expired Deal',
       nameAr: 'عرض منتهي',
       status: 'ACTIVE',
