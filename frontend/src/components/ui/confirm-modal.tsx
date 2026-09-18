@@ -11,7 +11,11 @@ export interface ConfirmModalProps {
   title: string;
   body: ReactNode;
   confirmLabel: string;
-  cancelLabel?: string;
+  /** Required (not defaulted) — there's no shared translation dictionary in
+   *  this app, so a default here would silently render English to Arabic
+   *  locale users with no compiler/lint signal to catch a caller that forgot
+   *  to pass a bilingual label. */
+  cancelLabel: string;
   tone?: 'default' | 'danger';
   loading?: boolean;
 }
@@ -29,7 +33,7 @@ export function ConfirmModal({
   title,
   body,
   confirmLabel,
-  cancelLabel = 'Cancel',
+  cancelLabel,
   tone = 'default',
   loading = false,
 }: ConfirmModalProps) {

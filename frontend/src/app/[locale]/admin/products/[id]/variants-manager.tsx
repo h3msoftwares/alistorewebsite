@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Button } from '@/components/ui';
 import { useSetProductVariants } from '@/hooks/use-catalog';
 import type { ProductVariant } from '@/lib/types';
@@ -47,6 +47,26 @@ export function VariantsManager({
   const [formError, setFormError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  // Tracks whether the admin has actually edited the matrix, so an
+  // unrelated refetch (e.g. saving the product's core fields elsewhere)
+  // can safely re-sync `rows` to fresh server data without clobbering
+  // in-progress typing. Without this, `rows` was seeded once from props
+  // and never updated again, so this table could silently go stale after
+  // any refetch of the parent product query — and a subsequent save from
+  // that stale base could overwrite a concurrent edit made elsewhere.
+  const dirtyRef = useRef(false);
+  const lastSyncedVariantsRef = useRef(variants);
+  useEffect(() => {
+    if (variants === lastSyncedVariantsRef.current) return;
+    lastSyncedVariantsRef.current = variants;
+    if (!dirtyRef.current) setRows(variants.map(toDraftRow));
+  }, [variants]);
+
+  const handleRowsChange = (next: DraftVariantRow[]) => {
+    dirtyRef.current = true;
+    setRows(next);
+  };
+
   const busy = setVariants.isPending;
 
   const onSave = async () => {
@@ -69,6 +89,7 @@ export function VariantsManager({
       });
       // Re-key freshly-created rows to their real ids so the next save
       // updates them instead of creating duplicates.
+      dirtyRef.current = false;
       setRows(saved.map(toDraftRow));
       setSaved(true);
     } catch (e) {
@@ -80,7 +101,7 @@ export function VariantsManager({
     <div className="admin-form__section">
       <p className="admin-form__section-title">{t('Variants', 'المقاسات والألوان')}</p>
 
-      <VariantsMatrix rows={rows} onChange={setRows} errors={errorsByKey} busy={busy} locale={locale} minRows={1} />
+      <VariantsMatrix rows={rows} onChange={handleRowsChange} errors={errorsByKey} busy={busy} locale={locale} minRows={1} />
 
       {formError && (
         <Alert tone="danger" className="stack">

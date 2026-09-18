@@ -362,10 +362,25 @@ export async function refresh(refreshToken: string): Promise<TokenPair> {
     authTime: stored.authTime,
   });
   const accessToken = signAccessToken({ id: user.id, role: user.role }, toEpochSec(stored.authTime));
-  await prisma.refreshToken.update({
-    where: { id: stored.id },
+
+  // Guarded, atomic rotation: only revoke `stored` if it is *still*
+  // unrotated/unrevoked right now. Two concurrent refresh calls presenting
+  // the same token both pass the reuse check above (read before either
+  // writes); without this WHERE guard both writes would succeed and both
+  // children would end up live, defeating reuse detection. With the guard,
+  // exactly one caller wins the update — the loser's newly-minted child is
+  // revoked immediately (never handed to its caller as valid) and the
+  // request fails closed, so a subsequent attempt against the now-rotated
+  // `stored` row correctly falls into the reuse-detected branch above.
+  const rotated = await prisma.refreshToken.updateMany({
+    where: { id: stored.id, revokedAt: null, replacedByTokenID: null },
     data: { revokedAt: new Date(), replacedByTokenID: newTokenID },
   });
+  if (rotated.count === 0) {
+    await prisma.refreshToken.update({ where: { id: newTokenID }, data: { revokedAt: new Date() } });
+    throw new AppError('UNAUTHORIZED', 'Refresh token has already been used');
+  }
+
   return { accessToken, refreshToken: newRefreshToken };
 }
 
