@@ -37,6 +37,20 @@ const baseOrder: Order = {
   ],
 };
 
+describe('<OrderDetailCard> — totals', () => {
+  it('shows no discount row when the order has none', () => {
+    render(<OrderDetailCard locale="en" order={baseOrder} />);
+    expect(screen.queryByText(/Discount/)).not.toBeInTheDocument();
+  });
+
+  it('explains a subtotal/total gap with a Discount row naming the coupon', () => {
+    const order: Order = { ...baseOrder, discountAmount: '10.00', couponCode: 'SAVE10', total: '70.00' };
+    render(<OrderDetailCard locale="en" order={order} />);
+    expect(screen.getByText('Discount (SAVE10)')).toBeInTheDocument();
+    expect(screen.getByText('−$10.00')).toBeInTheDocument();
+  });
+});
+
 describe('<OrderDetailCard> — returns', () => {
   it('shows "Request a return" only when delivered and a callback is passed', () => {
     render(<OrderDetailCard locale="en" order={baseOrder} />);

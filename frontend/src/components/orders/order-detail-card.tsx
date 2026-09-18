@@ -132,6 +132,15 @@ export function OrderDetailCard({
         <span>{t('Subtotal', 'المجموع الفرعي')}</span>
         <span className="is-numeric">{money(Number(order.subtotal))}</span>
       </div>
+      {Number(order.discountAmount ?? 0) > 0 && (
+        <div className="checkout__row">
+          <span>
+            {t('Discount', 'الخصم')}
+            {order.couponCode ? ` (${order.couponCode})` : ''}
+          </span>
+          <span className="is-numeric">−{money(Number(order.discountAmount))}</span>
+        </div>
+      )}
       <div className="checkout__row">
         <span>{t('Delivery', 'التوصيل')}</span>
         <span className="is-numeric">
