@@ -3,7 +3,8 @@
 import { useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Archive, Plus, RotateCcw, Trash2, X } from 'lucide-react';
-import { Alert, Button, CheckList, Choice, ConfirmModal, EmptyState, Field, Icon, Input, ProductGridSkeleton, Select } from '@/components/ui';
+import { Alert, Button, CheckList, Choice, ConfirmModal, DataTable, EmptyState, Field, Icon, Input, Modal, ProductGridSkeleton, Select } from '@/components/ui';
+import { AdminPager } from '@/components/admin/admin-pager';
 import { ImageGallery } from '@/components/admin/image-gallery';
 import {
   useAddCollectionImage,
@@ -71,11 +72,18 @@ function CollectionTypeExplainer({ type, isAr }: { type: Collection['type']; isA
   );
 }
 
+const PRODUCTS_PAGE_SIZE = 20;
+
 /** Product membership. Manual add/remove for MANUAL (the whole membership)
  *  and HYBRID (an INCLUDE overlay on top of the rule-computed set, see
  *  CollectionRulesPanel below) — read-only for AUTOMATED, where membership
  *  comes entirely from rules: still worth showing so an admin editing rules
- *  can see what currently matches, just without add/remove controls. */
+ *  can see what currently matches, just without add/remove controls.
+ *
+ *  The linked list is a table with its own pager (a collection can hold
+ *  hundreds of products — an unbounded <ul> made the page unusably long),
+ *  and adding products moved into its own dialog so the search UI doesn't
+ *  permanently push the table down the page. */
 function CollectionProductsPanel({
   id,
   locale,
@@ -89,8 +97,10 @@ function CollectionProductsPanel({
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { data: linked, isPending } = useCollectionProducts(id);
   const setProducts = useSetCollectionProducts();
+  const [addOpen, setAddOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const { data: results } = useProducts({ search, pageSize: 10 }, { enabled: !readOnly && search.trim().length >= 2 });
+  const { data: results } = useProducts({ search, pageSize: 10 }, { enabled: !readOnly && addOpen && search.trim().length >= 2 });
+  const [page, setPage] = useState(1);
 
   const linkedIds = (linked ?? []).map((p) => p.id);
   const addProduct = (productId: string) => {
@@ -101,12 +111,29 @@ function CollectionProductsPanel({
     setProducts.mutate({ id, productIds: linkedIds.filter((pid) => pid !== productId) });
   };
 
+  const totalPages = Math.max(1, Math.ceil((linked ?? []).length / PRODUCTS_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageItems = (linked ?? []).slice((safePage - 1) * PRODUCTS_PAGE_SIZE, safePage * PRODUCTS_PAGE_SIZE);
+
+  const closeAdd = () => {
+    setAddOpen(false);
+    setSearch('');
+  };
+
   return (
     <div className="admin-form" style={{ marginTop: 'var(--space-7)' }}>
-      <p className="admin-form__section-title">
-        {t('Products', 'المنتجات')}
-        {!isPending && ` (${(linked ?? []).length})`}
-      </p>
+      <div className="admin-page__head-actions" style={{ justifyContent: 'space-between' }}>
+        <p className="admin-form__section-title" style={{ margin: 0 }}>
+          {t('Products', 'المنتجات')}
+          {!isPending && ` (${(linked ?? []).length})`}
+        </p>
+        {!readOnly && (
+          <Button type="button" variant="outline" size="sm" onClick={() => setAddOpen(true)}>
+            <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+            {t('Add products', 'إضافة منتجات')}
+          </Button>
+        )}
+      </div>
       {readOnly && (
         <p className="admin-form__hint">
           {t(
@@ -125,64 +152,83 @@ function CollectionProductsPanel({
             : t('No products in this collection yet.', 'لا توجد منتجات في هذه المجموعة بعد.')}
         </p>
       ) : (
-        <ul role="list" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 'var(--space-2)' }}>
-          {(linked ?? []).map((p) => (
-            <li
-              key={p.id}
-              style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', justifyContent: 'space-between' }}
-            >
-              <span style={{ display: 'flex', gap: 'var(--space-3)' }}>
-                <span>{isAr ? p.nameAr : p.nameEn}</span>
-                <span style={{ color: 'var(--color-text-muted)' }}>{p.sku}</span>
-              </span>
-              {!readOnly && (
-                <button
-                  type="button"
-                  className="icon-btn icon-btn--bordered"
-                  aria-label={t('Remove', 'إزالة')}
-                  title={t('Remove', 'إزالة')}
-                  onClick={() => removeProduct(p.id)}
-                  disabled={setProducts.isPending}
-                >
-                  <Icon as={X} size={14} />
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+        <>
+          <DataTable responsive>
+            <thead>
+              <tr>
+                <th>{t('Product', 'المنتج')}</th>
+                <th>{t('SKU', 'رمز المنتج')}</th>
+                {!readOnly && <th />}
+              </tr>
+            </thead>
+            <tbody>
+              {pageItems.map((p) => (
+                <tr key={p.id}>
+                  <td data-label={t('Product', 'المنتج')}>{isAr ? p.nameAr : p.nameEn}</td>
+                  <td data-label={t('SKU', 'رمز المنتج')}>{p.sku}</td>
+                  {!readOnly && (
+                    <td>
+                      <button
+                        type="button"
+                        className="icon-btn icon-btn--bordered"
+                        aria-label={t('Remove', 'إزالة')}
+                        title={t('Remove', 'إزالة')}
+                        onClick={() => removeProduct(p.id)}
+                        disabled={setProducts.isPending}
+                      >
+                        <Icon as={X} size={14} />
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+          <AdminPager page={safePage} totalPages={totalPages} onPageChange={setPage} locale={locale} />
+        </>
       )}
 
       {!readOnly && (
-        <div style={{ marginTop: 'var(--space-4)' }}>
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('Search products to add…', 'ابحث عن منتجات لإضافتها…')}
-          />
-          {results && results.items.length > 0 && (
-            <ul
-              role="list"
-              style={{ listStyle: 'none', padding: 0, margin: 'var(--space-2) 0 0', display: 'grid', gap: 'var(--space-2)' }}
-            >
-              {results.items
-                .filter((p) => !linkedIds.includes(p.id))
-                .map((p) => (
-                  <li
-                    key={p.id}
-                    style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', justifyContent: 'space-between' }}
-                  >
-                    <span style={{ display: 'flex', gap: 'var(--space-3)' }}>
-                      <span>{isAr ? p.nameAr : p.nameEn}</span>
-                      <span style={{ color: 'var(--color-text-muted)' }}>{p.sku}</span>
-                    </span>
-                    <Button type="button" variant="outline" size="sm" onClick={() => addProduct(p.id)} disabled={setProducts.isPending}>
-                      {t('Add', 'إضافة')}
-                    </Button>
-                  </li>
-                ))}
-            </ul>
-          )}
-        </div>
+        <Modal open={addOpen} onClose={closeAdd} title={t('Add products', 'إضافة منتجات')}>
+          <div className="stack" style={{ padding: 'var(--space-5)' }}>
+            <h2 style={{ margin: 0 }}>{t('Add products', 'إضافة منتجات')}</h2>
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('Search products to add…', 'ابحث عن منتجات لإضافتها…')}
+              autoFocus
+            />
+            {search.trim().length >= 2 && (
+              (results?.items.filter((p) => !linkedIds.includes(p.id)).length ?? 0) === 0 ? (
+                <p className="admin-form__hint">{t('No matching products.', 'لا توجد منتجات مطابقة.')}</p>
+              ) : (
+                <ul role="list" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 'var(--space-2)' }}>
+                  {results?.items
+                    .filter((p) => !linkedIds.includes(p.id))
+                    .map((p) => (
+                      <li
+                        key={p.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', justifyContent: 'space-between' }}
+                      >
+                        <span style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                          <span>{isAr ? p.nameAr : p.nameEn}</span>
+                          <span style={{ color: 'var(--color-text-muted)' }}>{p.sku}</span>
+                        </span>
+                        <Button type="button" variant="outline" size="sm" onClick={() => addProduct(p.id)} disabled={setProducts.isPending}>
+                          {t('Add', 'إضافة')}
+                        </Button>
+                      </li>
+                    ))}
+                </ul>
+              )
+            )}
+            <div className="admin-modal__actions">
+              <Button type="button" variant="primary" onClick={closeAdd}>
+                {t('Done', 'تم')}
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -200,6 +246,16 @@ const FIELD_OPERATORS: Record<CollectionRuleField, CollectionRuleOperator[]> = {
   HAS_ACTIVE_PROMOTION: ['EXISTS'],
   CREATED_AT: ['EQUALS', 'GREATER_THAN', 'GREATER_THAN_OR_EQUAL', 'LESS_THAN', 'LESS_THAN_OR_EQUAL'],
   STOCK_STATUS: ['EQUALS'],
+};
+
+const FIELD_LABEL: Record<CollectionRuleField, { en: string; ar: string }> = {
+  PRICE: { en: 'Price', ar: 'السعر' },
+  COMPARE_AT_PRICE: { en: 'Compare-at price', ar: 'السعر قبل التخفيض' },
+  PRODUCT_STATUS: { en: 'Product status', ar: 'حالة المنتج' },
+  STOCK_STATUS: { en: 'Stock status', ar: 'حالة المخزون' },
+  CATEGORY: { en: 'Category', ar: 'الفئة' },
+  CREATED_AT: { en: 'Date added', ar: 'تاريخ الإضافة' },
+  HAS_ACTIVE_PROMOTION: { en: 'Has an active promotion', ar: 'لديه عرض نشط' },
 };
 
 function defaultValueForField(field: CollectionRuleField): unknown {
@@ -329,24 +385,33 @@ function CollectionRulesPanel({ id, locale, collection }: { id: string; locale: 
   const [saved, setSaved] = useState(false);
   const busy = setRules.isPending;
 
-  const updateRule = (key: string, patch: Partial<DraftRule>) => {
-    setSaved(false);
-    previewRules.reset();
-    setRulesState((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  };
+  // The rule currently open in the add/edit dialog — a draft copy, only
+  // merged into `rules` on "Save rule"/"Add rule" so Cancel discards it
+  // cleanly.
+  const [dialogRule, setDialogRule] = useState<DraftRule | null>(null);
+  const [isNewInDialog, setIsNewInDialog] = useState(false);
+
   const removeRule = (key: string) => {
     setSaved(false);
     previewRules.reset();
     setRulesState((rs) => rs.filter((r) => r.key !== key));
   };
-  const addRule = () => {
+  const openAddRule = () => {
+    const nextGroup = rules.length ? Math.max(...rules.map((r) => r.groupNumber)) + 1 : 0;
+    setDialogRule({ key: newRuleKey(), groupNumber: nextGroup, field: 'PRICE', operator: 'GREATER_THAN_OR_EQUAL', value: 0 });
+    setIsNewInDialog(true);
+  };
+  const openEditRule = (rule: DraftRule) => {
+    setDialogRule({ ...rule });
+    setIsNewInDialog(false);
+  };
+  const closeRuleDialog = () => setDialogRule(null);
+  const saveDialogRule = () => {
+    if (!dialogRule) return;
     setSaved(false);
     previewRules.reset();
-    const nextGroup = rules.length ? Math.max(...rules.map((r) => r.groupNumber)) + 1 : 0;
-    setRulesState((rs) => [
-      ...rs,
-      { key: newRuleKey(), groupNumber: nextGroup, field: 'PRICE', operator: 'GREATER_THAN_OR_EQUAL', value: 0 },
-    ]);
+    setRulesState((rs) => (isNewInDialog ? [...rs, dialogRule] : rs.map((r) => (r.key === dialogRule.key ? dialogRule : r))));
+    setDialogRule(null);
   };
   const runPreview = () => {
     previewRules.mutate({
@@ -369,9 +434,30 @@ function CollectionRulesPanel({ id, locale, collection }: { id: string; locale: 
     }
   };
 
+  const valueDisplay = (rule: DraftRule): string => {
+    switch (rule.field) {
+      case 'HAS_ACTIVE_PROMOTION':
+        return '—';
+      case 'CREATED_AT':
+        return typeof rule.value === 'string' ? rule.value.slice(0, 10) : '';
+      case 'CATEGORY': {
+        const obj = (rule.value ?? {}) as { categoryIds?: string[] };
+        return t(`${(obj.categoryIds ?? []).length} categories`, `${(obj.categoryIds ?? []).length} فئات`);
+      }
+      default:
+        return String(rule.value ?? '');
+    }
+  };
+
   return (
     <div className="admin-form" style={{ marginTop: 'var(--space-7)' }}>
-      <p className="admin-form__section-title">{t('Rules', 'القواعد')}</p>
+      <div className="admin-page__head-actions" style={{ justifyContent: 'space-between' }}>
+        <p className="admin-form__section-title" style={{ margin: 0 }}>{t('Rules', 'القواعد')}</p>
+        <Button type="button" variant="outline" size="sm" onClick={openAddRule} disabled={busy}>
+          <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+          {t('Add rule', 'إضافة قاعدة')}
+        </Button>
+      </div>
       <p className="admin-form__hint">
         {t(
           'Rules with the same group number are ANDed together; different group numbers are ORed.',
@@ -382,22 +468,57 @@ function CollectionRulesPanel({ id, locale, collection }: { id: string; locale: 
       {rules.length === 0 ? (
         <p className="admin-form__hint">{t('No rules yet — this collection matches nothing.', 'لا توجد قواعد بعد — لن تطابق هذه المجموعة أي شيء.')}</p>
       ) : (
-        <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-          {rules.map((rule) => (
-            <div
-              key={rule.key}
-              className="admin-form__row"
-              style={{ alignItems: 'end', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)' }}
-            >
+        <DataTable responsive>
+          <thead>
+            <tr>
+              <th>{t('Group', 'المجموعة')}</th>
+              <th>{t('Field', 'الحقل')}</th>
+              <th>{t('Operator', 'العملية')}</th>
+              <th>{t('Value', 'القيمة')}</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rules.map((rule) => (
+              <tr key={rule.key}>
+                <td data-label={t('Group', 'المجموعة')}>{rule.groupNumber}</td>
+                <td data-label={t('Field', 'الحقل')}>{isAr ? FIELD_LABEL[rule.field].ar : FIELD_LABEL[rule.field].en}</td>
+                <td data-label={t('Operator', 'العملية')}>{rule.operator.replace(/_/g, ' ').toLowerCase()}</td>
+                <td data-label={t('Value', 'القيمة')}>{valueDisplay(rule)}</td>
+                <td>
+                  <span className="admin-row-actions">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => openEditRule(rule)} disabled={busy}>
+                      {t('Edit', 'تعديل')}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => removeRule(rule.key)} disabled={busy}>
+                      {t('Remove', 'إزالة')}
+                    </Button>
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </DataTable>
+      )}
+
+      <Modal
+        open={dialogRule !== null}
+        onClose={closeRuleDialog}
+        title={isNewInDialog ? t('Add rule', 'إضافة قاعدة') : t('Edit rule', 'تعديل القاعدة')}
+      >
+        {dialogRule && (
+          <div className="admin-form" style={{ padding: 'var(--space-5)' }}>
+            <p className="admin-form__section-title">{isNewInDialog ? t('Add rule', 'إضافة قاعدة') : t('Edit rule', 'تعديل القاعدة')}</p>
+            <div className="admin-form__row">
               <Field label={t('Group', 'المجموعة')} hint={t('Same number = AND', 'نفس الرقم = و')}>
                 {(p) => (
                   <Input
                     {...p}
                     type="number"
                     min={0}
-                    value={rule.groupNumber}
-                    onChange={(e) => updateRule(rule.key, { groupNumber: Number(e.target.value) })}
-                    disabled={busy}
+                    value={dialogRule.groupNumber}
+                    onChange={(e) => setDialogRule({ ...dialogRule, groupNumber: Number(e.target.value) })}
+                    autoFocus
                   />
                 )}
               </Field>
@@ -405,36 +526,36 @@ function CollectionRulesPanel({ id, locale, collection }: { id: string; locale: 
                 {(p) => (
                   <Select
                     {...p}
-                    value={rule.field}
+                    value={dialogRule.field}
                     onChange={(e) => {
                       const field = e.target.value as CollectionRuleField;
-                      updateRule(rule.key, {
+                      setDialogRule({
+                        ...dialogRule,
                         field,
                         operator: FIELD_OPERATORS[field][0],
                         value: defaultValueForField(field),
                       });
                     }}
-                    disabled={busy}
                   >
-                    <option value="PRICE">{t('Price', 'السعر')}</option>
-                    <option value="COMPARE_AT_PRICE">{t('Compare-at price', 'السعر قبل التخفيض')}</option>
-                    <option value="PRODUCT_STATUS">{t('Product status', 'حالة المنتج')}</option>
-                    <option value="STOCK_STATUS">{t('Stock status', 'حالة المخزون')}</option>
-                    <option value="CATEGORY">{t('Category', 'الفئة')}</option>
-                    <option value="CREATED_AT">{t('Date added', 'تاريخ الإضافة')}</option>
-                    <option value="HAS_ACTIVE_PROMOTION">{t('Has an active promotion', 'لديه عرض نشط')}</option>
+                    {(Object.keys(FIELD_LABEL) as CollectionRuleField[]).map((f) => (
+                      <option key={f} value={f}>
+                        {isAr ? FIELD_LABEL[f].ar : FIELD_LABEL[f].en}
+                      </option>
+                    ))}
                   </Select>
                 )}
               </Field>
+            </div>
+            <div className="admin-form__row">
               <Field label={t('Operator', 'العملية')}>
                 {(p) => (
                   <Select
                     {...p}
-                    value={rule.operator}
-                    onChange={(e) => updateRule(rule.key, { operator: e.target.value as CollectionRuleOperator })}
-                    disabled={busy || FIELD_OPERATORS[rule.field].length <= 1}
+                    value={dialogRule.operator}
+                    onChange={(e) => setDialogRule({ ...dialogRule, operator: e.target.value as CollectionRuleOperator })}
+                    disabled={FIELD_OPERATORS[dialogRule.field].length <= 1}
                   >
-                    {FIELD_OPERATORS[rule.field].map((op) => (
+                    {FIELD_OPERATORS[dialogRule.field].map((op) => (
                       <option key={op} value={op}>
                         {op.replace(/_/g, ' ').toLowerCase()}
                       </option>
@@ -445,27 +566,25 @@ function CollectionRulesPanel({ id, locale, collection }: { id: string; locale: 
               <Field label={t('Value', 'القيمة')}>
                 {() => (
                   <RuleValueEditor
-                    rule={rule}
-                    onChange={(value) => updateRule(rule.key, { value })}
-                    busy={busy}
+                    rule={dialogRule}
+                    onChange={(value) => setDialogRule({ ...dialogRule, value })}
+                    busy={false}
                     locale={locale}
                   />
                 )}
               </Field>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => removeRule(rule.key)}
-                disabled={busy}
-                aria-label={t('Remove rule', 'إزالة القاعدة')}
-              >
-                <Icon as={X} size={16} />
+            </div>
+            <div className="admin-form__actions">
+              <Button type="button" onClick={saveDialogRule}>
+                {isNewInDialog ? t('Add rule', 'إضافة قاعدة') : t('Save rule', 'حفظ القاعدة')}
+              </Button>
+              <Button type="button" variant="ghost" onClick={closeRuleDialog}>
+                {t('Cancel', 'إلغاء')}
               </Button>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        )}
+      </Modal>
 
       {rules.length > 0 && (
         <div style={{ marginTop: 'var(--space-4)' }}>
@@ -496,10 +615,6 @@ function CollectionRulesPanel({ id, locale, collection }: { id: string; locale: 
       {saved && !error && <Alert tone="success" className="stack">{t('Rules saved', 'تم حفظ القواعد')}</Alert>}
 
       <div className="admin-form__actions">
-        <Button type="button" variant="outline" onClick={addRule} disabled={busy}>
-          <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
-          {t('Add rule', 'إضافة قاعدة')}
-        </Button>
         <Button type="button" onClick={onSave} loading={busy}>
           {t('Save rules', 'حفظ القواعد')}
         </Button>
@@ -618,17 +733,17 @@ export default function EditCollectionPage() {
           {collection.archivedAt ? (
             <>
               <Button variant="outline" onClick={onRestoreCollection} loading={restoreCollection.isPending}>
-                <Icon as={RotateCcw} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                <Icon as={RotateCcw} size={16} />
                 {t('Restore', 'استعادة')}
               </Button>
               <Button variant="danger" onClick={() => setConfirmKind('delete')} loading={permanentDeleteCollection.isPending}>
-                <Icon as={Trash2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                <Icon as={Trash2} size={16} />
                 {t('Delete permanently', 'حذف نهائي')}
               </Button>
             </>
           ) : (
             <Button variant="danger" onClick={() => setConfirmKind('archive')} loading={archiveCollection.isPending}>
-              <Icon as={Archive} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+              <Icon as={Archive} size={16} />
               {t('Archive collection', 'أرشفة المجموعة')}
             </Button>
           )}
