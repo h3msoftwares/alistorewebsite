@@ -7,6 +7,7 @@ import { initialsOf } from '@/components/chrome/topbar';
 import { useAuth } from '@/hooks/use-auth';
 import { useSettings } from '@/hooks/use-settings';
 import { groupAdminNavItems, useAdminNavItems } from '@/hooks/use-admin-nav';
+import { NotificationBell } from './notification-bell';
 import { ADMIN_NAV_GROUP_LABEL } from '@/lib/rbac';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 
@@ -26,10 +27,13 @@ export function AdminSidebar({ locale }: { locale: string }) {
 
   return (
     <aside className="admin-sidebar" aria-label={t('Admin navigation', 'تنقل الإدارة')}>
-      <Link href={`/${locale}/admin`} className="admin-sidebar__brand">
-        <Image src="/ali-store-A-traced.png" alt="" width={28} height={26} className="admin-sidebar__brand-mark" />
-        <span>{brandName}</span>
-      </Link>
+      <div className="admin-sidebar__header">
+        <Link href={`/${locale}/admin`} className="admin-sidebar__brand">
+          <Image src="/ali-store-A-traced.png" alt="" width={28} height={26} className="admin-sidebar__brand-mark" />
+          <span>{brandName}</span>
+        </Link>
+        <NotificationBell locale={locale as 'en' | 'ar'} />
+      </div>
 
       <nav className="admin-sidebar__nav">
         {groups.map(({ group, items }) => (
