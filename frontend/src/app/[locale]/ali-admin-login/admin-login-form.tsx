@@ -8,6 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Alert, Button, Field, Input } from '@/components/ui';
 import { useAdminLogin, useAuth } from '@/hooks/use-auth';
+import { isApiError } from '@/lib/api';
 
 type Locale = 'en' | 'ar';
 
@@ -47,6 +48,12 @@ export function AdminLoginForm({ locale }: { locale: Locale }) {
   });
 
   const busy = isSubmitting || adminLogin.isPending;
+  // A real response from the server (wrong password, not an admin, locked
+  // out, rate limited) always shows the same generic message below — never
+  // surface the specific cause. A network failure (server unreachable) is a
+  // different kind of problem with no such sensitivity, so it gets its own,
+  // more useful message instead of being lumped in as "wrong credentials."
+  const unreachable = adminLogin.isError && !isApiError(adminLogin.error);
 
   return (
     <div className="section" style={{ maxWidth: '22rem', marginInline: 'auto' }}>
@@ -54,8 +61,13 @@ export function AdminLoginForm({ locale }: { locale: Locale }) {
       <h1>{t('Admin sign in', 'دخول لوحة الإدارة')}</h1>
 
       {adminLogin.isError && (
-        <Alert tone="danger" className="stack">
-          {t('Invalid credentials.', 'بيانات الدخول غير صحيحة.')}
+        <Alert tone="danger">
+          {unreachable
+            ? t(
+                "Couldn't reach the server. Check your connection and try again.",
+                'تعذّر الوصول إلى الخادم. تحقّق من اتصالك وحاول مجددًا.'
+              )
+            : t('Invalid credentials.', 'بيانات الدخول غير صحيحة.')}
         </Alert>
       )}
 

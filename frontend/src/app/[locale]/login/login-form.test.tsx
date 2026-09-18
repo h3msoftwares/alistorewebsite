@@ -99,6 +99,13 @@ describe('<LoginForm>', () => {
     expect(screen.getByText(/Too many attempts/i)).toBeInTheDocument();
   });
 
+  it("shows a distinct message (not silence) when the server can't be reached at all", () => {
+    login.isError = true;
+    login.error = new TypeError('Failed to fetch');
+    renderForm();
+    expect(screen.getByText(/Couldn't reach the server/i)).toBeInTheDocument();
+  });
+
   it('on a 403 "email not verified" shows the verify notice + a resend form pre-filled with the email', async () => {
     const user = userEvent.setup();
     const err403 = new ApiError(403, {

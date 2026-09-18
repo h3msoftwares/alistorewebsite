@@ -60,6 +60,11 @@ export function LoginForm({ locale, next: nextRaw = null }: { locale: Locale; ne
 
   const busy = isSubmitting || login.isPending;
   const err = login.isError && isApiError(login.error) ? login.error : null;
+  // A network failure (server unreachable) isn't an ApiError at all, so it
+  // fell through every branch below and showed nothing — silently doing
+  // nothing on failure is worse than the generic message the other branches
+  // already show.
+  const unreachable = login.isError && !isApiError(login.error);
   const rateLimited = err?.status === 429;
   // The backend only 403s here after the password is proven correct, so a
   // specific reason leaks nothing to anyone who doesn't hold it.
@@ -125,15 +130,20 @@ export function LoginForm({ locale, next: nextRaw = null }: { locale: Locale; ne
           )}
         </div>
       ) : (
-        err && (
+        (err || unreachable) && (
           <div style={{ marginBlockStart: 'var(--space-3)' }}>
             <Alert tone={rateLimited ? 'warning' : 'danger'}>
-              {rateLimited
+              {unreachable
                 ? t(
-                    'Too many attempts. Please wait a while before trying again.',
-                    'عدد كبير جدًا من المحاولات. يرجى الانتظار قليلاً قبل إعادة المحاولة.'
+                    "Couldn't reach the server. Check your connection and try again.",
+                    'تعذّر الوصول إلى الخادم. تحقّق من اتصالك وحاول مجددًا.'
                   )
-                : t('Invalid email/phone or password.', 'البريد الإلكتروني/الهاتف أو كلمة المرور غير صحيحة.')}
+                : rateLimited
+                  ? t(
+                      'Too many attempts. Please wait a while before trying again.',
+                      'عدد كبير جدًا من المحاولات. يرجى الانتظار قليلاً قبل إعادة المحاولة.'
+                    )
+                  : t('Invalid email/phone or password.', 'البريد الإلكتروني/الهاتف أو كلمة المرور غير صحيحة.')}
             </Alert>
           </div>
         )
