@@ -59,34 +59,68 @@ export async function listBackupsHandler(_req: Request, res: Response) {
   res.json({ backups, retentionCount: env.BACKUP_RETENTION_COUNT });
 }
 
+export interface RestoreStatus {
+  state: 'idle' | 'running' | 'done' | 'error';
+  id?: string;
+  at?: string;
+  relations?: number;
+  error?: string;
+}
+
+// In-memory — fine for this app's single Railway instance (same assumption
+// other in-process state here already makes, e.g. checkout-otp's rate
+// limiter). Lets the frontend poll for a restore's real outcome instead of
+// waiting on the triggering request itself: a download + pg_restore can run
+// past Netlify's 26s proxy-rewrite timeout, the exact same problem
+// runBackupHandler below already solves for backups (confirmed live: the
+// restore completed but the browser still saw the POST fail).
+let restoreStatus: RestoreStatus = { state: 'idle' };
+
+export async function getRestoreStatusHandler(_req: Request, res: Response) {
+  res.json(restoreStatus);
+}
+
 /** DESTRUCTIVE — replaces the live database. Gated upstream by
  *  requireRole('ADMIN'), requireFreshAuth() (step-up) and a tight rate
  *  limit (see backup.routes.ts); every attempt is audit-logged here,
- *  success or failure. */
+ *  success or failure. Responds as soon as the restore has STARTED (see
+ *  restoreStatus above) — the frontend polls GET /restore-status for when
+ *  it actually finishes. */
 export async function restoreBackupHandler(req: Request, res: Response) {
   // Already shape-validated by backupIdParamSchema (validate middleware).
   const id = req.params.id as string;
+  const actorID = req.user!.id;
+  const at = new Date().toISOString();
 
-  const result = await backupService.restoreBackup(id).catch(async (err: Error) => {
-    await recordAudit({
-      entityType: 'Backup',
-      entityID: id,
-      action: 'backup.restore.failed',
-      actorID: req.user!.id,
-      metadata: { error: err.message },
+  // Set BEFORE responding: the frontend only starts polling once this 202
+  // has come back, so by then the state is guaranteed to already be
+  // 'running' — no window where a poll could still see stale 'idle'/'done'
+  // from a previous restore.
+  restoreStatus = { state: 'running', id, at };
+  res.status(202).json({ ok: true, started: true });
+
+  backupService
+    .restoreBackup(id)
+    .then(async (result) => {
+      restoreStatus = { state: 'done', id, at, relations: result.relations };
+      await recordAudit({
+        entityType: 'Backup',
+        entityID: id,
+        action: 'backup.restore',
+        actorID,
+        metadata: { relations: result.relations },
+      });
+    })
+    .catch(async (err: Error) => {
+      restoreStatus = { state: 'error', id, at, error: err.message };
+      await recordAudit({
+        entityType: 'Backup',
+        entityID: id,
+        action: 'backup.restore.failed',
+        actorID,
+        metadata: { error: err.message },
+      });
     });
-    throw err;
-  });
-
-  await recordAudit({
-    entityType: 'Backup',
-    entityID: id,
-    action: 'backup.restore',
-    actorID: req.user!.id,
-    metadata: { relations: result.relations },
-  });
-
-  res.json(result);
 }
 
 // ---- Google Drive connection ----

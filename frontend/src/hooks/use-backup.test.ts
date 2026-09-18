@@ -21,6 +21,7 @@ vi.mock('@/lib/api', async (importActual) => {
       listBackups: vi.fn(),
       runBackupNow: vi.fn(),
       restoreBackup: vi.fn(),
+      getRestoreStatus: vi.fn(),
       getDriveStatus: vi.fn(),
       getDriveConnectUrl: vi.fn(),
       disconnectDrive: vi.fn(),
@@ -109,14 +110,81 @@ describe('write hooks', () => {
     vi.useRealTimers();
   });
 
-  it('useRestoreBackup calls through with the backup id', async () => {
-    mockApi.restoreBackup.mockResolvedValue({ ok: true, restoredFrom: 'file.dump' });
+  it('useRestoreBackup starts the restore, then polls restore-status until done', async () => {
+    vi.useFakeTimers();
+    mockApi.restoreBackup.mockResolvedValue({ ok: true, started: true });
+    mockApi.getRestoreStatus
+      .mockResolvedValueOnce({ state: 'running', id: 'backup-1' })
+      .mockResolvedValueOnce({ state: 'done', id: 'backup-1', relations: 12 });
+
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useRestoreBackup(), { wrapper: Wrapper });
-    await act(async () => {
-      await result.current.mutateAsync('backup-1');
+
+    let promise!: ReturnType<typeof result.current.mutateAsync>;
+    act(() => {
+      promise = result.current.mutateAsync('backup-1');
     });
+    await act(() => vi.advanceTimersByTimeAsync(8000));
+
+    await expect(promise).resolves.toEqual({ ok: true, relations: 12 });
     expect(mockApi.restoreBackup).toHaveBeenCalledWith('backup-1');
+    vi.useRealTimers();
+  });
+
+  it('useRestoreBackup reports the backend error once restore-status reports failure', async () => {
+    vi.useFakeTimers();
+    mockApi.restoreBackup.mockResolvedValue({ ok: true, started: true });
+    mockApi.getRestoreStatus.mockResolvedValue({ state: 'error', id: 'backup-1', error: 'pg_restore exploded' });
+
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useRestoreBackup(), { wrapper: Wrapper });
+
+    let promise!: ReturnType<typeof result.current.mutateAsync>;
+    act(() => {
+      promise = result.current.mutateAsync('backup-1');
+    });
+    await act(() => vi.advanceTimersByTimeAsync(4000));
+
+    await expect(promise).resolves.toEqual({ ok: false, error: 'pg_restore exploded' });
+    vi.useRealTimers();
+  });
+
+  it('useRestoreBackup ignores a status entry left over from a different restore id', async () => {
+    vi.useFakeTimers();
+    mockApi.restoreBackup.mockResolvedValue({ ok: true, started: true });
+    mockApi.getRestoreStatus
+      .mockResolvedValueOnce({ state: 'done', id: 'stale-id', relations: 1 })
+      .mockResolvedValueOnce({ state: 'done', id: 'backup-1', relations: 12 });
+
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useRestoreBackup(), { wrapper: Wrapper });
+
+    let promise!: ReturnType<typeof result.current.mutateAsync>;
+    act(() => {
+      promise = result.current.mutateAsync('backup-1');
+    });
+    await act(() => vi.advanceTimersByTimeAsync(8000));
+
+    await expect(promise).resolves.toEqual({ ok: true, relations: 12 });
+    vi.useRealTimers();
+  });
+
+  it('useRestoreBackup reports timedOut if the status never settles within the poll window', async () => {
+    vi.useFakeTimers();
+    mockApi.restoreBackup.mockResolvedValue({ ok: true, started: true });
+    mockApi.getRestoreStatus.mockResolvedValue({ state: 'running', id: 'backup-1' });
+
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useRestoreBackup(), { wrapper: Wrapper });
+
+    let promise!: ReturnType<typeof result.current.mutateAsync>;
+    act(() => {
+      promise = result.current.mutateAsync('backup-1');
+    });
+    await act(() => vi.advanceTimersByTimeAsync(3 * 60_000));
+
+    await expect(promise).resolves.toEqual({ ok: false, timedOut: true });
+    vi.useRealTimers();
   });
 
   it('useDisconnectDrive calls through with no args', async () => {

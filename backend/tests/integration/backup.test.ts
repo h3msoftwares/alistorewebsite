@@ -235,13 +235,15 @@ describe('POST /api/admin/backup/:id/restore — admin', () => {
     expect(restoreBackup).not.toHaveBeenCalled();
   });
 
-  it('restores and audit-logs with the actor, given a fresh session', async () => {
+  it('responds immediately, then restores and audit-logs with the actor, given a fresh session', async () => {
     const { user, token } = await createAdmin();
     vi.mocked(restoreBackup).mockResolvedValue({ ok: true, restoredFrom: 'f1', relations: 42 });
 
     const res = await request(app).post('/api/admin/backup/f1/restore').set(bearer(token));
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ ok: true, relations: 42 });
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ ok: true, started: true });
+
+    await flushAsync();
     expect(restoreBackup).toHaveBeenCalledWith('f1');
 
     const audit = await prisma.auditLog.findFirst({
@@ -249,20 +251,32 @@ describe('POST /api/admin/backup/:id/restore — admin', () => {
       orderBy: { createdAt: 'desc' },
     });
     expect(audit).not.toBeNull();
+
+    const status = await request(app).get('/api/admin/backup/restore-status').set(bearer(token));
+    expect(status.body).toEqual({ state: 'done', id: 'f1', at: expect.any(String), relations: 42 });
   });
 
-  it('audit-logs a failed restore and surfaces the error', async () => {
+  it('still responds 202 immediately even when the restore itself later fails, and audit-logs the failure', async () => {
     const { user, token } = await createAdmin();
     vi.mocked(restoreBackup).mockRejectedValue(new Error('Not a valid backup archive.'));
 
     const res = await request(app).post('/api/admin/backup/f1/restore').set(bearer(token));
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(202);
 
+    await flushAsync();
     const audit = await prisma.auditLog.findFirst({
       where: { entityType: 'Backup', action: 'backup.restore.failed', actorID: user.id, entityID: 'f1' },
       orderBy: { createdAt: 'desc' },
     });
     expect(audit).not.toBeNull();
+
+    const status = await request(app).get('/api/admin/backup/restore-status').set(bearer(token));
+    expect(status.body).toEqual({
+      state: 'error',
+      id: 'f1',
+      at: expect.any(String),
+      error: 'Not a valid backup archive.',
+    });
   });
 });
 
