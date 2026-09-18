@@ -1,11 +1,14 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { Alert, EmptyState, Skeleton } from '@/components/ui';
 import { OrderDetailCard } from '@/components/orders/order-detail-card';
 import { useAuth } from '@/hooks/use-auth';
 import { useCancelOrder, useOrder } from '@/hooks/use-orders';
+import { useCancelReturn, useRequestReturn } from '@/hooks/use-returns';
 import { isApiError } from '@/lib/api';
+import type { CreateReturnBody } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
 
@@ -16,6 +19,9 @@ export function OrderDetailView({ locale, id }: { locale: Locale; id: string }) 
   const { status: authStatus } = useAuth();
   const order = useOrder(authStatus === 'authenticated' ? id : undefined);
   const cancel = useCancelOrder();
+  const requestReturn = useRequestReturn();
+  const cancelReturn = useCancelReturn();
+  const [cancellingReturnId, setCancellingReturnId] = useState<string | null>(null);
 
   if (authStatus === 'loading' || (authStatus === 'authenticated' && order.isPending)) {
     return (
@@ -71,6 +77,23 @@ export function OrderDetailView({ locale, id }: { locale: Locale; id: string }) 
                 : t('Could not cancel the order. Try again.', 'تعذّر إلغاء الطلب. حاول مرة أخرى.')
               : null
           }
+          onRequestReturn={(body: CreateReturnBody) => requestReturn.mutate({ orderId: id, body })}
+          requestingReturn={requestReturn.isPending}
+          requestReturnError={
+            requestReturn.isError
+              ? isApiError(requestReturn.error)
+                ? requestReturn.error.message
+                : t('Could not submit the return request. Try again.', 'تعذّر إرسال طلب الإرجاع. حاول مرة أخرى.')
+              : null
+          }
+          onCancelReturn={(returnId) => {
+            setCancellingReturnId(returnId);
+            cancelReturn.mutate(
+              { orderId: id, returnId },
+              { onSettled: () => setCancellingReturnId(null) }
+            );
+          }}
+          cancellingReturnId={cancellingReturnId}
         />
       </div>
     </div>

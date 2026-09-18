@@ -16,6 +16,8 @@ export * as customersApi from './customers';
 export * as backupApi from './backup';
 export * as gmailMailApi from './mail-gmail';
 export * as blacklistApi from './blacklist';
+export * as returnsApi from './returns';
+export * as notificationsApi from './notifications';
 export * as emailTemplatesApi from './email-templates';
 
 export { api, apiRequest, API_URL, refreshAccessToken } from './client';

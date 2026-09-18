@@ -1,10 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { EmptyState, Skeleton } from '@/components/ui';
 import { OrderDetailCard } from '@/components/orders/order-detail-card';
 import { useCancelOrderByToken, useOrderByToken } from '@/hooks/use-orders';
+import { useCancelReturnByToken, useRequestReturnByToken } from '@/hooks/use-returns';
 import { isApiError } from '@/lib/api';
+import type { CreateReturnBody } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
 
@@ -17,6 +20,9 @@ export function OrderTrackView({ locale, token }: { locale: Locale; token: strin
 
   const order = useOrderByToken(token);
   const cancel = useCancelOrderByToken();
+  const requestReturn = useRequestReturnByToken();
+  const cancelReturn = useCancelReturnByToken();
+  const [cancellingReturnId, setCancellingReturnId] = useState<string | null>(null);
 
   if (order.isPending) {
     return (
@@ -63,6 +69,20 @@ export function OrderTrackView({ locale, token }: { locale: Locale; token: strin
                 : t('Could not cancel the order. Try again.', 'تعذّر إلغاء الطلب. حاول مرة أخرى.')
               : null
           }
+          onRequestReturn={(body: CreateReturnBody) => requestReturn.mutate({ token, body })}
+          requestingReturn={requestReturn.isPending}
+          requestReturnError={
+            requestReturn.isError
+              ? isApiError(requestReturn.error)
+                ? requestReturn.error.message
+                : t('Could not submit the return request. Try again.', 'تعذّر إرسال طلب الإرجاع. حاول مرة أخرى.')
+              : null
+          }
+          onCancelReturn={(returnId) => {
+            setCancellingReturnId(returnId);
+            cancelReturn.mutate({ token, returnId }, { onSettled: () => setCancellingReturnId(null) });
+          }}
+          cancellingReturnId={cancellingReturnId}
         />
       </div>
     </div>
