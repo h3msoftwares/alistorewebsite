@@ -12,6 +12,7 @@ import {
   EmptyState,
   Field,
   Input,
+  Modal,
   ProductGridSkeleton,
   Select,
   Textarea,
@@ -123,6 +124,7 @@ function RoleForm({
   locale,
   busy,
   onSubmit,
+  onCancel,
 }: {
   role: Role | null;
   catalog: PermissionArea[] | undefined;
@@ -130,6 +132,7 @@ function RoleForm({
   locale: 'en' | 'ar';
   busy: boolean;
   onSubmit: (body: RoleBody) => Promise<void>;
+  onCancel: () => void;
 }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
@@ -166,6 +169,7 @@ function RoleForm({
     <form
       className="admin-form"
       noValidate
+      style={{ padding: 'var(--space-5)' }}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -234,6 +238,9 @@ function RoleForm({
           <Button type="submit" loading={busy}>
             {role ? t('Save changes', 'حفظ التغييرات') : t('Create role', 'إنشاء الدور')}
           </Button>
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>
+            {t('Cancel', 'إلغاء')}
+          </Button>
         </div>
       </div>
     </form>
@@ -252,13 +259,28 @@ function RolesPanel({ locale }: { locale: 'en' | 'ar' }) {
   const remove = useDeleteRole();
   const busy = create.isPending || update.isPending || remove.isPending;
 
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Role | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+
+  const openCreate = () => {
+    setEditing(null);
+    setDialogOpen(true);
+  };
+  const openEdit = (r: Role) => {
+    setEditing(r);
+    setDialogOpen(true);
+  };
+  const closeDialog = () => {
+    if (busy) return;
+    setDialogOpen(false);
+  };
 
   const onSubmit = async (body: RoleBody) => {
     if (editing) await update.mutateAsync({ id: editing.id, body });
     else await create.mutateAsync(body);
     setEditing(null);
+    setDialogOpen(false);
   };
 
   const [confirmDelete, setConfirmDelete] = useState<Role | null>(null);
@@ -272,7 +294,10 @@ function RolesPanel({ locale }: { locale: 'en' | 'ar' }) {
     setListError(null);
     try {
       await remove.mutateAsync(r.id);
-      if (editing?.id === r.id) setEditing(null);
+      if (editing?.id === r.id) {
+        setEditing(null);
+        setDialogOpen(false);
+      }
     } catch (e) {
       setListError(e instanceof Error ? e.message : t('Delete failed', 'فشل الحذف'));
     }
@@ -281,23 +306,29 @@ function RolesPanel({ locale }: { locale: 'en' | 'ar' }) {
   return (
     <div className="section--tight">
       {canManage && (
-        <>
-          <RoleForm
-            key={editing?.id ?? 'new'}
-            role={editing}
-            catalog={catalog}
-            catalogPending={catalogPending}
-            locale={locale}
-            busy={busy}
-            onSubmit={onSubmit}
-          />
-          {editing && (
-            <Button type="button" variant="ghost" onClick={() => setEditing(null)} disabled={busy}>
-              {t('Cancel edit', 'إلغاء التعديل')}
-            </Button>
-          )}
-        </>
+        <div className="admin-page__head" style={{ justifyContent: 'flex-end' }}>
+          <Button type="button" onClick={openCreate}>
+            {t('New role', 'دور جديد')}
+          </Button>
+        </div>
       )}
+
+      <Modal
+        open={dialogOpen}
+        onClose={closeDialog}
+        title={editing ? t('Edit role', 'تعديل الدور') : t('New role', 'دور جديد')}
+      >
+        <RoleForm
+          key={editing?.id ?? 'new'}
+          role={editing}
+          catalog={catalog}
+          catalogPending={catalogPending}
+          locale={locale}
+          busy={busy}
+          onSubmit={onSubmit}
+          onCancel={closeDialog}
+        />
+      </Modal>
 
       {listError && (
         <Alert tone="danger" className="stack">
@@ -344,7 +375,7 @@ function RolesPanel({ locale }: { locale: 'en' | 'ar' }) {
                 <td>
                   {canManage && (
                     <span className="admin-row-actions">
-                      <Button variant="ghost" size="sm" onClick={() => setEditing(r)} disabled={busy}>
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(r)} disabled={busy}>
                         {t('Edit', 'تعديل')}
                       </Button>
                       <Button
@@ -390,17 +421,19 @@ function RolesPanel({ locale }: { locale: 'en' | 'ar' }) {
 
 const BLANK_MEMBER: NewTeamMember = { name: '', email: '', password: '', role: 'STAFF', roleId: '' };
 
-/** Create-a-team-member form. Self-contained; clears itself on success. */
-function NewMemberForm({
+/** Create-a-team-member dialog. Self-contained; closes itself on success. */
+function NewMemberDialog({
   roles,
   locale,
   busy,
   onSubmit,
+  onClose,
 }: {
   roles: Role[];
   locale: 'en' | 'ar';
   busy: boolean;
   onSubmit: (body: NewTeamMember) => Promise<void>;
+  onClose: () => void;
 }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
@@ -430,6 +463,7 @@ function NewMemberForm({
         roleId: form.role === 'STAFF' ? form.roleId || null : null,
       });
       setForm(BLANK_MEMBER);
+      onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Could not create the account', 'تعذّر إنشاء الحساب'));
     }
@@ -439,6 +473,7 @@ function NewMemberForm({
     <form
       className="admin-form"
       noValidate
+      style={{ padding: 'var(--space-5)' }}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -523,6 +558,9 @@ function NewMemberForm({
         <div className="admin-form__actions">
           <Button type="submit" loading={busy}>
             {t('Create account', 'إنشاء الحساب')}
+          </Button>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+            {t('Cancel', 'إلغاء')}
           </Button>
         </div>
       </div>
@@ -611,6 +649,7 @@ function TeamPanel({ locale }: { locale: 'en' | 'ar' }) {
 
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const run = async (p: Promise<unknown>) => {
     setError(null);
@@ -638,12 +677,22 @@ function TeamPanel({ locale }: { locale: 'en' | 'ar' }) {
   return (
     <div className="section--tight">
       {canManage && (
-        <NewMemberForm
-          roles={roles ?? []}
-          locale={locale}
-          busy={busy}
-          onSubmit={(body) => createMember.mutateAsync(body).then(() => setError(null))}
-        />
+        <>
+          <div className="admin-page__head" style={{ justifyContent: 'flex-end' }}>
+            <Button type="button" onClick={() => setAddOpen(true)}>
+              {t('Add team member', 'إضافة عضو للفريق')}
+            </Button>
+          </div>
+          <Modal open={addOpen} onClose={() => setAddOpen(false)} title={t('Add a team member', 'إضافة عضو للفريق')}>
+            <NewMemberDialog
+              roles={roles ?? []}
+              locale={locale}
+              busy={busy}
+              onSubmit={(body) => createMember.mutateAsync(body).then(() => setError(null))}
+              onClose={() => setAddOpen(false)}
+            />
+          </Modal>
+        </>
       )}
 
       {error && (

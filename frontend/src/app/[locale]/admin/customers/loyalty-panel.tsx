@@ -13,9 +13,11 @@ import {
   EmptyState,
   Field,
   Input,
+  Modal,
   ProductGridSkeleton,
   Select,
 } from '@/components/ui';
+import { usePermissions } from '@/lib/rbac';
 import {
   useCreateLoyaltyRule,
   useDeleteLoyaltyRule,
@@ -63,11 +65,13 @@ const BLANK_RULE: LoyaltyRuleForm = {
  */
 export function LoyaltyRulesPanel({ isAr }: { isAr: boolean }) {
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const canManage = usePermissions().has('loyalty:manage');
   const { data: rules, isPending, isError, refetch } = useLoyaltyRules();
   const create = useCreateLoyaltyRule();
   const update = useUpdateLoyaltyRule();
   const remove = useDeleteLoyaltyRule();
 
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<LoyaltyRule | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<LoyaltyRule | null>(null);
@@ -97,6 +101,22 @@ export function LoyaltyRulesPanel({ isAr }: { isAr: boolean }) {
     formState: { errors },
   } = useForm<LoyaltyRuleForm>({ resolver: zodResolver(loyaltyRuleSchema), values });
 
+  const openCreate = () => {
+    setError(null);
+    setEditing(null);
+    reset(BLANK_RULE);
+    setDialogOpen(true);
+  };
+  const openEdit = (r: LoyaltyRule) => {
+    setError(null);
+    setEditing(r);
+    setDialogOpen(true);
+  };
+  const closeDialog = () => {
+    if (busy) return;
+    setDialogOpen(false);
+  };
+
   const onSubmit = async (form: LoyaltyRuleForm) => {
     setError(null);
     const body = {
@@ -112,6 +132,7 @@ export function LoyaltyRulesPanel({ isAr }: { isAr: boolean }) {
     try {
       if (editing) await update.mutateAsync({ id: editing.id, body });
       else await create.mutateAsync(body);
+      setDialogOpen(false);
       setEditing(null);
       reset(BLANK_RULE);
     } catch (e) {
@@ -133,83 +154,95 @@ export function LoyaltyRulesPanel({ isAr }: { isAr: boolean }) {
         )}
       </Alert>
 
-      <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
-        <div className="admin-form__section">
-          <p className="admin-form__section-title">
-            {editing ? t('Edit loyalty rule', 'تعديل قاعدة الولاء') : t('New loyalty rule', 'قاعدة ولاء جديدة')}
-          </p>
-          <div className="admin-form__row">
-            <Field label={t('Name (English)', 'الاسم (إنجليزي)')} error={errors.nameEn?.message} required>
-              {(p) => <Input {...p} {...register('nameEn')} disabled={busy} />}
-            </Field>
-            <Field label={t('Name (Arabic)', 'الاسم (عربي)')} error={errors.nameAr?.message} required>
-              {(p) => <Input {...p} dir="rtl" {...register('nameAr')} disabled={busy} />}
-            </Field>
-          </div>
+      {canManage && (
+        <div className="admin-page__head" style={{ justifyContent: 'flex-end' }}>
+          <Button type="button" onClick={openCreate}>
+            {t('New rule', 'قاعدة جديدة')}
+          </Button>
+        </div>
+      )}
 
-          <div className="admin-form__row">
-            <Field label={t('Milestone based on', 'المعلم يُحتسب على')}>
-              {(p) => (
-                <Select {...p} {...register('metric')} disabled={busy}>
-                  <option value="ORDER_COUNT">{t('Number of delivered orders', 'عدد الطلبات المُسلَّمة')}</option>
-                  <option value="TOTAL_SPENT">{t('Total amount spent ($)', 'إجمالي الإنفاق ($)')}</option>
-                </Select>
-              )}
-            </Field>
-            <Field
-              label={t('Every…', 'كل…')}
-              hint={t('Orders, or dollars spent', 'طلبات، أو دولارات إنفاق')}
-              error={errors.threshold?.message}
-            >
-              {(p) => (
-                <Input {...p} type="number" min={0} step="1" {...register('threshold', { valueAsNumber: true })} disabled={busy} />
-              )}
-            </Field>
-          </div>
+      <Modal
+        open={dialogOpen}
+        onClose={closeDialog}
+        title={editing ? t('Edit loyalty rule', 'تعديل قاعدة الولاء') : t('New loyalty rule', 'قاعدة ولاء جديدة')}
+      >
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form" style={{ padding: 'var(--space-5)' }}>
+          <div className="admin-form__section">
+            <p className="admin-form__section-title">
+              {editing ? t('Edit loyalty rule', 'تعديل قاعدة الولاء') : t('New loyalty rule', 'قاعدة ولاء جديدة')}
+            </p>
+            <div className="admin-form__row">
+              <Field label={t('Name (English)', 'الاسم (إنجليزي)')} error={errors.nameEn?.message} required>
+                {(p) => <Input {...p} {...register('nameEn')} disabled={busy} autoFocus />}
+              </Field>
+              <Field label={t('Name (Arabic)', 'الاسم (عربي)')} error={errors.nameAr?.message} required>
+                {(p) => <Input {...p} dir="rtl" {...register('nameAr')} disabled={busy} />}
+              </Field>
+            </div>
 
-          <div className="admin-form__row">
-            <Field label={t('Reward type', 'نوع المكافأة')}>
-              {(p) => (
-                <Select {...p} {...register('rewardType')} disabled={busy}>
-                  <option value="PERCENT">{t('Percentage off', 'نسبة مئوية')}</option>
-                  <option value="AMOUNT">{t('Amount off ($)', 'مبلغ ثابت ($)')}</option>
-                </Select>
-              )}
-            </Field>
-            <Field label={t('Reward value', 'قيمة المكافأة')} error={errors.rewardValue?.message}>
-              {(p) => (
-                <Input {...p} type="number" min={0} step="0.01" {...register('rewardValue', { valueAsNumber: true })} disabled={busy} />
-              )}
-            </Field>
-          </div>
+            <div className="admin-form__row">
+              <Field label={t('Milestone based on', 'المعلم يُحتسب على')}>
+                {(p) => (
+                  <Select {...p} {...register('metric')} disabled={busy}>
+                    <option value="ORDER_COUNT">{t('Number of delivered orders', 'عدد الطلبات المُسلَّمة')}</option>
+                    <option value="TOTAL_SPENT">{t('Total amount spent ($)', 'إجمالي الإنفاق ($)')}</option>
+                  </Select>
+                )}
+              </Field>
+              <Field
+                label={t('Every…', 'كل…')}
+                hint={t('Orders, or dollars spent', 'طلبات، أو دولارات إنفاق')}
+                error={errors.threshold?.message}
+              >
+                {(p) => (
+                  <Input {...p} type="number" min={0} step="1" {...register('threshold', { valueAsNumber: true })} disabled={busy} />
+                )}
+              </Field>
+            </div>
 
-          <div className="admin-form__row">
-            <Field
-              label={t('Coupon expires after', 'ينتهي رمز الخصم بعد')}
-              hint={t('Days from issue; blank = no expiry', 'أيام من الإصدار؛ فارغ = بلا انتهاء')}
-              error={errors.couponValidDays?.message}
-            >
-              {(p) => (
-                <Input {...p} type="number" min={1} step="1" {...register('couponValidDays', { valueAsNumber: true })} disabled={busy} />
-              )}
-            </Field>
-          </div>
-          <Choice type="checkbox" label={t('Active', 'مُفعَّلة')} {...register('isActive')} disabled={busy} />
+            <div className="admin-form__row">
+              <Field label={t('Reward type', 'نوع المكافأة')}>
+                {(p) => (
+                  <Select {...p} {...register('rewardType')} disabled={busy}>
+                    <option value="PERCENT">{t('Percentage off', 'نسبة مئوية')}</option>
+                    <option value="AMOUNT">{t('Amount off ($)', 'مبلغ ثابت ($)')}</option>
+                  </Select>
+                )}
+              </Field>
+              <Field label={t('Reward value', 'قيمة المكافأة')} error={errors.rewardValue?.message}>
+                {(p) => (
+                  <Input {...p} type="number" min={0} step="0.01" {...register('rewardValue', { valueAsNumber: true })} disabled={busy} />
+                )}
+              </Field>
+            </div>
 
-          {error && <Alert tone="danger" className="stack">{error}</Alert>}
+            <div className="admin-form__row">
+              <Field
+                label={t('Coupon expires after', 'ينتهي رمز الخصم بعد')}
+                hint={t('Days from issue; blank = no expiry', 'أيام من الإصدار؛ فارغ = بلا انتهاء')}
+                error={errors.couponValidDays?.message}
+              >
+                {(p) => (
+                  <Input {...p} type="number" min={1} step="1" {...register('couponValidDays', { valueAsNumber: true })} disabled={busy} />
+                )}
+              </Field>
+            </div>
+            <Choice type="checkbox" label={t('Active', 'مُفعَّلة')} {...register('isActive')} disabled={busy} />
 
-          <div className="admin-form__actions">
-            <Button type="submit" loading={busy}>
-              {editing ? t('Save changes', 'حفظ التغييرات') : t('Add rule', 'إضافة القاعدة')}
-            </Button>
-            {editing && (
-              <Button type="button" variant="ghost" onClick={() => setEditing(null)} disabled={busy}>
+            {error && <Alert tone="danger" className="stack">{error}</Alert>}
+
+            <div className="admin-form__actions">
+              <Button type="submit" loading={busy}>
+                {editing ? t('Save changes', 'حفظ التغييرات') : t('Add rule', 'إضافة القاعدة')}
+              </Button>
+              <Button type="button" variant="ghost" onClick={closeDialog} disabled={busy}>
                 {t('Cancel', 'إلغاء')}
               </Button>
-            )}
+            </div>
           </div>
-        </div>
-      </form>
+        </form>
+      </Modal>
 
       {isPending ? (
         <ProductGridSkeleton count={3} />
@@ -245,19 +278,21 @@ export function LoyaltyRulesPanel({ isAr }: { isAr: boolean }) {
                   {r.isActive ? t('Active', 'مُفعَّلة') : t('Off', 'موقوفة')}
                 </td>
                 <td>
-                  <span className="admin-row-actions">
-                    <Button variant="ghost" size="sm" onClick={() => setEditing(r)} disabled={busy}>
-                      {t('Edit', 'تعديل')}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setConfirmDelete(r)}
-                      disabled={busy}
-                    >
-                      {t('Delete', 'حذف')}
-                    </Button>
-                  </span>
+                  {canManage && (
+                    <span className="admin-row-actions">
+                      <Button variant="ghost" size="sm" onClick={() => openEdit(r)} disabled={busy}>
+                        {t('Edit', 'تعديل')}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmDelete(r)}
+                        disabled={busy}
+                      >
+                        {t('Delete', 'حذف')}
+                      </Button>
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}
