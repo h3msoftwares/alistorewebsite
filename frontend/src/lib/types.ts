@@ -219,8 +219,6 @@ export interface Product {
   primaryCategoryID: UUID;
   price: Decimalish;
   compareAtPrice?: Decimalish | null;
-  /** Product-level quantity — free-standing signed int (may be 0 or negative). */
-  quantity: number;
   /** Active sale. Both null ⇒ no sale. */
   saleType?: DiscountType | null;
   saleValue?: Decimalish | null;
@@ -449,6 +447,56 @@ export interface OrderItem {
   quantity: number;
   unitPrice: Decimalish;
   lineTotal: Decimalish;
+  /** Units of this line already claimed by an active (non-REJECTED/
+   *  CANCELLED) Return — the stepper on "request a return" is capped at
+   *  `quantity - returnedQuantity`. */
+  returnedQuantity: number;
+}
+
+export type ReturnStatus =
+  | 'REQUESTED'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'IN_TRANSIT'
+  | 'RECEIVED'
+  | 'REFUNDED'
+  | 'CANCELLED';
+
+export interface ReturnItem {
+  id: UUID;
+  returnID: UUID;
+  orderItemID: UUID;
+  quantity: number;
+  refundAmount: Decimalish;
+  /** Present on the admin list response (joined) — enough to render a row
+   *  without a second fetch. Absent on the customer-embedded shape, where
+   *  the parent Order's own `items` already has this. */
+  orderItem?: Pick<OrderItem, 'id' | 'productName' | 'variantSKU' | 'size' | 'color' | 'quantity'>;
+}
+
+export interface Return {
+  id: UUID;
+  orderID: UUID;
+  status: ReturnStatus;
+  reason?: string | null;
+  requestedBy?: UUID | null;
+  refundAmount?: Decimalish | null;
+  dateCreated: IsoDateTime;
+  items: ReturnItem[];
+  /** Present on the admin list response only. */
+  order?: {
+    orderNumber: string;
+    deliveryName: string;
+    deliveryPhone: string;
+    guestEmail?: string | null;
+    status: OrderStatus;
+  };
+  requester?: { name: string; email?: string | null } | null;
+}
+
+export interface CreateReturnBody {
+  reason?: string;
+  items: { orderItemID: UUID; quantity: number }[];
 }
 
 export interface Order {
@@ -491,6 +539,8 @@ export interface Order {
   status: OrderStatus;
   dateCreated: IsoDateTime;
   items: OrderItem[];
+  /** Per-item return requests against this order, newest-first from the API. */
+  returns?: Return[];
 }
 
 /** Body for `POST /api/orders/checkout` (COD only). The delivery-* fields are
@@ -1067,8 +1117,6 @@ export interface ProductBody {
   collectionIds?: UUID[];
   price: number;
   compareAtPrice?: number;
-  /** May be 0 or negative; independent of `isActive`. Defaults to 0. */
-  quantity?: number;
   /** Set both together, or neither. `PERCENT` value is 0–100. */
   saleType?: DiscountType | null;
   saleValue?: number | null;
@@ -1115,6 +1163,8 @@ export interface AdminDashboard {
   flaggedOrders: number;
   /** Delivered COD orders whose cash hasn't been marked collected. */
   awaitingCodCollection: number;
+  /** Accepted and (maybe) shipped, but not yet DELIVERED. */
+  confirmedNotDelivered: number;
   /** Active variants with 1–5 units left. */
   lowStockVariants: number;
   /** Active variants at 0 or fewer units. */
@@ -1247,6 +1297,7 @@ export interface AnalyticsInventory {
 export interface ProductPerfRow {
   name: string;
   sku: string;
+  productId: UUID;
   units: number;
   revenue: number;
   orders: number;
@@ -1272,4 +1323,30 @@ export interface AnalyticsVisitors {
   devices?: GaRow[];
   geo?: GaRow[];
   pages?: GaRow[];
+}
+
+// ---- Admin notifications (bell/feed) ----
+
+export interface Notification {
+  id: UUID;
+  /** Free-form, e.g. 'order.created' | 'order.cancelled' | 'order.flagged' |
+   *  'return.requested' | 'return.status_changed' — same loose-string
+   *  convention as the backend's AuditLog action strings. */
+  type: string;
+  title: string;
+  body: string;
+  url?: string | null;
+  entityType?: string | null;
+  entityID?: string | null;
+  dateCreated: IsoDateTime;
+  /** Whether the CALLER has read it — per-viewer, not global. */
+  read: boolean;
+}
+
+export interface NotificationsResponse {
+  notifications: Notification[];
+  /** From its own query, not derived from `notifications.length` — the feed
+   *  is a bounded "recent" list, so deriving the badge from it would
+   *  undercount once unread items exceed that bound. */
+  unreadCount: number;
 }

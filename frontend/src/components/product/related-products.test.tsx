@@ -22,7 +22,6 @@ function makeProduct(id: string, overrides: Partial<Product> = {}): Product {
     nameAr: `منتج ${id}`,
     primaryCategoryID: 'cat1',
     price: '20.00',
-    quantity: 10,
     effectivePrice: 20,
     onSale: false,
     isActive: true,

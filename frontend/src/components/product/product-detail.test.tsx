@@ -32,7 +32,6 @@ const baseProduct: Product = {
   isActive: true,
   dateCreated: '2026-01-01T00:00:00.000Z',
   lastEdit: '2026-01-01T00:00:00.000Z',
-  quantity: 20,
   // No active saleType/saleValue discount for the base fixture — just the
   // plain "was" price via compareAtPrice. effectivePrice mirrors price when
   // there's no sale, same as the real backend's withPricing() does.

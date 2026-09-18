@@ -84,10 +84,7 @@ export const discountTypeSchema = z.enum(['PERCENT', 'AMOUNT']);
 // need to distinguish "omitted → leave existing placements alone" from
 // "explicit `[]` → clear them", so their defaults live ONLY in
 // createProductSchema below, never in the shape updateProductSchema derives
-// `.partial()` from. (`quantity` previously had this exact same latent bug —
-// invisible only because it's a dead field nothing else reads — fixed here
-// as a mechanical side effect of the same restructuring, not a behavior
-// change to `quantity` itself.)
+// `.partial()` from.
 const productShape = {
   sku: z.string().trim().min(1).max(SKU_MAX),
   nameEn: z.string().trim().min(1).max(NAME_MAX),
@@ -104,8 +101,6 @@ const productShape = {
   collectionIds: z.array(z.string().uuid()).max(50),
   price: z.number().positive().max(PRICE_MAX),
   compareAtPrice: z.number().positive().max(PRICE_MAX).optional(),
-  // Free-standing signed quantity — may be 0 or negative, unrelated to isActive.
-  quantity: z.number().int().min(-1_000_000).max(1_000_000),
   // Optional sale: both together, or neither. PERCENT is 0–100 (checked in the
   // service so `.partial()` still works for updates).
   saleType: discountTypeSchema.nullish(),
@@ -116,7 +111,6 @@ export const createProductSchema = z.object({
   ...productShape,
   additionalCategoryIds: z.array(z.string().uuid()).max(50).default([]),
   collectionIds: z.array(z.string().uuid()).max(50).default([]),
-  quantity: z.number().int().min(-1_000_000).max(1_000_000).default(0),
   variants: z.array(variantInputSchema).min(1).max(100),
 });
 
