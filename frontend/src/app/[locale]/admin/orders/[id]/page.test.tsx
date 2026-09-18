@@ -13,13 +13,17 @@ vi.mock('@/lib/api', () => ({
     adminMarkCollected: vi.fn(),
     adminReviewOrder: vi.fn(),
   },
+  returnsApi: {
+    adminRequestReturn: vi.fn(),
+  },
   isApiError: (e: unknown) => e instanceof Error && 'code' in e,
 }));
 
-import { ordersApi } from '@/lib/api';
+import { ordersApi, returnsApi } from '@/lib/api';
 import AdminOrderDetailPage from './page';
 
 const mock = vi.mocked(ordersApi, true);
+const returnsMock = vi.mocked(returnsApi, true);
 
 const order = {
   id: 'o1',
@@ -39,7 +43,7 @@ const order = {
   flaggedForReview: false,
   dateCreated: '2026-09-06T10:00:00.000Z',
   items: [
-    { id: 'i1', productName: 'Cotton Tee', size: 'M', color: 'Black', quantity: 2, lineTotal: 40 },
+    { id: 'i1', productName: 'Cotton Tee', size: 'M', color: 'Black', quantity: 2, returnedQuantity: 0, lineTotal: 40 },
   ],
 };
 
@@ -54,6 +58,7 @@ beforeEach(() => {
   mock.adminUpdateOrderStatus.mockResolvedValue({ ...order, status: 'CONFIRMED' } as never);
   mock.adminMarkCollected.mockResolvedValue({ ...order, paymentStatus: 'COLLECTED' } as never);
   mock.adminReviewOrder.mockResolvedValue({ ...order, flaggedForReview: false } as never);
+  returnsMock.adminRequestReturn.mockResolvedValue({ id: 'r1' } as never);
 });
 
 describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
@@ -129,5 +134,23 @@ describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
 
     await user.click(screen.getByRole('button', { name: 'Mark reviewed' }));
     await waitFor(() => expect(mock.adminReviewOrder).toHaveBeenCalledWith('o1'));
+  });
+
+  it('lets staff request a per-item return for a delivered order (e.g. a phone order)', async () => {
+    mock.getOrder.mockResolvedValue({ ...order, status: 'DELIVERED' } as never);
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('heading', { level: 1, name: 'AS-20260906-ABC123' });
+
+    await user.click(screen.getByRole('button', { name: 'Request a return' }));
+    await user.click(screen.getByRole('checkbox', { name: /Cotton Tee \(M \/ Black\)/ }));
+    await user.click(screen.getByRole('button', { name: 'Submit return request' }));
+
+    await waitFor(() =>
+      expect(returnsMock.adminRequestReturn).toHaveBeenCalledWith('o1', {
+        items: [{ orderItemID: 'i1', quantity: 2 }],
+        reason: undefined,
+      })
+    );
   });
 });

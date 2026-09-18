@@ -65,3 +65,18 @@ export function useUpdateReturnStatus() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.returns.all() }),
   });
 }
+
+// Step-up (S2) protected on the backend, same shape as useUpdateReturnStatus
+// above — the caller catches a rejected 'STEP_UP_REQUIRED' ApiError and
+// re-prompts.
+export function useAdminRequestReturn() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, body }: { orderId: UUID; body: CreateReturnBody }) =>
+      returnsApi.adminRequestReturn(orderId, body),
+    onSuccess: (_ret, { orderId }) => {
+      qc.invalidateQueries({ queryKey: queryKeys.orders.detail(orderId) });
+      qc.invalidateQueries({ queryKey: queryKeys.returns.all() });
+    },
+  });
+}

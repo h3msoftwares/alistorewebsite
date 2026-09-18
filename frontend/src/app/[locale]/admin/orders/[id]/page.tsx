@@ -11,8 +11,9 @@ import { ORDER_STATUSES, useOrderActions } from '@/hooks/use-order-actions';
 import { useOrderReceiptPrint } from '@/hooks/use-order-receipt-print';
 import { usePrintPreferences } from '@/hooks/use-print-preferences';
 import { useSettings } from '@/hooks/use-settings';
+import { useAdminRequestReturn } from '@/hooks/use-returns';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
-import type { OrderStatus } from '@/lib/types';
+import type { CreateReturnBody, OrderStatus } from '@/lib/types';
 
 /**
  * The admin-side order detail view (fix-list.md #4, resolves 2.2). Before
@@ -28,7 +29,11 @@ import type { OrderStatus } from '@/lib/types';
  * own Actions panel (status <Select>, mark collected/unpaid, mark reviewed,
  * print receipt) built on the same `useOrderActions`/`useOrderReceiptPrint`
  * hooks the Orders list uses, so an admin can cancel from any status — or
- * take any other action — without leaving this page.
+ * take any other action — without leaving this page. It does pass
+ * `onRequestReturn` (staff-initiated returns, e.g. a phone order the
+ * customer can't self-serve online) — routed through `oa.run` so a
+ * STEP_UP_REQUIRED response reuses the same re-auth modal as the other
+ * actions here, instead of a second hand-rolled prompt.
  */
 export default function AdminOrderDetailPage() {
   const params = useParams();
@@ -41,6 +46,7 @@ export default function AdminOrderDetailPage() {
   const brandName = settings ? (isAr ? settings.brandNameAr : settings.brandNameEn) : isAr ? DEFAULT_BRAND_NAME_AR : DEFAULT_BRAND_NAME_EN;
   const { receiptFormat, printerName } = usePrintPreferences();
   const { print: printReceipt, receiptNode } = useOrderReceiptPrint(receiptFormat, brandName, locale);
+  const adminRequestReturn = useAdminRequestReturn();
   const oa = useOrderActions({
     statusChangeFailed: t('Status change failed', 'فشل تغيير الحالة'),
     updateFailed: t('Update failed', 'فشل التحديث'),
@@ -166,7 +172,19 @@ export default function AdminOrderDetailPage() {
       {receiptNode}
 
       <div className="card" style={{ padding: 'var(--space-5)', maxWidth: '40rem' }}>
-        <OrderDetailCard locale={locale} order={order} />
+        <OrderDetailCard
+          locale={locale}
+          order={order}
+          onRequestReturn={(body: CreateReturnBody) =>
+            oa.run(
+              order.id,
+              () => adminRequestReturn.mutateAsync({ orderId: order.id, body }),
+              t('Could not submit the return request. Try again.', 'تعذّر إرسال طلب الإرجاع. حاول مرة أخرى.')
+            )
+          }
+          requestingReturn={oa.busyId === order.id}
+          requestReturnError={oa.actionError}
+        />
       </div>
     </div>
   );

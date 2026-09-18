@@ -39,3 +39,9 @@ export function adminListReturns(statuses?: ReturnStatus[]) {
 export function adminUpdateReturnStatus(id: UUID, status: ReturnStatus) {
   return api.patch<{ return: Return }>(`/api/admin/returns/${id}/status`, { status }).then((r) => r.return);
 }
+
+// Staff-initiated return (e.g. a phone order) — same body shape as the
+// customer route above, just against the admin order-scoped endpoint.
+export function adminRequestReturn(orderId: UUID, body: CreateReturnBody) {
+  return api.post<{ return: Return }>(`/api/admin/orders/${orderId}/returns`, body).then((r) => r.return);
+}
