@@ -13,6 +13,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { useAuth } from '@/hooks/use-auth';
+import { usePermissions } from '@/lib/rbac';
 import {
   useEmailTemplates,
   useResetEmailTemplate,
@@ -36,6 +37,12 @@ import type { EmailTemplateKey } from '@/lib/types';
 export function EmailTemplatesPanel({ locale }: { locale: 'en' | 'ar' }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  // Every /api/admin/email-templates route (including list/read) requires
+  // settings:manage on the backend — there's no view-only tier for this
+  // sub-resource. Without this check, a settings:view-only caller would hit
+  // the query hook below, get a 403, and see a confusing "couldn't load"
+  // error state instead of a clear "no permission" message.
+  const canManage = usePermissions().has('settings:manage');
 
   const { data: templates, isPending, isError, refetch } = useEmailTemplates();
   const update = useUpdateEmailTemplate();
@@ -76,6 +83,14 @@ export function EmailTemplatesPanel({ locale }: { locale: 'en' | 'ar' }) {
 
   const busy = update.isPending || reset.isPending;
 
+  if (!canManage) {
+    return (
+      <EmptyState
+        tone="alert"
+        title={t("You don't have permission to manage email templates", 'ليست لديك صلاحية لإدارة قوالب البريد')}
+      />
+    );
+  }
   if (isPending) {
     return <ProductGridSkeleton count={2} />;
   }

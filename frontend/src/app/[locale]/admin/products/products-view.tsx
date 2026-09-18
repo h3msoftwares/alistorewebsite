@@ -9,6 +9,7 @@ import { AdminThumb } from '@/components/admin/admin-thumb';
 import { AdminListControls } from '@/components/admin/admin-list-controls';
 import { AdminPager } from '@/components/admin/admin-pager';
 import { useRowSelection } from '@/hooks/use-row-selection';
+import { usePermissions } from '@/lib/rbac';
 import {
   useDeleteProduct,
   usePermanentDeleteProduct,
@@ -26,6 +27,7 @@ export function AdminProductsPage() {
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const canManage = usePermissions().has('products:manage');
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<CatalogStatus>('active');
@@ -124,10 +126,12 @@ export function AdminProductsPage() {
     <div className="section--tight">
       <div className="admin-page__head">
         <h1>{t('Products', 'المنتجات')}</h1>
-        <Link href={`/${locale}/admin/products/new`} className="btn btn--primary">
-          <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
-          {t('New product', 'منتج جديد')}
-        </Link>
+        {canManage && (
+          <Link href={`/${locale}/admin/products/new`} className="btn btn--primary">
+            <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+            {t('New product', 'منتج جديد')}
+          </Link>
+        )}
       </div>
 
       <AdminListControls
@@ -162,14 +166,16 @@ export function AdminProductsPage() {
         <EmptyState
           title={search || status !== 'active' ? t('No matches', 'لا نتائج') : t('No products yet', 'لا توجد منتجات بعد')}
           action={
-            <Link href={`/${locale}/admin/products/new`} className="btn btn--primary">
-              {t('New product', 'منتج جديد')}
-            </Link>
+            canManage ? (
+              <Link href={`/${locale}/admin/products/new`} className="btn btn--primary">
+                {t('New product', 'منتج جديد')}
+              </Link>
+            ) : undefined
           }
         />
       ) : (
         <>
-          {selection.count > 0 && (
+          {canManage && selection.count > 0 && (
             <div className="admin-bulk-bar">
               <span className="admin-bulk-bar__count">
                 {t(`${selection.count} selected`, `${selection.count} محدد`)}
@@ -200,14 +206,16 @@ export function AdminProductsPage() {
           <DataTable responsive>
             <thead>
               <tr>
-                <th aria-hidden="true">
-                  <Choice
-                    type="checkbox"
-                    checked={selection.allSelected}
-                    onChange={selection.toggleAll}
-                    label={<span className="visually-hidden">{t('Select all', 'تحديد الكل')}</span>}
-                  />
-                </th>
+                {canManage && (
+                  <th aria-hidden="true">
+                    <Choice
+                      type="checkbox"
+                      checked={selection.allSelected}
+                      onChange={selection.toggleAll}
+                      label={<span className="visually-hidden">{t('Select all', 'تحديد الكل')}</span>}
+                    />
+                  </th>
+                )}
                 <th aria-hidden="true" />
                 <th>{t('Name', 'الاسم')}</th>
                 <th>{t('SKU', 'رمز المنتج')}</th>
@@ -221,14 +229,16 @@ export function AdminProductsPage() {
             <tbody>
               {items.map((p) => (
                 <tr key={p.id}>
-                  <td data-label={t('Select', 'تحديد')}>
-                    <Choice
-                      type="checkbox"
-                      checked={selection.selected.has(p.id)}
-                      onChange={() => selection.toggle(p.id)}
-                      label={<span className="visually-hidden">{t(`Select ${name(p)}`, `تحديد ${name(p)}`)}</span>}
-                    />
-                  </td>
+                  {canManage && (
+                    <td data-label={t('Select', 'تحديد')}>
+                      <Choice
+                        type="checkbox"
+                        checked={selection.selected.has(p.id)}
+                        onChange={() => selection.toggle(p.id)}
+                        label={<span className="visually-hidden">{t(`Select ${name(p)}`, `تحديد ${name(p)}`)}</span>}
+                      />
+                    </td>
+                  )}
                   <td data-label={t('Image', 'الصورة')}>
                     <AdminThumb url={p.images[0]?.url} alt={name(p)} />
                   </td>
@@ -249,12 +259,7 @@ export function AdminProductsPage() {
                       String(p.price)
                     )}
                   </td>
-                  {/* Real per-variant stock summed here, not `p.quantity` —
-                      that field is a dead, free-standing column never
-                      derived from or validated against variant stock (it
-                      reads 0 for every product in this catalog); it used to
-                      render here unconditionally and looked like real
-                      inventory data, which it never was (fix-list.md #16). */}
+                  {/* Stock is per-variant, not a product-level field — sum it here. */}
                   <td data-label={t('Stock', 'المخزون')}>
                     {p.variants.reduce((sum, v) => sum + v.stockQuantity, 0)}
                   </td>
@@ -279,33 +284,35 @@ export function AdminProductsPage() {
                       >
                         <Icon as={Pencil} size={16} />
                       </Link>
-                      <RowActionsMenu
-                        label={t('More actions', 'المزيد من الإجراءات')}
-                        actions={
-                          p.deletedAt
-                            ? [
-                                {
-                                  label: t('Restore', 'استعادة'),
-                                  icon: RotateCcw,
-                                  onClick: () => onRestoreRow(p),
-                                  disabled: busyId === p.id,
-                                },
-                                {
-                                  label: t('Delete permanently', 'حذف نهائي'),
-                                  icon: Trash2,
-                                  tone: 'danger',
-                                  onClick: () => setConfirm({ kind: 'delete', ids: [p.id] }),
-                                },
-                              ]
-                            : [
-                                {
-                                  label: t('Archive', 'أرشفة'),
-                                  icon: Archive,
-                                  onClick: () => setConfirm({ kind: 'archive', ids: [p.id] }),
-                                },
-                              ]
-                        }
-                      />
+                      {canManage && (
+                        <RowActionsMenu
+                          label={t('More actions', 'المزيد من الإجراءات')}
+                          actions={
+                            p.deletedAt
+                              ? [
+                                  {
+                                    label: t('Restore', 'استعادة'),
+                                    icon: RotateCcw,
+                                    onClick: () => onRestoreRow(p),
+                                    disabled: busyId === p.id,
+                                  },
+                                  {
+                                    label: t('Delete permanently', 'حذف نهائي'),
+                                    icon: Trash2,
+                                    tone: 'danger',
+                                    onClick: () => setConfirm({ kind: 'delete', ids: [p.id] }),
+                                  },
+                                ]
+                              : [
+                                  {
+                                    label: t('Archive', 'أرشفة'),
+                                    icon: Archive,
+                                    onClick: () => setConfirm({ kind: 'archive', ids: [p.id] }),
+                                  },
+                                ]
+                          }
+                        />
+                      )}
                     </span>
                   </td>
                 </tr>

@@ -9,6 +9,7 @@ import { AdminThumb } from '@/components/admin/admin-thumb';
 import { AdminListControls } from '@/components/admin/admin-list-controls';
 import { AdminPager } from '@/components/admin/admin-pager';
 import { useRowSelection } from '@/hooks/use-row-selection';
+import { usePermissions } from '@/lib/rbac';
 import {
   useAdminCategories,
   useDeleteCategory,
@@ -26,6 +27,7 @@ export default function AdminCategoriesPage() {
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const canManage = usePermissions().has('categories:manage');
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<CatalogStatus>('active');
@@ -128,10 +130,12 @@ export default function AdminCategoriesPage() {
     <div className="section--tight">
       <div className="admin-page__head">
         <h1>{t('Categories', 'الفئات')}</h1>
-        <Link href={`/${locale}/admin/categories/new`} className="btn btn--primary">
-          <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
-          {t('New category', 'فئة جديدة')}
-        </Link>
+        {canManage && (
+          <Link href={`/${locale}/admin/categories/new`} className="btn btn--primary">
+            <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+            {t('New category', 'فئة جديدة')}
+          </Link>
+        )}
       </div>
 
       <AdminListControls
@@ -166,14 +170,16 @@ export default function AdminCategoriesPage() {
         <EmptyState
           title={search || status !== 'active' ? t('No matches', 'لا نتائج') : t('No categories yet', 'لا توجد فئات بعد')}
           action={
-            <Link href={`/${locale}/admin/categories/new`} className="btn btn--primary">
-              {t('New category', 'فئة جديدة')}
-            </Link>
+            canManage ? (
+              <Link href={`/${locale}/admin/categories/new`} className="btn btn--primary">
+                {t('New category', 'فئة جديدة')}
+              </Link>
+            ) : undefined
           }
         />
       ) : (
         <>
-          {selection.count > 0 && (
+          {canManage && selection.count > 0 && (
             <div className="admin-bulk-bar">
               <span className="admin-bulk-bar__count">
                 {t(`${selection.count} selected`, `${selection.count} محدد`)}
@@ -204,14 +210,16 @@ export default function AdminCategoriesPage() {
           <DataTable responsive>
             <thead>
               <tr>
-                <th aria-hidden="true">
-                  <Choice
-                    type="checkbox"
-                    checked={selection.allSelected}
-                    onChange={selection.toggleAll}
-                    label={<span className="visually-hidden">{t('Select all', 'تحديد الكل')}</span>}
-                  />
-                </th>
+                {canManage && (
+                  <th aria-hidden="true">
+                    <Choice
+                      type="checkbox"
+                      checked={selection.allSelected}
+                      onChange={selection.toggleAll}
+                      label={<span className="visually-hidden">{t('Select all', 'تحديد الكل')}</span>}
+                    />
+                  </th>
+                )}
                 <th aria-hidden="true" />
                 <th>{t('Name', 'الاسم')}</th>
                 <th>{t('Slug', 'الرابط')}</th>
@@ -224,14 +232,16 @@ export default function AdminCategoriesPage() {
             <tbody>
               {pageRows.map((c) => (
                 <tr key={c.id}>
-                  <td data-label={t('Select', 'تحديد')}>
-                    <Choice
-                      type="checkbox"
-                      checked={selection.selected.has(c.id)}
-                      onChange={() => selection.toggle(c.id)}
-                      label={<span className="visually-hidden">{t(`Select ${name(c)}`, `تحديد ${name(c)}`)}</span>}
-                    />
-                  </td>
+                  {canManage && (
+                    <td data-label={t('Select', 'تحديد')}>
+                      <Choice
+                        type="checkbox"
+                        checked={selection.selected.has(c.id)}
+                        onChange={() => selection.toggle(c.id)}
+                        label={<span className="visually-hidden">{t(`Select ${name(c)}`, `تحديد ${name(c)}`)}</span>}
+                      />
+                    </td>
+                  )}
                   <td data-label={t('Image', 'الصورة')}>
                     <AdminThumb url={c.images[0]?.url} alt={name(c)} />
                   </td>
@@ -275,33 +285,35 @@ export default function AdminCategoriesPage() {
                       >
                         <Icon as={Pencil} size={16} />
                       </Link>
-                      <RowActionsMenu
-                        label={t('More actions', 'المزيد من الإجراءات')}
-                        actions={
-                          c.archivedAt
-                            ? [
-                                {
-                                  label: t('Restore', 'استعادة'),
-                                  icon: RotateCcw,
-                                  onClick: () => onRestoreRow(c),
-                                  disabled: busyId === c.id,
-                                },
-                                {
-                                  label: t('Delete permanently', 'حذف نهائي'),
-                                  icon: Trash2,
-                                  tone: 'danger',
-                                  onClick: () => setConfirm({ kind: 'delete', ids: [c.id] }),
-                                },
-                              ]
-                            : [
-                                {
-                                  label: t('Archive', 'أرشفة'),
-                                  icon: Archive,
-                                  onClick: () => setConfirm({ kind: 'archive', ids: [c.id] }),
-                                },
-                              ]
-                        }
-                      />
+                      {canManage && (
+                        <RowActionsMenu
+                          label={t('More actions', 'المزيد من الإجراءات')}
+                          actions={
+                            c.archivedAt
+                              ? [
+                                  {
+                                    label: t('Restore', 'استعادة'),
+                                    icon: RotateCcw,
+                                    onClick: () => onRestoreRow(c),
+                                    disabled: busyId === c.id,
+                                  },
+                                  {
+                                    label: t('Delete permanently', 'حذف نهائي'),
+                                    icon: Trash2,
+                                    tone: 'danger',
+                                    onClick: () => setConfirm({ kind: 'delete', ids: [c.id] }),
+                                  },
+                                ]
+                              : [
+                                  {
+                                    label: t('Archive', 'أرشفة'),
+                                    icon: Archive,
+                                    onClick: () => setConfirm({ kind: 'archive', ids: [c.id] }),
+                                  },
+                                ]
+                          }
+                        />
+                      )}
                     </span>
                   </td>
                 </tr>

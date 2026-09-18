@@ -74,9 +74,12 @@ export default function AdminBlacklistPage() {
   const runRemove = async () => {
     if (!confirmRemove) return;
     setConfirmBusy(true);
+    setError(null);
     try {
       await Promise.all(confirmRemove.map((e) => remove.mutateAsync(e.id)));
       selection.clear();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('Remove failed', 'فشلت الإزالة'));
     } finally {
       setConfirmRemove(null);
       setConfirmBusy(false);

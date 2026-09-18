@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createWrapper } from '@/test/utils';
+import type { AuthUser } from '@/lib/types';
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ locale: 'en' }),
@@ -55,8 +56,21 @@ const coupon = {
   dateCreated: '2026-09-01T00:00:00.000Z',
 };
 
-function renderPage() {
-  const { Wrapper } = createWrapper();
+function renderPage(user?: Partial<AuthUser>) {
+  const { Wrapper, store } = createWrapper();
+  if (user) {
+    store.dispatch({
+      type: 'auth/authenticated',
+      payload: {
+        id: 'admin1',
+        name: 'Boss',
+        email: 'boss@test.dev',
+        phone: null,
+        role: 'ADMIN',
+        ...user,
+      } satisfies AuthUser,
+    });
+  }
   return render(<AdminDiscountsPage />, { wrapper: Wrapper });
 }
 
@@ -79,7 +93,7 @@ describe('AdminDiscountsPage (list)', () => {
   });
 
   it('links "New promotion" to the create page rather than an inline form', async () => {
-    renderPage();
+    renderPage({ permissions: ['discounts:view', 'discounts:manage'] });
     await screen.findByText('Summer sale');
     expect(screen.getByRole('link', { name: /New promotion/ })).toHaveAttribute(
       'href',
