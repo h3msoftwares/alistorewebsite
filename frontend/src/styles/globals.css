@@ -2187,6 +2187,42 @@ a.home-card__name:hover { text-decoration: underline; }
   align-items: stretch;
   min-height: 100vh;
   background: var(--color-bg);
+  /* Thin, theme-coloured scrollbar for every scrollable region in the admin
+     panel (this element, the sidebar, data tables with overflow-x, modals)
+     instead of the chunky default OS scrollbar — most noticeable on the
+     dark sidebar, where a default light scrollbar reads as a visual glitch. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+.admin-shell ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.admin-shell ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.admin-shell ::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: var(--radius-full, 999px);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.admin-shell ::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+  background-clip: padding-box;
+}
+/* The sidebar sits on --navy, not the panel's light background — its own
+   scrollbar needs a light-on-dark thumb instead of inheriting the above. */
+.admin-sidebar {
+  scrollbar-color: var(--admin-sidebar-muted) transparent;
+}
+.admin-sidebar::-webkit-scrollbar-thumb {
+  background: var(--admin-sidebar-muted);
+  background-clip: padding-box;
+}
+.admin-sidebar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted-on-dark);
+  background-clip: padding-box;
 }
 .admin-shell__main {
   flex: 1;
@@ -2210,13 +2246,21 @@ a.home-card__name:hover { text-decoration: underline; }
   box-sizing: border-box;
   overflow-y: auto;
 }
-.admin-sidebar__brand {
+.admin-sidebar__header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-3) var(--space-5);
   margin-bottom: var(--space-2);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.admin-sidebar__header .icon-btn { color: var(--color-text-on-dark); }
+.admin-sidebar__header .icon-btn:hover { background: rgba(255, 255, 255, 0.08); }
+.admin-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   font-family: var(--font-sans);
   font-size: var(--fs-lg);
   font-weight: var(--fw-bold);
@@ -2327,6 +2371,69 @@ a.home-card__name:hover { text-decoration: underline; }
   border-radius: var(--radius-pill);
   padding: 1px 5px;
 }
+/* ---- Notification bell (admin sidebar header + mobile nav tab) ---- */
+.notification-bell { position: relative; display: inline-flex; }
+/* The bell's own wrapper div is the flex child here, not the button inside
+   it — needs the same flex:1 as its .admin-mobile-nav__item siblings so it
+   sizes like one of the tabs instead of shrinking to content width. */
+.admin-mobile-nav .notification-bell { flex: 1; }
+.admin-mobile-nav .notification-bell .admin-mobile-nav__item { width: 100%; }
+.notification-bell__panel {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + 8px);
+  z-index: var(--z-dropdown);
+  width: 20rem;
+  max-width: calc(100vw - var(--space-4) * 2);
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  color: var(--color-text);
+}
+/* Mobile tab variant opens upward from the bottom bar instead of downward. */
+.notification-bell__panel--up { top: auto; bottom: calc(100% + 8px); }
+.notification-bell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: var(--fw-semibold);
+}
+.notification-bell__mark-all {
+  background: none;
+  border: 0;
+  color: var(--color-text);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.notification-bell__empty { padding: var(--space-4); color: var(--color-text-muted); text-align: center; margin: 0; }
+.notification-bell__list { list-style: none; margin: 0; padding: var(--space-1); display: flex; flex-direction: column; }
+.notification-bell__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: start;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+.notification-bell__item:hover { background: var(--color-surface); }
+.notification-bell__item[data-unread] { background: var(--color-info-bg); }
+.notification-bell__item[data-unread]:hover { background: var(--color-surface); }
+.notification-bell__item-title { font-weight: var(--fw-semibold); font-size: var(--fs-sm); }
+.notification-bell__item-body { font-size: var(--fs-xs); color: var(--color-text-muted); }
+.notification-bell__item-date { font-size: var(--fs-2xs); color: var(--color-text-muted); }
+
 /* dark theme variant of the shared Drawer, for the mobile nav's "More" panel */
 .admin-nav-drawer__panel { background: var(--navy) !important; color: var(--color-text-on-dark) !important; }
 .admin-nav-drawer__panel .drawer__header { border-bottom-color: rgba(255, 255, 255, 0.1); }
@@ -2480,7 +2587,10 @@ a.home-card__name:hover { text-decoration: underline; }
 }
 .admin-pager__status { font-size: var(--fs-sm); color: var(--color-text-muted); }
 
-.admin-row-actions { display: inline-flex; gap: var(--space-2); }
+.admin-row-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+
+/* Header actions row (filters, buttons) beside an admin page's <h1>. */
+.admin-page__head-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4); }
 .admin-inline { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .admin-status-badge--archived { opacity: 0.7; }
 
@@ -2822,6 +2932,7 @@ a.home-card__name:hover { text-decoration: underline; }
 .admin-form__checks {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  justify-items: start;
   gap: var(--space-1) var(--space-4);
 }
 
@@ -3079,6 +3190,16 @@ a.home-card__name:hover { text-decoration: underline; }
   pointer-events: none;
 }
 .btn[data-loading='true'] .btn__label { opacity: 0.7; }
+
+/* Every icon+text <Button> puts both children in this one span (see
+   button.tsx). The global `svg { display: block }` reset otherwise forces a
+   line break around the icon here, stacking it above the label instead of
+   beside it — this is what fixes that, everywhere a Button uses an icon. */
+.btn__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 
 .btn__spinner {
   width: 1em;
@@ -3641,6 +3762,7 @@ a.home-card__name:hover { text-decoration: underline; }
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--color-border);
   vertical-align: middle;
+  overflow-wrap: anywhere;
 }
 .table tbody tr:hover { background: var(--color-surface); }
 

@@ -122,17 +122,17 @@ export default function EditCategoryPage() {
           {category.archivedAt ? (
             <>
               <Button variant="outline" onClick={onRestoreCategory} loading={restoreCategory.isPending}>
-                <Icon as={RotateCcw} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                <Icon as={RotateCcw} size={16} />
                 {t('Restore', 'استعادة')}
               </Button>
               <Button variant="danger" onClick={() => setConfirmKind('delete')} loading={permanentDeleteCategory.isPending}>
-                <Icon as={Trash2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                <Icon as={Trash2} size={16} />
                 {t('Delete permanently', 'حذف نهائي')}
               </Button>
             </>
           ) : (
             <Button variant="danger" onClick={() => setConfirmKind('archive')} loading={archiveCategory.isPending}>
-              <Icon as={Archive} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+              <Icon as={Archive} size={16} />
               {t('Archive category', 'أرشفة الفئة')}
             </Button>
           )}
