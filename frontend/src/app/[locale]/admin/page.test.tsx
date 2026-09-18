@@ -2,18 +2,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { createWrapper } from '@/test/utils';
 
-vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en' }) }));
+vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en' }), useRouter: () => ({ push: vi.fn() }) }));
 
 vi.mock('@/lib/api', () => ({
   ordersApi: { adminDashboard: vi.fn() },
   analyticsApi: { getOverview: vi.fn() },
+  notificationsApi: {
+    listNotifications: vi.fn(),
+    markNotificationRead: vi.fn(),
+    markAllNotificationsRead: vi.fn(),
+  },
 }));
 
-import { ordersApi, analyticsApi } from '@/lib/api';
+import { ordersApi, analyticsApi, notificationsApi } from '@/lib/api';
 import AdminDashboardPage from './page';
 
 const mock = vi.mocked(ordersApi, true);
 const analyticsMock = vi.mocked(analyticsApi, true);
+const notificationsMock = vi.mocked(notificationsApi, true);
 
 const overview = {
   range: { from: '2026-08-09T00:00:00.000Z', to: '2026-09-08T00:00:00.000Z' },
@@ -60,6 +66,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mock.adminDashboard.mockResolvedValue(dashboard as never);
   analyticsMock.getOverview.mockResolvedValue(overview as never);
+  notificationsMock.listNotifications.mockResolvedValue({ notifications: [], unreadCount: 0 });
 });
 
 describe('AdminDashboardPage', () => {

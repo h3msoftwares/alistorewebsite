@@ -2230,6 +2230,7 @@ a.home-card__name:hover { text-decoration: underline; }
   margin-inline-start: var(--admin-sidebar-w);
   padding: var(--space-6) var(--gutter);
   box-sizing: border-box;
+  transition: margin-inline-start var(--transition-fast);
 }
 
 /* ---- desktop sidebar ---- */
@@ -2245,7 +2246,31 @@ a.home-card__name:hover { text-decoration: underline; }
   padding: var(--space-5) var(--space-3) var(--space-4);
   box-sizing: border-box;
   overflow-y: auto;
+  transition: inset-inline-start var(--transition-fast);
 }
+/* Hideable sidebar (per-device, see use-sidebar-collapsed.ts) — slid off the
+   start edge with a logical offset (not transform: translateX) so it slides
+   off the correct physical side in RTL too. */
+.admin-shell[data-sidebar-collapsed] .admin-sidebar { inset-inline-start: calc(-1 * var(--admin-sidebar-w)); }
+.admin-shell[data-sidebar-collapsed] .admin-shell__main { margin-inline-start: 0; }
+.admin-sidebar-reopen {
+  position: fixed;
+  inset-block-start: var(--space-4);
+  inset-inline-start: var(--space-4);
+  z-index: var(--z-header);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+}
+.admin-sidebar-reopen:hover { background: var(--color-surface); }
 .admin-sidebar__header {
   display: flex;
   align-items: center;
@@ -2329,6 +2354,20 @@ a.home-card__name:hover { text-decoration: underline; }
   text-overflow: ellipsis;
 }
 .admin-sidebar__user-role { font-size: var(--fs-2xs); color: var(--color-text-muted-on-dark); }
+.admin-sidebar__logout {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted-on-dark);
+  cursor: pointer;
+}
+.admin-sidebar__logout:hover { background: rgba(255, 255, 255, 0.1); color: var(--color-text-on-dark); }
 
 /* ---- mobile: bottom tab bar + "More" drawer ---- */
 .admin-mobile-nav {
@@ -2371,13 +2410,8 @@ a.home-card__name:hover { text-decoration: underline; }
   border-radius: var(--radius-pill);
   padding: 1px 5px;
 }
-/* ---- Notification bell (admin sidebar header + mobile nav tab) ---- */
+/* ---- Notification bell (admin dashboard page header) ---- */
 .notification-bell { position: relative; display: inline-flex; }
-/* The bell's own wrapper div is the flex child here, not the button inside
-   it — needs the same flex:1 as its .admin-mobile-nav__item siblings so it
-   sizes like one of the tabs instead of shrinking to content width. */
-.admin-mobile-nav .notification-bell { flex: 1; }
-.admin-mobile-nav .notification-bell .admin-mobile-nav__item { width: 100%; }
 .notification-bell__panel {
   position: absolute;
   inset-inline-end: 0;
@@ -2393,8 +2427,6 @@ a.home-card__name:hover { text-decoration: underline; }
   box-shadow: var(--shadow-md);
   color: var(--color-text);
 }
-/* Mobile tab variant opens upward from the bottom bar instead of downward. */
-.notification-bell__panel--up { top: auto; bottom: calc(100% + 8px); }
 .notification-bell__header {
   display: flex;
   align-items: center;
@@ -2445,6 +2477,7 @@ a.home-card__name:hover { text-decoration: underline; }
   .admin-sidebar { display: none; }
   .admin-shell__main { margin-inline-start: 0; padding-bottom: calc(64px + env(safe-area-inset-bottom, 0) + var(--space-4)); }
   .admin-mobile-nav { display: flex; align-items: stretch; }
+  .admin-sidebar-reopen { display: none; }
 }
 
 /* ---- shared underline tab strip (Settings / Customers / Roles / Discounts

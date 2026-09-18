@@ -1,7 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { LogOut } from 'lucide-react';
 import { useLogout } from '@/hooks/use-auth';
+import { Icon } from '@/components/ui/icon';
 
 /**
  * Sign-out control, used from the menu drawer and the account page. Self
@@ -20,8 +22,11 @@ export function LogoutButton({
   labelAr = 'تسجيل الخروج',
 }: {
   locale: string;
-  /** `nav` = styled as a drawer nav link; `button` = a regular outline button. */
-  variant?: 'nav' | 'button';
+  /** `nav` = styled as a drawer nav link; `button` = a regular outline button;
+   *  `icon` = bare icon button, for the dark admin sidebar; `admin-nav` = a
+   *  full-width row matching `.admin-sidebar__link`, for the admin mobile
+   *  "More" drawer. */
+  variant?: 'nav' | 'button' | 'icon' | 'admin-nav';
   /** Called right before the redirect — e.g. to close the menu drawer. */
   onDone?: () => void;
   labelEn?: string;
@@ -41,6 +46,36 @@ export function LogoutButton({
       router.replace(`/${locale}`);
     }
   };
+
+  if (variant === 'icon') {
+    return (
+      <button
+        type="button"
+        className="admin-sidebar__logout"
+        disabled={logout.isPending}
+        onClick={onClick}
+        title={label}
+        aria-label={label}
+      >
+        <Icon as={LogOut} size={16} />
+      </button>
+    );
+  }
+
+  if (variant === 'admin-nav') {
+    return (
+      <button
+        type="button"
+        className="admin-sidebar__link"
+        disabled={logout.isPending}
+        onClick={onClick}
+        style={{ font: 'inherit', background: 'none', border: 0, width: '100%', textAlign: 'start', cursor: 'pointer' }}
+      >
+        <Icon as={LogOut} size={18} />
+        {label}
+      </button>
+    );
+  }
 
   if (variant === 'nav') {
     return (

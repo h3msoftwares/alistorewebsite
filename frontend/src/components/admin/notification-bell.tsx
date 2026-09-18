@@ -14,16 +14,7 @@ import type { Notification } from '@/lib/types';
  * click/Esc-close logic mirrors `RowActionsMenu`'s own pattern (not reused
  * directly — the content shape here is a rich list, not a flat action menu).
  */
-export function NotificationBell({
-  locale,
-  variant = 'icon',
-}: {
-  locale: 'en' | 'ar';
-  /** 'icon' (default) — a plain icon button, for the desktop sidebar's dark
-   *  header row. 'tab' — matches `AdminMobileNav`'s sibling tab items
-   *  (icon-over-label, `flex: 1`) so it sits correctly in that bottom bar. */
-  variant?: 'icon' | 'tab';
-}) {
+export function NotificationBell({ locale }: { locale: 'en' | 'ar' }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const router = useRouter();
@@ -71,42 +62,22 @@ export function NotificationBell({
 
   return (
     <div className="notification-bell" ref={ref}>
-      {variant === 'tab' ? (
+      <span className="icon-btn-wrap">
         <button
           type="button"
-          className="admin-mobile-nav__item"
-          data-active={open || undefined}
+          className="icon-btn notification-bell__trigger"
           aria-haspopup="menu"
           aria-expanded={open}
+          aria-label={t('Notifications', 'الإشعارات')}
           onClick={() => setOpen((o) => !o)}
         >
-          <span className="admin-mobile-nav__icon">
-            <Icon as={Bell} size={19} />
-            {unreadCount > 0 && <span className="admin-mobile-nav__badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}
-          </span>
-          {t('Alerts', 'التنبيهات')}
+          <Icon as={Bell} size={18} />
         </button>
-      ) : (
-        <span className="icon-btn-wrap">
-          <button
-            type="button"
-            className="icon-btn notification-bell__trigger"
-            aria-haspopup="menu"
-            aria-expanded={open}
-            aria-label={t('Notifications', 'الإشعارات')}
-            onClick={() => setOpen((o) => !o)}
-          >
-            <Icon as={Bell} size={18} />
-          </button>
-          {unreadCount > 0 && <span className="icon-btn__badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}
-        </span>
-      )}
+        {unreadCount > 0 && <span className="icon-btn__badge">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+      </span>
 
       {open && (
-        <div
-          className={variant === 'tab' ? 'notification-bell__panel notification-bell__panel--up' : 'notification-bell__panel'}
-          role="menu"
-        >
+        <div className="notification-bell__panel" role="menu">
           <div className="notification-bell__header">
             <span>{t('Notifications', 'الإشعارات')}</span>
             {unreadCount > 0 && (

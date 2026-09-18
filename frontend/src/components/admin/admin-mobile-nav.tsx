@@ -7,7 +7,7 @@ import { Menu } from 'lucide-react';
 import { Icon } from '@/components/ui/icon';
 import { Drawer } from '@/components/ui/drawer';
 import { groupAdminNavItems, useAdminNavItems } from '@/hooks/use-admin-nav';
-import { NotificationBell } from './notification-bell';
+import { LogoutButton } from '@/components/chrome/logout-button';
 import { usePermissions, ADMIN_NAV_GROUP_LABEL } from '@/lib/rbac';
 import { useAdminDashboard } from '@/hooks/use-orders';
 
@@ -51,7 +51,6 @@ export function AdminMobileNav({ locale }: { locale: string }) {
             {item.label}
           </Link>
         ))}
-        <NotificationBell locale={isAr ? 'ar' : 'en'} variant="tab" />
         <button type="button" className="admin-mobile-nav__item" data-active={open || undefined} onClick={() => setOpen(true)}>
           <Icon as={Menu} size={19} />
           {t('More', 'المزيد')}
@@ -71,6 +70,9 @@ export function AdminMobileNav({ locale }: { locale: string }) {
               ))}
             </div>
           ))}
+          <div className="admin-sidebar__group">
+            <LogoutButton locale={locale} variant="admin-nav" onDone={() => setOpen(false)} />
+          </div>
         </nav>
       </Drawer>
     </>

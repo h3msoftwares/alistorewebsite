@@ -2,12 +2,13 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
+import { PanelLeftClose } from 'lucide-react';
 import { Icon } from '@/components/ui/icon';
 import { initialsOf } from '@/components/chrome/topbar';
+import { LogoutButton } from '@/components/chrome/logout-button';
 import { useAuth } from '@/hooks/use-auth';
 import { useSettings } from '@/hooks/use-settings';
 import { groupAdminNavItems, useAdminNavItems } from '@/hooks/use-admin-nav';
-import { NotificationBell } from './notification-bell';
 import { ADMIN_NAV_GROUP_LABEL } from '@/lib/rbac';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 
@@ -17,7 +18,7 @@ import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
  * globals.css); `AdminMobileNav` takes over there. Both read the same
  * `useAdminNavItems()` so they can never show different sections.
  */
-export function AdminSidebar({ locale }: { locale: string }) {
+export function AdminSidebar({ locale, onCollapse }: { locale: string; onCollapse: () => void }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { user } = useAuth();
@@ -32,7 +33,15 @@ export function AdminSidebar({ locale }: { locale: string }) {
           <Image src="/ali-store-A-traced.png" alt="" width={28} height={26} className="admin-sidebar__brand-mark" />
           <span>{brandName}</span>
         </Link>
-        <NotificationBell locale={locale as 'en' | 'ar'} />
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={onCollapse}
+          title={t('Hide sidebar', 'إخفاء الشريط الجانبي')}
+          aria-label={t('Hide sidebar', 'إخفاء الشريط الجانبي')}
+        >
+          <Icon as={PanelLeftClose} size={18} />
+        </button>
       </div>
 
       <nav className="admin-sidebar__nav">
@@ -58,6 +67,7 @@ export function AdminSidebar({ locale }: { locale: string }) {
             <span className="admin-sidebar__user-name">{user.name}</span>
             <span className="admin-sidebar__user-role">{user.roleName || (user.role === 'ADMIN' ? t('Admin', 'مسؤول') : t('Staff', 'موظف'))}</span>
           </span>
+          <LogoutButton locale={locale} variant="icon" />
         </div>
       )}
     </aside>

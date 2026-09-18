@@ -7,6 +7,7 @@ import { ChartCard, StatGrid, TrendLine } from '@/components/admin/analytics';
 import { bucketLabel } from '@/components/admin/analytics/format';
 import { useAdminDashboard } from '@/hooks/use-orders';
 import { useAnalyticsOverview } from '@/hooks/use-analytics';
+import { NotificationBell } from '@/components/admin/notification-bell';
 
 /** Admin landing page: an at-a-glance "what needs attention" view. The
  *  date-ranged deep dives live under /admin/analytics — this page is the
@@ -44,6 +45,7 @@ export default function AdminDashboardPage() {
     <div className="section--tight">
       <div className="admin-page__head">
         <h1>{t('Dashboard', 'لوحة التحكم')}</h1>
+        <NotificationBell locale={locale} />
       </div>
 
       {isPending ? (
