@@ -391,13 +391,25 @@ function RestoreDialog({
     }
     try {
       const result = await restore.mutateAsync(backup.id);
-      onDone({
-        tone: 'success',
-        text: t(
-          `Restore complete — database replaced from ${result.restoredFrom} (${result.relations ?? '?'} tables).`,
-          `اكتملت الاستعادة — استُبدلت قاعدة البيانات من ${result.restoredFrom} (${result.relations ?? '?'} جداول).`
-        ),
-      });
+      if (result.ok) {
+        onDone({
+          tone: 'success',
+          text: t(
+            `Restore complete — database replaced from ${backup.name} (${result.relations ?? '?'} tables).`,
+            `اكتملت الاستعادة — استُبدلت قاعدة البيانات من ${backup.name} (${result.relations ?? '?'} جداول).`
+          ),
+        });
+      } else if ('timedOut' in result) {
+        onDone({
+          tone: 'danger',
+          text: t(
+            'Still running after a few minutes — the database may already be restored. Refresh the page in a bit to check.',
+            'ما زالت العملية قيد التشغيل بعد بضع دقائق — قد تكون قاعدة البيانات قد استُعيدت بالفعل. حدّث الصفحة بعد قليل للتحقق.'
+          ),
+        });
+      } else {
+        onDone({ tone: 'danger', text: result.error });
+      }
     } catch (e) {
       setError(isApiError(e) ? e.message : t('Restore failed.', 'فشلت الاستعادة.'));
     }

@@ -50,10 +50,38 @@ export function useRunBackupNow() {
   });
 }
 
+export type RestoreOutcome =
+  | { ok: true; relations?: number }
+  | { ok: false; timedOut: true }
+  | { ok: false; error: string };
+
+/**
+ * A real Drive download + pg_restore can run well past Netlify's 26s proxy
+ * timeout too (same problem, and same fix, as useRunBackupNow above) — the
+ * POST only confirms the restore STARTED, and this polls GET
+ * /restore-status afterward for the actual outcome. There's no new listable
+ * file to diff against here (unlike a backup), so the backend tracks the
+ * status itself; `status.id === id` guards against ever reading a stale
+ * result left over from an earlier restore.
+ */
 export function useRestoreBackup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => backupApi.restoreBackup(id),
+    mutationFn: async (id: string): Promise<RestoreOutcome> => {
+      await backupApi.restoreBackup(id);
+
+      const POLL_INTERVAL_MS = 4000;
+      const MAX_WAIT_MS = 3 * 60_000;
+      const deadline = Date.now() + MAX_WAIT_MS;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        const status = await backupApi.getRestoreStatus();
+        if (status.id !== id) continue;
+        if (status.state === 'done') return { ok: true, relations: status.relations };
+        if (status.state === 'error') return { ok: false, error: status.error ?? 'Restore failed.' };
+      }
+      return { ok: false, timedOut: true };
+    },
     onSettled: () => qc.invalidateQueries({ queryKey: BACKUPS_KEY }),
   });
 }
