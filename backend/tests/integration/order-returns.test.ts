@@ -214,6 +214,34 @@ describe('Per-item returns', () => {
     expect(patch.status).toBe(403); // has view, not manage
   });
 
+  it('lets staff create a return on the customer\'s behalf (e.g. a phone order)', async () => {
+    const { admin, orderId, orderItemId } = await deliveredOrder(4);
+
+    const res = await request(app)
+      .post(`/api/admin/orders/${orderId}/returns`)
+      .set(bearer(admin.token))
+      .send({ items: [{ orderItemID: orderItemId, quantity: 2 }], reason: 'Customer called in' });
+    expect(res.status).toBe(201);
+    expect(res.body.return.status).toBe('REQUESTED');
+    expect(Number(res.body.return.refundAmount)).toBe(40); // 2 * $20
+
+    // It's a real Return like any other — shows up on the order and can be
+    // driven through the same admin lifecycle.
+    const order = await request(app).get(`/api/orders/${orderId}`).set(bearer(admin.token));
+    expect(order.body.order.returns).toHaveLength(1);
+  });
+
+  it('requires orders:manage (not just orders:view) to create an admin-initiated return', async () => {
+    const { orderId, orderItemId } = await deliveredOrder(1);
+    const viewOnly = await createStaffWith(['orders:view']);
+
+    const res = await request(app)
+      .post(`/api/admin/orders/${orderId}/returns`)
+      .set(bearer(viewOnly.token))
+      .send({ items: [{ orderItemID: orderItemId, quantity: 1 }] });
+    expect(res.status).toBe(403);
+  });
+
   it('blocks the legacy whole-order RETURNED status while a per-item return is active', async () => {
     const { buyer, admin, orderId, orderItemId } = await deliveredOrder(2);
     await request(app)

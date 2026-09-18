@@ -117,6 +117,30 @@ export async function requestReturn(
   return ret;
 }
 
+/** Staff-initiated return request — e.g. a phone order the customer can't
+ *  self-serve online. Unlike `requestReturn`, there's no owning-customer
+ *  check (staff can act on any order); everything else — the DELIVERED
+ *  gate and the atomic returnedQuantity claim — is the same shared path. */
+export async function adminRequestReturn(
+  orderId: string,
+  actorId: string,
+  items: ReturnRequestItem[],
+  reason?: string
+) {
+  const ret = await performReturnRequest(orderId, items, reason, actorId);
+  await recordAudit({
+    entityType: 'return',
+    entityID: ret.id,
+    action: 'return.requested',
+    actorID: actorId,
+    metadata: { orderID: orderId, items, via: 'admin' },
+  });
+  void sendReturnRequestedNotification(ret, ret.order).catch((err) => {
+    console.error('[return.service] failed to send return-requested notification', err);
+  });
+  return ret;
+}
+
 /** Token-based return request — a guest's tracking-page "request a return",
  *  proven by the OrderAccessToken instead of a login session. */
 export async function requestReturnByToken(rawToken: string, items: ReturnRequestItem[], reason?: string) {

@@ -43,6 +43,16 @@ export async function cancelReturnByTokenHandler(req: Request, res: Response) {
 
 // ---- Admin ----
 
+export async function adminRequestReturnHandler(req: Request, res: Response) {
+  const ret = await returnService.adminRequestReturn(
+    paramString(req.params.id),
+    req.user!.id,
+    req.body.items,
+    req.body.reason
+  );
+  res.status(201).json({ return: ret });
+}
+
 export async function listAdminReturnsHandler(req: Request, res: Response) {
   const { status } = (req.validatedQuery ?? {}) as { status?: ReturnStatus[] };
   const returns = await returnService.listAdminReturns(status);

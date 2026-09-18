@@ -25,6 +25,8 @@ import pushRoutes from '../push/push.routes';
 import roleRoutes from '../rbac/role.routes';
 import customerRoutes from '../customers/customers.routes';
 import returnRoutes from '../returns/return.routes';
+import { createReturnSchema } from '../returns/return.schema';
+import { adminRequestReturnHandler } from '../returns/return.controller';
 import notificationRoutes from '../notifications/notification.routes';
 
 const router = Router();
@@ -66,6 +68,18 @@ router.patch(
   requirePermission('orders:manage'),
   validate({ params: orderIdParamSchema }),
   asyncHandler(reviewOrderHandler)
+);
+// Staff-initiated return (e.g. a phone order) — same DELIVERED gate + atomic
+// returnedQuantity claim as the customer-facing route in order.routes.ts,
+// just without the owning-customer check. Step-up like the return-status
+// route below: it immediately claims the returned quantity, same bar as an
+// order-status change.
+router.post(
+  '/orders/:id/returns',
+  requirePermission('orders:manage'),
+  requireFreshAuth(),
+  validate({ params: orderIdParamSchema, body: createReturnSchema }),
+  asyncHandler(adminRequestReturnHandler)
 );
 
 // Step-up protected (S2): a direct stock write bypasses the ordinary
