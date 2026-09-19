@@ -53,6 +53,13 @@ jobs:
       - name: Run backup
         run: npm run backup:run
         env:
+          # ubuntu-latest's runner image ALREADY ships postgresql-client-16
+          # on PATH ahead of whatever gets apt-get installed afterward
+          # (confirmed live: plain `pg_dump` still resolved to 16.15 even
+          # after installing postgresql-client-17 above) — pointing directly
+          # at PGDG's versioned binary path sidesteps that PATH/wrapper
+          # ambiguity entirely instead of fighting update-alternatives.
+          PG_DUMP_BIN: /usr/lib/postgresql/17/bin/pg_dump
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
           GOOGLE_DRIVE_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_CLIENT_SECRET }}
