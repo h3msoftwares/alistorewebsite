@@ -7,10 +7,21 @@ import { CookieConsent } from '@/components/chrome/cookie-consent';
 import { WhatsappBubble } from '@/components/chrome/whatsapp-bubble';
 import { SiteHeader } from '@/components/site-header';
 import { SiteFooter } from '@/components/site-footer';
+import { JsonLd } from '@/components/seo/json-ld';
 import { makeQueryClient } from '@/lib/query-client';
 import { queryKeys } from '@/lib/query-keys';
 import { catalogApi, settingsApi } from '@/lib/api';
-import { DEFAULT_BRAND_NAME_EN } from '@/lib/site';
+import {
+  absoluteUrl,
+  buildOpenGraph,
+  buildTwitter,
+  DEFAULT_BRAND_NAME_EN,
+  getSiteUrl,
+  SITE_DESCRIPTION_AR,
+  SITE_DESCRIPTION_EN,
+} from '@/lib/site';
+import { organizationJsonLd, websiteJsonLd } from '@/lib/structured-data';
+import type { SiteSettings } from '@/lib/types';
 import '@/styles/globals.css';
 
 // app/[locale]/layout.tsx doubles as the ROOT layout (it renders <html>) —
@@ -49,6 +60,7 @@ export async function generateMetadata({
   params: Promise<{ locale: string }>;
 }): Promise<Metadata> {
   const { locale } = await params;
+  const isAr = locale === 'ar';
   let brand = DEFAULT_BRAND_NAME_EN;
   try {
     // Every one of the ~170 page x locale renders in a static-generation
@@ -60,13 +72,36 @@ export async function generateMetadata({
     // Netlify build timeouts on an otherwise-fixed set of pages, traced to
     // this and the prefetches below never actually erroring — just hanging).
     const settings = await settingsApi.getSettings({ signal: AbortSignal.timeout(8000) });
-    brand = locale === 'ar' ? settings.brandNameAr : settings.brandNameEn;
+    brand = isAr ? settings.brandNameAr : settings.brandNameEn;
   } catch {
     // Backend unreachable (or too slow) at build/render time — the default is fine.
   }
+  const description = isAr ? SITE_DESCRIPTION_AR : SITE_DESCRIPTION_EN;
+  const url = absoluteUrl(`/${locale}`);
+
   return {
-    title: brand,
-    description: `${brand} — Women, Men & Kids clothing, cash on delivery.`,
+    // Single source of truth (lib/site.ts's getSiteUrl()) so a relative
+    // `openGraph.images`/`icons` URL anywhere in the app resolves against the
+    // real production origin, not whatever host actually served the request.
+    metadataBase: new URL(getSiteUrl()),
+    // `%s | Alistore` for every page that sets its own `title` (product name,
+    // category name, ...); pages with no title of their own fall back to
+    // `brand` alone via the `default`. NOT `alternates.canonical` here —
+    // that would inherit onto every page that doesn't set its own, wrongly
+    // canonicalizing them at the locale root. Each indexable page sets its
+    // own canonical instead (home/product/category/collection do; a handful
+    // of secondary pages — privacy, our-story, auth forms — don't yet, which
+    // just means no explicit canonical there rather than a wrong one).
+    title: { default: brand, template: `%s | ${brand}` },
+    description,
+    robots: { index: true, follow: true },
+    // buildOpenGraph/buildTwitter (lib/site.ts): Next does NOT deep-merge
+    // these between layout and page, so any page that sets its own partial
+    // openGraph/twitter must go through the same two builders to stay
+    // complete rather than silently dropping siteName/images/card — see
+    // their doc comment for how this was actually confirmed, not assumed.
+    openGraph: buildOpenGraph({ title: brand, description, url, locale: isAr ? 'ar' : 'en' }),
+    twitter: buildTwitter({ title: brand, description }),
   };
 }
 
@@ -122,6 +157,14 @@ export default async function LocaleLayout({
     }),
   ]);
 
+  // Reuses the settings prefetch above rather than a 4th fetch — absent
+  // (backend unreachable/slow) just means Organization renders with no
+  // sameAs/contact fields, same graceful degradation as everything else
+  // here. Real values only: sameAs/email/phone are omitted entirely when
+  // not set in the admin's live settings, never fabricated.
+  const settings = queryClient.getQueryData<SiteSettings>(['settings']);
+  const brandName = settings ? (locale === 'ar' ? settings.brandNameAr : settings.brandNameEn) : DEFAULT_BRAND_NAME_EN;
+
   return (
     <html
       lang={locale}
@@ -129,6 +172,15 @@ export default async function LocaleLayout({
       className={`${inter.variable} ${playfairDisplay.variable} ${cairo.variable} ${markaziText.variable} ${alexBrush.variable}`}
     >
       <body>
+        <JsonLd
+          data={organizationJsonLd({
+            brandName,
+            sameAs: [settings?.instagramUrl, settings?.facebookUrl, settings?.tiktokUrl],
+            email: settings?.contactEmail,
+            phone: settings?.contactPhone,
+          })}
+        />
+        <JsonLd data={websiteJsonLd({ brandName })} />
         <StoreProvider dehydratedState={dehydrate(queryClient)}>
           <GoogleAnalytics />
           <a href="#main" className="skip-link">

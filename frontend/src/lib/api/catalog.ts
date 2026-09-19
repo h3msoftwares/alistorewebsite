@@ -41,9 +41,9 @@ export function getCollection(id: UUID) {
   return api.get<{ collection: Collection }>(`/api/collections/${id}`).then((r) => r.collection);
 }
 
-export function getCollectionBySlug(slug: string) {
+export function getCollectionBySlug(slug: string, opts?: { signal?: AbortSignal }) {
   return api
-    .get<{ collection: Collection }>(`/api/collections/slug/${slug}`)
+    .get<{ collection: Collection }>(`/api/collections/slug/${slug}`, { signal: opts?.signal })
     .then((r) => r.collection);
 }
 
@@ -121,12 +121,16 @@ export function deleteCollectionImage(id: UUID, imageId: UUID) {
 
 // ---- Categories (public) ----
 
-export function listCategories(params?: UUID | (CatalogListQuery & { parentId?: UUID })) {
+export function listCategories(
+  params?: UUID | (CatalogListQuery & { parentId?: UUID }),
+  opts?: { signal?: AbortSignal }
+) {
   // Back-compat: a bare string arg is still treated as a parentId filter.
   const q = typeof params === 'string' ? { parentId: params } : (params ?? {});
   return api
     .get<{ categories: Category[] }>('/api/categories', {
       query: { parentId: q.parentId, search: q.search, status: q.status },
+      signal: opts?.signal,
     })
     .then((r) => r.categories);
 }
@@ -150,15 +154,19 @@ export function getCategory(id: UUID) {
   return api.get<{ category: Category }>(`/api/categories/${id}`).then((r) => r.category);
 }
 
-export function getCategoryBySlug(slug: string) {
+export function getCategoryBySlug(slug: string, opts?: { signal?: AbortSignal }) {
   return api
-    .get<{ category: Category }>(`/api/categories/slug/${slug}`)
+    .get<{ category: Category }>(`/api/categories/slug/${slug}`, { signal: opts?.signal })
     .then((r) => r.category);
 }
 
 /** Products preview for a category — same envelope as `listProducts`, scoped
  *  to the category (`GET /api/categories/:id/products`). */
-export function listCategoryProducts(id: UUID, query: ProductListQuery = {}) {
+export function listCategoryProducts(
+  id: UUID,
+  query: ProductListQuery = {},
+  opts?: { signal?: AbortSignal }
+) {
   return api.get<ProductListResult>(`/api/categories/${id}/products`, {
     query: {
       search: query.search,
@@ -171,6 +179,7 @@ export function listCategoryProducts(id: UUID, query: ProductListQuery = {}) {
       page: query.page,
       pageSize: query.pageSize,
     },
+    signal: opts?.signal,
   });
 }
 
@@ -216,7 +225,7 @@ export function deleteCategoryImage(id: UUID, imageId: UUID) {
 
 // ---- Products (public) ----
 
-export function listProducts(query: ProductListQuery = {}) {
+export function listProducts(query: ProductListQuery = {}, opts?: { signal?: AbortSignal }) {
   return api.get<ProductListResult>('/api/products', {
     query: {
       collectionId: query.collectionId,
@@ -232,11 +241,12 @@ export function listProducts(query: ProductListQuery = {}) {
       pageSize: query.pageSize,
       status: query.status,
     },
+    signal: opts?.signal,
   });
 }
 
-export function getProduct(id: UUID) {
-  return api.get<{ product: Product }>(`/api/products/${id}`).then((r) => r.product);
+export function getProduct(id: UUID, opts?: { signal?: AbortSignal }) {
+  return api.get<{ product: Product }>(`/api/products/${id}`, { signal: opts?.signal }).then((r) => r.product);
 }
 
 // ---- Products (admin) ----
