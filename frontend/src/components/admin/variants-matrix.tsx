@@ -1,10 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, X } from 'lucide-react';
 import { Alert, Button, Choice, DataTable, Field, Icon, Input } from '@/components/ui';
 import { ColorPicker } from '@/components/admin/color-picker';
-import { colorNameToCss } from '@/lib/product-variants';
 
 /** One row of the matrix — a plain draft shape shared by the create page
  *  (no `id` yet) and the edit page (`id` present = an existing variant to
@@ -113,7 +112,7 @@ export function VariantsMatrix({
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [sizesInput, setSizesInput] = useState('');
-  const [colorsInput, setColorsInput] = useState('');
+  const [colorSwatches, setColorSwatches] = useState<string[]>([]);
   const [genError, setGenError] = useState<string | null>(null);
   const [bulkStock, setBulkStock] = useState('');
   const [bulkPrice, setBulkPrice] = useState('');
@@ -183,21 +182,27 @@ export function VariantsMatrix({
     setSelected(new Set());
   };
 
+  const addColorSwatch = (hex: string) => {
+    setColorSwatches((prev) => (prev.includes(hex) ? prev : [...prev, hex]));
+  };
+
+  const removeColorSwatch = (hex: string) => {
+    setColorSwatches((prev) => prev.filter((c) => c !== hex));
+  };
+
   const generateMatrix = () => {
     setGenError(null);
     const sizes = sizesInput.split(',').map((s) => s.trim()).filter(Boolean);
-    const colorNames = colorsInput.split(',').map((s) => s.trim()).filter(Boolean);
-    if (sizes.length === 0 && colorNames.length === 0) {
-      setGenError(t('Enter at least one size or colour', 'أدخل مقاسًا أو لونًا واحدًا على الأقل'));
+    if (sizes.length === 0 && colorSwatches.length === 0) {
+      setGenError(t('Enter a size or pick at least one colour', 'أدخل مقاسًا أو اختر لونًا واحدًا على الأقل'));
       return;
     }
     const axisSizes = sizes.length ? sizes : [''];
-    // Typed as free-text names ("Black, White") but every row's colour is a
-    // real hex value once created, for the per-row colour-wheel picker below
-    // — colorNameToCss is the same name→hex lookup the storefront swatches
-    // use, so "Black" here and on the product page resolve to the same hex.
-    const axisColors = colorNames.length
-      ? colorNames.map((name) => ({ name, hex: colorNameToCss(name) }))
+    // Colours are picked from the wheel below as real hex values directly —
+    // no name→hex lookup needed, since the picked hex *is* the value stored
+    // on the variant (same as the per-row colour-wheel picker in the table).
+    const axisColors = colorSwatches.length
+      ? colorSwatches.map((hex) => ({ name: hex.replace('#', '').toUpperCase(), hex }))
       : [{ name: '', hex: '' }];
     const seen = new Set(rows.map((r) => `${r.size.trim().toLowerCase()}::${r.color.trim().toLowerCase()}`));
 
@@ -224,7 +229,7 @@ export function VariantsMatrix({
     const base = rows.length === 1 && !rows[0].sku && !rows[0].size && !rows[0].color ? [] : rows;
     onChange([...base, ...additions]);
     setSizesInput('');
-    setColorsInput('');
+    setColorSwatches([]);
   };
 
   return (
@@ -241,12 +246,34 @@ export function VariantsMatrix({
         </div>
         <div className="field">
           <label className="field__label">{t('Colours', 'الألوان')}</label>
-          <Input
-            value={colorsInput}
-            onChange={(e) => setColorsInput(e.target.value)}
-            placeholder={t('e.g. Black, White', 'مثال: أسود، أبيض')}
-            disabled={busy}
-          />
+          <div className="colour-swatch-list">
+            {colorSwatches.map((hex) => (
+              <span key={hex} className="colour-swatch-chip" style={{ background: hex }} title={hex.toUpperCase()}>
+                <button
+                  type="button"
+                  className="colour-swatch-chip__remove"
+                  onClick={() => removeColorSwatch(hex)}
+                  disabled={busy}
+                  aria-label={t('Remove colour', 'إزالة اللون')}
+                  title={t('Remove colour', 'إزالة اللون')}
+                >
+                  <Icon as={X} size={10} />
+                </button>
+              </span>
+            ))}
+            <label className="colour-swatch-add" title={t('Add colour', 'إضافة لون')}>
+              <input
+                type="color"
+                value="#000000"
+                onChange={(e) => {
+                  addColorSwatch(e.target.value);
+                }}
+                disabled={busy}
+                aria-label={t('Add colour', 'إضافة لون')}
+              />
+              <Icon as={Plus} size={14} />
+            </label>
+          </div>
         </div>
         <Button type="button" variant="outline" onClick={generateMatrix} disabled={busy}>
           {t('Generate matrix', 'توليد المصفوفة')}
@@ -259,12 +286,12 @@ export function VariantsMatrix({
       )}
       <p className="admin-form__hint">
         {t(
-          'Comma-separated. Adds every size × colour combination below that doesn’t already exist.',
-          'مفصولة بفواصل. يضيف كل توليفة مقاس × لون أدناه غير موجودة بالفعل.'
+          'Sizes are comma-separated. Pick one or more colours with the wheel. Adds every combination below that doesn’t already exist.',
+          'المقاسات مفصولة بفواصل. اختر لونًا واحدًا أو أكثر من العجلة. يضيف كل توليفة أدناه غير موجودة بالفعل.'
         )}
       </p>
 
-      <DataTable responsive style={{ marginTop: 'var(--space-4)' }}>
+      <DataTable responsive maxHeight="26rem" style={{ marginTop: 'var(--space-4)' }}>
         <thead>
           <tr>
             <th style={{ width: '2.5em' }}>

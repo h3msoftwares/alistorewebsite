@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { VariantsMatrix, type DraftVariantRow } from './variants-matrix';
 
@@ -67,5 +67,19 @@ describe('<VariantsMatrix>', () => {
     await user.click(screen.getByRole('button', { name: /Delete/ }));
 
     expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ key: 'r2' })]);
+  });
+
+  it('picking a colour from the wheel and generating adds it as a hex-valued row', async () => {
+    const user = userEvent.setup();
+    const onChange = renderMatrix();
+
+    fireEvent.change(screen.getByLabelText('Add colour'), { target: { value: '#ff0000' } });
+    await user.type(screen.getByPlaceholderText('e.g. S, M, L'), 'XL');
+    await user.click(screen.getByRole('button', { name: 'Generate matrix' }));
+
+    expect(onChange).toHaveBeenCalledWith([
+      ...rows,
+      expect.objectContaining({ size: 'XL', color: '#ff0000' }),
+    ]);
   });
 });
