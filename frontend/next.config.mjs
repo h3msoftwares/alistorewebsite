@@ -87,6 +87,37 @@ function contentSecurityPolicy() {
     .join('; ');
 }
 
+// Private/non-valuable routes that must never be indexed, even if crawled or
+// linked to from somewhere unexpected — kept in sync by hand with
+// app/robots.ts's PRIVATE_PATHS (that file runs through Next's own bundling
+// pipeline and can import from src/lib; this plain-Node-loaded config file
+// can't). robots.txt disallow (in robots.ts) stops crawling; this header
+// stops indexing of anything crawled anyway (e.g. a URL linked to from
+// outside the site) — belt and braces, neither alone is sufficient.
+const PRIVATE_PATHS = [
+  'admin',
+  'cart',
+  'checkout',
+  'login',
+  'register',
+  'account',
+  'orders',
+  'favourites',
+  'forgot-password',
+  'reset-password',
+  'verify-email',
+  'confirm-email-change',
+  'ali-admin-login',
+  'drive-connect-result',
+  'dev',
+];
+const noindexHeaderRules = ['en', 'ar'].flatMap((locale) =>
+  PRIVATE_PATHS.map((path) => ({
+    source: `/${locale}/${path}/:rest*`,
+    headers: [{ key: 'X-Robots-Tag', value: 'noindex, nofollow' }],
+  }))
+);
+
 const securityHeaders = [
   { key: 'Content-Security-Policy', value: contentSecurityPolicy() },
   // Belt-and-braces clickjacking cover alongside `frame-ancestors`.
@@ -114,7 +145,7 @@ const nextConfig = {
   // resource contention, not a fixed one.
   staticPageGenerationTimeout: 180,
   async headers() {
-    return [{ source: '/:path*', headers: securityHeaders }];
+    return [{ source: '/:path*', headers: securityHeaders }, ...noindexHeaderRules];
   },
   images: {
     loader: 'custom',

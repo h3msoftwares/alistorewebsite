@@ -12,6 +12,7 @@ PROJECT_OVERVIEW.md
 /docs/*
 !/docs/DEPLOYMENT.md
 !/docs/PRODUCTION-READINESS-AUDIT.md
+!/docs/SEO.md
 frontend/docs/*
 !frontend/docs/*.md
 
