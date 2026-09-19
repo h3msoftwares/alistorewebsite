@@ -10,17 +10,24 @@ import os from 'node:os';
 import path from 'node:path';
 import { env } from '../../config/env';
 
-// Prisma's connection string carries `?schema=public`, which is not a valid
-// libpq connection-URI parameter — pg_dump rejects it outright ("invalid URI
-// query parameter: schema"). Strip any non-libpq params so pg_dump gets a URI
-// it accepts.
+// Prisma's connection string carries query params libpq doesn't recognize —
+// pg_dump/pg_restore reject the URI outright on the first one they hit
+// ("invalid URI query parameter: ..."), so ALL of Prisma's own params need
+// stripping, not just `schema` (see docs/DEPLOYMENT.md's DATABASE_URL
+// example: `?sslmode=require&connection_limit=8&pool_timeout=10&
+// connect_timeout=5` — the connection_limit/pool_timeout pair is exactly
+// what a production DB found this failing on). `sslmode` and
+// `connect_timeout` ARE real libpq parameters, so those are left alone.
+const PRISMA_ONLY_PARAMS = ['schema', 'connection_limit', 'pool_timeout', 'pgbouncer', 'statement_cache_size'];
 export function libpqSafeUrl(url: string): string {
   try {
     const u = new URL(url);
-    u.searchParams.delete('schema');
+    for (const p of PRISMA_ONLY_PARAMS) u.searchParams.delete(p);
     return u.toString();
   } catch {
-    return url.replace(/[?&]schema=[^&]*/i, '').replace(/\?$/, '');
+    let out = url;
+    for (const p of PRISMA_ONLY_PARAMS) out = out.replace(new RegExp(`[?&]${p}=[^&]*`, 'i'), '');
+    return out.replace(/\?&/, '?').replace(/\?$/, '');
   }
 }
 
@@ -56,6 +63,35 @@ export function runPgDump(): Promise<DumpResult> {
     const args = [
       `--dbname=${libpqSafeUrl(env.DATABASE_URL)}`,
       '--format=custom',
+      // This app's entire data model lives in `public` — every Prisma model
+      // maps there, no other schema is used. On Supabase, dumping the whole
+      // database also captures Supabase's own managed schemas (storage,
+      // auth, extensions, ...), which pg_restore can't later restore under
+      // the app's own database role ("must be owner of table
+      // vector_indexes" — confirmed live; see pg-restore.ts's matching
+      // --schema flag, which is what actually matters for backups already
+      // taken before this existed). Scoping the dump itself keeps backups
+      // smaller and avoids capturing objects that were never restorable
+      // anyway. Doesn't cover event triggers (not schema-scoped at all —
+      // see pg-restore.ts), which is why that fix stays restore-side.
+      '--schema=public',
+      // Prisma's own migration-tracking table lives in `public` alongside
+      // the app's real data, so a plain dump captures it too — and
+      // restoring later replaces the LIVE migration history with whatever
+      // it was at backup time. Confirmed live: restoring a backup taken
+      // before a since-applied migration silently reverted the tracking
+      // table to "that migration never ran," while the table it created
+      // was untouched (pg_restore --clean only drops objects present in
+      // the archive) — the live database ended up simultaneously missing
+      // the migration record AND already having the table it creates,
+      // so the next `prisma migrate deploy` failed with "relation already
+      // exists" and the app couldn't boot at all. Migration history must
+      // track the currently DEPLOYED CODE, never a data snapshot, so it's
+      // excluded from backups entirely — restoring data should never be
+      // able to move schema/migration state backward. `_` is a SQL LIKE
+      // wildcard in pg_dump's pattern matching; quoting forces an exact
+      // match instead of "any single char + prisma_migrations".
+      '--exclude-table="_prisma_migrations"',
       '--no-owner',
       '--no-privileges',
       '--file',

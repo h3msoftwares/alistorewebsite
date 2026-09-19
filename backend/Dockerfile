@@ -17,9 +17,27 @@ FROM node:20-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 
-# postgresql-client — pg_dump for the admin-triggered database backup
-# (modules/backup), matching the postgres:16 used everywhere else.
-RUN apt-get update && apt-get install -y --no-install-recommends postgresql-client \
+# postgresql-client-17 — pg_dump/pg_restore for the admin-triggered database
+# backup (modules/backup), matching Supabase's Postgres 17.6. pg_dump refuses
+# to dump a server NEWER than itself ("aborting because of server version
+# mismatch") — confirmed live in production — so this can't be the bare
+# `postgresql-client` meta-package: Debian 12's own repo only ships version
+# 15, and the meta-package always tracks whatever's newest anyway (currently
+# 18 upstream), neither of which is guaranteed to match Supabase. Pulls in
+# the official PGDG apt repo for an explicit, pinned postgresql-client-17.
+# (An earlier attempt tried adding this via nixpacks.toml instead — dead
+# code, since this service actually builds via this Dockerfile, not
+# Nixpacks, despite railway.json's builder setting; see that file's note.)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && install -d /usr/share/postgresql-common/pgdg \
+  && curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
+       https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+       > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends postgresql-client-17 \
+  && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
 # prod dependencies only

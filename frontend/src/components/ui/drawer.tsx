@@ -13,6 +13,8 @@ export interface DrawerProps {
   children: ReactNode;
   /** Localised close-button label. */
   closeLabel?: string;
+  /** Extra class(es) appended to `.drawer__panel`, e.g. for a themed variant. */
+  className?: string;
 }
 
 const FOCUSABLE =
@@ -25,7 +27,7 @@ const FOCUSABLE =
  * slide transition plays in both directions; `inert` (not `visibility`) takes
  * the closed panel out of the tab order and the accessibility tree.
  */
-export function Drawer({ open, onClose, side = 'start', title, children, closeLabel = 'Close' }: DrawerProps) {
+export function Drawer({ open, onClose, side = 'start', title, children, closeLabel = 'Close', className }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
 
@@ -78,7 +80,7 @@ export function Drawer({ open, onClose, side = 'start', title, children, closeLa
     >
       <div className="drawer__scrim" onClick={onClose} />
       <div
-        className="drawer__panel"
+        className={['drawer__panel', className].filter(Boolean).join(' ')}
         ref={panelRef}
         role="dialog"
         aria-modal="true"

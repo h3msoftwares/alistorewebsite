@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Archive, RotateCcw, Trash2 } from 'lucide-react';
-import { Alert, Button, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
+import { Alert, Button, ConfirmModal, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
 import { ImageGallery } from '@/components/admin/image-gallery';
 import { isApiError } from '@/lib/api';
 import {
@@ -121,22 +121,15 @@ export default function EditProductPage() {
   // Three distinct actions, matching the list page (admin/products/page.tsx)
   // — see the identical comment in admin/collections/[id]/page.tsx
   // (fix-list.md #15, resolves 12.8).
-  const onArchiveProduct = async () => {
-    if (!product) return;
-    const name = isAr ? product.nameAr : product.nameEn;
-    if (
-      !window.confirm(
-        t(
-          `Archive "${name}"? It will be hidden from the storefront but kept.`,
-          `أرشفة "${name}"؟ سيُخفى من المتجر مع الاحتفاظ به.`
-        )
-      )
-    )
-      return;
+  const [confirmKind, setConfirmKind] = useState<'archive' | 'delete' | null>(null);
+
+  const doArchiveProduct = async () => {
     try {
       await archiveProduct.mutateAsync(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Archive failed', 'فشلت الأرشفة'));
+    } finally {
+      setConfirmKind(null);
     }
   };
 
@@ -148,17 +141,17 @@ export default function EditProductPage() {
     }
   };
 
-  const onPermanentDeleteProduct = async () => {
-    if (!product) return;
-    const name = isAr ? product.nameAr : product.nameEn;
-    if (!window.confirm(t(`Permanently delete "${name}"? This cannot be undone.`, `حذف "${name}" نهائيًا؟ لا يمكن التراجع.`))) return;
+  const doPermanentDeleteProduct = async () => {
     try {
       await permanentDeleteProduct.mutateAsync(id);
       router.push(`/${locale}/admin/products`);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Delete failed', 'فشل الحذف'));
+      setConfirmKind(null);
     }
   };
+
+  const productName = product ? (isAr ? product.nameAr : product.nameEn) : '';
 
   if (isPending) {
     return (
@@ -199,19 +192,39 @@ export default function EditProductPage() {
                 <Icon as={RotateCcw} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
                 {t('Restore', 'استعادة')}
               </Button>
-              <Button variant="danger" onClick={onPermanentDeleteProduct} loading={permanentDeleteProduct.isPending}>
+              <Button variant="danger" onClick={() => setConfirmKind('delete')} loading={permanentDeleteProduct.isPending}>
                 <Icon as={Trash2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
                 {t('Delete permanently', 'حذف نهائي')}
               </Button>
             </>
           ) : (
-            <Button variant="danger" onClick={onArchiveProduct} loading={archiveProduct.isPending}>
+            <Button variant="danger" onClick={() => setConfirmKind('archive')} loading={archiveProduct.isPending}>
               <Icon as={Archive} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
               {t('Archive product', 'أرشفة المنتج')}
             </Button>
           )}
         </span>
       </div>
+
+      <ConfirmModal
+        open={confirmKind !== null}
+        onClose={() => setConfirmKind(null)}
+        onConfirm={() => void (confirmKind === 'archive' ? doArchiveProduct() : doPermanentDeleteProduct())}
+        title={
+          confirmKind === 'archive'
+            ? t(`Archive "${productName}"?`, `أرشفة "${productName}"؟`)
+            : t(`Permanently delete "${productName}"?`, `حذف "${productName}" نهائيًا؟`)
+        }
+        body={
+          confirmKind === 'archive'
+            ? t('It will be hidden from the storefront but kept.', 'سيُخفى من المتجر مع الاحتفاظ به.')
+            : t('This cannot be undone.', 'لا يمكن التراجع عن هذا.')
+        }
+        confirmLabel={confirmKind === 'archive' ? t('Archive', 'أرشفة') : t('Delete', 'حذف')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone={confirmKind === 'delete' ? 'danger' : 'default'}
+        loading={confirmKind === 'archive' ? archiveProduct.isPending : permanentDeleteProduct.isPending}
+      />
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
         <ProductCoreFields register={register} control={control} errors={errors} busy={busy} locale={locale} />

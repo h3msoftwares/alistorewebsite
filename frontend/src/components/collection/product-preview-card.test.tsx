@@ -19,7 +19,6 @@ const product: Product = {
   nameAr: 'قميص',
   primaryCategoryID: 'cat1',
   price: '30.00',
-  quantity: 10,
   effectivePrice: 30,
   onSale: false,
   isActive: true,

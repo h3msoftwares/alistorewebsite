@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import type { OrderStatus } from '@prisma/client';
 import * as orderService from './order.service';
 import { paramString } from '../../lib/params';
 import { AppError } from '../../lib/AppError';
@@ -53,8 +54,12 @@ export async function lookupOrderHandler(req: Request, res: Response) {
 // ---- Admin ----
 
 export async function listAllOrdersHandler(req: Request, res: Response) {
-  const { status, flagged } = (req.validatedQuery ?? {}) as { status?: never; flagged?: boolean };
-  const orders = await orderService.listAllOrders(status, flagged);
+  const { status, flagged, awaitingCod } = (req.validatedQuery ?? {}) as {
+    status?: OrderStatus[];
+    flagged?: boolean;
+    awaitingCod?: boolean;
+  };
+  const orders = await orderService.listAllOrders(status, flagged, awaitingCod);
   res.json({ orders });
 }
 

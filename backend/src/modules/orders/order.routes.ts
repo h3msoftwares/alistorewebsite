@@ -3,6 +3,8 @@ import rateLimit from 'express-rate-limit';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
 import { requireAuth, optionalAuth } from '../../middleware/auth.middleware';
+import { loadEffectivePermissions } from '../../middleware/rbac.middleware';
+import { AppError } from '../../lib/AppError';
 import { RATE_LIMITED_BODY } from '../../lib/rate-limit';
 import {
   checkoutSchema,
@@ -21,8 +23,38 @@ import {
   cancelOrderByTokenHandler,
   lookupOrderHandler,
 } from './order.controller';
+import {
+  createReturnSchema,
+  orderReturnIdParamSchema,
+  orderTrackTokenReturnIdParamSchema,
+} from '../returns/return.schema';
+import {
+  requestReturnHandler,
+  requestReturnByTokenHandler,
+  cancelReturnHandler,
+  cancelReturnByTokenHandler,
+} from '../returns/return.controller';
 
 const passThrough: RequestHandler = (_req, _res, next) => next();
+
+/**
+ * GET /:id is reachable by any authenticated role, not just customers (STAFF
+ * need to look up any order, e.g. from a support request). The controller
+ * already scopes CUSTOMER callers to their own orders; this guard closes the
+ * gap for STAFF/ADMIN by requiring the same `orders:view` permission the
+ * admin-only order routes require, instead of letting any authenticated
+ * staff account — even one whose custom role grants nothing order-related —
+ * read an arbitrary customer's order by id.
+ */
+const requireOwnerOrOrdersView: RequestHandler = asyncHandler(async (req, _res, next) => {
+  if (!req.user) return next(new AppError('UNAUTHORIZED', 'Not authenticated'));
+  if (req.user.role === 'CUSTOMER') return next();
+  const held = await loadEffectivePermissions(req);
+  if (!held.has('orders:view')) {
+    return next(new AppError('FORBIDDEN', 'Missing permission: orders:view'));
+  }
+  next();
+});
 
 /**
  * GET /track/:token: the token itself is 256 bits — brute force is
@@ -110,8 +142,26 @@ export function orderRoutes(
   // Order history/detail/cancel require an account — guests track orders via
   // the confirmation they received instead (or /orders/lookup, below).
   router.get('/mine', requireAuth, asyncHandler(listMyOrdersHandler));
-  router.get('/:id', requireAuth, validate({ params: orderIdParamSchema }), asyncHandler(getOrderHandler));
+  router.get(
+    '/:id',
+    requireAuth,
+    requireOwnerOrOrdersView,
+    validate({ params: orderIdParamSchema }),
+    asyncHandler(getOrderHandler)
+  );
   router.post('/:id/cancel', requireAuth, validate({ params: orderIdParamSchema }), asyncHandler(cancelOrderHandler));
+  router.post(
+    '/:id/returns',
+    requireAuth,
+    validate({ params: orderIdParamSchema, body: createReturnSchema }),
+    asyncHandler(requestReturnHandler)
+  );
+  router.post(
+    '/:id/returns/:returnId/cancel',
+    requireAuth,
+    validate({ params: orderReturnIdParamSchema }),
+    asyncHandler(cancelReturnHandler)
+  );
 
   // Guest tracking — the token itself is the proof of access, no login
   // needed. Mounted before validate() runs the per-route param schema so a
@@ -127,6 +177,18 @@ export function orderRoutes(
     trackIpLimiter,
     validate({ params: orderTrackTokenParamSchema }),
     asyncHandler(cancelOrderByTokenHandler)
+  );
+  router.post(
+    '/track/:token/returns',
+    trackIpLimiter,
+    validate({ params: orderTrackTokenParamSchema, body: createReturnSchema }),
+    asyncHandler(requestReturnByTokenHandler)
+  );
+  router.post(
+    '/track/:token/returns/:returnId/cancel',
+    trackIpLimiter,
+    validate({ params: orderTrackTokenReturnIdParamSchema }),
+    asyncHandler(cancelReturnByTokenHandler)
   );
 
   // Manual fallback for a guest without (or who lost) their tracking link.

@@ -39,7 +39,6 @@ const baseProduct: Product = {
   nameAr: 'منتج',
   primaryCategoryID: 'c1',
   price: '100',
-  quantity: 10,
   effectivePrice: 100,
   onSale: false,
   isActive: true,

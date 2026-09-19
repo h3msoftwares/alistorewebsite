@@ -5,6 +5,7 @@ import { X } from 'lucide-react';
 import { Alert, Choice, DataTable, EmptyState, Icon, Input, ProductGridSkeleton } from '@/components/ui';
 import { ReorderList, type ReorderItem } from '@/components/admin/reorder-list';
 import { useAdminCategories, useUpdateCategory } from '@/hooks/use-catalog';
+import { usePermissions } from '@/lib/rbac';
 import { useSettings, useUpdateSettings } from '@/hooks/use-settings';
 import type { HomeShowcase, ShowcaseType } from '@/lib/types';
 
@@ -53,6 +54,14 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
   const updateCategory = useUpdateCategory();
   const updateSettings = useUpdateSettings();
   const [error, setError] = useState<string | null>(null);
+
+  // This panel mutates both categories (`categories:manage`, for the nav/
+  // home toggles below) and site settings (`settings:manage`, for the smart
+  // row on/off + labels) — require both before treating any of it as
+  // editable, since a caller with only one would see controls that always
+  // 403 the other resource's half of this screen.
+  const { has } = usePermissions();
+  const canManage = has('categories:manage') && has('settings:manage');
 
   const onErr = (e: unknown) =>
     setError(e instanceof Error ? e.message : t('Update failed', 'فشل التحديث'));
@@ -191,6 +200,15 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
       <p className="admin-form__section-title">{t('Navigation & home page', 'التنقل والصفحة الرئيسية')}</p>
 
       {error && <Alert tone="danger">{error}</Alert>}
+
+      {/* Disables every checkbox/input/button below in one place when the
+          caller lacks manage rights. Doesn't reach ReorderList's drag
+          gesture (pointer events on a plain div, not a form control — the
+          browser's native fieldset-disable only covers form-associated
+          elements), so a view-only admin could still technically drag a row;
+          the backend would 403 the resulting patch either way, same as
+          every other view-vs-manage gap in this admin panel. */}
+      <fieldset disabled={!canManage} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
 
       {/* -------- Home page order -------- */}
       <p className="admin-form__section-title" style={{ marginTop: 'var(--space-4)' }}>
@@ -401,6 +419,7 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
           ))}
         </tbody>
       </DataTable>
+      </fieldset>
     </section>
   );
 }

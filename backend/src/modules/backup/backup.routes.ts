@@ -11,6 +11,7 @@ import {
   runBackupHandler,
   listBackupsHandler,
   restoreBackupHandler,
+  getRestoreStatusHandler,
   driveStatusHandler,
   driveConnectHandler,
   driveCallbackHandler,
@@ -36,7 +37,11 @@ const passThrough: RequestHandler = (_req, _res, next) => next();
  * (requireFreshAuth — a valid session alone isn't enough, same bar as an
  * order-status change or a direct stock edit) and a tighter rate limit than
  * the run/list routes (3/15min — this should almost never legitimately fire
- * more than once or twice in a sitting).
+ * more than once or twice in a sitting). Responds once the restore has
+ * started, not finished — see GET /restore-status.
+ * GET /restore-status: polled by the frontend for the outcome of the restore
+ * kicked off above (same reasoning as POST / responding early — see
+ * backup.controller.ts).
  * GET /drive/callback: the ONE route in this module reachable without a
  * bearer token at all (Google's own redirect) — a per-IP limit here is the
  * only rate-limit defense an anonymous caller can't route around by simply
@@ -118,6 +123,7 @@ export function backupRoutes(opts: { rateLimit?: boolean } = {}): Router {
 
   router.post('/', runLimiter, asyncHandler(runBackupHandler));
   router.get('/', asyncHandler(listBackupsHandler));
+  router.get('/restore-status', asyncHandler(getRestoreStatusHandler));
   router.post(
     '/:id/restore',
     restoreLimiter,

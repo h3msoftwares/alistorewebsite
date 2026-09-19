@@ -2,9 +2,18 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Alert, Badge, Button, EmptyState, ProductGridSkeleton } from '@/components/ui';
+import { Printer } from 'lucide-react';
+import { Alert, Badge, Button, EmptyState, Icon, ProductGridSkeleton, Select } from '@/components/ui';
+import { OrderActionModals } from '@/components/orders/order-action-modals';
 import { OrderDetailCard } from '@/components/orders/order-detail-card';
 import { useOrder } from '@/hooks/use-orders';
+import { ORDER_STATUSES, useOrderActions } from '@/hooks/use-order-actions';
+import { useOrderReceiptPrint } from '@/hooks/use-order-receipt-print';
+import { usePrintPreferences } from '@/hooks/use-print-preferences';
+import { useSettings } from '@/hooks/use-settings';
+import { useAdminRequestReturn } from '@/hooks/use-returns';
+import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
+import type { CreateReturnBody, OrderStatus } from '@/lib/types';
 
 /**
  * The admin-side order detail view (fix-list.md #4, resolves 2.2). Before
@@ -16,12 +25,15 @@ import { useOrder } from '@/hooks/use-orders';
  * customer-facing /orders/[id] and guest tracking pages use) but — on
  * purpose — never passes it an `onCancel`. That component's cancel button is
  * gated by `CANCELLABLE_STATUSES` (the customer/guest rule: only before
- * SHIPPED), which is the wrong rule for staff, who can force-cancel from any
- * status via the status dropdown already on the list page. Omitting
- * `onCancel` here isn't a missing feature — the component only ever renders
- * a cancel button when one is passed in, so this reuse carries none of that
- * risk; status changes (including admin cancel) stay on the list page, one
- * click back, where they already work correctly.
+ * SHIPPED), which is the wrong rule for staff. Instead, this page has its
+ * own Actions panel (status <Select>, mark collected/unpaid, mark reviewed,
+ * print receipt) built on the same `useOrderActions`/`useOrderReceiptPrint`
+ * hooks the Orders list uses, so an admin can cancel from any status — or
+ * take any other action — without leaving this page. It does pass
+ * `onRequestReturn` (staff-initiated returns, e.g. a phone order the
+ * customer can't self-serve online) — routed through `oa.run` so a
+ * STEP_UP_REQUIRED response reuses the same re-auth modal as the other
+ * actions here, instead of a second hand-rolled prompt.
  */
 export default function AdminOrderDetailPage() {
   const params = useParams();
@@ -29,6 +41,18 @@ export default function AdminOrderDetailPage() {
   const id = typeof params?.id === 'string' ? params.id : '';
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+
+  const { data: settings } = useSettings();
+  const brandName = settings ? (isAr ? settings.brandNameAr : settings.brandNameEn) : isAr ? DEFAULT_BRAND_NAME_AR : DEFAULT_BRAND_NAME_EN;
+  const { receiptFormat, printerName } = usePrintPreferences();
+  const { print: printReceipt, receiptNode } = useOrderReceiptPrint(receiptFormat, brandName, locale);
+  const adminRequestReturn = useAdminRequestReturn();
+  const oa = useOrderActions({
+    statusChangeFailed: t('Status change failed', 'فشل تغيير الحالة'),
+    updateFailed: t('Update failed', 'فشل التحديث'),
+    daysRangeError: t('Enter a whole number of days (0–90), or leave blank.', 'أدخل عدد أيام صحيح (0–90)، أو اتركه فارغًا.'),
+    incorrectPassword: t('Incorrect password.', 'كلمة المرور غير صحيحة.'),
+  });
 
   const { data: order, isPending, isError, refetch } = useOrder(id);
 
@@ -76,25 +100,91 @@ export default function AdminOrderDetailPage() {
               {order.flaggedReason ? ` — ${order.flaggedReason}` : ''}
             </Badge>
           )}
-          {order.estimatedDeliveryDays != null && (
-            <Badge variant="low-stock">
-              {t(`~${order.estimatedDeliveryDays} day estimate`, `تقدير ~${order.estimatedDeliveryDays} يوم`)}
-            </Badge>
-          )}
         </div>
         {order.status === 'CANCELLED' && (
           <Alert tone="warning">{t('This order is cancelled.', 'هذا الطلب مُلغى.')}</Alert>
         )}
-        <p className="admin-form__hint" style={{ margin: 0 }}>
-          {t(
-            'To change this order\'s status, mark payment collected, or clear its review flag, use the orders list — this page is view-only.',
-            'لتغيير حالة هذا الطلب أو تحصيل الدفع أو إزالة علامة المراجعة، استخدم قائمة الطلبات — هذه الصفحة للعرض فقط.'
-          )}
-        </p>
+        {oa.actionError && <Alert tone="danger">{oa.actionError}</Alert>}
+
+        <div className="admin-form__section">
+          <p className="admin-form__section-title">{t('Actions', 'الإجراءات')}</p>
+          <div className="admin-row-actions">
+            <label>
+              <span className="visually-hidden">{t(`Change status for ${order.orderNumber}`, `تغيير حالة ${order.orderNumber}`)}</span>
+              <Select
+                value={order.status}
+                disabled={oa.busyId === order.id}
+                onChange={(e) => oa.changeStatus(order, e.target.value as OrderStatus)}
+              >
+                {ORDER_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            {order.estimatedDeliveryDays != null && (
+              <button
+                type="button"
+                className="admin-order-eta"
+                onClick={() => oa.openDaysModal(order, 'edit')}
+                disabled={oa.busyId === order.id}
+                title={t('Edit the delivery estimate', 'تعديل مدة التوصيل')}
+              >
+                {t(`~${order.estimatedDeliveryDays}d`, `~${order.estimatedDeliveryDays} يوم`)}
+              </button>
+            )}
+            {order.paymentMethod === 'COD' && order.paymentStatus !== 'REFUNDED' && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={oa.busyId === order.id}
+                onClick={() => oa.toggleCollected(order, order.paymentStatus !== 'COLLECTED')}
+              >
+                {order.paymentStatus === 'COLLECTED' ? t('Mark unpaid', 'إلغاء التحصيل') : t('Mark collected', 'تم التحصيل')}
+              </Button>
+            )}
+            {order.paymentMethod === 'COD' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => printReceipt(order)}
+                title={
+                  printerName
+                    ? t(`Print a delivery receipt — select "${printerName}" in the dialog`, `طباعة إيصال توصيل — اختر "${printerName}" من نافذة الطباعة`)
+                    : t('Print a delivery receipt to give the customer', 'طباعة إيصال توصيل لتسليمه للزبون')
+                }
+              >
+                <Icon as={Printer} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                {t('Print receipt', 'طباعة الإيصال')}
+              </Button>
+            )}
+            {order.flaggedForReview && (
+              <Button variant="outline" size="sm" disabled={oa.busyId === order.id} onClick={() => oa.markReviewed(order)}>
+                {t('Mark reviewed', 'وضع علامة كمُراجَع')}
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
+      <OrderActionModals locale={locale} oa={oa} />
+      {receiptNode}
+
       <div className="card" style={{ padding: 'var(--space-5)', maxWidth: '40rem' }}>
-        <OrderDetailCard locale={locale} order={order} />
+        <OrderDetailCard
+          locale={locale}
+          order={order}
+          onRequestReturn={(body: CreateReturnBody) =>
+            oa.run(
+              order.id,
+              () => adminRequestReturn.mutateAsync({ orderId: order.id, body }),
+              t('Could not submit the return request. Try again.', 'تعذّر إرسال طلب الإرجاع. حاول مرة أخرى.')
+            )
+          }
+          requestingReturn={oa.busyId === order.id}
+          requestReturnError={oa.actionError}
+        />
       </div>
     </div>
   );

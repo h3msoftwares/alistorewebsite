@@ -11,6 +11,20 @@
  */
 
 import { useMemo, type ReactNode } from 'react';
+import {
+  LayoutGrid,
+  Layers,
+  Tag,
+  Package,
+  Percent,
+  ShoppingBag,
+  RotateCcw,
+  Users,
+  BarChart2,
+  Shield,
+  Settings as SettingsIcon,
+  type LucideIcon,
+} from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import type { PermissionArea } from '@/lib/types';
 
@@ -66,6 +80,9 @@ export function expandImplied(keys: Iterable<string>): Set<string> {
 
 // ------------------------------------------------ admin nav / route map ----
 
+/** Groups the sidebar/mobile-drawer nav into labelled clusters. */
+export type AdminNavGroup = 'overview' | 'catalog' | 'sales' | 'insights' | 'system';
+
 export interface AdminSection {
   /** Path relative to `/{locale}/admin` — '' is the dashboard index. */
   href: string;
@@ -73,20 +90,31 @@ export interface AdminSection {
   labelAr: string;
   /** Permission required to see the nav item and open the page. */
   permission: string;
+  icon: LucideIcon;
+  group: AdminNavGroup;
 }
 
 export const ADMIN_SECTIONS: AdminSection[] = [
-  { href: '', labelEn: 'Dashboard', labelAr: 'لوحة التحكم', permission: 'dashboard:view' },
-  { href: '/collections', labelEn: 'Collections', labelAr: 'المجموعات', permission: 'collections:view' },
-  { href: '/categories', labelEn: 'Categories', labelAr: 'الفئات', permission: 'categories:view' },
-  { href: '/products', labelEn: 'Products', labelAr: 'المنتجات', permission: 'products:view' },
-  { href: '/discounts', labelEn: 'Discounts', labelAr: 'الخصومات', permission: 'discounts:view' },
-  { href: '/orders', labelEn: 'Orders', labelAr: 'الطلبات', permission: 'orders:view' },
-  { href: '/customers', labelEn: 'Customers', labelAr: 'الزبائن', permission: 'customers:view' },
-  { href: '/analytics', labelEn: 'Analytics', labelAr: 'التحليلات', permission: 'analytics:view' },
-  { href: '/roles', labelEn: 'Roles', labelAr: 'الأدوار', permission: 'roles:view' },
-  { href: '/settings', labelEn: 'Settings', labelAr: 'الإعدادات', permission: 'settings:view' },
+  { href: '', labelEn: 'Dashboard', labelAr: 'لوحة التحكم', permission: 'dashboard:view', icon: LayoutGrid, group: 'overview' },
+  { href: '/collections', labelEn: 'Collections', labelAr: 'المجموعات', permission: 'collections:view', icon: Layers, group: 'catalog' },
+  { href: '/categories', labelEn: 'Categories', labelAr: 'الفئات', permission: 'categories:view', icon: Tag, group: 'catalog' },
+  { href: '/products', labelEn: 'Products', labelAr: 'المنتجات', permission: 'products:view', icon: Package, group: 'catalog' },
+  { href: '/discounts', labelEn: 'Discounts', labelAr: 'الخصومات', permission: 'discounts:view', icon: Percent, group: 'sales' },
+  { href: '/orders', labelEn: 'Orders', labelAr: 'الطلبات', permission: 'orders:view', icon: ShoppingBag, group: 'sales' },
+  { href: '/orders/returns', labelEn: 'Returns', labelAr: 'المرتجعات', permission: 'orders:view', icon: RotateCcw, group: 'sales' },
+  { href: '/customers', labelEn: 'Customers', labelAr: 'الزبائن', permission: 'customers:view', icon: Users, group: 'sales' },
+  { href: '/analytics', labelEn: 'Analytics', labelAr: 'التحليلات', permission: 'analytics:view', icon: BarChart2, group: 'insights' },
+  { href: '/roles', labelEn: 'Roles', labelAr: 'الأدوار', permission: 'roles:view', icon: Shield, group: 'system' },
+  { href: '/settings', labelEn: 'Settings', labelAr: 'الإعدادات', permission: 'settings:view', icon: SettingsIcon, group: 'system' },
 ];
+
+export const ADMIN_NAV_GROUP_LABEL: Record<AdminNavGroup, { en: string; ar: string }> = {
+  overview: { en: 'Overview', ar: 'نظرة عامة' },
+  catalog: { en: 'Catalog', ar: 'الكتالوج' },
+  sales: { en: 'Sales', ar: 'المبيعات' },
+  insights: { en: 'Insights', ar: 'التحليلات' },
+  system: { en: 'System', ar: 'النظام' },
+};
 
 /**
  * The permission needed to open a given admin pathname (with or without a

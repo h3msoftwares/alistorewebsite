@@ -96,7 +96,8 @@ export const updateSettingsSchema = z.object({
   contactPhone: z.string().trim().max(40).or(z.literal('')).nullish(),
 
   // ---- Outgoing-email sender identity ----
-  // '' / null ⇒ clear (mailer.ts falls back to SMTP_FROM from the environment).
+  // '' / null ⇒ clear (mailer.ts falls back to the connected Gmail account's
+  // own address).
   mailFromName: z.string().trim().max(120).or(z.literal('')).nullish(),
   mailFromEmail: z.string().trim().email().max(320).or(z.literal('')).nullish(),
 

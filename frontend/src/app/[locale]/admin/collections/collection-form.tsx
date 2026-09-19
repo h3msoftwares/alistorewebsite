@@ -92,22 +92,23 @@ export function CollectionForm({
         </Field>
       </div>
 
-      <div className="admin-form__row">
-        <Field
-          label={t('Membership type', 'نوع العضوية')}
-          hint={t(
-            'Manual: pick products by hand. Automated: computed from rules. Hybrid: rules plus a manual include/exclude on top.',
-            'يدوي: اختر المنتجات يدويًا. آلي: يُحسب من القواعد. مختلط: القواعد مع إضافة/استبعاد يدوي فوقها.'
-          )}
-        >
-          {(p) => (
-            <Select {...p} {...register('type')} disabled={busy}>
-              <option value="MANUAL">{t('Manual', 'يدوي')}</option>
-              <option value="AUTOMATED">{t('Automated', 'آلي')}</option>
-              <option value="HYBRID">{t('Hybrid', 'مختلط')}</option>
-            </Select>
-          )}
-        </Field>
+      <Field
+        label={t('Membership type', 'نوع العضوية')}
+        hint={t(
+          'Manual: pick products by hand. Automated: computed from rules. Hybrid: rules plus a manual include/exclude on top.',
+          'يدوي: اختر المنتجات يدويًا. آلي: يُحسب من القواعد. مختلط: القواعد مع إضافة/استبعاد يدوي فوقها.'
+        )}
+      >
+        {(p) => (
+          <Select {...p} {...register('type')} disabled={busy}>
+            <option value="MANUAL">{t('Manual', 'يدوي')}</option>
+            <option value="AUTOMATED">{t('Automated', 'آلي')}</option>
+            <option value="HYBRID">{t('Hybrid', 'مختلط')}</option>
+          </Select>
+        )}
+      </Field>
+
+      <div className="admin-form__checks">
         <Choice type="checkbox" label={t('Active', 'مفعّل')} {...register('isActive')} disabled={busy} />
       </div>
 

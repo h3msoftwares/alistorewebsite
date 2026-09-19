@@ -58,6 +58,26 @@ export function requirePermission(...required: string[]) {
   };
 }
 
+/** Requires at least one of the listed permission keys — for endpoints shared
+ *  by several admin areas (e.g. an upload-auth endpoint feeding product,
+ *  category, collection, and settings image fields), where requiring every
+ *  key via `requirePermission` would wrongly exclude callers who only manage
+ *  one of those areas. Layer it after `requireRole('STAFF','ADMIN')`. */
+export function requireAnyPermission(...anyOf: string[]) {
+  return async (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.user) return next(new AppError('UNAUTHORIZED', 'Not authenticated'));
+    try {
+      const held = await loadEffectivePermissions(req);
+      if (!anyOf.some((k) => held.has(k))) {
+        return next(new AppError('FORBIDDEN', `Missing permission: one of ${anyOf.join(', ')}`));
+      }
+      next();
+    } catch (e) {
+      next(e as Error);
+    }
+  };
+}
+
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {

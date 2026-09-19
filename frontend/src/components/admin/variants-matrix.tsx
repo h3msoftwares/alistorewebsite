@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { Alert, Button, DataTable, Field, Icon, Input } from '@/components/ui';
+import { Alert, Button, Choice, DataTable, Field, Icon, Input } from '@/components/ui';
 import { ColorPicker } from '@/components/admin/color-picker';
 import { colorNameToCss } from '@/lib/product-variants';
 
@@ -268,11 +268,11 @@ export function VariantsMatrix({
         <thead>
           <tr>
             <th style={{ width: '2.5em' }}>
-              <input
+              <Choice
                 type="checkbox"
+                label={<span className="visually-hidden">{t('Select all', 'تحديد الكل')}</span>}
                 checked={allSelected}
                 onChange={toggleSelectAll}
-                aria-label={t('Select all', 'تحديد الكل')}
                 disabled={busy || rows.length === 0}
               />
             </th>
@@ -290,11 +290,11 @@ export function VariantsMatrix({
             return (
               <tr key={row.key} aria-selected={selected.has(row.key)}>
                 <td data-label={t('Selected', 'محدَّد')}>
-                  <input
+                  <Choice
                     type="checkbox"
+                    label={<span className="visually-hidden">{t('Select this variant', 'تحديد هذا الخيار')}</span>}
                     checked={selected.has(row.key)}
                     onChange={() => toggleSelected(row.key)}
-                    aria-label={t('Select this variant', 'تحديد هذا الخيار')}
                     disabled={busy}
                   />
                 </td>
@@ -359,37 +359,23 @@ export function VariantsMatrix({
         </tbody>
       </DataTable>
 
-      <div
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: 'var(--space-3)',
-          marginTop: 'var(--space-4)',
-        }}
-      >
+      <div className="admin-page__head-actions" style={{ marginTop: 'var(--space-4)' }}>
         <Button type="button" variant="outline" size="sm" onClick={addRow} disabled={busy}>
           <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
           {t('Add row', 'إضافة صف')}
         </Button>
+        <span className="admin-form__hint">
+          {selected.size > 0
+            ? t(`${selected.size} selected`, `${selected.size} محدَّد`)
+            : t('Select rows below to bulk-edit their stock or price, or delete them.', 'حدد صفوفًا أدناه لتعديل مخزونها أو سعرها دفعة واحدة، أو حذفها.')}
+        </span>
+      </div>
 
+      {selected.size > 0 && (
         <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: 'var(--space-3)',
-            marginInlineStart: 'auto',
-            paddingInlineStart: 'var(--space-4)',
-            borderInlineStart: '1px solid var(--color-border)',
-          }}
+          className="admin-form__row"
+          style={{ marginTop: 'var(--space-3)', alignItems: 'start', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-3)' }}
         >
-          <span className="admin-form__hint" style={{ whiteSpace: 'nowrap' }}>
-            {selected.size > 0
-              ? t(`${selected.size} selected:`, `${selected.size} محدَّد:`)
-              : t('Select rows to act on them:', 'حدد صفوفًا للتعامل معها:')}
-          </span>
-
           <div style={{ display: 'flex', alignItems: 'end', gap: 'var(--space-2)' }}>
             <Field label={t('Stock', 'المخزون')}>
               {(p) => (
@@ -399,12 +385,11 @@ export function VariantsMatrix({
                   step="1"
                   value={bulkStock}
                   onChange={(e) => setBulkStock(e.target.value)}
-                  disabled={busy || selected.size === 0}
-                  style={{ width: '6rem' }}
+                  disabled={busy}
                 />
               )}
             </Field>
-            <Button type="button" variant="outline" size="sm" onClick={applyBulkStock} disabled={busy || selected.size === 0}>
+            <Button type="button" variant="outline" size="sm" onClick={applyBulkStock} disabled={busy}>
               {t('Apply', 'تطبيق')}
             </Button>
           </div>
@@ -418,22 +403,22 @@ export function VariantsMatrix({
                   inputMode="decimal"
                   value={bulkPrice}
                   onChange={(e) => setBulkPrice(e.target.value)}
-                  disabled={busy || selected.size === 0}
-                  style={{ width: '6rem' }}
+                  disabled={busy}
                 />
               )}
             </Field>
-            <Button type="button" variant="outline" size="sm" onClick={applyBulkPrice} disabled={busy || selected.size === 0}>
+            <Button type="button" variant="outline" size="sm" onClick={applyBulkPrice} disabled={busy}>
               {t('Apply', 'تطبيق')}
             </Button>
           </div>
 
-          <Button type="button" variant="danger" size="sm" onClick={deleteSelected} disabled={busy || selected.size === 0}>
-            {t('Delete', 'حذف')}
-            {selected.size > 0 ? ` (${selected.size})` : ''}
-          </Button>
+          <div style={{ display: 'flex', alignItems: 'end' }}>
+            <Button type="button" variant="danger" size="sm" onClick={deleteSelected} disabled={busy}>
+              {t('Delete', 'حذف')} ({selected.size})
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
       {bulkError && (
         <Alert tone="danger" className="stack">
           {bulkError}

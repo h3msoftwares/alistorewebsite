@@ -32,15 +32,34 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
-      # ubuntu-latest ships an old/mismatched client by default; install one
-      # that matches the project's Postgres major version.
+      # ubuntu-latest's own repo only ships postgresql-client-16, but pg_dump
+      # refuses to dump a server NEWER than itself ("aborting because of
+      # server version mismatch") — confirmed live here, same failure mode
+      # backend/Dockerfile hit and fixed the same way (see its comment).
+      # Supabase runs Postgres 17.6, so this pulls the official PGDG apt repo
+      # for an explicit, pinned postgresql-client-17 instead of the distro
+      # default.
       - name: Install postgresql-client
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client-16
+          sudo apt-get install -y --no-install-recommends ca-certificates curl
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
       - name: Run backup
         run: npm run backup:run
         env:
+          # ubuntu-latest's runner image ALREADY ships postgresql-client-16
+          # on PATH ahead of whatever gets apt-get installed afterward
+          # (confirmed live: plain `pg_dump` still resolved to 16.15 even
+          # after installing postgresql-client-17 above) — pointing directly
+          # at PGDG's versioned binary path sidesteps that PATH/wrapper
+          # ambiguity entirely instead of fighting update-alternatives.
+          PG_DUMP_BIN: /usr/lib/postgresql/17/bin/pg_dump
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GOOGLE_DRIVE_CLIENT_ID: ${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
           GOOGLE_DRIVE_CLIENT_SECRET: ${{ secrets.GOOGLE_DRIVE_CLIENT_SECRET }}

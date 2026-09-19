@@ -24,6 +24,10 @@ import blacklistRoutes from '../blacklist/blacklist.routes';
 import pushRoutes from '../push/push.routes';
 import roleRoutes from '../rbac/role.routes';
 import customerRoutes from '../customers/customers.routes';
+import returnRoutes from '../returns/return.routes';
+import { createReturnSchema } from '../returns/return.schema';
+import { adminRequestReturnHandler } from '../returns/return.controller';
+import notificationRoutes from '../notifications/notification.routes';
 
 const router = Router();
 
@@ -65,6 +69,18 @@ router.patch(
   validate({ params: orderIdParamSchema }),
   asyncHandler(reviewOrderHandler)
 );
+// Staff-initiated return (e.g. a phone order) — same DELIVERED gate + atomic
+// returnedQuantity claim as the customer-facing route in order.routes.ts,
+// just without the owning-customer check. Step-up like the return-status
+// route below: it immediately claims the returned quantity, same bar as an
+// order-status change.
+router.post(
+  '/orders/:id/returns',
+  requirePermission('orders:manage'),
+  requireFreshAuth(),
+  validate({ params: orderIdParamSchema, body: createReturnSchema }),
+  asyncHandler(adminRequestReturnHandler)
+);
 
 // Step-up protected (S2): a direct stock write bypasses the ordinary
 // stock-movement trail, so treat it like the order-status change above —
@@ -83,8 +99,15 @@ router.use('/customers', customerRoutes);
 
 // Anti-abuse block list sits with order operations.
 router.use('/blacklist', requirePermission('orders:manage'), blacklistRoutes);
+// Per-item returns — its own view/manage split, so it applies requirePermission
+// per-route itself rather than one blanket permission at the mount (see
+// return.routes.ts, same shape as rbac/role.routes.ts).
+router.use('/returns', returnRoutes);
 // Any admin can register their own device for push alerts — no extra permission.
 router.use('/push-subscriptions', pushRoutes);
+// Same "any admin, no extra permission" shape — row-level filtering inside
+// the service already scopes what each caller actually sees.
+router.use('/notifications', notificationRoutes);
 
 router.use('/', roleRoutes);
 

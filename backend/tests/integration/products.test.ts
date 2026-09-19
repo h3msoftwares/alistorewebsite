@@ -745,25 +745,7 @@ describe('Products API', () => {
     });
   });
 
-  describe('quantity + sale', () => {
-    it('accepts a zero or negative quantity without touching isActive', async () => {
-      const res = await request(app)
-        .post('/api/products')
-        .set(bearer(adminToken))
-        .send(productBody({ quantity: -3 }));
-      expect(res.status).toBe(201);
-      expect(res.body.product.quantity).toBe(-3);
-      expect(res.body.product.isActive).toBe(true);
-    });
-
-    it('defaults quantity to 0 when omitted', async () => {
-      const res = await request(app)
-        .post('/api/products')
-        .set(bearer(adminToken))
-        .send(productBody());
-      expect(res.body.product.quantity).toBe(0);
-    });
-
+  describe('sale', () => {
     it('applies a PERCENT sale and returns effectivePrice + onSale', async () => {
       const res = await request(app)
         .post('/api/products')
@@ -803,7 +785,7 @@ describe('Products API', () => {
       expect(tooBig.status).toBe(400);
     });
 
-    it('PATCH updates quantity and clears the sale with saleType:null', async () => {
+    it('PATCH clears the sale with saleType:null', async () => {
       const created = (
         await request(app)
           .post('/api/products')
@@ -815,9 +797,8 @@ describe('Products API', () => {
       const res = await request(app)
         .patch(`/api/products/${created.id}`)
         .set(bearer(adminToken))
-        .send({ quantity: 7, saleType: null, saleValue: null });
+        .send({ saleType: null, saleValue: null });
       expect(res.status).toBe(200);
-      expect(res.body.product.quantity).toBe(7);
       expect(res.body.product.onSale).toBe(false);
       expect(Number(res.body.product.effectivePrice)).toBe(40);
     });

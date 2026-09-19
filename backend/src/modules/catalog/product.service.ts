@@ -487,7 +487,6 @@ export async function createProduct(input: CreateProductInput) {
         primaryCategoryID: input.primaryCategoryId,
         price: input.price,
         compareAtPrice: input.compareAtPrice,
-        quantity: input.quantity,
         saleType: input.saleType ?? null,
         saleValue: input.saleValue ?? null,
         variants: {
@@ -577,7 +576,6 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
     ...(input.primaryCategoryId !== undefined ? { primaryCategoryID: input.primaryCategoryId } : {}),
     ...(input.price !== undefined ? { price: input.price } : {}),
     ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice } : {}),
-    ...(input.quantity !== undefined ? { quantity: input.quantity } : {}),
     ...(input.saleType !== undefined ? { saleType: input.saleType ?? null } : {}),
     ...(input.saleValue !== undefined ? { saleValue: input.saleValue ?? null } : {}),
   };

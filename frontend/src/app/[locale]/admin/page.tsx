@@ -7,6 +7,7 @@ import { ChartCard, StatGrid, TrendLine } from '@/components/admin/analytics';
 import { bucketLabel } from '@/components/admin/analytics/format';
 import { useAdminDashboard } from '@/hooks/use-orders';
 import { useAnalyticsOverview } from '@/hooks/use-analytics';
+import { NotificationBell } from '@/components/admin/notification-bell';
 
 /** Admin landing page: an at-a-glance "what needs attention" view. The
  *  date-ranged deep dives live under /admin/analytics — this page is the
@@ -44,6 +45,7 @@ export default function AdminDashboardPage() {
     <div className="section--tight">
       <div className="admin-page__head">
         <h1>{t('Dashboard', 'لوحة التحكم')}</h1>
+        <NotificationBell locale={locale} />
       </div>
 
       {isPending ? (
@@ -61,7 +63,7 @@ export default function AdminDashboardPage() {
       ) : (
         <div className="admin-dashboard">
           <StatGrid>
-            <Link className="stat-tile stat-tile--link" href={`${base}/orders`}>
+            <Link className="stat-tile stat-tile--link" href={`${base}/orders?status=PENDING`}>
               <span className="stat-tile__label">{t('Pending orders', 'طلبات قيد الانتظار')}</span>
               <span className="stat-tile__value">{data.pendingOrders}</span>
               <span className="stat-tile__hint">
@@ -69,13 +71,19 @@ export default function AdminDashboardPage() {
               </span>
             </Link>
 
-            <Link className="stat-tile stat-tile--link" href={`${base}/orders`}>
+            <Link className="stat-tile stat-tile--link" href={`${base}/orders?status=CONFIRMED,SHIPPED`}>
+              <span className="stat-tile__label">{t('Confirmed, not delivered', 'مؤكَّدة، لم تُسلَّم')}</span>
+              <span className="stat-tile__value">{data.confirmedNotDelivered}</span>
+              <span className="stat-tile__hint">{t('confirmed or shipped', 'مؤكَّدة أو تم شحنها')}</span>
+            </Link>
+
+            <Link className="stat-tile stat-tile--link" href={`${base}/orders?flagged=true`}>
               <span className="stat-tile__label">{t('Flagged for review', 'معلَّمة للمراجعة')}</span>
               <span className="stat-tile__value">{data.flaggedOrders}</span>
               <span className="stat-tile__hint">{t('anti-abuse velocity flags', 'إشارات كثرة الطلبات')}</span>
             </Link>
 
-            <Link className="stat-tile stat-tile--link" href={`${base}/orders`}>
+            <Link className="stat-tile stat-tile--link" href={`${base}/orders?awaitingCod=true`}>
               <span className="stat-tile__label">{t('Awaiting COD', 'بانتظار تحصيل الدفع')}</span>
               <span className="stat-tile__value">{data.awaitingCodCollection}</span>
               <span className="stat-tile__hint">{t('delivered, not collected', 'تم التسليم دون تحصيل')}</span>

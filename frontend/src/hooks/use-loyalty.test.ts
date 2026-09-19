@@ -73,7 +73,7 @@ describe('loyalty rule mutations', () => {
     });
 
     expect(mockApi.createLoyaltyRule).toHaveBeenCalledWith(body);
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['loyalty-rules'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['loyalty', 'rules'] });
   });
 
   it('useUpdateLoyaltyRule calls through with id + partial body', async () => {

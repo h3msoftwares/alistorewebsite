@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { createWrapper } from '@/test/utils';
 import { LoyaltyRulesPanel } from './loyalty-panel';
-import type { LoyaltyRule } from '@/lib/types';
+import type { AuthUser, LoyaltyRule } from '@/lib/types';
 
 const create = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false };
 const update = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false };
@@ -34,15 +35,33 @@ vi.mock('@/hooks/use-loyalty', () => ({
   useDeleteLoyaltyRule: () => remove,
 }));
 
+// Every test here exercises create/edit/delete, so the panel is rendered as
+// an admin who holds loyalty:manage (the permission gate added alongside the
+// rest of the admin panel's :manage-gating consistency pass).
+function renderPanel() {
+  const { Wrapper, store } = createWrapper();
+  store.dispatch({
+    type: 'auth/authenticated',
+    payload: {
+      id: 'admin1',
+      name: 'Boss',
+      email: 'boss@test.dev',
+      phone: null,
+      role: 'ADMIN',
+      permissions: ['loyalty:view', 'loyalty:manage'],
+    } satisfies AuthUser,
+  });
+  return render(<LoyaltyRulesPanel isAr={false} />, { wrapper: Wrapper });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   Object.assign(rulesQuery, { data: [rule], isPending: false, isError: false });
-  window.confirm = vi.fn().mockReturnValue(true);
 });
 
 describe('<LoyaltyRulesPanel>', () => {
   it('lists existing rules with their milestone and reward', () => {
-    render(<LoyaltyRulesPanel isAr={false} />);
+    renderPanel();
     expect(screen.getByText('Every 5 orders')).toBeInTheDocument();
     expect(screen.getByText('Every 5 delivered orders')).toBeInTheDocument();
     expect(screen.getByText('10% off')).toBeInTheDocument();
@@ -50,14 +69,15 @@ describe('<LoyaltyRulesPanel>', () => {
 
   it('shows an empty state when there are no rules', () => {
     Object.assign(rulesQuery, { data: [] });
-    render(<LoyaltyRulesPanel isAr={false} />);
+    renderPanel();
     expect(screen.getByText('No loyalty rules yet')).toBeInTheDocument();
   });
 
-  it('creates a new rule from the form', async () => {
+  it('creates a new rule from the dialog', async () => {
     const user = userEvent.setup();
-    render(<LoyaltyRulesPanel isAr={false} />);
+    renderPanel();
 
+    await user.click(screen.getByRole('button', { name: 'New rule' }));
     await user.type(screen.getByLabelText(/Name \(English\)/), 'Every 3 orders');
     await user.type(screen.getByLabelText(/Name \(Arabic\)/), 'كل 3 طلبات');
     await user.click(screen.getByRole('button', { name: 'Add rule' }));
@@ -69,8 +89,9 @@ describe('<LoyaltyRulesPanel>', () => {
 
   it('rejects a percentage reward over 100 client-side', async () => {
     const user = userEvent.setup();
-    render(<LoyaltyRulesPanel isAr={false} />);
+    renderPanel();
 
+    await user.click(screen.getByRole('button', { name: 'New rule' }));
     await user.type(screen.getByLabelText(/Name \(English\)/), 'x');
     await user.type(screen.getByLabelText(/Name \(Arabic\)/), 'x');
     const rewardValue = screen.getByLabelText('Reward value');
@@ -82,9 +103,9 @@ describe('<LoyaltyRulesPanel>', () => {
     expect(create.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it('edits a rule', async () => {
+  it('edits a rule from the dialog', async () => {
     const user = userEvent.setup();
-    render(<LoyaltyRulesPanel isAr={false} />);
+    renderPanel();
 
     await user.click(screen.getByRole('button', { name: 'Edit' }));
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeInTheDocument();
@@ -97,10 +118,12 @@ describe('<LoyaltyRulesPanel>', () => {
 
   it('deletes a rule after confirming', async () => {
     const user = userEvent.setup();
-    render(<LoyaltyRulesPanel isAr={false} />);
+    renderPanel();
 
     await user.click(screen.getByRole('button', { name: 'Delete' }));
-    expect(window.confirm).toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog');
+    expect(remove.mutate).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
     expect(remove.mutate).toHaveBeenCalledWith('r1');
   });
 });

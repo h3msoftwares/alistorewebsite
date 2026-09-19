@@ -78,7 +78,7 @@ async function main() {
       nameEn: 'Load Test Checkout Item', nameAr: 'عنصر اختبار الحمل',
       descriptionEn: 'Synthetic product for checkout load testing. Not for sale.',
       primaryCategoryID: anyCategory.id,
-      price: 10, quantity: 1_000_000_000,
+      price: 10,
     },
     select: { id: true },
   });

@@ -60,6 +60,8 @@ async function makeOrder(opts: {
 let adminToken: string;
 let alphaM: SeedLine; // Alpha Tee / M / Black @20, stock 3 (low)
 let betaOS: SeedLine; // Beta Dress / one-size / Red @50, stock 40
+let alphaProductId: string;
+let betaProductId: string;
 
 beforeEach(async () => {
   const col = await makeCollection({ slug: `c-${Math.random().toString(36).slice(2, 8)}` });
@@ -76,6 +78,8 @@ beforeEach(async () => {
     over: { nameEn: 'Beta Dress', sku: 'BETA', price: 50 },
     variants: [{ sku: 'BETA-OS-RED', size: null, color: 'Red', stockQuantity: 40 }],
   });
+  alphaProductId = alpha.id;
+  betaProductId = beta.id;
 
   alphaM = {
     variantId: alpha.variants[0].id,
@@ -226,8 +230,8 @@ describe('GET /api/admin/analytics/products', () => {
       .set(bearer(adminToken));
 
     expect(body.products.map((p: { sku: string }) => p.sku)).toEqual(['BETA', 'ALPHA']);
-    expect(body.products[0]).toMatchObject({ sku: 'BETA', revenue: 100, units: 2, views: null });
-    expect(body.products[1]).toMatchObject({ sku: 'ALPHA', revenue: 60, units: 3 });
+    expect(body.products[0]).toMatchObject({ sku: 'BETA', productId: betaProductId, revenue: 100, units: 2, views: null });
+    expect(body.products[1]).toMatchObject({ sku: 'ALPHA', productId: alphaProductId, revenue: 60, units: 3 });
     expect(body.ga).toEqual({ configured: false });
   });
 });

@@ -101,11 +101,27 @@ function BackupPanel({ locale }: { locale: 'en' | 'ar' }) {
             )}
       </p>
 
+      {runNow.isPending && (
+        <Alert tone="info">
+          {t(
+            'Backing up — this can take a minute or two for a large database.',
+            'جارٍ النسخ الاحتياطي — قد يستغرق دقيقة أو دقيقتين لقاعدة بيانات كبيرة.'
+          )}
+        </Alert>
+      )}
       {runNow.isSuccess && runNow.data.ok && (
         <Alert tone="success">
           {t(
-            `Backup complete — ${runNow.data.file?.name ?? ''} uploaded to Drive.`,
-            `اكتمل النسخ الاحتياطي — تم رفع ${runNow.data.file?.name ?? ''} إلى Drive.`
+            `Backup complete — ${runNow.data.file.name} uploaded to Drive.`,
+            `اكتمل النسخ الاحتياطي — تم رفع ${runNow.data.file.name} إلى Drive.`
+          )}
+        </Alert>
+      )}
+      {runNow.isSuccess && !runNow.data.ok && (
+        <Alert tone="warning">
+          {t(
+            "Still running after a few minutes — it may still finish. Refresh the list in a bit to check.",
+            'ما زال قيد التشغيل بعد بضع دقائق — قد يكتمل لاحقًا. حدّث القائمة بعد قليل للتحقق.'
           )}
         </Alert>
       )}
@@ -375,13 +391,25 @@ function RestoreDialog({
     }
     try {
       const result = await restore.mutateAsync(backup.id);
-      onDone({
-        tone: 'success',
-        text: t(
-          `Restore complete — database replaced from ${result.restoredFrom} (${result.relations ?? '?'} tables).`,
-          `اكتملت الاستعادة — استُبدلت قاعدة البيانات من ${result.restoredFrom} (${result.relations ?? '?'} جداول).`
-        ),
-      });
+      if (result.ok) {
+        onDone({
+          tone: 'success',
+          text: t(
+            `Restore complete — database replaced from ${backup.name} (${result.relations ?? '?'} tables).`,
+            `اكتملت الاستعادة — استُبدلت قاعدة البيانات من ${backup.name} (${result.relations ?? '?'} جداول).`
+          ),
+        });
+      } else if ('timedOut' in result) {
+        onDone({
+          tone: 'danger',
+          text: t(
+            'Still running after a few minutes — the database may already be restored. Refresh the page in a bit to check.',
+            'ما زالت العملية قيد التشغيل بعد بضع دقائق — قد تكون قاعدة البيانات قد استُعيدت بالفعل. حدّث الصفحة بعد قليل للتحقق.'
+          ),
+        });
+      } else {
+        onDone({ tone: 'danger', text: result.error });
+      }
     } catch (e) {
       setError(isApiError(e) ? e.message : t('Restore failed.', 'فشلت الاستعادة.'));
     }

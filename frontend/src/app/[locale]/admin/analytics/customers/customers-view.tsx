@@ -1,5 +1,6 @@
 'use client';
 
+import { useParams } from 'next/navigation';
 import { DataTable } from '@/components/ui';
 import {
   ChartCard,
@@ -13,11 +14,15 @@ import { useAnalyticsCustomers } from '@/hooks/use-analytics';
 import { useAnalyticsRange } from '../range-context';
 
 export function AnalyticsCustomersPage() {
+  const params = useParams();
+  const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
+  const isAr = locale === 'ar';
+  const t = (en: string, ar: string) => (isAr ? ar : en);
   const { preset } = useAnalyticsRange();
   const query = useAnalyticsCustomers(preset);
 
   return (
-    <DashboardState query={query}>
+    <DashboardState query={query} isAr={isAr}>
       {(data) => {
         const k = data.kpis;
         const series = data.newVsReturningSeries.map((p) => ({
@@ -28,48 +33,48 @@ export function AnalyticsCustomersPage() {
         return (
           <div className="analytics-page">
             <StatGrid>
-              <StatTile label="Customers with orders" value={num(k.customersWithOrders)} />
-              <StatTile label="New (in range)" value={num(k.newCustomers)} />
-              <StatTile label="Returning (in range)" value={num(k.returningCustomers)} />
-              <StatTile label="Repeat purchase rate" value={pct(k.repeatPurchaseRate)} />
-              <StatTile label="Orders / customer" value={k.ordersPerCustomer.toFixed(2)} />
-              <StatTile label="Lifetime value" value={money2(k.lifetimeValue)} hint="all-time avg" />
+              <StatTile label={t('Customers with orders', 'عملاء لديهم طلبات')} value={num(k.customersWithOrders)} />
+              <StatTile label={t('New (in range)', 'جدد (خلال الفترة)')} value={num(k.newCustomers)} />
+              <StatTile label={t('Returning (in range)', 'عائدون (خلال الفترة)')} value={num(k.returningCustomers)} />
+              <StatTile label={t('Repeat purchase rate', 'معدل تكرار الشراء')} value={pct(k.repeatPurchaseRate)} />
+              <StatTile label={t('Orders / customer', 'طلبات / عميل')} value={k.ordersPerCustomer.toFixed(2)} />
+              <StatTile label={t('Lifetime value', 'القيمة الدائمة')} value={money2(k.lifetimeValue)} hint={t('all-time avg', 'متوسط كل الأوقات')} />
               <StatTile
-                label="Days between purchases"
+                label={t('Days between purchases', 'أيام بين عمليات الشراء')}
                 value={k.avgDaysBetweenPurchases == null ? '—' : k.avgDaysBetweenPurchases.toFixed(0)}
               />
             </StatGrid>
 
-            <ChartCard title="New vs returning (orders per bucket)">
+            <ChartCard title={t('New vs returning (orders per bucket)', 'جدد مقابل عائدين (طلبات لكل فترة)')}>
               <TrendLine
                 data={series}
                 series={[
-                  { key: 'new', label: 'First orders' },
-                  { key: 'returning', label: 'Repeat orders' },
+                  { key: 'new', label: t('First orders', 'الطلبات الأولى') },
+                  { key: 'returning', label: t('Repeat orders', 'الطلبات المتكررة') },
                 ]}
               />
             </ChartCard>
 
-            <ChartCard title="Top customers by revenue (in range)" height="auto">
+            <ChartCard title={t('Top customers by revenue (in range)', 'أفضل العملاء حسب الإيرادات (خلال الفترة)')} height="auto">
               {data.topCustomers.length === 0 ? (
-                <p className="chart-card__empty">No customer orders in this range.</p>
+                <p className="chart-card__empty">{t('No customer orders in this range.', 'لا طلبات عملاء في هذه الفترة.')}</p>
               ) : (
                 <DataTable responsive>
                   <thead>
                     <tr>
-                      <th>Customer</th>
-                      <th>Email</th>
-                      <th className="is-numeric">Orders</th>
-                      <th className="is-numeric">Revenue</th>
+                      <th>{t('Customer', 'العميل')}</th>
+                      <th>{t('Email', 'البريد الإلكتروني')}</th>
+                      <th className="is-numeric">{t('Orders', 'الطلبات')}</th>
+                      <th className="is-numeric">{t('Revenue', 'الإيرادات')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.topCustomers.map((c) => (
                       <tr key={c.id}>
-                        <td data-label="Customer">{c.name}</td>
-                        <td data-label="Email">{c.email}</td>
-                        <td data-label="Orders" className="is-numeric">{c.orders}</td>
-                        <td data-label="Revenue" className="is-numeric">{money2(c.revenue)}</td>
+                        <td data-label={t('Customer', 'العميل')}>{c.name}</td>
+                        <td data-label={t('Email', 'البريد الإلكتروني')}>{c.email}</td>
+                        <td data-label={t('Orders', 'الطلبات')} className="is-numeric">{c.orders}</td>
+                        <td data-label={t('Revenue', 'الإيرادات')} className="is-numeric">{money2(c.revenue)}</td>
                       </tr>
                     ))}
                   </tbody>

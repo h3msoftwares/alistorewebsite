@@ -6,17 +6,19 @@ import {
   Alert,
   Badge,
   Button,
+  Choice,
+  ConfirmModal,
   DataTable,
   EmptyState,
   Field,
   Input,
-  Modal,
   ProductGridSkeleton,
   Select,
   StatusPill,
 } from '@/components/ui';
 import { AdminPager } from '@/components/admin/admin-pager';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useRowSelection } from '@/hooks/use-row-selection';
 import { useAdminCustomer, useAdminCustomers, useSetCustomerActive } from '@/hooks/use-customers';
 import { usePermissions } from '@/lib/rbac';
 import type { AdminCustomerSummary, CustomerSort, Order } from '@/lib/types';
@@ -40,10 +42,10 @@ export default function AdminCustomersPage() {
         <h1>{t('Customers', 'الزبائن')}</h1>
       </div>
 
-      <nav className="admin-nav settings-tabs" aria-label={t('Customer sections', 'أقسام الزبائن')}>
+      <nav className="tab-strip settings-tabs" aria-label={t('Customer sections', 'أقسام الزبائن')}>
         <button
           type="button"
-          className="admin-nav__link"
+          className="tab-strip__link"
           data-active={tab === 'customers' ? '' : undefined}
           aria-pressed={tab === 'customers'}
           onClick={() => setTab('customers')}
@@ -52,7 +54,7 @@ export default function AdminCustomersPage() {
         </button>
         <button
           type="button"
-          className="admin-nav__link"
+          className="tab-strip__link"
           data-active={tab === 'loyalty' ? '' : undefined}
           aria-pressed={tab === 'loyalty'}
           onClick={() => setTab('loyalty')}
@@ -93,9 +95,11 @@ function CustomersPanel({ locale }: { locale: 'en' | 'ar' }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   // Blocking cuts a customer off from signing in and checking out, so it goes
   // through a confirm step; unblocking is a plain restore and applies straight away.
-  const [confirmBlock, setConfirmBlock] = useState<AdminCustomerSummary | null>(null);
+  const [confirmBlock, setConfirmBlock] = useState<AdminCustomerSummary[] | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const { data, isPending, isError, refetch } = useAdminCustomers({
     search: search || undefined,
@@ -108,6 +112,7 @@ function CustomersPanel({ locale }: { locale: 'en' | 'ar' }) {
 
   const rows = data?.customers ?? [];
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const selection = useRowSelection(rows.map((c) => c.id));
 
   const resetPage = () => setPage(1);
 
@@ -125,9 +130,35 @@ function CustomersPanel({ locale }: { locale: 'en' | 'ar' }) {
 
   const confirmBlockNow = async () => {
     if (!confirmBlock) return;
-    const target = confirmBlock;
-    setConfirmBlock(null);
-    await setCustomerActive(target, false);
+    const targets = confirmBlock;
+    setConfirmBusy(true);
+    setActionError(null);
+    try {
+      await Promise.all(targets.map((c) => setActive.mutateAsync({ id: c.id, isActive: false })));
+      selection.clear();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : t('Update failed', 'فشل التحديث'));
+    } finally {
+      setConfirmBlock(null);
+      setConfirmBusy(false);
+    }
+  };
+
+  const selectedItems = rows.filter((c) => selection.selected.has(c.id));
+  const selectedActive = selectedItems.filter((c) => c.isActive);
+  const selectedBlocked = selectedItems.filter((c) => !c.isActive);
+
+  const onBulkUnblock = async () => {
+    setActionError(null);
+    setBulkBusy(true);
+    try {
+      await Promise.all(selectedBlocked.map((c) => setActive.mutateAsync({ id: c.id, isActive: true })));
+      selection.clear();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : t('Update failed', 'فشل التحديث'));
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   return (
@@ -210,9 +241,48 @@ function CustomersPanel({ locale }: { locale: 'en' | 'ar' }) {
         />
       ) : (
         <>
+          {canManage && selection.count > 0 && (
+            <div className="admin-bulk-bar">
+              <span className="admin-bulk-bar__count">
+                {t(`${selection.count} selected`, `${selection.count} محدد`)}
+              </span>
+              <span className="admin-bulk-bar__actions">
+                {selectedActive.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="btn--danger-quiet"
+                    onClick={() => setConfirmBlock(selectedActive)}
+                  >
+                    {t(`Block (${selectedActive.length})`, `حظر (${selectedActive.length})`)}
+                  </Button>
+                )}
+                {selectedBlocked.length > 0 && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => void onBulkUnblock()} loading={bulkBusy}>
+                    {t(`Unblock (${selectedBlocked.length})`, `رفع الحظر (${selectedBlocked.length})`)}
+                  </Button>
+                )}
+                <button type="button" className="admin-bulk-bar__clear" onClick={selection.clear}>
+                  {t('Clear', 'إلغاء التحديد')}
+                </button>
+              </span>
+            </div>
+          )}
+
           <DataTable responsive>
             <thead>
               <tr>
+                {canManage && (
+                  <th aria-hidden="true">
+                    <Choice
+                      type="checkbox"
+                      checked={selection.allSelected}
+                      onChange={selection.toggleAll}
+                      label={<span className="visually-hidden">{t('Select all', 'تحديد الكل')}</span>}
+                    />
+                  </th>
+                )}
                 <th>{t('Customer', 'الزبون')}</th>
                 <th>{t('Joined', 'انضمّ')}</th>
                 <th className="is-numeric">{t('Orders', 'الطلبات')}</th>
@@ -228,6 +298,16 @@ function CustomersPanel({ locale }: { locale: 'en' | 'ar' }) {
                 return (
                   <Fragment key={c.id}>
                     <tr aria-busy={busy || undefined}>
+                      {canManage && (
+                        <td data-label={t('Select', 'تحديد')}>
+                          <Choice
+                            type="checkbox"
+                            checked={selection.selected.has(c.id)}
+                            onChange={() => selection.toggle(c.id)}
+                            label={<span className="visually-hidden">{t(`Select ${c.name}`, `تحديد ${c.name}`)}</span>}
+                          />
+                        </td>
+                      )}
                       <td data-label={t('Customer', 'الزبون')}>
                         <button
                           type="button"
@@ -275,7 +355,7 @@ function CustomersPanel({ locale }: { locale: 'en' | 'ar' }) {
                                 size="sm"
                                 className="btn--danger-quiet"
                                 disabled={busy}
-                                onClick={() => setConfirmBlock(c)}
+                                onClick={() => setConfirmBlock([c])}
                               >
                                 {t('Block', 'حظر')}
                               </Button>
@@ -294,7 +374,7 @@ function CustomersPanel({ locale }: { locale: 'en' | 'ar' }) {
                     </tr>
                     {open && (
                       <tr>
-                        <td colSpan={6}>
+                        <td colSpan={canManage ? 7 : 6}>
                           <CustomerOrders id={c.id} locale={locale} money={money} date={date} />
                         </td>
                       </tr>
@@ -314,32 +394,31 @@ function CustomersPanel({ locale }: { locale: 'en' | 'ar' }) {
         </>
       )}
 
-      {confirmBlock && (
-        <Modal
-          open
-          onClose={() => setConfirmBlock(null)}
-          title={t(`Block ${confirmBlock.name}`, `حظر ${confirmBlock.name}`)}
-          closeLabel={t('Close', 'إغلاق')}
-        >
-          <div className="admin-modal">
-            <h2 className="admin-modal__title">{t('Block this customer?', 'حظر هذا الزبون؟')}</h2>
-            <p className="admin-modal__body">
-              {t(
-                `${confirmBlock.name} won't be able to sign in or place orders until you unblock them. Their order history is kept.`,
-                `لن يتمكن ${confirmBlock.name} من تسجيل الدخول أو تقديم الطلبات حتى ترفع الحظر. يُحتفظ بسجل طلباته.`
-              )}
-            </p>
-            <div className="admin-modal__actions">
-              <Button variant="ghost" onClick={() => setConfirmBlock(null)}>
-                {t('Cancel', 'إلغاء')}
-              </Button>
-              <Button variant="danger" onClick={confirmBlockNow}>
-                {t('Block customer', 'حظر الزبون')}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      <ConfirmModal
+        open={confirmBlock !== null}
+        onClose={() => setConfirmBlock(null)}
+        onConfirm={() => void confirmBlockNow()}
+        title={
+          confirmBlock?.length === 1
+            ? t(`Block ${confirmBlock[0].name}?`, `حظر ${confirmBlock[0].name}؟`)
+            : t(`Block ${confirmBlock?.length ?? 0} customers?`, `حظر ${confirmBlock?.length ?? 0} زبائن؟`)
+        }
+        body={
+          confirmBlock?.length === 1
+            ? t(
+                `${confirmBlock[0].name} won't be able to sign in or place orders until you unblock them. Their order history is kept.`,
+                `لن يتمكن ${confirmBlock[0].name} من تسجيل الدخول أو تقديم الطلبات حتى ترفع الحظر. يُحتفظ بسجل طلباته.`
+              )
+            : t(
+                "They won't be able to sign in or place orders until you unblock them. Order history is kept.",
+                'لن يتمكنوا من تسجيل الدخول أو تقديم الطلبات حتى ترفع الحظر. يُحتفظ بسجل طلباتهم.'
+              )
+        }
+        confirmLabel={confirmBlock?.length === 1 ? t('Block customer', 'حظر الزبون') : t('Block customers', 'حظر الزبائن')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone="danger"
+        loading={confirmBusy}
+      />
     </>
   );
 }

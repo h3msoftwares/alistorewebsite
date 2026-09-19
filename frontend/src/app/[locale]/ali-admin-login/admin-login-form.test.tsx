@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminLoginForm } from './admin-login-form';
+import { ApiError } from '@/lib/api';
 
 vi.mock('next/link', () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
@@ -47,8 +48,9 @@ describe('<AdminLoginForm>', () => {
   });
 
   it('shows a generic error on a failed login, without revealing the cause', async () => {
-    adminLogin.mutateAsync.mockRejectedValue(new Error('wrong password'));
-    Object.assign(adminLogin, { isError: true });
+    const error = new ApiError(401, { code: 'UNAUTHORIZED', message: 'Invalid credentials' });
+    adminLogin.mutateAsync.mockRejectedValue(error);
+    Object.assign(adminLogin, { isError: true, error });
     const user = userEvent.setup();
     render(<AdminLoginForm locale="en" />);
 
@@ -59,6 +61,21 @@ describe('<AdminLoginForm>', () => {
     expect(await screen.findByText('Invalid credentials.')).toBeInTheDocument();
     expect(screen.queryByText(/wrong password/i)).not.toBeInTheDocument();
     expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  it("shows a distinct message when the server can't be reached at all", async () => {
+    const error = new TypeError('Failed to fetch');
+    adminLogin.mutateAsync.mockRejectedValue(error);
+    Object.assign(adminLogin, { isError: true, error });
+    const user = userEvent.setup();
+    render(<AdminLoginForm locale="en" />);
+
+    await user.type(screen.getByLabelText('Email or phone'), 'admin@test.dev');
+    await user.type(screen.getByLabelText('Password'), 'whatever');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByText(/Couldn't reach the server/i)).toBeInTheDocument();
+    expect(screen.queryByText('Invalid credentials.')).not.toBeInTheDocument();
   });
 
   it('redirects away immediately if already signed in as an admin/staff', () => {

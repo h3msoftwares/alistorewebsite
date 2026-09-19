@@ -19,6 +19,7 @@ import {
   Textarea,
 } from '@/components/ui';
 import { useAdminCollections } from '@/hooks/use-catalog';
+import { usePermissions } from '@/lib/rbac';
 import { useSettings, useUpdateSettings } from '@/hooks/use-settings';
 import { ImageUploader } from '@/components/admin/image-uploader';
 import { DELIVERY_REGIONS } from '@/lib/regions';
@@ -305,6 +306,7 @@ export function AdminSettingsPage() {
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const canManage = usePermissions().has('settings:manage');
 
   const { data: settings, isPending, isError, refetch } = useSettings();
   const { data: collections } = useAdminCollections({ status: 'all' });
@@ -515,12 +517,12 @@ export function AdminSettingsPage() {
         </span>
       </div>
 
-      <nav className="admin-nav settings-tabs" aria-label={t('Settings sections', 'أقسام الإعدادات')}>
+      <nav className="tab-strip settings-tabs" aria-label={t('Settings sections', 'أقسام الإعدادات')}>
         {SECTIONS.map((s) => (
           <button
             key={s.id}
             type="button"
-            className="admin-nav__link"
+            className="tab-strip__link"
             data-active={!searching && tab === s.id ? '' : undefined}
             aria-pressed={!searching && tab === s.id}
             hidden={searching && !matchedIds.has(s.id)}
@@ -546,6 +548,12 @@ export function AdminSettingsPage() {
         className="admin-form"
         hidden={!anyFormSectionVisible}
       >
+        {/* Disabling via <fieldset> (rather than threading `!canManage` into
+            every individual input/button below) cascades the disabled state
+            to every native form control in one place — a settings:view-only
+            admin can see current values but not edit or submit any of them,
+            without a per-field gating pass across this 1000+ line form. */}
+        <fieldset disabled={!canManage} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
         {/* ---- Brand & contact ---- */}
         <section className="admin-form__section" id="set-brand" hidden={!shows('brand')}>
         <p className="admin-form__section-title">{t('Brand & contact', 'العلامة والتواصل')}</p>
@@ -576,8 +584,8 @@ export function AdminSettingsPage() {
           <Field
             label={t('Outgoing email address', 'عنوان بريد الإرسال')}
             hint={t(
-              'Replaces SMTP_FROM. Must be an address your email provider lets you send from.',
-              'يحل محل SMTP_FROM. يجب أن يكون عنوانًا يسمح مزوّد البريد بالإرسال منه.'
+              'Must match the Gmail account connected on the Mail page.',
+              'يجب أن يطابق حساب Gmail المتصل في صفحة البريد.'
             )}
             error={errors.mailFromEmail?.message}
           >
@@ -1096,6 +1104,7 @@ export function AdminSettingsPage() {
             {t('Save settings', 'حفظ الإعدادات')}
           </Button>
         </div>
+        </fieldset>
       </form>
 
       <div id="set-curation" hidden={!shows('curation')} style={{ marginTop: 'var(--space-6)' }}>

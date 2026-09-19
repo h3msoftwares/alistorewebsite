@@ -18,14 +18,10 @@ const priceStringSchema = z.string().regex(/^$|^\d+(\.\d{1,2})?$/, 'Must be empt
 // handled entirely separately — see components/admin/variants-matrix.tsx —
 // so nothing here needs to .extend() this with a variants field anymore).
 //
-// No `quantity` field here on purpose (fix-list.md #16) — `Product.quantity`
-// is a dead, free-standing DB column never derived from or validated against
-// variant stock, and every real product always has ≥1 variant (creation
-// requires it; deleteVariant() blocks going to zero — fix-list.md #17), so
-// editing it here could only ever mislead an admin into thinking it affects
-// availability. Left unset server-side, which keeps its schema default (0).
-// The list page shows a computed sum of variant stock in its place instead —
-// see admin/products/page.tsx.
+// Stock is per-variant, not a product-level field — every real product
+// always has ≥1 variant (creation requires it; deleteVariant() blocks going
+// to zero), so there's nothing here to edit for it. The list page shows a
+// computed sum of variant stock instead — see admin/products/page.tsx.
 export const productCoreObjectSchema = z.object({
   sku: z.string().min(1, 'Required'),
   nameEn: z.string().min(1, 'Required'),

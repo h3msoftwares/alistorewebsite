@@ -195,6 +195,8 @@
   --header-height: 72px;
   --offers-strip-h: 40px;
   --control-h: 44px;           /* min interactive height / touch target */
+  --admin-sidebar-w: 236px;
+  --admin-sidebar-muted: #8b84c2;  /* dimmer than --color-text-muted-on-dark, for sidebar group labels */
 
   /* ---- Motion ---- */
   --transition-fast: 150ms ease;
@@ -2179,31 +2181,329 @@ a.home-card__name:hover { text-decoration: underline; }
    ADMIN — nav shell, image uploader/gallery
    ============================================================ */
 
-.admin-shell { padding-block: var(--space-6); }
-.admin-nav {
+/* ---- shell frame: fixed sidebar (desktop) + scrolling main ---- */
+.admin-shell {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin-bottom: var(--space-6);
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--color-border);
+  align-items: stretch;
+  min-height: 100vh;
+  background: var(--color-bg);
+  /* Thin, theme-coloured scrollbar for every scrollable region in the admin
+     panel (this element, the sidebar, data tables with overflow-x, modals)
+     instead of the chunky default OS scrollbar — most noticeable on the
+     dark sidebar, where a default light scrollbar reads as a visual glitch. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
-.admin-nav__link {
-  padding: var(--space-2) var(--space-4);
-  border: 0;
-  border-radius: var(--radius-pill);
+.admin-shell ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.admin-shell ::-webkit-scrollbar-track {
   background: transparent;
+}
+.admin-shell ::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: var(--radius-full, 999px);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.admin-shell ::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+  background-clip: padding-box;
+}
+/* The sidebar sits on --navy, not the panel's light background — its own
+   scrollbar needs a light-on-dark thumb instead of inheriting the above. */
+.admin-sidebar {
+  scrollbar-color: var(--admin-sidebar-muted) transparent;
+}
+.admin-sidebar::-webkit-scrollbar-thumb {
+  background: var(--admin-sidebar-muted);
+  background-clip: padding-box;
+}
+.admin-sidebar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted-on-dark);
+  background-clip: padding-box;
+}
+.admin-shell__main {
+  flex: 1;
+  min-width: 0;
+  margin-inline-start: var(--admin-sidebar-w);
+  padding: var(--space-6) var(--gutter);
+  box-sizing: border-box;
+  transition: margin-inline-start var(--transition-fast);
+}
+
+/* ---- desktop sidebar ---- */
+.admin-sidebar {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--admin-sidebar-w);
+  z-index: var(--z-header);
+  background: var(--navy);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5) var(--space-3) var(--space-4);
+  box-sizing: border-box;
+  overflow-y: auto;
+  transition: inset-inline-start var(--transition-fast);
+}
+/* Hideable sidebar (per-device, see use-sidebar-collapsed.ts) — slid off the
+   start edge with a logical offset (not transform: translateX) so it slides
+   off the correct physical side in RTL too. */
+.admin-shell[data-sidebar-collapsed] .admin-sidebar { inset-inline-start: calc(-1 * var(--admin-sidebar-w)); }
+.admin-shell[data-sidebar-collapsed] .admin-shell__main { margin-inline-start: 0; }
+.admin-sidebar-reopen {
+  position: fixed;
+  inset-block-start: var(--space-4);
+  inset-inline-start: var(--space-4);
+  z-index: var(--z-header);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+}
+.admin-sidebar-reopen:hover { background: var(--color-surface); }
+.admin-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-5);
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.admin-sidebar__header .icon-btn { color: var(--color-text-on-dark); }
+.admin-sidebar__header .icon-btn:hover { background: rgba(255, 255, 255, 0.08); }
+.admin-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-sans);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  color: var(--color-text-on-dark);
+  text-decoration: none;
+}
+.admin-sidebar__brand-mark { display: block; height: 1.5em; width: auto; }
+.admin-sidebar__nav { flex: 1; display: flex; flex-direction: column; }
+.admin-sidebar__group-label {
+  padding: var(--space-4) var(--space-3) var(--space-1);
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--admin-sidebar-muted);
+}
+.admin-sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border-inline-start: 3px solid transparent;
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
-  color: var(--color-text-muted);
-  cursor: pointer;
+  color: var(--color-text-muted-on-dark);
+  text-decoration: none;
   transition: background var(--transition-fast), color var(--transition-fast);
 }
-.admin-nav__link:hover { color: var(--color-text); background: var(--color-surface); }
-.admin-nav__link[data-active] { color: var(--color-on-primary); background: var(--color-primary); }
+.admin-sidebar__link:hover { color: var(--color-text-on-dark); background: rgba(255, 255, 255, 0.06); }
+.admin-sidebar__link[data-active] {
+  color: var(--color-text-on-dark);
+  background: rgba(255, 255, 255, 0.08);
+  border-inline-start-color: var(--bright-gold);
+}
+.admin-sidebar__link[data-active] svg { color: var(--bright-gold); }
+.admin-sidebar__user {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  margin-top: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+}
+.admin-sidebar__user-avatar {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bright-gold);
+  color: var(--navy);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-bold);
+}
+.admin-sidebar__user-info { min-width: 0; display: flex; flex-direction: column; }
+.admin-sidebar__user-name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-on-dark);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-sidebar__user-role { font-size: var(--fs-2xs); color: var(--color-text-muted-on-dark); }
+.admin-sidebar__logout {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted-on-dark);
+  cursor: pointer;
+}
+.admin-sidebar__logout:hover { background: rgba(255, 255, 255, 0.1); color: var(--color-text-on-dark); }
 
-/* Settings page: section tabs + the search box in the page head. */
-.settings-tabs { margin-bottom: var(--space-5); }
+/* ---- mobile: bottom tab bar + "More" drawer ---- */
+.admin-mobile-nav {
+  display: none;
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: var(--z-header);
+  background: var(--color-surface-raised);
+  border-top: 1px solid var(--color-border);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.admin-mobile-nav__item {
+  flex: 1;
+  min-height: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  cursor: pointer;
+}
+.admin-mobile-nav__item[data-active] { color: var(--navy); }
+.admin-mobile-nav__icon { position: relative; display: inline-flex; }
+.admin-mobile-nav__badge {
+  position: absolute;
+  top: -4px;
+  inset-inline-end: -8px;
+  background: var(--color-danger);
+  color: var(--color-on-danger);
+  font-size: 9px;
+  font-weight: var(--fw-bold);
+  border-radius: var(--radius-pill);
+  padding: 1px 5px;
+}
+/* ---- Notification bell (admin dashboard page header) ---- */
+.notification-bell { position: relative; display: inline-flex; }
+.notification-bell__panel {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + 8px);
+  z-index: var(--z-dropdown);
+  width: 20rem;
+  max-width: calc(100vw - var(--space-4) * 2);
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  color: var(--color-text);
+}
+.notification-bell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: var(--fw-semibold);
+}
+.notification-bell__mark-all {
+  background: none;
+  border: 0;
+  color: var(--color-text);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.notification-bell__empty { padding: var(--space-4); color: var(--color-text-muted); text-align: center; margin: 0; }
+.notification-bell__list { list-style: none; margin: 0; padding: var(--space-1); display: flex; flex-direction: column; }
+.notification-bell__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: start;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+.notification-bell__item:hover { background: var(--color-surface); }
+.notification-bell__item[data-unread] { background: var(--color-info-bg); }
+.notification-bell__item[data-unread]:hover { background: var(--color-surface); }
+.notification-bell__item-title { font-weight: var(--fw-semibold); font-size: var(--fs-sm); }
+.notification-bell__item-body { font-size: var(--fs-xs); color: var(--color-text-muted); }
+.notification-bell__item-date { font-size: var(--fs-2xs); color: var(--color-text-muted); }
+
+/* dark theme variant of the shared Drawer, for the mobile nav's "More" panel */
+.admin-nav-drawer__panel { background: var(--navy) !important; color: var(--color-text-on-dark) !important; }
+.admin-nav-drawer__panel .drawer__header { border-bottom-color: rgba(255, 255, 255, 0.1); }
+.admin-nav-drawer__panel .drawer__header strong { color: var(--color-text-on-dark); }
+.admin-nav-drawer__panel .icon-btn { color: var(--color-text-on-dark); }
+.admin-nav-drawer__nav .admin-sidebar__link[data-active] { background: rgba(255, 255, 255, 0.1); }
+
+@media (max-width: 900px) {
+  .admin-sidebar { display: none; }
+  .admin-shell__main { margin-inline-start: 0; padding-bottom: calc(64px + env(safe-area-inset-bottom, 0) + var(--space-4)); }
+  .admin-mobile-nav { display: flex; align-items: stretch; }
+  .admin-sidebar-reopen { display: none; }
+}
+
+/* ---- shared underline tab strip (Settings / Customers / Roles / Discounts
+   in-page tabs) — visually distinct from the sidebar's vertical pattern so
+   in-page sections never look like top-level navigation. ---- */
+.tab-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+.tab-strip__link {
+  padding: var(--space-2) 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.tab-strip__link:hover { color: var(--color-text); }
+.tab-strip__link[data-active] { color: var(--navy); border-bottom-color: var(--navy); }
+
 .settings-search {
   flex: 0 1 20rem;
   align-self: center;
@@ -2230,6 +2530,58 @@ a.home-card__name:hover { text-decoration: underline; }
 .admin-thumb--empty {
   background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-accent-soft) 120%);
 }
+
+/* Row overflow ("kebab") menu — table row actions. */
+.row-actions { position: relative; display: inline-flex; }
+.row-actions__menu {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(100% + 4px);
+  z-index: var(--z-dropdown);
+  min-width: 10rem;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+}
+.row-actions__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--color-text);
+  text-align: start;
+  cursor: pointer;
+}
+.row-actions__item:hover { background: var(--color-surface); }
+.row-actions__item[data-tone='danger'] { color: var(--color-danger-text); }
+.row-actions__item[data-tone='danger']:hover { background: var(--color-danger-bg); }
+.row-actions__item:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Bulk-select action bar above a table, shown once >=1 row is checked. */
+.admin-bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-bg);
+  border-radius: var(--radius-sm);
+}
+.admin-bulk-bar__count { display: flex; align-items: center; gap: var(--space-2); font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--color-info-text); }
+.admin-bulk-bar__actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.admin-bulk-bar__clear { font-size: var(--fs-sm); color: var(--color-info-text); text-decoration: underline; background: none; border: 0; cursor: pointer; padding: 0; }
 
 /* Search + status filter row above an admin list table. */
 .admin-list-controls {
@@ -2268,7 +2620,15 @@ a.home-card__name:hover { text-decoration: underline; }
 }
 .admin-pager__status { font-size: var(--fs-sm); color: var(--color-text-muted); }
 
-.admin-row-actions { display: inline-flex; gap: var(--space-2); }
+.admin-row-actions { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+
+/* Header actions row (filters, buttons) beside an admin page's <h1>. */
+.admin-page__head-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4); }
+/* Groups filters separately from page-level buttons within .admin-page__head-actions
+   (e.g. admin/orders's status/flagged/COD filters vs. its Blacklist/Print-settings
+   buttons) so the header reads as two clusters instead of one undifferentiated row. */
+.admin-page__head-group { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3); }
+.admin-page__head-group--divider { padding-inline-start: var(--space-4); border-inline-start: 1px solid var(--color-border); }
 .admin-inline { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .admin-status-badge--archived { opacity: 0.7; }
 
@@ -2290,6 +2650,33 @@ a.home-card__name:hover { text-decoration: underline; }
   cursor: pointer;
 }
 .admin-order-eta:hover:not(:disabled) { color: var(--color-text); border-color: var(--color-text); }
+
+/* Collapsible delivery-address detail (admin Orders table row). */
+.admin-order-address { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.admin-order-address__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.admin-order-address__toggle:hover { color: var(--color-text); }
+.admin-order-address__chevron { transition: transform var(--transition-fast); }
+.admin-order-address__chevron.is-open { transform: rotate(180deg); }
+.admin-order-address__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--fs-xs);
+}
+.admin-order-address__notes { font-style: italic; }
 
 /* Printable COD delivery receipt (admin Orders page's "Print receipt"
    button — components/orders/order-receipt.tsx). Hidden on screen at all
@@ -2583,6 +2970,7 @@ a.home-card__name:hover { text-decoration: underline; }
 .admin-form__checks {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  justify-items: start;
   gap: var(--space-1) var(--space-4);
 }
 
@@ -2840,6 +3228,16 @@ a.home-card__name:hover { text-decoration: underline; }
   pointer-events: none;
 }
 .btn[data-loading='true'] .btn__label { opacity: 0.7; }
+
+/* Every icon+text <Button> puts both children in this one span (see
+   button.tsx). The global `svg { display: block }` reset otherwise forces a
+   line break around the icon here, stacking it above the label instead of
+   beside it — this is what fixes that, everywhere a Button uses an icon. */
+.btn__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 
 .btn__spinner {
   width: 1em;
@@ -3402,6 +3800,7 @@ a.home-card__name:hover { text-decoration: underline; }
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--color-border);
   vertical-align: middle;
+  overflow-wrap: anywhere;
 }
 .table tbody tr:hover { background: var(--color-surface); }
 
@@ -3530,7 +3929,13 @@ a.home-card__name:hover { text-decoration: underline; }
   background: var(--color-surface-raised);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  overflow: hidden;
+  /* overflow-x stays hidden (rounded corners, e.g. the zoomed product image);
+     overflow-y scrolls instead of clipping — a modal whose content grows
+     past the 90vh cap (e.g. an error Alert appearing in a form) used to
+     silently clip its own action buttons off the bottom with no way to
+     reach them, since `overflow: hidden` cuts off in both directions. */
+  overflow-x: hidden;
+  overflow-y: auto;
   animation: modal-scale-in var(--transition-base);
 }
 .modal__close {

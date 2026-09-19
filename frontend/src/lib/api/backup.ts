@@ -10,13 +10,13 @@ export interface BackupItem {
   createdAt: string;
 }
 
-export interface BackupRunResult {
+/** A dump + Drive upload can run well past Netlify's 26s proxy timeout, so
+ *  the backend responds immediately with just this — not the finished
+ *  result — and keeps working in the background. useRunBackupNow polls
+ *  listBackups() afterward to notice the new file. */
+export interface BackupStartResult {
   ok: boolean;
-  at: string;
-  trigger: 'manual' | 'schedule';
-  file?: { name: string; bytes: number; driveId: string };
-  pruned?: string[];
-  error?: string;
+  started: true;
 }
 
 export function listBackups() {
@@ -24,20 +24,34 @@ export function listBackups() {
 }
 
 export function runBackupNow() {
-  return api.post<BackupRunResult>('/api/admin/backup');
+  return api.post<BackupStartResult>('/api/admin/backup');
 }
 
-export interface RestoreResult {
+export interface RestoreStartResult {
   ok: boolean;
-  restoredFrom: string;
+  started: true;
+}
+
+export interface RestoreStatus {
+  state: 'idle' | 'running' | 'done' | 'error';
+  id?: string;
+  at?: string;
   relations?: number;
+  error?: string;
 }
 
 /** DESTRUCTIVE — replaces the live database with this backup. Step-up
  *  protected server-side (requireFreshAuth): a session older than the
- *  freshness window gets a 403 STEP_UP_REQUIRED even for an ADMIN. */
+ *  freshness window gets a 403 STEP_UP_REQUIRED even for an ADMIN. Like
+ *  runBackupNow, a real download + pg_restore can run past Netlify's 26s
+ *  proxy timeout, so this only confirms the restore STARTED —
+ *  useRestoreBackup polls getRestoreStatus() afterward for the outcome. */
 export function restoreBackup(id: string) {
-  return api.post<RestoreResult>(`/api/admin/backup/${encodeURIComponent(id)}/restore`);
+  return api.post<RestoreStartResult>(`/api/admin/backup/${encodeURIComponent(id)}/restore`);
+}
+
+export function getRestoreStatus() {
+  return api.get<RestoreStatus>('/api/admin/backup/restore-status');
 }
 
 export interface DriveConnectionStatus {

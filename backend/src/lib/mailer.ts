@@ -1,10 +1,9 @@
-import nodemailer from 'nodemailer';
 import type { Coupon, Order, OrderItem } from '@prisma/client';
 import { env } from '../config/env';
 import { prisma } from '../config/prisma';
 import { recordAudit } from './audit';
 import { renderEmailTemplate } from './email-templates';
-import { getEffectiveSmtpConfig } from '../modules/settings/smtp-credential.service';
+import * as gmailClient from '../modules/mail/gmail.client';
 import { DELIVERY_REGIONS } from './regions';
 
 type OrderWithItems = Order & { items: OrderItem[] };
@@ -98,44 +97,50 @@ export function bilingualSubject(en: string, ar: string): string {
   return `${en} | ${ar}`;
 }
 
+/** The subset of nodemailer's Transporter interface every send function
+ *  below actually uses — small enough that the Gmail-API path (below) can
+ *  implement it too, so none of the 11 send functions need to know or care
+ *  which transport is actually backing a given call. */
+export interface MailTransport {
+  sendMail(msg: { from: string; to: string; subject: string; text: string; html: string }): Promise<{ messageId: string }>;
+}
+
 /**
- * Builds the nodemailer transporter for outgoing mail. Reads credentials
- * fresh each call (never cached across calls) so an admin-configured
- * send-as account (`SmtpCredential`, DB-encrypted app password) takes effect
- * immediately, falling back to the `SMTP_*` env vars when nothing has been
- * configured in the admin panel. `null` means every send function below
- * becomes a logged no-op instead of throwing, so mail delivery can never
- * change the calling endpoint's response. Exported so
- * email-templates.service.ts's "send test email" shares the exact same
- * connection logic as a real send, rather than building its own.
+ * Resolves the outgoing-mail transport via the Gmail API connection (admin
+ * panel "Connect Gmail account" — see modules/mail/gmail.client.ts). This is
+ * the only transport: raw SMTP was removed entirely (Railway's free/hobby
+ * tier blocks outbound SMTP outright, confirmed live — see
+ * docs/DEPLOYMENT.md — so an SMTP-based sender can never actually deliver
+ * mail in production).
+ *
+ * `null` (nothing connected yet) means every send function below becomes a
+ * logged no-op instead of throwing, so mail delivery can never change the
+ * calling endpoint's response. Exported so email-templates.service.ts's
+ * "send test email" shares the exact same connection logic as a real send,
+ * rather than building its own.
  */
-export async function getTransporter(): Promise<{ transporter: ReturnType<typeof nodemailer.createTransport>; from: string } | null> {
-  const cfg = await getEffectiveSmtpConfig();
-  if (!cfg) return null;
-  const transporter = nodemailer.createTransport({
-    host: cfg.host,
-    port: cfg.port,
-    secure: cfg.port === 465, // Gmail: 587 = STARTTLS (default), 465 = implicit TLS
-    auth: { user: cfg.user, pass: cfg.password },
-    // Bound every phase so a wedged relay can't hang a sender for minutes.
-    // Senders are already fire-and-forget post-commit, but the checkout-OTP
-    // sender's result IS awaited, so an unbounded socket there would stall
-    // that request.
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 15_000,
-  });
-  return { transporter, from: await resolveFrom(cfg.user) };
+export async function getTransporter(): Promise<{ transporter: MailTransport; from: string } | null> {
+  if (!(await gmailClient.isConfigured())) return null;
+  const status = await gmailClient.getConnectionStatus();
+  if (!status.connectedEmail) return null;
+
+  const transporter: MailTransport = {
+    sendMail: async (msg) => {
+      const { id } = await gmailClient.sendMail(msg);
+      return { messageId: id };
+    },
+  };
+  return { transporter, from: await resolveFrom(status.connectedEmail) };
 }
 
 /**
  * The sender identity for every outgoing email — admin-set from
  * Settings → Brand & contact (`SiteSetting.mailFromName` / `mailFromEmail`),
- * falling back to the effective SMTP account's own address when unset. Note
+ * falling back to the connected Gmail account's own address when unset. Note
  * this only changes the `From` header the customer sees — actual delivery
- * still authenticates as the SMTP account's user, so most providers require
- * `mailFromEmail` to be that same address or a domain/sender they've been
- * told to trust.
+ * still authenticates as the connected Gmail account, so `mailFromEmail`
+ * needs to be that same address (Gmail rejects sending as an address it
+ * doesn't recognize as yours).
  */
 export async function resolveFrom(fallbackAddress: string): Promise<string> {
   try {

@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { Plus } from 'lucide-react';
-import { Alert, Button, DataTable, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
+import { Copy, Pause, Play, Plus, Trash2 } from 'lucide-react';
+import { Alert, Button, Choice, ConfirmModal, DataTable, EmptyState, Icon, ProductGridSkeleton, RowActionsMenu } from '@/components/ui';
+import { useRowSelection } from '@/hooks/use-row-selection';
+import { usePermissions } from '@/lib/rbac';
 import {
   useCoupons,
   useCreatePromotion,
@@ -48,12 +50,16 @@ function EffectiveStatusPill({ promotion, isAr }: { promotion: Promotion; isAr: 
 
 function PromotionsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }) {
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const canManage = usePermissions().has('discounts:manage');
   const { data: promotions, isPending, isError, refetch } = usePromotions();
   const create = useCreatePromotion();
   const update = useUpdatePromotion();
   const remove = useDeletePromotion();
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Promotion[] | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
   const busy = create.isPending || update.isPending || remove.isPending;
+  const selection = useRowSelection((promotions ?? []).map((p) => p.id));
 
   // A copy starts as a DRAFT, never ACTIVE — landing two identical live
   // promotions at once (briefly stacking/competing on the same products)
@@ -81,6 +87,21 @@ function PromotionsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }
     }
   };
 
+  const runDelete = async () => {
+    if (!confirmDelete) return;
+    setConfirmBusy(true);
+    setError(null);
+    try {
+      await Promise.all(confirmDelete.map((p) => remove.mutateAsync(p.id)));
+      selection.clear();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('Delete failed', 'فشل الحذف'));
+    } finally {
+      setConfirmDelete(null);
+      setConfirmBusy(false);
+    }
+  };
+
   const targetLabel = (p: Promotion) => {
     if (p.appliesToAll) return t('All items', 'كل المنتجات');
     const parts: string[] = [];
@@ -94,10 +115,12 @@ function PromotionsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }
     <div>
       <div className="admin-page__head">
         <h2 className="visually-hidden">{t('Promotions', 'العروض')}</h2>
-        <Link href={`/${locale}/admin/discounts/promotions/new`} className="btn btn--primary">
-          <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
-          {t('New promotion', 'عرض جديد')}
-        </Link>
+        {canManage && (
+          <Link href={`/${locale}/admin/discounts/promotions/new`} className="btn btn--primary">
+            <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+            {t('New promotion', 'عرض جديد')}
+          </Link>
+        )}
       </div>
 
       {error && (
@@ -122,15 +145,50 @@ function PromotionsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }
         <EmptyState
           title={t('No promotions yet', 'لا توجد عروض بعد')}
           action={
-            <Link href={`/${locale}/admin/discounts/promotions/new`} className="btn btn--primary">
-              {t('New promotion', 'عرض جديد')}
-            </Link>
+            canManage ? (
+              <Link href={`/${locale}/admin/discounts/promotions/new`} className="btn btn--primary">
+                {t('New promotion', 'عرض جديد')}
+              </Link>
+            ) : undefined
           }
         />
       ) : (
+        <>
+          {canManage && selection.count > 0 && (
+            <div className="admin-bulk-bar">
+              <span className="admin-bulk-bar__count">
+                {t(`${selection.count} selected`, `${selection.count} محدد`)}
+              </span>
+              <span className="admin-bulk-bar__actions">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="btn--danger-quiet"
+                  onClick={() => setConfirmDelete((promotions ?? []).filter((p) => selection.selected.has(p.id)))}
+                >
+                  {t(`Delete (${selection.count})`, `حذف (${selection.count})`)}
+                </Button>
+                <button type="button" className="admin-bulk-bar__clear" onClick={selection.clear}>
+                  {t('Clear', 'إلغاء التحديد')}
+                </button>
+              </span>
+            </div>
+          )}
+
         <DataTable responsive>
           <thead>
             <tr>
+              {canManage && (
+                <th aria-hidden="true">
+                  <Choice
+                    type="checkbox"
+                    checked={selection.allSelected}
+                    onChange={selection.toggleAll}
+                    label={<span className="visually-hidden">{t('Select all', 'تحديد الكل')}</span>}
+                  />
+                </th>
+              )}
               <th>{t('Name', 'الاسم')}</th>
               <th>{t('Applies to', 'يطبَّق على')}</th>
               <th>{t('Discount', 'الخصم')}</th>
@@ -144,6 +202,16 @@ function PromotionsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }
           <tbody>
             {(promotions ?? []).map((p) => (
               <tr key={p.id}>
+                {canManage && (
+                  <td data-label={t('Select', 'تحديد')}>
+                    <Choice
+                      type="checkbox"
+                      checked={selection.selected.has(p.id)}
+                      onChange={() => selection.toggle(p.id)}
+                      label={<span className="visually-hidden">{t(`Select ${isAr ? p.nameAr : p.nameEn}`, `تحديد ${isAr ? p.nameAr : p.nameEn}`)}</span>}
+                    />
+                  </td>
+                )}
                 <td data-label={t('Name', 'الاسم')}>{isAr ? p.nameAr : p.nameEn}</td>
                 <td data-label={t('Applies to', 'يطبَّق على')}>{targetLabel(p)}</td>
                 <td data-label={t('Discount', 'الخصم')}>
@@ -161,60 +229,100 @@ function PromotionsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }
                 </td>
                 <td>
                   <span className="admin-row-actions">
-                    {(p.status === 'ACTIVE' || p.status === 'PAUSED') && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          update.mutate({ id: p.id, body: { status: p.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE' } })
-                        }
-                        disabled={busy}
-                      >
-                        {p.status === 'ACTIVE' ? t('Pause', 'إيقاف مؤقت') : t('Resume', 'استئناف')}
-                      </Button>
-                    )}
                     <Link href={`/${locale}/admin/discounts/promotions/${p.id}`} className="btn btn--ghost btn--sm">
                       {t('Edit', 'تعديل')}
                     </Link>
-                    <Button variant="ghost" size="sm" onClick={() => void duplicatePromotion(p)} disabled={busy}>
-                      {t('Duplicate', 'نسخ')}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (confirm(t('Delete this promotion?', 'حذف هذا العرض؟'))) remove.mutate(p.id);
-                      }}
-                      disabled={busy}
-                    >
-                      {t('Delete', 'حذف')}
-                    </Button>
+                    {canManage && (
+                      <RowActionsMenu
+                        label={t('More actions', 'المزيد من الإجراءات')}
+                        actions={[
+                          ...(p.status === 'ACTIVE' || p.status === 'PAUSED'
+                            ? [
+                                {
+                                  label: p.status === 'ACTIVE' ? t('Pause', 'إيقاف مؤقت') : t('Resume', 'استئناف'),
+                                  icon: p.status === 'ACTIVE' ? Pause : Play,
+                                  onClick: () =>
+                                    update.mutate({ id: p.id, body: { status: p.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE' } }),
+                                  disabled: busy,
+                                },
+                              ]
+                            : []),
+                          { label: t('Duplicate', 'نسخ'), icon: Copy, onClick: () => void duplicatePromotion(p), disabled: busy },
+                          { label: t('Delete', 'حذف'), icon: Trash2, tone: 'danger', onClick: () => setConfirmDelete([p]) },
+                        ]}
+                      />
+                    )}
                   </span>
                 </td>
               </tr>
             ))}
           </tbody>
         </DataTable>
+        </>
       )}
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => void runDelete()}
+        title={
+          confirmDelete?.length === 1
+            ? t('Delete this promotion?', 'حذف هذا العرض؟')
+            : t(`Delete ${confirmDelete?.length ?? 0} promotions?`, `حذف ${confirmDelete?.length ?? 0} عروض؟`)
+        }
+        body={t('This cannot be undone.', 'لا يمكن التراجع عن هذا.')}
+        confirmLabel={t('Delete', 'حذف')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone="danger"
+        loading={confirmBusy}
+      />
     </div>
   );
 }
 
 function CouponsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }) {
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const canManage = usePermissions().has('discounts:manage');
   const { data: coupons, isPending, isError, refetch } = useCoupons();
   const remove = useDeleteCoupon();
+  const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Coupon[] | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
   const busy = remove.isPending;
+  const selection = useRowSelection((coupons ?? []).map((c) => c.id));
+
+  const runDelete = async () => {
+    if (!confirmDelete) return;
+    setConfirmBusy(true);
+    setError(null);
+    try {
+      await Promise.all(confirmDelete.map((c) => remove.mutateAsync(c.id)));
+      selection.clear();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('Delete failed', 'فشل الحذف'));
+    } finally {
+      setConfirmDelete(null);
+      setConfirmBusy(false);
+    }
+  };
 
   return (
     <div>
       <div className="admin-page__head">
         <h2 className="visually-hidden">{t('Coupons', 'القسائم')}</h2>
-        <Link href={`/${locale}/admin/discounts/coupons/new`} className="btn btn--primary">
-          <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
-          {t('New coupon', 'قسيمة جديدة')}
-        </Link>
+        {canManage && (
+          <Link href={`/${locale}/admin/discounts/coupons/new`} className="btn btn--primary">
+            <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+            {t('New coupon', 'قسيمة جديدة')}
+          </Link>
+        )}
       </div>
+
+      {error && (
+        <Alert tone="danger" className="stack">
+          {error}
+        </Alert>
+      )}
 
       {isPending ? (
         <ProductGridSkeleton count={3} />
@@ -232,15 +340,50 @@ function CouponsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }) {
         <EmptyState
           title={t('No coupons yet', 'لا توجد قسائم بعد')}
           action={
-            <Link href={`/${locale}/admin/discounts/coupons/new`} className="btn btn--primary">
-              {t('New coupon', 'قسيمة جديدة')}
-            </Link>
+            canManage ? (
+              <Link href={`/${locale}/admin/discounts/coupons/new`} className="btn btn--primary">
+                {t('New coupon', 'قسيمة جديدة')}
+              </Link>
+            ) : undefined
           }
         />
       ) : (
+        <>
+          {canManage && selection.count > 0 && (
+            <div className="admin-bulk-bar">
+              <span className="admin-bulk-bar__count">
+                {t(`${selection.count} selected`, `${selection.count} محدد`)}
+              </span>
+              <span className="admin-bulk-bar__actions">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="btn--danger-quiet"
+                  onClick={() => setConfirmDelete((coupons ?? []).filter((c) => selection.selected.has(c.id)))}
+                >
+                  {t(`Delete (${selection.count})`, `حذف (${selection.count})`)}
+                </Button>
+                <button type="button" className="admin-bulk-bar__clear" onClick={selection.clear}>
+                  {t('Clear', 'إلغاء التحديد')}
+                </button>
+              </span>
+            </div>
+          )}
+
         <DataTable responsive>
           <thead>
             <tr>
+              {canManage && (
+                <th aria-hidden="true">
+                  <Choice
+                    type="checkbox"
+                    checked={selection.allSelected}
+                    onChange={selection.toggleAll}
+                    label={<span className="visually-hidden">{t('Select all', 'تحديد الكل')}</span>}
+                  />
+                </th>
+              )}
               <th>{t('Code', 'الرمز')}</th>
               <th>{t('Discount', 'الخصم')}</th>
               <th>{t('Window', 'المدة')}</th>
@@ -252,6 +395,16 @@ function CouponsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }) {
           <tbody>
             {(coupons ?? []).map((c: Coupon) => (
               <tr key={c.id}>
+                {canManage && (
+                  <td data-label={t('Select', 'تحديد')}>
+                    <Choice
+                      type="checkbox"
+                      checked={selection.selected.has(c.id)}
+                      onChange={() => selection.toggle(c.id)}
+                      label={<span className="visually-hidden">{t(`Select ${c.code}`, `تحديد ${c.code}`)}</span>}
+                    />
+                  </td>
+                )}
                 <td data-label={t('Code', 'الرمز')}>{c.code}</td>
                 <td data-label={t('Discount', 'الخصم')}>
                   {c.type === 'PERCENT' ? `${Number(c.value)}%` : `$${Number(c.value).toFixed(2)}`}
@@ -276,23 +429,40 @@ function CouponsList({ locale, isAr }: { locale: 'en' | 'ar'; isAr: boolean }) {
                     <Link href={`/${locale}/admin/discounts/coupons/${c.id}`} className="btn btn--ghost btn--sm">
                       {t('Edit', 'تعديل')}
                     </Link>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (confirm(t('Delete this coupon?', 'حذف هذه القسيمة؟'))) remove.mutate(c.id);
-                      }}
-                      disabled={busy}
-                    >
-                      {t('Delete', 'حذف')}
-                    </Button>
+                    {canManage && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setConfirmDelete([c])}
+                        disabled={busy}
+                      >
+                        {t('Delete', 'حذف')}
+                      </Button>
+                    )}
                   </span>
                 </td>
               </tr>
             ))}
           </tbody>
         </DataTable>
+        </>
       )}
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => void runDelete()}
+        title={
+          confirmDelete?.length === 1
+            ? t('Delete this coupon?', 'حذف هذه القسيمة؟')
+            : t(`Delete ${confirmDelete?.length ?? 0} coupons?`, `حذف ${confirmDelete?.length ?? 0} قسائم؟`)
+        }
+        body={t('This cannot be undone.', 'لا يمكن التراجع عن هذا.')}
+        confirmLabel={t('Delete', 'حذف')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone="danger"
+        loading={confirmBusy}
+      />
     </div>
   );
 }
@@ -311,10 +481,10 @@ export default function AdminDiscountsPage() {
         <h1>{t('Discounts', 'الخصومات')}</h1>
       </div>
 
-      <nav className="admin-nav settings-tabs" aria-label={t('Discount sections', 'أقسام الخصومات')}>
+      <nav className="tab-strip settings-tabs" aria-label={t('Discount sections', 'أقسام الخصومات')}>
         <button
           type="button"
-          className="admin-nav__link"
+          className="tab-strip__link"
           data-active={tab === 'promotions' ? '' : undefined}
           aria-pressed={tab === 'promotions'}
           onClick={() => setTab('promotions')}
@@ -323,7 +493,7 @@ export default function AdminDiscountsPage() {
         </button>
         <button
           type="button"
-          className="admin-nav__link"
+          className="tab-strip__link"
           data-active={tab === 'coupons' ? '' : undefined}
           aria-pressed={tab === 'coupons'}
           onClick={() => setTab('coupons')}

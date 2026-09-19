@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Archive, RotateCcw, Trash2 } from 'lucide-react';
-import { Button, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
+import { Button, ConfirmModal, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
 import { ImageGallery } from '@/components/admin/image-gallery';
 import {
   useAddCategoryImage,
@@ -58,22 +58,15 @@ export default function EditCategoryPage() {
   // Three distinct actions, matching the list page (admin/categories/page.tsx)
   // — see the identical comment in admin/collections/[id]/page.tsx
   // (fix-list.md #15, resolves 12.8).
-  const onArchiveCategory = async () => {
-    if (!category) return;
-    const name = isAr ? category.nameAr : category.nameEn;
-    if (
-      !window.confirm(
-        t(
-          `Archive "${name}"? It will be hidden from the storefront but kept.`,
-          `أرشفة "${name}"؟ ستُخفى من المتجر مع الاحتفاظ بها.`
-        )
-      )
-    )
-      return;
+  const [confirmKind, setConfirmKind] = useState<'archive' | 'delete' | null>(null);
+
+  const doArchiveCategory = async () => {
     try {
       await archiveCategory.mutateAsync(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Archive failed', 'فشلت الأرشفة'));
+    } finally {
+      setConfirmKind(null);
     }
   };
 
@@ -85,17 +78,17 @@ export default function EditCategoryPage() {
     }
   };
 
-  const onPermanentDeleteCategory = async () => {
-    if (!category) return;
-    const name = isAr ? category.nameAr : category.nameEn;
-    if (!window.confirm(t(`Permanently delete "${name}"? This cannot be undone.`, `حذف "${name}" نهائيًا؟ لا يمكن التراجع.`))) return;
+  const doPermanentDeleteCategory = async () => {
     try {
       await permanentDeleteCategory.mutateAsync(id);
       router.push(`/${locale}/admin/categories`);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Delete failed', 'فشل الحذف'));
+      setConfirmKind(null);
     }
   };
+
+  const categoryName = category ? (isAr ? category.nameAr : category.nameEn) : '';
 
   if (isPending) {
     return (
@@ -129,22 +122,42 @@ export default function EditCategoryPage() {
           {category.archivedAt ? (
             <>
               <Button variant="outline" onClick={onRestoreCategory} loading={restoreCategory.isPending}>
-                <Icon as={RotateCcw} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+                <Icon as={RotateCcw} size={16} />
                 {t('Restore', 'استعادة')}
               </Button>
-              <Button variant="danger" onClick={onPermanentDeleteCategory} loading={permanentDeleteCategory.isPending}>
-                <Icon as={Trash2} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+              <Button variant="danger" onClick={() => setConfirmKind('delete')} loading={permanentDeleteCategory.isPending}>
+                <Icon as={Trash2} size={16} />
                 {t('Delete permanently', 'حذف نهائي')}
               </Button>
             </>
           ) : (
-            <Button variant="danger" onClick={onArchiveCategory} loading={archiveCategory.isPending}>
-              <Icon as={Archive} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+            <Button variant="danger" onClick={() => setConfirmKind('archive')} loading={archiveCategory.isPending}>
+              <Icon as={Archive} size={16} />
               {t('Archive category', 'أرشفة الفئة')}
             </Button>
           )}
         </span>
       </div>
+
+      <ConfirmModal
+        open={confirmKind !== null}
+        onClose={() => setConfirmKind(null)}
+        onConfirm={() => void (confirmKind === 'archive' ? doArchiveCategory() : doPermanentDeleteCategory())}
+        title={
+          confirmKind === 'archive'
+            ? t(`Archive "${categoryName}"?`, `أرشفة "${categoryName}"؟`)
+            : t(`Permanently delete "${categoryName}"?`, `حذف "${categoryName}" نهائيًا؟`)
+        }
+        body={
+          confirmKind === 'archive'
+            ? t('It will be hidden from the storefront but kept.', 'ستُخفى من المتجر مع الاحتفاظ بها.')
+            : t('This cannot be undone.', 'لا يمكن التراجع عن هذا.')
+        }
+        confirmLabel={confirmKind === 'archive' ? t('Archive', 'أرشفة') : t('Delete', 'حذف')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone={confirmKind === 'delete' ? 'danger' : 'default'}
+        loading={confirmKind === 'archive' ? archiveCategory.isPending : permanentDeleteCategory.isPending}
+      />
 
       <CategoryForm
         locale={locale}

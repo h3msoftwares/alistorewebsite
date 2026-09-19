@@ -3,7 +3,11 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createWrapper } from '@/test/utils';
 
-vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en' }) }));
+const mockSearchParams = vi.fn(() => new URLSearchParams());
+vi.mock('next/navigation', () => ({
+  useParams: () => ({ locale: 'en' }),
+  useSearchParams: () => mockSearchParams(),
+}));
 vi.mock('@/hooks/use-settings', () => ({ useSettings: () => ({ data: null }) }));
 
 vi.mock('@/lib/api', () => ({
@@ -148,12 +152,13 @@ describe('AdminOrdersPage', () => {
     expect(mock.adminUpdateOrderStatus).not.toHaveBeenCalled();
   });
 
-  it('"Mark collected" toggles COD payment status', async () => {
+  it('"Mark collected" (in the row\'s More actions menu) toggles COD payment status', async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('AS-20260906-ABC123');
 
-    await user.click(screen.getByRole('button', { name: 'Mark collected' }));
+    await user.click(screen.getByRole('button', { name: /more actions for AS-20260906-ABC123/i }));
+    await user.click(screen.getByRole('menuitem', { name: 'Mark collected' }));
     await waitFor(() =>
       expect(mock.adminMarkCollected).toHaveBeenCalledWith('o1', true)
     );
@@ -165,7 +170,7 @@ describe('AdminOrdersPage', () => {
     await screen.findByText('AS-20260906-ABC123');
 
     await user.selectOptions(screen.getByRole('combobox', { name: /filter by status/i }), 'DELIVERED');
-    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith('DELIVERED', undefined));
+    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(['DELIVERED'], undefined, undefined));
   });
 
   it('"Flagged only" checkbox refetches with flagged=true', async () => {
@@ -174,17 +179,35 @@ describe('AdminOrdersPage', () => {
     await screen.findByText('AS-20260906-ABC123');
 
     await user.click(screen.getByRole('checkbox', { name: /flagged only/i }));
-    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, true));
+    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, true, undefined));
   });
 
-  it('shows a Flagged badge and a "Mark reviewed" button for a flagged order, which clears the flag', async () => {
+  it('seeds status/flagged/awaitingCod filters from the URL (dashboard deep links)', async () => {
+    mockSearchParams.mockReturnValueOnce(new URLSearchParams('status=CONFIRMED,SHIPPED'));
+    renderPage();
+    await waitFor(() =>
+      expect(mock.adminListOrders).toHaveBeenLastCalledWith(['CONFIRMED', 'SHIPPED'], undefined, undefined)
+    );
+  });
+
+  it('"Awaiting COD" checkbox refetches with awaitingCod=true', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('AS-20260906-ABC123');
+
+    await user.click(screen.getByRole('checkbox', { name: /awaiting cod/i }));
+    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, undefined, true));
+  });
+
+  it('shows a Flagged badge and a "Mark reviewed" action for a flagged order, which clears the flag', async () => {
     mock.adminListOrders.mockResolvedValue([{ ...order, flaggedForReview: true }] as never);
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('AS-20260906-ABC123');
 
     expect(screen.getByText('Flagged')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Mark reviewed' }));
+    await user.click(screen.getByRole('button', { name: /more actions for AS-20260906-ABC123/i }));
+    await user.click(screen.getByRole('menuitem', { name: 'Mark reviewed' }));
     await waitFor(() => expect(mock.adminReviewOrder).toHaveBeenCalledWith('o1'));
   });
 

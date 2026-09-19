@@ -52,9 +52,11 @@ export function lookupOrder(orderNumber: string, contact: string) {
 
 // ---- Admin ----
 
-export function adminListOrders(status?: OrderStatus, flagged?: boolean) {
+export function adminListOrders(status?: OrderStatus[], flagged?: boolean, awaitingCod?: boolean) {
   return api
-    .get<{ orders: Order[] }>('/api/admin/orders', { query: { status, flagged } })
+    .get<{ orders: Order[] }>('/api/admin/orders', {
+      query: { status: status?.length ? status.join(',') : undefined, flagged, awaitingCod },
+    })
     .then((r) => r.orders);
 }
 

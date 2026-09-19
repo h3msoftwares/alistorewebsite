@@ -4,10 +4,12 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Archive, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react';
-import { Alert, Badge, Button, DataTable, EmptyState, Icon, ProductGridSkeleton } from '@/components/ui';
+import { Alert, Badge, Button, Choice, ConfirmModal, DataTable, EmptyState, Icon, ProductGridSkeleton, RowActionsMenu } from '@/components/ui';
 import { AdminThumb } from '@/components/admin/admin-thumb';
 import { AdminListControls } from '@/components/admin/admin-list-controls';
 import { AdminPager } from '@/components/admin/admin-pager';
+import { useRowSelection } from '@/hooks/use-row-selection';
+import { usePermissions } from '@/lib/rbac';
 import {
   useAdminCollections,
   useDeleteCollection,
@@ -18,17 +20,23 @@ import type { CatalogStatus, Collection } from '@/lib/types';
 
 const PAGE_SIZE = 20;
 
+type PendingConfirm = { kind: 'archive' | 'delete'; ids: string[] };
+
 export default function AdminCollectionsPage() {
   const params = useParams();
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const canManage = usePermissions().has('collections:manage');
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<CatalogStatus>('active');
   const [page, setPage] = useState(1);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const { data, isPending, isError, refetch } = useAdminCollections({
     search: search || undefined,
@@ -45,8 +53,10 @@ export default function AdminCollectionsPage() {
     () => (data ?? []).slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
     [data, safePage]
   );
+  const selection = useRowSelection(pageRows.map((c) => c.id));
 
   const name = (c: Collection) => (isAr ? c.nameAr : c.nameEn);
+  const byId = (id: string) => pageRows.find((c) => c.id === id);
 
   const runAction = async (id: string, fn: () => Promise<unknown>, failMsg: string) => {
     setActionError(null);
@@ -60,25 +70,72 @@ export default function AdminCollectionsPage() {
     }
   };
 
-  const onArchive = (c: Collection) => {
-    if (!window.confirm(t(`Archive "${name(c)}"? It will be hidden from the storefront but kept.`, `أرشفة "${name(c)}"؟ ستُخفى من المتجر مع الاحتفاظ بها.`))) return;
-    void runAction(c.id, () => archive.mutateAsync(c.id), t('Archive failed', 'فشلت الأرشفة'));
-  };
-  const onRestore = (c: Collection) =>
+  const onRestoreRow = (c: Collection) =>
     void runAction(c.id, () => restore.mutateAsync(c.id), t('Restore failed', 'فشلت الاستعادة'));
-  const onPermanentDelete = (c: Collection) => {
-    if (!window.confirm(t(`Permanently delete "${name(c)}"? This cannot be undone.`, `حذف "${name(c)}" نهائيًا؟ لا يمكن التراجع.`))) return;
-    void runAction(c.id, () => permanentDelete.mutateAsync(c.id), t('Delete failed', 'فشل الحذف'));
+
+  const selectedItems = pageRows.filter((c) => selection.selected.has(c.id));
+  const selectedActive = selectedItems.filter((c) => !c.archivedAt);
+  const selectedArchived = selectedItems.filter((c) => c.archivedAt);
+
+  const onBulkRestore = async () => {
+    setActionError(null);
+    setBulkBusy(true);
+    try {
+      await Promise.all(selectedArchived.map((c) => restore.mutateAsync(c.id)));
+      selection.clear();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : t('Restore failed', 'فشلت الاستعادة'));
+    } finally {
+      setBulkBusy(false);
+    }
   };
+
+  const runConfirmed = async () => {
+    if (!confirm) return;
+    setConfirmBusy(true);
+    setActionError(null);
+    try {
+      if (confirm.kind === 'archive') {
+        await Promise.all(confirm.ids.map((id) => archive.mutateAsync(id)));
+      } else {
+        await Promise.all(confirm.ids.map((id) => permanentDelete.mutateAsync(id)));
+      }
+      selection.clear();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : t('Action failed', 'فشل الإجراء'));
+    } finally {
+      // Close either way: an error alert rendered on the page would be
+      // hidden behind the still-open modal overlay otherwise.
+      setConfirm(null);
+      setConfirmBusy(false);
+    }
+  };
+
+  const confirmCount = confirm?.ids.length ?? 0;
+  const confirmSingle = confirmCount === 1 ? byId(confirm!.ids[0]) : undefined;
+  const confirmTitle =
+    confirm?.kind === 'archive'
+      ? confirmSingle
+        ? t(`Archive "${name(confirmSingle)}"?`, `أرشفة "${name(confirmSingle)}"؟`)
+        : t(`Archive ${confirmCount} collections?`, `أرشفة ${confirmCount} مجموعات؟`)
+      : confirmSingle
+        ? t(`Permanently delete "${name(confirmSingle)}"?`, `حذف "${name(confirmSingle)}" نهائيًا؟`)
+        : t(`Permanently delete ${confirmCount} collections?`, `حذف ${confirmCount} مجموعات نهائيًا؟`);
+  const confirmBody =
+    confirm?.kind === 'archive'
+      ? t('It will be hidden from the storefront but kept.', 'ستُخفى من المتجر مع الاحتفاظ بها.')
+      : t('This cannot be undone.', 'لا يمكن التراجع عن هذا.');
 
   return (
     <div className="section--tight">
       <div className="admin-page__head">
         <h1>{t('Collections', 'المجموعات')}</h1>
-        <Link href={`/${locale}/admin/collections/new`} className="btn btn--primary">
-          <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
-          {t('New collection', 'مجموعة جديدة')}
-        </Link>
+        {canManage && (
+          <Link href={`/${locale}/admin/collections/new`} className="btn btn--primary">
+            <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
+            {t('New collection', 'مجموعة جديدة')}
+          </Link>
+        )}
       </div>
 
       <AdminListControls
@@ -113,16 +170,56 @@ export default function AdminCollectionsPage() {
         <EmptyState
           title={search || status !== 'active' ? t('No matches', 'لا نتائج') : t('No collections yet', 'لا توجد مجموعات بعد')}
           action={
-            <Link href={`/${locale}/admin/collections/new`} className="btn btn--primary">
-              {t('New collection', 'مجموعة جديدة')}
-            </Link>
+            canManage ? (
+              <Link href={`/${locale}/admin/collections/new`} className="btn btn--primary">
+                {t('New collection', 'مجموعة جديدة')}
+              </Link>
+            ) : undefined
           }
         />
       ) : (
         <>
+          {canManage && selection.count > 0 && (
+            <div className="admin-bulk-bar">
+              <span className="admin-bulk-bar__count">
+                {t(`${selection.count} selected`, `${selection.count} محدد`)}
+              </span>
+              <span className="admin-bulk-bar__actions">
+                {selectedActive.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirm({ kind: 'archive', ids: selectedActive.map((c) => c.id) })}
+                  >
+                    {t(`Archive (${selectedActive.length})`, `أرشفة (${selectedActive.length})`)}
+                  </Button>
+                )}
+                {selectedArchived.length > 0 && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => void onBulkRestore()} loading={bulkBusy}>
+                    {t(`Restore (${selectedArchived.length})`, `استعادة (${selectedArchived.length})`)}
+                  </Button>
+                )}
+                <button type="button" className="admin-bulk-bar__clear" onClick={selection.clear}>
+                  {t('Clear', 'إلغاء التحديد')}
+                </button>
+              </span>
+            </div>
+          )}
+
           <DataTable responsive>
             <thead>
               <tr>
+                {canManage && (
+                  <th aria-hidden="true">
+                    <Choice
+                      type="checkbox"
+                      checked={selection.allSelected}
+                      onChange={selection.toggleAll}
+                      label={<span className="visually-hidden">{t('Select all', 'تحديد الكل')}</span>}
+                    />
+                  </th>
+                )}
                 <th aria-hidden="true" />
                 <th>{t('Name', 'الاسم')}</th>
                 <th>{t('Slug', 'الرابط')}</th>
@@ -135,6 +232,16 @@ export default function AdminCollectionsPage() {
             <tbody>
               {pageRows.map((c) => (
                 <tr key={c.id}>
+                  {canManage && (
+                    <td data-label={t('Select', 'تحديد')}>
+                      <Choice
+                        type="checkbox"
+                        checked={selection.selected.has(c.id)}
+                        onChange={() => selection.toggle(c.id)}
+                        label={<span className="visually-hidden">{t(`Select ${name(c)}`, `تحديد ${name(c)}`)}</span>}
+                      />
+                    </td>
+                  )}
                   <td data-label={t('Image', 'الصورة')}>
                     <AdminThumb url={c.images[0]?.url} alt={name(c)} />
                   </td>
@@ -173,40 +280,34 @@ export default function AdminCollectionsPage() {
                       >
                         <Icon as={Pencil} size={16} />
                       </Link>
-                      {c.archivedAt ? (
-                        <>
-                          <button
-                            type="button"
-                            className="icon-btn icon-btn--bordered"
-                            onClick={() => onRestore(c)}
-                            disabled={busyId === c.id}
-                            aria-label={t('Restore', 'استعادة')}
-                            title={t('Restore', 'استعادة')}
-                          >
-                            <Icon as={RotateCcw} size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-btn icon-btn--bordered"
-                            onClick={() => onPermanentDelete(c)}
-                            disabled={busyId === c.id}
-                            aria-label={t('Delete permanently', 'حذف نهائي')}
-                            title={t('Delete permanently', 'حذف نهائي')}
-                          >
-                            <Icon as={Trash2} size={16} />
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          type="button"
-                          className="icon-btn icon-btn--bordered"
-                          onClick={() => onArchive(c)}
-                          disabled={busyId === c.id}
-                          aria-label={t('Archive', 'أرشفة')}
-                          title={t('Archive', 'أرشفة')}
-                        >
-                          <Icon as={Archive} size={16} />
-                        </button>
+                      {canManage && (
+                        <RowActionsMenu
+                          label={t('More actions', 'المزيد من الإجراءات')}
+                          actions={
+                            c.archivedAt
+                              ? [
+                                  {
+                                    label: t('Restore', 'استعادة'),
+                                    icon: RotateCcw,
+                                    onClick: () => onRestoreRow(c),
+                                    disabled: busyId === c.id,
+                                  },
+                                  {
+                                    label: t('Delete permanently', 'حذف نهائي'),
+                                    icon: Trash2,
+                                    tone: 'danger',
+                                    onClick: () => setConfirm({ kind: 'delete', ids: [c.id] }),
+                                  },
+                                ]
+                              : [
+                                  {
+                                    label: t('Archive', 'أرشفة'),
+                                    icon: Archive,
+                                    onClick: () => setConfirm({ kind: 'archive', ids: [c.id] }),
+                                  },
+                                ]
+                          }
+                        />
                       )}
                     </span>
                   </td>
@@ -218,6 +319,18 @@ export default function AdminCollectionsPage() {
           <AdminPager page={safePage} totalPages={totalPages} onPageChange={setPage} locale={locale} />
         </>
       )}
+
+      <ConfirmModal
+        open={confirm !== null}
+        onClose={() => setConfirm(null)}
+        onConfirm={() => void runConfirmed()}
+        title={confirmTitle}
+        body={confirmBody}
+        confirmLabel={confirm?.kind === 'delete' ? t('Delete', 'حذف') : t('Archive', 'أرشفة')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone={confirm?.kind === 'delete' ? 'danger' : 'default'}
+        loading={confirmBusy}
+      />
     </div>
   );
 }
