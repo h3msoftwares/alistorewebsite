@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, X } from 'lucide-react';
 import { Alert, Button, Choice, DataTable, Field, Icon, Input } from '@/components/ui';
 import { ColorPicker } from '@/components/admin/color-picker';
@@ -182,13 +182,27 @@ export function VariantsMatrix({
     setSelected(new Set());
   };
 
-  const addColorSwatch = (hex: string) => {
+  const addColorSwatch = useCallback((hex: string) => {
     setColorSwatches((prev) => (prev.includes(hex) ? prev : [...prev, hex]));
-  };
+  }, []);
 
   const removeColorSwatch = (hex: string) => {
     setColorSwatches((prev) => prev.filter((c) => c !== hex));
   };
+
+  // input[type=color]'s React `onChange` actually fires on every native
+  // `input` event — i.e. on every drag frame while the wheel/slider is
+  // still open — not just once the pick is confirmed. Binding the real
+  // `change` event directly is the only way to add just the final colour
+  // instead of every intermediate one the pointer passes over.
+  const addColorInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const el = addColorInputRef.current;
+    if (!el) return;
+    const onCommit = (e: Event) => addColorSwatch((e.target as HTMLInputElement).value);
+    el.addEventListener('change', onCommit);
+    return () => el.removeEventListener('change', onCommit);
+  }, [addColorSwatch]);
 
   const generateMatrix = () => {
     setGenError(null);
@@ -263,11 +277,9 @@ export function VariantsMatrix({
             ))}
             <label className="colour-swatch-add" title={t('Add colour', 'إضافة لون')}>
               <input
+                ref={addColorInputRef}
                 type="color"
-                value="#000000"
-                onChange={(e) => {
-                  addColorSwatch(e.target.value);
-                }}
+                defaultValue="#000000"
                 disabled={busy}
                 aria-label={t('Add colour', 'إضافة لون')}
               />
