@@ -201,3 +201,45 @@ export function colorNameLabel(name: string, locale: 'en' | 'ar'): string {
   if (locale !== 'ar') return name;
   return COLOR_NAME_MAP[normalizeColorKey(name)]?.ar ?? name;
 }
+
+const HEX_RE = /^#[0-9a-f]{6}$/i;
+
+function hexToRgb(hex: string): [number, number, number] | null {
+  if (!HEX_RE.test(hex)) return null;
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/**
+ * A readable label for a hex colour picked from the variants matrix's
+ * colour wheel — `ProductVariant.color` is now the exact hex the admin
+ * picked, not a name, so there's nothing to translate the way
+ * `colorNameLabel` does for the old free-text flow. Finds the closest
+ * match (by RGB distance) in the curated map above and pairs it with the
+ * exact hex, e.g. "Navy (#1A2350)" — a wheel pick is rarely an exact hit
+ * on a named swatch, and the hex keeps two close-but-different picks
+ * distinguishable in a picker where only the name would otherwise show.
+ * Falls back to the bare (uppercased) value for anything that isn't a
+ * valid 6-digit hex, same as an unmapped free-text name would.
+ */
+export function hexColorLabel(hex: string, locale: 'en' | 'ar'): string {
+  const rgb = hexToRgb(hex);
+  const hexLabel = hex.toUpperCase();
+  if (!rgb) return hexLabel;
+
+  let bestKey: string | null = null;
+  let bestDist = Infinity;
+  for (const [key, { css }] of Object.entries(COLOR_NAME_MAP)) {
+    const candidate = hexToRgb(css);
+    if (!candidate) continue;
+    const dist = (rgb[0] - candidate[0]) ** 2 + (rgb[1] - candidate[1]) ** 2 + (rgb[2] - candidate[2]) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestKey = key;
+    }
+  }
+  if (!bestKey) return hexLabel;
+
+  const name = locale === 'ar' ? COLOR_NAME_MAP[bestKey].ar : bestKey.replace(/\b\w/g, (c) => c.toUpperCase());
+  return `${name} (${hexLabel})`;
+}

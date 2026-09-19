@@ -7,6 +7,7 @@ import {
   getSizeOptions,
   hasColorAxis,
   hasSizeAxis,
+  hexColorLabel,
   isOptionOutOfStock,
   resolveVariant,
 } from './product-variants';
@@ -130,6 +131,23 @@ describe('colorNameLabel', () => {
 
   it('falls back to the raw name in Arabic for a name outside the curated map', () => {
     expect(colorNameLabel('Ali Blue', 'ar')).toBe('Ali Blue');
+  });
+});
+
+describe('hexColorLabel', () => {
+  it('pairs an exact curated hex with its English/Arabic name', () => {
+    expect(hexColorLabel('#190066', 'en')).toBe('Navy (#190066)');
+    expect(hexColorLabel('#190066', 'ar')).toBe('كحلي (#190066)');
+  });
+
+  it('is case-insensitive and pairs the closest curated colour for a near-miss hex', () => {
+    expect(hexColorLabel('#180065', 'en')).toBe('Navy (#180065)');
+    expect(hexColorLabel('#000001', 'en')).toBe('Black (#000001)');
+  });
+
+  it('falls back to the bare uppercased value for anything that is not 6-digit hex', () => {
+    expect(hexColorLabel('not-a-colour', 'en')).toBe('NOT-A-COLOUR');
+    expect(hexColorLabel('', 'en')).toBe('');
   });
 });
 

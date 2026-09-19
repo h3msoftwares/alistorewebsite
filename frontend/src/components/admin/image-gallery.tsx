@@ -3,6 +3,7 @@
 import { Trash2 } from 'lucide-react';
 import { CatalogImage, Icon, Select } from '@/components/ui';
 import { ImageUploader } from './image-uploader';
+import { hexColorLabel } from '@/lib/product-variants';
 import type { UploadedImage } from '@/lib/imagekit-upload';
 
 export interface GalleryImage {
@@ -71,7 +72,7 @@ export function ImageGallery({
                   <option value="">{t('Generic (all colours)', 'عام (كل الألوان)')}</option>
                   {colorOptions.map((c) => (
                     <option key={c} value={c}>
-                      {c}
+                      {hexColorLabel(c, locale)}
                     </option>
                   ))}
                 </Select>
