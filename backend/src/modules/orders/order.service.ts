@@ -1105,6 +1105,7 @@ export async function salesDashboard() {
     confirmedNotDelivered,
     lowStockVariants,
     outOfStockVariants,
+    outOfStockItems,
     recentOrders,
   ] = await Promise.all([
     prisma.order.count(),
@@ -1124,6 +1125,20 @@ export async function salesDashboard() {
     }),
     prisma.productVariant.count({
       where: { stockQuantity: { lte: 0 }, product: { deletedAt: null } },
+    }),
+    // A bounded sample for the dashboard's own "Out of stock" list — the full
+    // (up to 100) breakdown lives at /admin/analytics/inventory, which the
+    // dashboard tile still links to; same take: 8 bound as recentOrders below.
+    prisma.productVariant.findMany({
+      where: { stockQuantity: { lte: 0 }, product: { deletedAt: null } },
+      orderBy: { product: { nameEn: 'asc' } },
+      take: 8,
+      select: {
+        sku: true,
+        size: true,
+        color: true,
+        product: { select: { id: true, nameEn: true, nameAr: true } },
+      },
     }),
     prisma.order.findMany({
       orderBy: { dateCreated: 'desc' },
@@ -1151,6 +1166,14 @@ export async function salesDashboard() {
     confirmedNotDelivered,
     lowStockVariants,
     outOfStockVariants,
+    outOfStockItems: outOfStockItems.map((v) => ({
+      productId: v.product.id,
+      nameEn: v.product.nameEn,
+      nameAr: v.product.nameAr,
+      sku: v.sku,
+      size: v.size,
+      color: v.color,
+    })),
     recentOrders,
   };
 }

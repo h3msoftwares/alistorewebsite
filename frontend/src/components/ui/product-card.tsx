@@ -22,6 +22,9 @@ export interface ProductCardData {
   images: ProductCardImage[];
   /** Optional inline size availability, e.g. "S · M · L" (Saxon shows this on the card). */
   sizes?: string[];
+  /** `Product.isRestocked` — shown only when not on sale (same corner slot
+   *  as the "Save $X" badge). */
+  isRestocked?: boolean;
 }
 
 export interface ProductCardProps {
@@ -56,12 +59,18 @@ export function ProductCard({ product, locale, collection }: ProductCardProps) {
       <div className="product-card__media">
         {image && <CatalogImage src={image.url} alt={alt} fill sizes="(max-width: 640px) 50vw, 25vw" />}
         {hoverImage && <CatalogImage src={hoverImage.url} alt="" fill sizes="(max-width: 640px) 50vw, 25vw" />}
-        {onSale && (
+        {onSale ? (
           <Badge variant="save" className="product-card__badge">
             {isAr
               ? `توفير ${formatCurrency(wasPrice! - current, locale, 'USD')}`
               : `Save ${formatCurrency(wasPrice! - current, locale, 'USD')}`}
           </Badge>
+        ) : (
+          product.isRestocked && (
+            <Badge variant="restock" className="product-card__badge">
+              {isAr ? 'أُعيد تخزينه' : 'Restocked'}
+            </Badge>
+          )
         )}
       </div>
       <div className="card__body">

@@ -105,6 +105,10 @@ const productShape = {
   // service so `.partial()` still works for updates).
   saleType: discountTypeSchema.nullish(),
   saleValue: z.number().nonnegative().max(PRICE_MAX).nullish(),
+  // Admin-set "Restocked" storefront tag — see schema.prisma's comment on
+  // Product.isRestocked. Omitted ⇒ leave as-is (also true for create, which
+  // otherwise defaults to the DB's `false`).
+  isRestocked: z.boolean().optional(),
 };
 
 export const createProductSchema = z.object({

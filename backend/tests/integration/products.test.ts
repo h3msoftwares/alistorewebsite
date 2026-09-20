@@ -647,6 +647,80 @@ describe('Products API', () => {
       expect(mv).toMatchObject({ type: 'ADJUSTMENT', quantity: 6 });
     });
 
+    describe('auto-tagging Product.isRestocked (SiteSetting.autoTagRestock)', () => {
+      const setAutoTag = (autoTagRestock: boolean) =>
+        prisma.siteSetting.upsert({ where: { id: 1 }, create: { id: 1, autoTagRestock }, update: { autoTagRestock } });
+
+      it('does nothing on a 0 -> positive stock write when the setting is off (the default)', async () => {
+        const p = await makeProduct(categoryId, {
+          variants: [{ sku: 'a', size: 'M', color: 'Black', stockQuantity: 0 }],
+        });
+        await request(app)
+          .patch(`/api/products/${p.id}/variants/${p.variants[0].id}`)
+          .set(bearer(adminToken))
+          .send({ stockQuantity: 5 });
+        const updated = await prisma.product.findUnique({ where: { id: p.id } });
+        expect(updated?.isRestocked).toBe(false);
+      });
+
+      it('tags the product when a variant\'s stock crosses 0 -> positive and the setting is on', async () => {
+        await setAutoTag(true);
+        const p = await makeProduct(categoryId, {
+          variants: [{ sku: 'a', size: 'M', color: 'Black', stockQuantity: 0 }],
+        });
+        const res = await request(app)
+          .patch(`/api/products/${p.id}/variants/${p.variants[0].id}`)
+          .set(bearer(adminToken))
+          .send({ stockQuantity: 5 });
+        expect(res.status).toBe(200);
+        const updated = await prisma.product.findUnique({ where: { id: p.id } });
+        expect(updated?.isRestocked).toBe(true);
+      });
+
+      it('does not tag a stock increase that never actually hit 0 (e.g. 3 -> 8)', async () => {
+        await setAutoTag(true);
+        const p = await makeProduct(categoryId, {
+          variants: [{ sku: 'a', size: 'M', color: 'Black', stockQuantity: 3 }],
+        });
+        await request(app)
+          .patch(`/api/products/${p.id}/variants/${p.variants[0].id}`)
+          .set(bearer(adminToken))
+          .send({ stockQuantity: 8 });
+        const updated = await prisma.product.findUnique({ where: { id: p.id } });
+        expect(updated?.isRestocked).toBe(false);
+      });
+
+      it('also tags via the bulk PUT /:id/variants matrix save', async () => {
+        await setAutoTag(true);
+        const p = await makeProduct(categoryId, {
+          variants: [{ sku: 'a', size: 'M', color: 'Black', stockQuantity: 0 }],
+        });
+        const res = await request(app)
+          .put(`/api/products/${p.id}/variants`)
+          .set(bearer(adminToken))
+          .send({ variants: [{ id: p.variants[0].id, sku: 'a', size: 'M', color: 'Black', stockQuantity: 6 }] });
+        expect(res.status).toBe(200);
+        const updated = await prisma.product.findUnique({ where: { id: p.id } });
+        expect(updated?.isRestocked).toBe(true);
+      });
+
+      it('the admin can also set/clear the tag directly, independent of the auto-tag setting', async () => {
+        const p = await makeProduct(categoryId);
+        const on = await request(app)
+          .patch(`/api/products/${p.id}`)
+          .set(bearer(adminToken))
+          .send({ isRestocked: true });
+        expect(on.status).toBe(200);
+        expect(on.body.product.isRestocked).toBe(true);
+
+        const off = await request(app)
+          .patch(`/api/products/${p.id}`)
+          .set(bearer(adminToken))
+          .send({ isRestocked: false });
+        expect(off.body.product.isRestocked).toBe(false);
+      });
+    });
+
     it('deletes a variant, but 409s when it is referenced by an order', async () => {
       const p = await makeProduct(categoryId, {
         variants: [

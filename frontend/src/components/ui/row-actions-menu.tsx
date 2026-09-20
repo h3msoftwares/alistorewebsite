@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MoreVertical, type LucideIcon } from 'lucide-react';
 import { Icon } from './icon';
 
@@ -20,7 +20,9 @@ export interface RowAction {
  */
 export function RowActionsMenu({ actions, label = 'More actions' }: { actions: RowAction[]; label?: string }) {
   const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState<'down' | 'up'>('down');
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -38,6 +40,19 @@ export function RowActionsMenu({ actions, label = 'More actions' }: { actions: R
     };
   }, [open]);
 
+  // Flip the menu above its trigger when opening it downward (the default)
+  // would render it past the bottom of the viewport — a row near the end of
+  // a long table/page, previously left invisible below the fold until the
+  // page was scrolled further down. Measured before paint so there's no
+  // visible downward-then-upward jump. No reset-on-close branch needed:
+  // `placement` is irrelevant while the menu is unmounted and gets freshly
+  // recomputed from a real measurement on every reopen.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const rect = menuRef.current?.getBoundingClientRect();
+    setPlacement(rect && rect.bottom > window.innerHeight ? 'up' : 'down');
+  }, [open]);
+
   if (actions.length === 0) return null;
 
   return (
@@ -53,7 +68,7 @@ export function RowActionsMenu({ actions, label = 'More actions' }: { actions: R
         <Icon as={MoreVertical} size={18} />
       </button>
       {open && (
-        <div className="row-actions__menu" role="menu">
+        <div className="row-actions__menu" data-placement={placement} ref={menuRef} role="menu">
           {actions.map((a, i) => (
             <button
               key={i}

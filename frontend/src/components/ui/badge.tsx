@@ -1,7 +1,7 @@
 import type { HTMLAttributes, ReactNode } from 'react';
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
-  variant?: 'sale' | 'save' | 'new' | 'low-stock';
+  variant?: 'sale' | 'save' | 'new' | 'low-stock' | 'restock';
   children: ReactNode;
 }
 

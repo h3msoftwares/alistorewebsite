@@ -149,10 +149,16 @@ export function ProductPreviewCard({
               preload={preload}
             />
           )}
-          {priceSale != null && (
+          {priceSale != null ? (
             <Badge variant="sale" className="product-preview-card__sale-badge">
               {t('Sale', 'تخفيض')}
             </Badge>
+          ) : (
+            product.isRestocked && (
+              <Badge variant="restock" className="product-preview-card__sale-badge">
+                {t('Restocked', 'أُعيد تخزينه')}
+              </Badge>
+            )
           )}
           {gallery.length > 1 && (
             <span className="product-preview-card__scrub" aria-hidden>

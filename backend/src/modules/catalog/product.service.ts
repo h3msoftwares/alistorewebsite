@@ -578,6 +578,7 @@ export async function updateProduct(id: string, input: UpdateProductInput) {
     ...(input.compareAtPrice !== undefined ? { compareAtPrice: input.compareAtPrice } : {}),
     ...(input.saleType !== undefined ? { saleType: input.saleType ?? null } : {}),
     ...(input.saleValue !== undefined ? { saleValue: input.saleValue ?? null } : {}),
+    ...(input.isRestocked !== undefined ? { isRestocked: input.isRestocked } : {}),
   };
 
   try {
@@ -673,6 +674,30 @@ export async function hardDeleteProduct(id: string) {
 
 // ---- Variants (sub-resource) ----
 
+/** True when a stock write actually crossed 0 -> positive — the site's
+ *  definition of "restocked" for the auto-tag setting below. A jump from,
+ *  say, 3 to 8 doesn't count: the item was never actually unavailable. */
+function crossedIntoStock(before: number, after: number): boolean {
+  return before <= 0 && after > 0;
+}
+
+/** Sets Product.isRestocked when a stock write just crossed 0 -> positive
+ *  AND the site has SiteSetting.autoTagRestock on — otherwise a no-op. Same
+ *  manual-clear-only tag a "Restocked" checkbox on the product edit page
+ *  sets directly; this is just the automatic trigger for it (see
+ *  updateVariant/setVariants/updateStock below). */
+async function maybeAutoTagRestock(
+  tx: Prisma.TransactionClient,
+  productId: string,
+  before: number,
+  after: number
+): Promise<void> {
+  if (!crossedIntoStock(before, after)) return;
+  const settings = await tx.siteSetting.findUnique({ where: { id: 1 }, select: { autoTagRestock: true } });
+  if (!settings?.autoTagRestock) return;
+  await tx.product.update({ where: { id: productId }, data: { isRestocked: true } });
+}
+
 export async function addVariant(productId: string, input: CreateVariantInput) {
   await ensureProductExists(productId);
   const existing = await prisma.productVariant.findMany({ where: { productID: productId } });
@@ -751,6 +776,9 @@ export async function updateVariant(
             reason: 'Variant edit',
           },
         });
+        if (nextStock !== undefined) {
+          await maybeAutoTagRestock(tx, productId, variant.stockQuantity, nextStock);
+        }
       }
       return updated;
     });
@@ -843,6 +871,7 @@ export async function setVariants(productId: string, input: BulkSetVariantsInput
             await tx.stockMovement.create({
               data: { variantID: v.id, quantity: delta, type: 'ADJUSTMENT', actorID: actorId, reason: 'Bulk variant edit' },
             });
+            await maybeAutoTagRestock(tx, productId, before.stockQuantity, v.stockQuantity);
           }
           result.push(updated);
         } else {
@@ -888,6 +917,7 @@ export async function updateStock(variantId: string, stockQuantity: number, acto
           reason: 'Manual stock update',
         },
       });
+      await maybeAutoTagRestock(tx, variant.productID, variant.stockQuantity, stockQuantity);
     }
     return updated;
   });

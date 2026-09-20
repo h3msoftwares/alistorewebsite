@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { Controller, type Control, type FieldErrors, type UseFormRegister } from 'react-hook-form';
 import { z } from 'zod';
-import { CheckList, Field, Input, Select, Textarea } from '@/components/ui';
+import { CheckList, Choice, Field, Input, Select, Textarea } from '@/components/ui';
 import { CategoryPicker } from '@/components/admin/category-picker';
 import { useAdminCategories, useCollections } from '@/hooks/use-catalog';
 import { buildCategoryPaths } from '@/lib/category-path';
@@ -37,6 +37,9 @@ export const productCoreObjectSchema = z.object({
   price: z.number().positive('Must be greater than 0'),
   saleType: z.enum(['', 'PERCENT', 'AMOUNT']),
   saleValue: priceStringSchema,
+  // Manual "Restocked" storefront tag — edit page only (see isEditing on
+  // ProductCoreFields below); a brand-new product has no restock history.
+  isRestocked: z.boolean(),
 });
 
 export function saleNeedsValue(v: { saleType: string; saleValue: string }) {
@@ -59,6 +62,7 @@ export const productCoreDefaults: ProductCoreValues = {
   price: 0,
   saleType: '',
   saleValue: '',
+  isRestocked: false,
 };
 
 /** The product-level fields shared by the create and edit pages — not a
@@ -72,12 +76,16 @@ export function ProductCoreFields<T extends ProductCoreValues>({
   errors,
   busy,
   locale,
+  isEditing = false,
 }: {
   register: UseFormRegister<T>;
   control: Control<T>;
   errors: FieldErrors<T>;
   busy: boolean;
   locale: 'en' | 'ar';
+  /** Shows the "Restocked" tag toggle — a brand-new product has no restock
+   *  history yet, so the create page omits it. */
+  isEditing?: boolean;
 }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
@@ -230,6 +238,25 @@ export function ProductCoreFields<T extends ProductCoreValues>({
           {(p) => <Input {...p} type="text" inputMode="decimal" placeholder="0.00" {...register('saleValue' as never)} disabled={busy} />}
         </Field>
       </div>
+
+      {isEditing && (
+        <div className="admin-form__row">
+          <div>
+            <Choice
+              type="checkbox"
+              label={t('Restocked', 'أُعيد تخزينه')}
+              {...register('isRestocked' as never)}
+              disabled={busy}
+            />
+            <p className="admin-form__hint">
+              {t(
+                'Shows a "Restocked" tag on the storefront until you clear it here.',
+                'يُظهر وسم «أُعيد تخزينه» في المتجر حتى تُلغيه من هنا.'
+              )}
+            </p>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -61,6 +61,7 @@ export default function EditProductPage() {
           price: Number(product.price),
           saleType: product.saleType ?? '',
           saleValue: product.saleValue != null ? String(product.saleValue) : '',
+          isRestocked: product.isRestocked,
         }
       : undefined,
   });
@@ -84,6 +85,7 @@ export default function EditProductPage() {
           price: values.price,
           saleType: values.saleType || null,
           saleValue: values.saleValue ? Number(values.saleValue) : null,
+          isRestocked: values.isRestocked,
           // Optimistic-concurrency guard (fix-list.md #14, resolves 1.5) —
           // the server rejects this write if `lastEdit` no longer matches,
           // instead of silently overwriting whatever another admin just
@@ -227,7 +229,7 @@ export default function EditProductPage() {
       />
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="admin-form">
-        <ProductCoreFields register={register} control={control} errors={errors} busy={busy} locale={locale} />
+        <ProductCoreFields register={register} control={control} errors={errors} busy={busy} locale={locale} isEditing />
 
         {product.promotion && (
           <Alert tone="info">

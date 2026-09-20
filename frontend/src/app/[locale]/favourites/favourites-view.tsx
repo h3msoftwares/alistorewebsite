@@ -37,6 +37,7 @@ function toCardData(p: Product): ProductCardData {
     salePrice: p.onSale ? p.effectivePrice : null,
     images: p.images,
     sizes: [...new Set(p.variants.map((v) => v.size).filter((s): s is string => Boolean(s)))],
+    isRestocked: p.isRestocked,
   };
 }
 

@@ -317,12 +317,18 @@ export function ProductDetail({
             ) : (
               <span className="catalog-image__fallback" aria-hidden />
             )}
-            {onSale && (
+            {onSale ? (
               <Badge variant="save" className="product-card__badge">
                 {isAr
                   ? `توفير ${formatCurrency(wasPrice! - current, locale, 'USD')}`
                   : `Save ${formatCurrency(wasPrice! - current, locale, 'USD')}`}
               </Badge>
+            ) : (
+              product.isRestocked && (
+                <Badge variant="restock" className="product-card__badge">
+                  {t('Restocked', 'أُعيد تخزينه')}
+                </Badge>
+              )
             )}
             {mainImage && (
               <button

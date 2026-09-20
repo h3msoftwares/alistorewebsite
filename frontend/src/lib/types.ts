@@ -230,6 +230,10 @@ export interface Product {
   /** The promotion currently applied to this product, if any — for context
    *  on the storefront. */
   promotion?: AppliedPromotionInfo | null;
+  /** Admin-set "Restocked" storefront tag — manual (product edit page) or
+   *  automatic (SiteSettings.autoTagRestock, on a variant's stock crossing
+   *  0 -> positive). Stays on until an admin clears it; no auto-expiry. */
+  isRestocked: boolean;
   isActive: boolean;
   /** Set when the product is archived (soft-deleted) from the admin. */
   deletedAt?: string | null;
@@ -869,6 +873,10 @@ export interface SiteSettings {
   showcases: HomeShowcase[];
   /** Resolved collection for the hero CTA, when one is set. */
   heroCtaCollection: Pick<Collection, 'id' | 'slug' | 'nameEn' | 'nameAr'> | null;
+  /** Auto-tags a product "Restocked" the first time one of its variants'
+   *  stock crosses 0 -> positive. Off by default — the tag then stays a
+   *  manual, per-product toggle on the product edit page. */
+  autoTagRestock: boolean;
   // Delivery fee — off ⇒ every order ships free.
   deliveryFeeEnabled: boolean;
   deliveryFeeFlat: Decimalish;
@@ -1120,6 +1128,7 @@ export interface ProductBody {
   /** Set both together, or neither. `PERCENT` value is 0–100. */
   saleType?: DiscountType | null;
   saleValue?: number | null;
+  isRestocked?: boolean;
   variants: VariantBody[];
 }
 
@@ -1155,6 +1164,15 @@ export interface AdminDashboardRecentOrder {
   dateCreated: string;
 }
 
+export interface AdminDashboardOutOfStockItem {
+  productId: UUID;
+  nameEn: string;
+  nameAr: string;
+  sku: string;
+  size: string | null;
+  color: string | null;
+}
+
 export interface AdminDashboard {
   totalOrders: number;
   pendingOrders: number;
@@ -1169,6 +1187,9 @@ export interface AdminDashboard {
   lowStockVariants: number;
   /** Active variants at 0 or fewer units. */
   outOfStockVariants: number;
+  /** Up to 8 of the out-of-stock variants above — the full breakdown lives
+   *  at /admin/analytics/inventory. */
+  outOfStockItems: AdminDashboardOutOfStockItem[];
   /** The 8 most recent orders, newest first. */
   recentOrders: AdminDashboardRecentOrder[];
 }

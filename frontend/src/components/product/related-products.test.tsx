@@ -24,6 +24,7 @@ function makeProduct(id: string, overrides: Partial<Product> = {}): Product {
     price: '20.00',
     effectivePrice: 20,
     onSale: false,
+    isRestocked: false,
     isActive: true,
     dateCreated: '2026-01-01T00:00:00.000Z',
     lastEdit: '2026-01-01T00:00:00.000Z',

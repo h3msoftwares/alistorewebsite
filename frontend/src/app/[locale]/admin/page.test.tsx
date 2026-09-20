@@ -41,6 +41,9 @@ const dashboard = {
   confirmedNotDelivered: 7,
   lowStockVariants: 4,
   outOfStockVariants: 1,
+  outOfStockItems: [
+    { productId: 'p1', nameEn: 'Classic Tee', nameAr: 'تي شيرت كلاسيكي', sku: 'TEE-BLK-M', size: 'M', color: 'Black' },
+  ],
   recentOrders: [
     {
       id: 'o1',
@@ -101,6 +104,14 @@ describe('AdminDashboardPage', () => {
     expect(await screen.findByText('AS-20260906-ABC123')).toBeInTheDocument();
     expect(screen.getByText('Jane Doe')).toBeInTheDocument();
     expect(screen.getByText('$43.00')).toBeInTheDocument();
+  });
+
+  it('lists out-of-stock variants with a link to the product', async () => {
+    renderPage();
+    const link = await screen.findByRole('link', { name: 'Classic Tee' });
+    expect(link).toHaveAttribute('href', '/en/admin/products/p1');
+    expect(screen.getByText('M / Black')).toBeInTheDocument();
+    expect(screen.getByText('TEE-BLK-M')).toBeInTheDocument();
   });
 
   it('renders the quick-action shortcuts', async () => {

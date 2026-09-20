@@ -16,6 +16,7 @@ import {
   useProducts,
   useRestoreProduct,
 } from '@/hooks/use-catalog';
+import { useSettings, useUpdateSettings } from '@/hooks/use-settings';
 import type { CatalogStatus, Product } from '@/lib/types';
 
 const PAGE_SIZE = 20;
@@ -47,6 +48,8 @@ export function AdminProductsPage() {
   const archive = useDeleteProduct();
   const restore = useRestoreProduct();
   const permanentDelete = usePermanentDeleteProduct();
+  const { data: settings } = useSettings();
+  const updateSettings = useUpdateSettings();
 
   const items = data?.items ?? [];
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
@@ -133,6 +136,24 @@ export function AdminProductsPage() {
           </Link>
         )}
       </div>
+
+      {canManage && (
+        <div className="admin-page__head-actions">
+          <Choice
+            type="checkbox"
+            label={t('Auto-tag restocked products', 'وسم المنتجات المعاد تخزينها تلقائيًا')}
+            checked={settings?.autoTagRestock ?? false}
+            onChange={(e) => updateSettings.mutate({ autoTagRestock: e.target.checked })}
+            disabled={!settings || updateSettings.isPending}
+          />
+          <span className="admin-form__hint">
+            {t(
+              'When on, a variant’s stock going from 0 to available adds the "Restocked" tag automatically.',
+              'عند التفعيل، يُضاف وسم «أُعيد تخزينه» تلقائيًا عندما يتحول مخزون أحد الخيارات من صفر إلى متوفر.'
+            )}
+          </span>
+        </div>
+      )}
 
       <AdminListControls
         search={search}
@@ -272,6 +293,11 @@ export function AdminProductsPage() {
                       <Badge variant="new">{t('Active', 'مفعّل')}</Badge>
                     ) : (
                       <Badge variant="low-stock">{t('Hidden', 'مخفي')}</Badge>
+                    )}
+                    {p.isRestocked && (
+                      <Badge variant="restock" style={{ marginInlineStart: 'var(--space-2)' }}>
+                        {t('Restocked', 'أُعيد تخزينه')}
+                      </Badge>
                     )}
                   </td>
                   <td data-label={t('Actions', 'إجراءات')}>

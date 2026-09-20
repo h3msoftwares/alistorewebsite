@@ -82,6 +82,8 @@ function scalarData(input: UpdateSettingsInput): Record<string, unknown> {
     out.heroCtaCollectionID = input.heroCtaCollectionId ? input.heroCtaCollectionId : null;
   }
 
+  if (input.autoTagRestock !== undefined) out.autoTagRestock = input.autoTagRestock;
+
   // Delivery fee scalars — copy when present; a null threshold clears the rule.
   for (const key of ['deliveryFeeEnabled', 'deliveryFeeFlat', 'freeDeliveryRegions'] as const) {
     if (input[key] !== undefined) out[key] = input[key];

@@ -21,6 +21,7 @@ const product: Product = {
   price: '30.00',
   effectivePrice: 30,
   onSale: false,
+  isRestocked: false,
   isActive: true,
   dateCreated: '2026-01-01T00:00:00.000Z',
   lastEdit: '2026-01-01T00:00:00.000Z',

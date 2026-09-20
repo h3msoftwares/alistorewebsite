@@ -2547,6 +2547,12 @@ a.home-card__name:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
 }
+/* Flipped up by RowActionsMenu when opening downward would overflow the
+   viewport (a row near the end of a long table/page). */
+.row-actions__menu[data-placement='up'] {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
 .row-actions__item {
   display: flex;
   align-items: center;
@@ -3487,6 +3493,7 @@ a.home-card__name:hover { text-decoration: underline; }
 .badge--save { background: var(--color-primary); color: var(--color-on-primary); }  /* "Save $X.00" corner badge */
 .badge--new  { background: var(--color-accent-soft); color: var(--color-text); }
 .badge--low-stock { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.badge--restock { background: var(--color-success-bg); color: var(--color-success-text); }
 
 /* Order status pills */
 .status {

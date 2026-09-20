@@ -162,6 +162,11 @@ export const updateSettingsSchema = z.object({
     .max(10)
     .optional(),
 
+  // Auto-tags a product "Restocked" the first time one of its variants'
+  // stock crosses 0 -> positive (see product.service.ts). Off by default —
+  // the tag stays a manual, per-product toggle until this is turned on.
+  autoTagRestock: z.boolean().optional(),
+
   // ---- Delivery fee ----
   deliveryFeeEnabled: z.boolean().optional(),
   deliveryFeeFlat: money.optional(),

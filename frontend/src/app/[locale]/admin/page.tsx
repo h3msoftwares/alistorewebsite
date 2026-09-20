@@ -129,6 +129,42 @@ export default function AdminDashboardPage() {
 
           <section>
             <div className="admin-page__head">
+              <h2 className="admin-dashboard__section-title">{t('Out of stock', 'نفدت الكمية')}</h2>
+              <Link className="admin-dashboard__see-all" href={`${base}/analytics/inventory`}>
+                {t('See all', 'عرض الكل')}
+              </Link>
+            </div>
+
+            {data.outOfStockItems.length === 0 ? (
+              <EmptyState title={t('Everything is in stock', 'كل شيء متوفر')} />
+            ) : (
+              <DataTable responsive>
+                <thead>
+                  <tr>
+                    <th>{t('Product', 'المنتج')}</th>
+                    <th>{t('Variant', 'الخيار')}</th>
+                    <th>{t('SKU', 'رمز المنتج')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.outOfStockItems.map((item) => (
+                    <tr key={item.sku}>
+                      <td data-label={t('Product', 'المنتج')}>
+                        <Link href={`${base}/products/${item.productId}`}>{isAr ? item.nameAr : item.nameEn}</Link>
+                      </td>
+                      <td data-label={t('Variant', 'الخيار')}>
+                        {[item.size, item.color].filter(Boolean).join(' / ') || t('One size', 'مقاس واحد')}
+                      </td>
+                      <td data-label={t('SKU', 'رمز المنتج')}>{item.sku}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </DataTable>
+            )}
+          </section>
+
+          <section>
+            <div className="admin-page__head">
               <h2 className="admin-dashboard__section-title">{t('Recent orders', 'أحدث الطلبات')}</h2>
               <Link className="admin-dashboard__see-all" href={`${base}/orders`}>
                 {t('See all', 'عرض الكل')}

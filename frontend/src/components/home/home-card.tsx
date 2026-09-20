@@ -92,10 +92,16 @@ export function HomeProductCard({
               preload={preload}
             />
           )}
-          {salePrice != null && (
+          {salePrice != null ? (
             <Badge variant="sale" className="home-card__sale-badge">
               {isAr ? 'تخفيض' : 'Sale'}
             </Badge>
+          ) : (
+            product.isRestocked && (
+              <Badge variant="restock" className="home-card__sale-badge">
+                {isAr ? 'أُعيد تخزينه' : 'Restocked'}
+              </Badge>
+            )
           )}
           {gallery.length > 1 && (
             <span className="home-card__scrub" aria-hidden>

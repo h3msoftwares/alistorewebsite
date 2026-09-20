@@ -16,13 +16,22 @@ vi.mock('@/hooks/use-catalog', () => ({
   useCollections: () => ({ data: [] }),
 }));
 
-function Harness() {
+function Harness({ isEditing }: { isEditing?: boolean }) {
   const {
     register,
     control,
     formState: { errors },
   } = useForm<ProductCoreValues>({ resolver: zodResolver(productCoreSchema), defaultValues: productCoreDefaults });
-  return <ProductCoreFields register={register} control={control} errors={errors} busy={false} locale="en" />;
+  return (
+    <ProductCoreFields
+      register={register}
+      control={control}
+      errors={errors}
+      busy={false}
+      locale="en"
+      isEditing={isEditing}
+    />
+  );
 }
 
 describe('ProductCoreFields', () => {
@@ -35,6 +44,16 @@ describe('ProductCoreFields', () => {
 
   it('does not require a Compare-at-price key on the defaults/values object', () => {
     expect(productCoreDefaults).not.toHaveProperty('compareAtPrice');
+  });
+
+  it('omits the "Restocked" toggle on create (no isEditing) — a new product has no restock history', () => {
+    render(<Harness />);
+    expect(screen.queryByLabelText('Restocked')).not.toBeInTheDocument();
+  });
+
+  it('shows the "Restocked" toggle when editing an existing product', () => {
+    render(<Harness isEditing />);
+    expect(screen.getByLabelText('Restocked')).toBeInTheDocument();
   });
 });
 

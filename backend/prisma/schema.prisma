@@ -581,6 +581,12 @@ model Product {
   // Active sale: PERCENT (0–100) or AMOUNT off `price`. Both null ⇒ no sale.
   saleType          DiscountType?
   saleValue         Decimal?      @db.Decimal(12, 2)
+  // Admin-set "Restocked" tag (storefront badge, like the sale tag) — set
+  // directly from the product edit page, or automatically the first time a
+  // variant's stock crosses 0 -> positive when SiteSetting.autoTagRestock is
+  // on (see product.service.ts). Manual-only clear: it never expires on its
+  // own, the admin unchecks it once it's no longer relevant.
+  isRestocked       Boolean       @default(false)
   isActive          Boolean       @default(true)
   dateCreated       DateTime      @default(now())
   lastEdit          DateTime      @default(now()) @updatedAt
@@ -1307,6 +1313,12 @@ model SiteSetting {
   deliveryFeeFlat       Decimal  @default(0) @db.Decimal(12, 2)
   freeDeliveryThreshold Decimal? @db.Decimal(12, 2)
   freeDeliveryRegions   String[] @default([])
+
+  // Off by default: a variant's stock crossing 0 -> positive only sets
+  // Product.isRestocked automatically when this is on — otherwise the
+  // "Restocked" tag stays purely a manual toggle on the product edit page.
+  // See product.service.ts's updateVariant/setVariants/updateStock.
+  autoTagRestock Boolean @default(false)
 
   lastEdit DateTime @updatedAt
 
