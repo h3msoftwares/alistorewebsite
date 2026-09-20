@@ -199,19 +199,30 @@ export async function sendReturnStatusChangedNotification(
 }
 
 /**
- * Fires every order-placed notification (customer email, owner email + push
- * + bell) for a freshly created order. Intended to be called fire-and-
- * forget, after the order's transaction has committed — never throws, so a
- * notification failure can never affect the checkout response. `orderUrl`
- * is either a guest tracking link (a fresh OrderAccessToken) or, for a
- * logged-in customer, a direct link to /orders/[id] — see order.service.ts's
- * checkout().
+ * Fires the owner-side alert (email + push + bell) for a freshly created
+ * order. Intended to be called fire-and-forget, after the order's
+ * transaction has committed — never throws, so a notification failure can
+ * never affect the checkout response. Deliberately owner-only: the customer
+ * isn't emailed until an admin actually confirms the order — see
+ * sendOrderConfirmedNotifications() below and order.service.ts's
+ * updateOrderStatus().
  */
-export async function sendOrderPlacedNotifications(order: OrderWithItems, orderUrl: string): Promise<void> {
-  await Promise.all([
-    order.guestEmail ? sendOrderConfirmationEmail(order.guestEmail, order, orderUrl) : Promise.resolve(false),
-    sendOwnerNotification(order),
-  ]);
+export async function sendOrderPlacedNotifications(order: OrderWithItems): Promise<void> {
+  await sendOwnerNotification(order);
+}
+
+/**
+ * Emails the customer their order confirmation, the first time an admin
+ * moves the order to CONFIRMED (not sent at checkout — see
+ * sendOrderPlacedNotifications() above and order.service.ts's
+ * updateOrderStatus()). `orderUrl` is either a guest tracking link (a fresh
+ * OrderAccessToken, minted at confirm time since checkout no longer mints
+ * one up front) or, for a logged-in customer, a direct link to
+ * /orders/[id].
+ */
+export async function sendOrderConfirmedNotifications(order: OrderWithItems, orderUrl: string): Promise<void> {
+  if (!order.guestEmail) return;
+  await sendOrderConfirmationEmail(order.guestEmail, order, orderUrl);
 }
 
 /**

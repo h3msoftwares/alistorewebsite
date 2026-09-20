@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
-import { createCustomer, bearer } from '../helpers/auth';
+import { createCustomer, createAdmin, bearer } from '../helpers/auth';
 import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
 
 vi.mock('../../src/lib/mailer', async (importOriginal) => {
@@ -63,25 +63,41 @@ async function getEmailVerifyToken(agent: ReturnType<typeof request.agent>, emai
   return verifyRes.body.verifyToken as string;
 }
 
-/** Places a real order as a guest (only guest orders mint an OrderAccessToken
- *  — see order.service.ts's checkout()) and returns it plus the raw tracking
- *  token minted at checkout — captured from the mocked confirmation email's
- *  `orderUrl` argument, the same value a guest would get by clicking the
- *  link in their real inbox. */
+// The confirmation email fires void-and-catch after the status-change
+// response — see order.service.ts's updateOrderStatus() CONFIRMED branch.
+async function flushAsync() {
+  await new Promise((r) => setTimeout(r, 50));
+}
+
+/** Places a real order as a guest, then has an admin confirm it — only
+ *  guest orders mint an OrderAccessToken, and only once confirmed (see
+ *  order.service.ts's updateOrderStatus()) — and returns it plus the raw
+ *  tracking token, captured from the mocked confirmation email's `orderUrl`
+ *  argument, the same value a guest would get by clicking the link in
+ *  their real inbox. */
 async function placeOrder(email: string, phone = delivery.deliveryPhone) {
   const agent = request.agent(app);
   await agent.post('/api/cart/items').send({ variantId, quantity: 1 });
   const emailVerifyToken = await getEmailVerifyToken(agent, email);
 
-  mockConfirmEmail.mockClear();
   const res = await agent
     .post('/api/orders/checkout')
     .send({ ...delivery, deliveryPhone: phone, guestEmail: email, emailVerifyToken });
   expect(res.status).toBe(201);
+  const orderId = res.body.order.id as string;
+
+  mockConfirmEmail.mockClear();
+  const { token: adminToken } = await createAdmin();
+  const confirmed = await request(app)
+    .patch(`/api/admin/orders/${orderId}/status`)
+    .set(bearer(adminToken))
+    .send({ status: 'CONFIRMED' });
+  expect(confirmed.status).toBe(200);
+  await flushAsync();
 
   const call = mockConfirmEmail.mock.calls.at(-1)!;
   const trackingToken = tokenFromUrl(call[2] as string);
-  return { orderId: res.body.order.id as string, orderNumber: res.body.order.orderNumber as string, trackingToken };
+  return { orderId, orderNumber: res.body.order.orderNumber as string, trackingToken };
 }
 
 describe('OrderAccessToken is minted for guest orders only', () => {
@@ -97,10 +113,18 @@ describe('OrderAccessToken is minted for guest orders only', () => {
     const { token: authToken } = await createCustomer(); // emailVerified defaults true — skips OTP
     await request(app).post('/api/cart/items').set(bearer(authToken)).send({ variantId, quantity: 1 });
 
-    mockConfirmEmail.mockClear();
     const res = await request(app).post('/api/orders/checkout').set(bearer(authToken)).send(delivery);
     expect(res.status).toBe(201);
     const orderId = res.body.order.id as string;
+
+    mockConfirmEmail.mockClear();
+    const { token: adminToken } = await createAdmin();
+    const confirmed = await request(app)
+      .patch(`/api/admin/orders/${orderId}/status`)
+      .set(bearer(adminToken))
+      .send({ status: 'CONFIRMED' });
+    expect(confirmed.status).toBe(200);
+    await flushAsync();
 
     expect(await prisma.orderAccessToken.count({ where: { orderID: orderId } })).toBe(0);
     const call = mockConfirmEmail.mock.calls.at(-1)!;
@@ -175,7 +199,7 @@ describe('POST /api/orders/lookup', () => {
     expect(wrongOrderNumber.body).toEqual(wrongContact.body);
   });
 
-  it('a fresh lookup-minted token does not invalidate the original checkout-issued one', async () => {
+  it('a fresh lookup-minted token does not invalidate the original confirmation-issued one', async () => {
     const { orderId, orderNumber, trackingToken: originalToken } = await placeOrder('lookup4@test.dev');
 
     const lookup = await request(app)
@@ -203,7 +227,7 @@ describe('POST /api/orders/lookup', () => {
 });
 
 describe('POST /api/orders/track/:token/cancel', () => {
-  it('cancels a PENDING order and restores stock, using the token as proof of access', async () => {
+  it('cancels a CONFIRMED order and restores stock, using the token as proof of access', async () => {
     const { orderId, trackingToken } = await placeOrder('cancel1@test.dev');
     const res = await request(app).post(`/api/orders/track/${trackingToken}/cancel`);
     expect(res.status).toBe(200);

@@ -6,6 +6,7 @@ import { generateUniqueOrderNumber } from '../../lib/orderNumber';
 import { recordAudit } from '../../lib/audit';
 import {
   sendOrderPlacedNotifications,
+  sendOrderConfirmedNotifications,
   sendOrderCancelledNotifications,
   sendOrderShippedNotifications,
   sendOwnerFlaggedNotification,
@@ -122,20 +123,21 @@ const CHECKOUT_TX_OPTIONS = { timeout: 45_000, maxWait: 10_000 } as const;
 // see performCancellation's `enforceCancellableGate`.
 const CANCELLABLE_STATUSES: OrderStatus[] = ['PENDING', 'CONFIRMED'];
 
-// How long an OrderAccessToken stays valid, however it was issued (minted at
-// checkout for the confirmation email, or freshly minted by /orders/lookup).
-// Generous enough that "let me check on last month's order" always works;
-// bounded so a leaked link (browser history, forwarded email) doesn't stay
-// exploitable forever. Expired ⇒ the guest just uses /orders/lookup again.
+// How long an OrderAccessToken stays valid, however it was issued (minted
+// when an admin confirms the order, for the confirmation email, or freshly
+// minted by /orders/lookup). Generous enough that "let me check on last
+// month's order" always works; bounded so a leaked link (browser history,
+// forwarded email) doesn't stay exploitable forever. Expired ⇒ the guest
+// just uses /orders/lookup again.
 const ORDER_ACCESS_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 /** Mints a fresh guest access token for `orderId` and returns the raw value
- *  — only its hash is ever stored. Called both inside checkout()'s
- *  transaction (the token in the confirmation email) and standalone from
- *  lookupOrder() (a freshly re-issued one) — each call always creates a new
- *  row, never touching any token already issued for the same order. */
+ *  — only its hash is ever stored. Called both from updateOrderStatus()'s
+ *  CONFIRMED branch (the token in the confirmation email) and standalone
+ *  from lookupOrder() (a freshly re-issued one) — each call always creates
+ *  a new row, never touching any token already issued for the same order. */
 async function mintAccessToken(db: DbClient, orderId: string): Promise<string> {
   const raw = randomBytes(32).toString('base64url');
   await db.orderAccessToken.create({
@@ -247,7 +249,6 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     throw new AppError('VALIDATION_ERROR', 'No cart owner (user or guest session) provided');
   }
 
-  let rawAccessToken: string | undefined;
   const order = await prisma.$transaction(async (tx) => {
     // Serialize a single shopper's own concurrent checkouts. Without this, N
     // parallel POST /api/orders/checkout for the same cart each read the cart
@@ -655,15 +656,6 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       });
     }
 
-    // Only a guest order needs a bearer-token tracking link — a logged-in
-    // customer already has a real session and /orders/[id]; minting one for
-    // them would just be an unnecessary extra credential. Minted in the
-    // same transaction as the order itself, so it can never exist without a
-    // real order behind it.
-    if (!owner.userID) {
-      rawAccessToken = await mintAccessToken(tx, order.id);
-    }
-
     return order;
   }, CHECKOUT_TX_OPTIONS);
 
@@ -679,13 +671,15 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     });
   }
 
-  // Fired after the transaction commits — never before, so a customer can
-  // never be emailed order confirmation for an order that then rolls back,
-  // and a slow SMTP call can never hold the DB transaction open. Never
-  // throws (see notification.service.ts), so a delivery failure can't
-  // affect this response either.
-  const orderUrl = rawAccessToken ? trackingUrl(rawAccessToken) : accountOrderUrl(order.id);
-  void sendOrderPlacedNotifications(order, orderUrl).catch((err) => {
+  // Owner-side alert only — the customer isn't emailed a confirmation until
+  // an admin actually confirms the order (see updateOrderStatus()'s
+  // CONFIRMED branch below), so a fraudulent/mistaken order never reaches
+  // the customer's inbox before someone has looked at it. Fired after the
+  // transaction commits — never before, so this can't fire for an order
+  // that then rolls back, and a slow send can never hold the DB transaction
+  // open. Never throws (see notification.service.ts), so a delivery
+  // failure can't affect this response either.
+  void sendOrderPlacedNotifications(order).catch((err) => {
     console.error('[order.service] failed to send order-placed notifications', err);
   });
 
@@ -855,7 +849,7 @@ export async function getOrderByToken(rawToken: string): Promise<OrderWithItems>
  * one generic message regardless (same enumeration-resistance principle as
  * password-reset / admin-login's uniform rejections). On a match, mints a
  * *fresh* OrderAccessToken rather than trying to recover whichever one was
- * emailed at checkout — that hash is one-way, so there's nothing to
+ * emailed at confirmation — that hash is one-way, so there's nothing to
  * recover — which is also why this never disturbs the original link.
  */
 export async function lookupOrder(orderNumber: string, contact: string): Promise<string | null> {
@@ -1039,6 +1033,22 @@ export async function updateOrderStatus(
         : {}),
     },
   });
+
+  // Email the customer the first time an order enters CONFIRMED (not on a
+  // re-select of the same status) — this, not checkout, is when the
+  // customer actually gets their order-confirmation email; see
+  // sendOrderPlacedNotifications()'s doc comment. A guest order has no
+  // access token yet (checkout no longer pre-mints one), so mint a fresh
+  // one for the tracking link now, same as lookupOrder()'s "lost my link"
+  // flow; a logged-in customer's own /orders/[id] needs no token.
+  if (status === 'CONFIRMED' && existing.status !== 'CONFIRMED') {
+    void (async () => {
+      const orderUrl = updated.userID ? accountOrderUrl(updated.id) : trackingUrl(await mintAccessToken(prisma, updated.id));
+      await sendOrderConfirmedNotifications(updated, orderUrl);
+    })().catch((err) => {
+      console.error('[order.service] failed to send order-confirmed notification', err);
+    });
+  }
 
   // Email the customer the first time an order enters SHIPPED (not on a
   // re-select of the same status). Fire-and-forget, after commit, never
