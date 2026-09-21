@@ -86,8 +86,20 @@ export function Hero({ locale }: { locale: string }) {
       : settings.heroCtaLabelEn
     : t('Discover', 'اكتشف الآن');
 
-  // Admin-set CTA collection, else the first nav collection, else the seeded /women.
-  const ctaSlug = settings?.heroCtaCollection?.slug ?? navCategories?.[0]?.slug ?? 'women';
+  // Two different route shapes here, not one: an admin-picked CTA is a real
+  // `Collection` (heroCtaCollectionID, see backend/settings.schema.ts) and
+  // those pages live at /{locale}/{slug} (app/[locale]/[collection]/page.tsx).
+  // The fallback ("First nav collection" in the admin panel) instead follows
+  // the CATEGORY nav tree, whose pages live at /{locale}/category/{slug}
+  // (app/[locale]/category/[slug]/page.tsx) — a different entity with a
+  // different route since the catalog redesign split Category from
+  // Collection (see collection-banner.tsx's doc comment for the same split).
+  // Reusing the Collection URL shape for a Category slug sent visitors to
+  // the wrong page — confirmed live: the fallback landed on /en/women
+  // instead of the intended /en/category/women.
+  const ctaHref = settings?.heroCtaCollection
+    ? `/${locale}/${settings.heroCtaCollection.slug}`
+    : `/${locale}/category/${navCategories?.[0]?.slug ?? 'women'}`;
 
   return (
     <section ref={ref} className="hero" data-home-hero aria-labelledby="hero-title">
@@ -117,7 +129,7 @@ export function Hero({ locale }: { locale: string }) {
 
         <div ref={asideRef} className={`hero__aside ${asideClass}`} style={asideStyle}>
           <p className="hero__lede">{lede}</p>
-          <Link href={`/${locale}/${ctaSlug}`} className="btn btn--primary btn--lg hero__cta">
+          <Link href={ctaHref} className="btn btn--primary btn--lg hero__cta">
             <span>{ctaLabel}</span>
             <span className="hero__cta-arrow" aria-hidden>
               <Icon as={ArrowRight} size={18} flipRtl />
