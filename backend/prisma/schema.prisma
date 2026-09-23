@@ -358,6 +358,7 @@ model Collection {
   rules       CollectionRule[]
   siteHeroFor SiteSetting[]
   promotions  PromotionCollection[]
+  comboRules  ComboRuleCollection[]
 
   @@index([isActive])
   @@index([archivedAt])
@@ -536,6 +537,7 @@ model Category {
   // Additional (non-canonical) category placements — see ProductCategory.
   productLinks    ProductCategory[]
   promotions      PromotionCategory[]
+  comboRules      ComboRuleCategory[]
 
   @@index([parentID, sortOrder])
   @@index([path])
@@ -606,6 +608,7 @@ model Product {
   variants        ProductVariant[]
   favorites       Favorite[]
   promotions      PromotionProduct[]
+  comboRules      ComboRuleProduct[]
 
   @@index([primaryCategoryID])
   @@map("product")
@@ -724,6 +727,104 @@ model PromotionCollection {
   @@id([promotionID, collectionID])
   @@index([collectionID])
   @@map("promotioncollection")
+}
+
+// A cart-level "buy N, pay $X total" tiered/combo rule — distinct from
+// Promotion (which prices ONE product in isolation): a ComboRule prices a
+// GROUP of units pooled across every cart line it covers, which is why its
+// evaluation lives in lib/combo-pricing.ts as a separate cart-level pass
+// rather than inside lib/pricing.ts's per-line pickPromotion/pricedWithPromotion.
+// Targeting shape (products/categories/collections/appliesToAll) is a
+// deliberate 1:1 mirror of Promotion's — see ComboRuleProduct/Category/
+// Collection below — reusing catalog/category-tree.ts's generic
+// assertTargetsExist()/previewTargetCoverage() rather than reinventing
+// targeting. Same single-winner-by-`priority` rule as Promotion: a product
+// covered by more than one active ComboRule is attributed to exactly one
+// (see lib/combo-pricing.ts pickComboRule()), so a cart line's eligible
+// units are never pooled into two different rules' groupings at once.
+model ComboRule {
+  id     String          @id @default(uuid()) @db.Uuid
+  nameEn String
+  nameAr String
+  // Reuses PromotionStatus (same DRAFT/ACTIVE/PAUSED/ENDED meaning) rather
+  // than a parallel ComboRuleStatus enum — same precedent as DiscountType
+  // being shared across Product/Promotion/Coupon/LoyaltyRule.
+  status       PromotionStatus @default(DRAFT)
+  priority     Int             @default(0)
+  appliesToAll Boolean         @default(false)
+  startsAt     DateTime?
+  endsAt       DateTime?
+  dateCreated  DateTime        @default(now())
+  lastEdit     DateTime        @default(now()) @updatedAt
+
+  tiers       ComboTier[]
+  products    ComboRuleProduct[]
+  categories  ComboRuleCategory[]
+  collections ComboRuleCollection[]
+
+  @@index([status])
+  @@index([startsAt, endsAt])
+  @@map("comborule")
+}
+
+// One quantity bracket of a ComboRule's price schedule: buying a group whose
+// size falls anywhere in [minQty, maxQty] (maxQty null = open-ended) costs
+// `price` FLAT for the whole group — not a per-unit price. A rule typically
+// carries several of these (e.g. "1 piece = $2", "2-3 pieces = $5"). See
+// lib/combo-pricing.ts for how eligible units are partitioned across a
+// rule's tiers to find the minimum-cost grouping (falling back to each
+// unit's own individual price — its product sale/promotion price — for
+// whatever doesn't fit a tier; "best price wins" against that individual
+// price is built into the algorithm, not a separate check).
+model ComboTier {
+  id          String  @id @default(uuid()) @db.Uuid
+  comboRuleID String  @db.Uuid
+  minQty      Int
+  maxQty      Int?
+  price       Decimal @db.Decimal(12, 2)
+  sortOrder   Int     @default(0)
+
+  comboRule ComboRule @relation(fields: [comboRuleID], references: [id], onDelete: Cascade)
+
+  @@index([comboRuleID])
+  @@map("combotier")
+}
+
+model ComboRuleProduct {
+  comboRuleID String @db.Uuid
+  productID   String @db.Uuid
+
+  comboRule ComboRule @relation(fields: [comboRuleID], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productID], references: [id], onDelete: Cascade)
+
+  @@id([comboRuleID, productID])
+  @@index([productID])
+  @@map("comboruleproduct")
+}
+
+model ComboRuleCategory {
+  comboRuleID        String  @db.Uuid
+  categoryID         String  @db.Uuid
+  includeDescendants Boolean @default(true)
+
+  comboRule ComboRule @relation(fields: [comboRuleID], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryID], references: [id], onDelete: Restrict)
+
+  @@id([comboRuleID, categoryID])
+  @@index([categoryID])
+  @@map("comborulecategory")
+}
+
+model ComboRuleCollection {
+  comboRuleID  String @db.Uuid
+  collectionID String @db.Uuid
+
+  comboRule  ComboRule  @relation(fields: [comboRuleID], references: [id], onDelete: Cascade)
+  collection Collection @relation(fields: [collectionID], references: [id], onDelete: Cascade)
+
+  @@id([comboRuleID, collectionID])
+  @@index([collectionID])
+  @@map("comborulecollection")
 }
 
 // A code the shopper enters at checkout for a discount off the (already

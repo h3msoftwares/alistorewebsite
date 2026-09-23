@@ -336,6 +336,58 @@ export interface PromotionBody {
   collectionIds?: UUID[];
 }
 
+/** One quantity bracket of a ComboRule's price schedule — a FLAT total price
+ *  for a group whose size falls in [minQty, maxQty] (maxQty null =
+ *  open-ended), not a per-unit price. See ComboTier's doc comment in
+ *  backend/prisma/schema.prisma. */
+export interface ComboTier {
+  minQty: number;
+  maxQty: number | null;
+  price: Decimalish;
+}
+
+/** Admin-managed cart-level "buy N, pay $X total" combo/tiered pricing rule
+ *  (`GET /api/combo-rules`) — reuses Promotion's own product/category/
+ *  collection targeting shape and PromotionStatus, but is priced by a
+ *  cart-level pass (lib/combo-pricing.ts), not per-product like Promotion. */
+export interface ComboRule {
+  id: UUID;
+  nameEn: string;
+  nameAr: string;
+  status: PromotionStatus;
+  priority: number;
+  appliesToAll: boolean;
+  startsAt: IsoDateTime | null;
+  endsAt: IsoDateTime | null;
+  dateCreated: IsoDateTime;
+  tiers: ComboTier[];
+  products: { productID: UUID; product: Pick<Product, 'id' | 'nameEn' | 'nameAr' | 'sku'> }[];
+  categories: {
+    categoryID: UUID;
+    includeDescendants: boolean;
+    category: Pick<Category, 'id' | 'nameEn' | 'nameAr' | 'slug'>;
+  }[];
+  collections: { collectionID: UUID; collection: Pick<Collection, 'id' | 'nameEn' | 'nameAr' | 'slug'> }[];
+}
+
+export interface ComboRuleBody {
+  nameEn: string;
+  nameAr: string;
+  status?: PromotionStatus;
+  priority?: number;
+  appliesToAll?: boolean;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  productIds?: UUID[];
+  categoryTargets?: PromotionCategoryTarget[];
+  collectionIds?: UUID[];
+  tiers: { minQty: number; maxQty: number | null; price: number }[];
+}
+
+/** `POST /api/combo-rules/preview-coverage` — same shape/purpose as
+ *  PromotionCoveragePreview. */
+export type ComboCoveragePreview = PromotionCoveragePreview;
+
 /** Admin-managed checkout coupon (`GET /api/coupons`). */
 export interface Coupon {
   id: UUID;

@@ -84,6 +84,12 @@ export const queryKeys = {
       all: () => ['discounts', 'coupons'] as const,
     },
   },
+  combos: {
+    rules: {
+      all: () => ['combos', 'rules'] as const,
+      detail: (id: UUID) => ['combos', 'rules', id] as const,
+    },
+  },
   loyalty: {
     rules: () => ['loyalty', 'rules'] as const,
   },

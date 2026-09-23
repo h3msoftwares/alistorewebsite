@@ -13,9 +13,11 @@ import {
 } from '../../lib/notifications/notification.service';
 import { isBlacklisted } from '../blacklist/blacklist.service';
 import { activePromotions } from '../discounts/promotion.service';
+import { activeComboRules } from '../combos/combo-rule.service';
 import { resolveCoupon, couponAmountOff } from '../discounts/coupon.service';
 import { lineUnitPrice } from '../../lib/line-pricing';
-import { PROMOTION_PRODUCT_INCLUDE } from '../catalog/category-tree';
+import { applyComboPricing, type ComboPricingLine } from '../../lib/combo-pricing';
+import { PROMOTION_PRODUCT_INCLUDE, productCategoryPaths, productCollectionIds } from '../catalog/category-tree';
 import { round2 } from '../../lib/money';
 import {
   resolveDeliveryFee,
@@ -195,7 +197,7 @@ async function loadCartSubtotal(db: DbClient, owner: CheckoutOwner): Promise<num
     where: owner.userID ? { userID: owner.userID } : { sessionID: owner.sessionID! },
   });
   if (!cart) return 0;
-  const [items, promotions] = await Promise.all([
+  const [items, promotions, comboRules] = await Promise.all([
     db.cartItem.findMany({
       where: { cartID: cart.id },
       include: {
@@ -216,8 +218,21 @@ async function loadCartSubtotal(db: DbClient, owner: CheckoutOwner): Promise<num
       },
     }),
     activePromotions(undefined, db),
+    activeComboRules(undefined, db),
   ]);
-  return round2(items.reduce((sum, i) => sum + lineUnitPrice(i.variant, promotions) * i.quantity, 0));
+  // Same applyComboPricing() pass checkout() itself runs below, on the same
+  // activePromotions()/activeComboRules() fetch shape — this is what keeps
+  // the GET /api/orders/delivery-quote estimate and checkout()'s own
+  // recomputed subtotal from ever drifting apart (see the design plan's Q3).
+  const comboLines: ComboPricingLine[] = items.map((i) => ({
+    lineId: i.id,
+    productId: i.variant.product.id,
+    categoryPaths: productCategoryPaths(i.variant.product),
+    collectionIds: productCollectionIds(i.variant.product),
+    quantity: i.quantity,
+    individualUnitPrice: lineUnitPrice(i.variant, promotions),
+  }));
+  return applyComboPricing(comboLines, comboRules).subtotal;
 }
 
 /** Live delivery-fee estimate for the caller's current cart + a chosen
@@ -410,15 +425,28 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       }
     }
 
-    // Effective unit price per line = variant override → product sale → best
-    // (single, priority-picked) active promotion. Snapshotted onto each
-    // OrderItem below so the order stays correct even if a promotion later
-    // ends. `tx` — same pool reason as the blacklist check above.
-    const promotions = await activePromotions(new Date(), tx);
-    const unitPriceFor = (i: (typeof cartItems)[number]) => lineUnitPrice(i.variant, promotions);
-    const subtotal = round2(
-      cartItems.reduce((sum, i) => sum + unitPriceFor(i) * i.quantity, 0)
-    );
+    // Effective price per line = variant override → product sale → best
+    // (single, priority-picked) active promotion → best (single,
+    // priority-picked) active ComboRule grouping, whichever of the combo
+    // and individual paths is cheaper (see lib/combo-pricing.ts). Snapshotted
+    // onto each OrderItem below so the order stays correct even if a
+    // promotion or combo rule later changes. `tx` — same pool reason as the
+    // blacklist check above.
+    const [promotions, comboRules] = await Promise.all([
+      activePromotions(new Date(), tx),
+      activeComboRules(new Date(), tx),
+    ]);
+    const comboLines: ComboPricingLine[] = cartItems.map((i) => ({
+      lineId: i.id,
+      productId: i.variant.product.id,
+      categoryPaths: productCategoryPaths(i.variant.product),
+      collectionIds: productCollectionIds(i.variant.product),
+      quantity: i.quantity,
+      individualUnitPrice: lineUnitPrice(i.variant, promotions),
+    }));
+    const priced = applyComboPricing(comboLines, comboRules);
+    const lineTotalFor = (i: (typeof cartItems)[number]) => priced.lineTotals.get(i.id)!;
+    const subtotal = priced.subtotal;
 
     // If the client told us what subtotal its cart view last showed the
     // shopper, and that no longer matches what we'd actually charge (e.g. an
@@ -557,7 +585,16 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
         paymentMethod: 'COD',
         items: {
           create: cartItems.map((i) => {
-            const unitPrice = unitPriceFor(i);
+            // lineTotal is the authoritative, exact amount charged for this
+            // line (it's what subtotal is actually built from — see
+            // applyComboPricing()); unitPrice is back-derived from it, so a
+            // line a combo rule split across grouped/individual portions (or
+            // grouped together with a DIFFERENT line's units) still stores a
+            // sensible per-unit figure without unitPrice * quantity ever
+            // being asked to reproduce a value combo pricing didn't compute
+            // that way in the first place. See the design plan (Q4).
+            const lineTotal = lineTotalFor(i);
+            const unitPrice = round2(lineTotal / i.quantity);
             return {
               variantID: i.variantID,
               productName: i.variant.product.nameEn,
@@ -568,7 +605,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
               color: i.variant.color,
               quantity: i.quantity,
               unitPrice,
-              lineTotal: round2(unitPrice * i.quantity),
+              lineTotal,
             };
           }),
         },

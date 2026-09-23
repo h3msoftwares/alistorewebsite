@@ -5,6 +5,12 @@ import { toNumber } from '../../lib/money';
 import type { PromotionCandidate } from '../../lib/pricing';
 import { productInCategoryPathFilter } from '../catalog/category-tree';
 import { collectionMembershipFilter } from '../catalog/collection-rules';
+import {
+  assertHasTargetOrAppliesToAll,
+  assertTargetsExist,
+  previewTargetCoverage,
+  type CategoryTarget,
+} from '../catalog/targeting';
 import type { CreatePromotionInput, UpdatePromotionInput } from './promotion.schema';
 
 // Shared client or an interactive-transaction client — see the note in
@@ -35,8 +41,6 @@ export async function getPromotion(id: string) {
   return promo;
 }
 
-type CategoryTarget = { categoryId: string; includeDescendants: boolean };
-
 function validateShape(input: {
   type?: 'PERCENT' | 'AMOUNT';
   value?: number;
@@ -53,75 +57,15 @@ function validateShape(input: {
   if (input.startsAt && input.endsAt && new Date(input.endsAt) <= new Date(input.startsAt)) {
     throw new AppError('VALIDATION_ERROR', 'endsAt must be after startsAt');
   }
-  const targetCount =
-    (input.productIds?.length ?? 0) + (input.categoryTargets?.length ?? 0) + (input.collectionIds?.length ?? 0);
-  if (input.appliesToAll && targetCount > 0) {
-    throw new AppError(
-      'VALIDATION_ERROR',
-      'A site-wide promotion cannot also carry specific product/category/collection targets'
-    );
-  }
-  if (!input.appliesToAll && targetCount === 0) {
-    throw new AppError(
-      'VALIDATION_ERROR',
-      'A promotion needs at least one target (a product, category, or collection), or must be marked site-wide'
-    );
-  }
-}
-
-// `existing` is the target set the promotion already had *before* this save
-// (omitted on create, where nothing is existing yet). A target that's newly
-// added must be a live, reachable product/category/collection — but
-// resubmitting one the promotion already targets must still succeed even if
-// it's since been archived/deleted, or the promotion could never be edited
-// again for any reason once one of its targets goes away. Same principle as
-// product.service.ts's assertCategoriesAssignable.
-async function assertTargetsExist(
-  productIds: string[],
-  categoryTargets: CategoryTarget[],
-  collectionIds: string[],
-  existing?: { productIds: string[]; categoryIds: string[]; collectionIds: string[] }
-) {
-  if (productIds.length) {
-    const found = await prisma.product.findMany({
-      where: { id: { in: productIds } },
-      select: { id: true, deletedAt: true },
-    });
-    if (found.length !== new Set(productIds).size) {
-      throw new AppError('NOT_FOUND', 'One or more productIds were not found');
-    }
-    const existingIds = new Set(existing?.productIds ?? []);
-    if (found.some((p) => p.deletedAt && !existingIds.has(p.id))) {
-      throw new AppError('CONFLICT', 'Cannot target a deleted product');
-    }
-  }
-  if (categoryTargets.length) {
-    const ids = categoryTargets.map((t) => t.categoryId);
-    const found = await prisma.category.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, archivedAt: true },
-    });
-    if (found.length !== new Set(ids).size) {
-      throw new AppError('NOT_FOUND', 'One or more category targets were not found');
-    }
-    const existingIds = new Set(existing?.categoryIds ?? []);
-    if (found.some((c) => c.archivedAt && !existingIds.has(c.id))) {
-      throw new AppError('CONFLICT', 'Cannot target an archived category');
-    }
-  }
-  if (collectionIds.length) {
-    const found = await prisma.collection.findMany({
-      where: { id: { in: collectionIds } },
-      select: { id: true, archivedAt: true },
-    });
-    if (found.length !== new Set(collectionIds).size) {
-      throw new AppError('NOT_FOUND', 'One or more collectionIds were not found');
-    }
-    const existingIds = new Set(existing?.collectionIds ?? []);
-    if (found.some((c) => c.archivedAt && !existingIds.has(c.id))) {
-      throw new AppError('CONFLICT', 'Cannot target an archived collection');
-    }
-  }
+  assertHasTargetOrAppliesToAll(
+    {
+      appliesToAll: input.appliesToAll ?? false,
+      productIds: input.productIds ?? [],
+      categoryTargets: input.categoryTargets ?? [],
+      collectionIds: input.collectionIds ?? [],
+    },
+    'promotion'
+  );
 }
 
 export async function createPromotion(input: CreatePromotionInput) {
@@ -263,7 +207,7 @@ export async function activePromotions(at: Date = new Date(), db: Db = prisma): 
   });
 
   // A collection target only ever matches a product through a
-  // CollectionProduct row (see promotionCoversProduct() in lib/pricing.ts) —
+  // CollectionProduct row (see coversTarget() in lib/pricing.ts) —
   // correct for MANUAL, but an AUTOMATED/HYBRID collection's real membership
   // is computed from CollectionRule at read time and never stored as a join
   // row, so a promotion targeting one would otherwise never match anything,
@@ -277,7 +221,7 @@ export async function activePromotions(at: Date = new Date(), db: Db = prisma): 
   // manual CollectionProduct row for it either way; that's covered via
   // `productIds` instead. `ruleBasedProductCollections` (built below,
   // per-promotion) keeps the resolved productId -> collection mapping around
-  // so matchPromotion() can still correctly attribute those as "COLLECTION"
+  // so matchTarget() can still correctly attribute those as "COLLECTION"
   // instead of the generic "PRODUCT" fallback the flat union alone can't
   // tell apart from a real, direct product target.
   const ruleBasedCollectionIds = [
@@ -370,69 +314,10 @@ export function promotionCoverageFilter(promotions: PromotionCandidate[]): Prism
   return or.length ? { OR: or } : { id: { in: [] } };
 }
 
-export interface PromotionCoveragePreview {
-  count: number;
-  sample: { id: string; nameEn: string; nameAr: string; sku: string }[];
-}
-
-/** "Which live products would this promotion actually cover" — computed
- *  directly from a draft target set (before or after the promotion is
- *  saved), so the admin form can show it while still editing. Mirrors
- *  activePromotions()'s AUTOMATED/HYBRID collection resolution rather than
- *  the simpler manual-membership-only check promotionCoverageFilter() uses,
- *  since that one only works from an already-persisted promotion's resolved
- *  `productIds`. */
-export async function previewPromotionCoverage(input: {
-  appliesToAll: boolean;
-  productIds: string[];
-  categoryTargets: CategoryTarget[];
-  collectionIds: string[];
-}): Promise<PromotionCoveragePreview> {
-  const base: Prisma.ProductWhereInput = { isActive: true, deletedAt: null };
-  let where: Prisma.ProductWhereInput;
-
-  if (input.appliesToAll) {
-    where = base;
-  } else {
-    const or: Prisma.ProductWhereInput[] = [];
-
-    if (input.productIds.length) or.push({ id: { in: input.productIds } });
-
-    if (input.categoryTargets.length) {
-      const categories = await prisma.category.findMany({
-        where: { id: { in: input.categoryTargets.map((t) => t.categoryId) } },
-        select: { id: true, path: true },
-      });
-      const pathByID = new Map(categories.map((c) => [c.id, c.path]));
-      for (const t of input.categoryTargets) {
-        const path = pathByID.get(t.categoryId);
-        if (path) or.push(productInCategoryPathFilter(path, t.includeDescendants));
-      }
-    }
-
-    if (input.collectionIds.length) {
-      const collections = await prisma.collection.findMany({
-        where: { id: { in: input.collectionIds } },
-        select: { id: true, type: true },
-      });
-      for (const c of collections) or.push(await collectionMembershipFilter(c));
-    }
-
-    where = or.length ? { AND: [base, { OR: or }] } : { id: { in: [] } };
-  }
-
-  const [count, sample] = await Promise.all([
-    prisma.product.count({ where }),
-    prisma.product.findMany({
-      where,
-      select: { id: true, nameEn: true, nameAr: true, sku: true },
-      orderBy: { dateCreated: 'desc' },
-      take: 8,
-    }),
-  ]);
-
-  return { count, sample };
-}
+/** "Which live products would this promotion actually cover" — thin wrapper
+ *  over the generic previewTargetCoverage() (catalog/targeting.ts), shared
+ *  with ComboRule's own coverage preview. See that function's doc comment. */
+export const previewPromotionCoverage = previewTargetCoverage;
 
 export function mapPrismaError(e: unknown) {
   if (e instanceof Prisma.PrismaClientKnownRequestError && (e.code === 'P2003' || e.code === 'P2025')) {

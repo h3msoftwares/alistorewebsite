@@ -24,6 +24,11 @@ export const PERMISSION_AREAS: PermissionArea[] = [
   { area: 'collections', label: 'Collections', levels: ['view', 'manage'] },
   { area: 'categories', label: 'Categories', levels: ['view', 'manage'] },
   { area: 'discounts', label: 'Discounts & coupons', levels: ['view', 'manage'] },
+  // Deliberately its own area, not folded into 'discounts' — renaming an
+  // existing permission key would silently revoke it from every stored
+  // Role.permissions row (same reasoning promotionRoutes' own comment gives
+  // for keeping the 'discounts:*' keys despite Promotion replacing Discount).
+  { area: 'combos', label: 'Combo & tiered pricing', levels: ['view', 'manage'] },
   { area: 'loyalty', label: 'Loyalty program', levels: ['view', 'manage'] },
   { area: 'analytics', label: 'Analytics', levels: ['view'] },
   { area: 'settings', label: 'Store settings', levels: ['view', 'manage'] },

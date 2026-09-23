@@ -17,6 +17,7 @@ import {
   Tag,
   Package,
   Percent,
+  Combine,
   ShoppingBag,
   RotateCcw,
   Users,
@@ -38,6 +39,9 @@ export const PERMISSION_AREAS: PermissionArea[] = [
   { area: 'collections', label: 'Collections', levels: ['view', 'manage'] },
   { area: 'categories', label: 'Categories', levels: ['view', 'manage'] },
   { area: 'discounts', label: 'Discounts & coupons', levels: ['view', 'manage'] },
+  // Deliberately its own area, not folded into 'discounts' — see
+  // backend/src/lib/permissions.ts's matching comment.
+  { area: 'combos', label: 'Combo & tiered pricing', levels: ['view', 'manage'] },
   { area: 'loyalty', label: 'Loyalty program', levels: ['view', 'manage'] },
   { area: 'analytics', label: 'Analytics', levels: ['view'] },
   { area: 'settings', label: 'Store settings', levels: ['view', 'manage'] },
@@ -52,6 +56,7 @@ const AREA_LABEL_AR: Record<string, string> = {
   collections: 'المجموعات',
   categories: 'الفئات',
   discounts: 'الخصومات والقسائم',
+  combos: 'التسعير التجميعي',
   loyalty: 'برنامج الولاء',
   analytics: 'التحليلات',
   settings: 'إعدادات المتجر',
@@ -100,6 +105,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { href: '/categories', labelEn: 'Categories', labelAr: 'الفئات', permission: 'categories:view', icon: Tag, group: 'catalog' },
   { href: '/products', labelEn: 'Products', labelAr: 'المنتجات', permission: 'products:view', icon: Package, group: 'catalog' },
   { href: '/discounts', labelEn: 'Discounts', labelAr: 'الخصومات', permission: 'discounts:view', icon: Percent, group: 'sales' },
+  { href: '/combos', labelEn: 'Combo pricing', labelAr: 'التسعير التجميعي', permission: 'combos:view', icon: Combine, group: 'sales' },
   { href: '/orders', labelEn: 'Orders', labelAr: 'الطلبات', permission: 'orders:view', icon: ShoppingBag, group: 'sales' },
   { href: '/orders/returns', labelEn: 'Returns', labelAr: 'المرتجعات', permission: 'orders:view', icon: RotateCcw, group: 'sales' },
   { href: '/customers', labelEn: 'Customers', labelAr: 'الزبائن', permission: 'customers:view', icon: Users, group: 'sales' },

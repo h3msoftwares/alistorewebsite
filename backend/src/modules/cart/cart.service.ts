@@ -3,8 +3,10 @@ import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { round2 } from '../../lib/money';
 import { lineUnitPrice } from '../../lib/line-pricing';
+import { applyComboPricing, type ComboPricingLine } from '../../lib/combo-pricing';
 import { activePromotions } from '../discounts/promotion.service';
-import { PROMOTION_PRODUCT_INCLUDE } from '../catalog/category-tree';
+import { activeComboRules } from '../combos/combo-rule.service';
+import { PROMOTION_PRODUCT_INCLUDE, productCategoryPaths, productCollectionIds } from '../catalog/category-tree';
 
 interface CartOwner {
   userID?: string;
@@ -49,7 +51,7 @@ async function getOrCreateCart(owner: CartOwner) {
 
 export async function getCart(owner: CartOwner) {
   const cart = await getOrCreateCart(owner);
-  const [rows, promotions] = await Promise.all([
+  const [rows, promotions, comboRules] = await Promise.all([
     prisma.cartItem.findMany({
       where: { cartID: cart.id },
       // `variants: true` lets the cart page/drawer build a size/color picker
@@ -68,17 +70,34 @@ export async function getCart(owner: CartOwner) {
       orderBy: { dateCreated: 'asc' },
     }),
     activePromotions(),
+    activeComboRules(),
   ]);
 
-  // Attach the effective unit price (variant override → product sale → the
-  // best active promotion) so the cart UI and the total agree with what
-  // checkout will charge.
+  // Per-line price before any combo grouping (variant override → product
+  // sale → best active Promotion) — what lib/combo-pricing.ts's Q1 pipeline
+  // placement calls the individual price a combo has to beat.
+  const comboLines: ComboPricingLine[] = rows.map((i) => ({
+    lineId: i.id,
+    productId: i.variant.product.id,
+    categoryPaths: productCategoryPaths(i.variant.product),
+    collectionIds: productCollectionIds(i.variant.product),
+    quantity: i.quantity,
+    individualUnitPrice: lineUnitPrice(i.variant, promotions),
+  }));
+  const priced = applyComboPricing(comboLines, comboRules);
+
+  // `effectivePrice` is the per-unit price this shopper actually pays RIGHT
+  // NOW for this line — blended back from the line's combo-adjusted total
+  // when a ComboRule grouped (some of) it, same as an un-grouped line's own
+  // individual price otherwise. A cart with no active combo rules produces
+  // the exact same effectivePrice/subtotal as before this feature existed —
+  // see applyComboPricing()'s own regression guarantee.
   const items = rows.map((i) => ({
     ...i,
-    effectivePrice: lineUnitPrice(i.variant, promotions),
+    effectivePrice: round2(priced.lineTotals.get(i.id)! / i.quantity),
+    comboRuleId: priced.lineComboRuleIds.get(i.id) ?? null,
   }));
-  const subtotal = round2(items.reduce((sum, i) => sum + i.effectivePrice * i.quantity, 0));
-  return { items, subtotal };
+  return { items, subtotal: priced.subtotal, comboSavings: priced.comboSavings };
 }
 
 export async function addItem(owner: CartOwner, variantId: string, quantity: number) {

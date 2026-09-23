@@ -70,41 +70,54 @@ export function pricedWithPromotion(
   return round2(Math.max(0, afterSale - amountOff(promotion.type, promotion.value, afterSale)));
 }
 
-/** Everything pickPromotion needs to test whether a Promotion covers a given
- *  product, plus the fields needed to price it once picked. */
-export interface PromotionCandidate extends AppliedPromotion {
-  nameEn: string;
-  nameAr: string;
-  priority: number;
+/**
+ * Everything needed to test whether a targetable rule (a Promotion OR a
+ * ComboRule — see lib/combo-pricing.ts) covers a given product. Factored out
+ * of PromotionCandidate so `matchTarget`/`coversTarget` below (and
+ * pickPromotion's matching) are reusable as-is by combo-rule matching
+ * (pickComboRule) rather than reimplemented — both share the exact same
+ * product/category/collection targeting shape (see catalog/targeting.ts's
+ * generic assertTargetsExist/previewTargetCoverage for the same reuse on the
+ * admin-CRUD side).
+ */
+export interface TargetCandidate {
   /** Site-wide — covers every product regardless of the target arrays below.
    *  See the Promotion model's doc comment in schema.prisma for why this
    *  exists beyond the architecture doc's literal sketch. */
   appliesToAll: boolean;
-  /** EVERY product this promotion covers — directly-targeted products PLUS
-   *  the resolved current membership of any AUTOMATED/HYBRID collection
-   *  target (a rule-based collection never has real CollectionProduct rows
-   *  to match on directly — see promotion.service.ts's activePromotions()).
-   *  Used for coverage tests (promotionCoverageFilter, pickPromotion) where
-   *  only "does this promotion cover this product at all" matters, not WHY.
+  /** EVERY product this rule covers — directly-targeted products PLUS the
+   *  resolved current membership of any AUTOMATED/HYBRID collection target
+   *  (a rule-based collection never has real CollectionProduct rows to match
+   *  on directly — see promotion.service.ts's activePromotions()). Used for
+   *  coverage tests (promotionCoverageFilter, pickPromotion) where only
+   *  "does this rule cover this product at all" matters, not WHY.
    *  Attribution (`source`) is derived separately below — matching this
    *  union alone can't tell a direct PRODUCT target apart from a resolved
    *  COLLECTION one. */
   productIds: string[];
   /** Subset of `productIds` that were directly, manually targeted (a real
-   *  PromotionProduct row) — the only ones that legitimately mean
-   *  `source: 'PRODUCT'`. */
+   *  PromotionProduct/ComboRuleProduct row) — the only ones that legitimately
+   *  mean `source: 'PRODUCT'`. */
   directProductIds: string[];
   categoryTargets: { path: string; includeDescendants: boolean; nameEn: string; nameAr: string }[];
   /** Every targeted collection (manual AND rule-based), for display and for
    *  matching a product's own MANUAL collectionIds. */
   collections: { id: string; nameEn: string; nameAr: string }[];
   /** productId -> the (first) AUTOMATED/HYBRID collection target whose
-   *  resolved rule-based membership included it — lets matchPromotion()
+   *  resolved rule-based membership included it — lets matchTarget()
    *  attribute those covered-via-`productIds` products back to "COLLECTION"
    *  instead of falling through to the wrong "PRODUCT" label. A MANUAL
    *  collection's members never need this: they already match via the
    *  product's own `collectionIds` against `collections` above. */
   ruleBasedProductCollections: Record<string, { id: string; nameEn: string; nameAr: string }>;
+}
+
+/** Everything pickPromotion needs to test whether a Promotion covers a given
+ *  product, plus the fields needed to price it once picked. */
+export interface PromotionCandidate extends AppliedPromotion, TargetCandidate {
+  nameEn: string;
+  nameAr: string;
+  priority: number;
 }
 
 /** Which target actually matched, and (for a COLLECTION/CATEGORY match) that
@@ -117,37 +130,42 @@ export interface PromotionMatch {
   sourceNameAr?: string;
 }
 
-function matchPromotion(
-  promo: PromotionCandidate,
+/** Which target of a candidate (Promotion or ComboRule — anything shaped
+ *  like TargetCandidate) actually covers this product, if any. Shared by
+ *  pickPromotion() below and pickComboRule() in lib/combo-pricing.ts. */
+export function matchTarget(
+  candidate: TargetCandidate,
   product: { id: string; categoryPaths: string[]; collectionIds: string[] }
 ): PromotionMatch | null {
-  if (promo.appliesToAll) return { source: 'ALL' };
-  if (promo.directProductIds.includes(product.id)) return { source: 'PRODUCT' };
-  const collectionHit = promo.collections.find((c) => product.collectionIds.includes(c.id));
+  if (candidate.appliesToAll) return { source: 'ALL' };
+  if (candidate.directProductIds.includes(product.id)) return { source: 'PRODUCT' };
+  const collectionHit = candidate.collections.find((c) => product.collectionIds.includes(c.id));
   if (collectionHit) return { source: 'COLLECTION', sourceNameEn: collectionHit.nameEn, sourceNameAr: collectionHit.nameAr };
   // Not a direct manual collectionLinks row (that's the check just above) —
   // an AUTOMATED/HYBRID target this product matches only via its resolved,
   // rule-based membership still needs to say "COLLECTION", not fall through
   // to a plain "PRODUCT" label just because it's also present in the flat
   // `productIds` coverage union.
-  const ruleBasedHit = promo.ruleBasedProductCollections[product.id];
+  const ruleBasedHit = candidate.ruleBasedProductCollections[product.id];
   if (ruleBasedHit) return { source: 'COLLECTION', sourceNameEn: ruleBasedHit.nameEn, sourceNameAr: ruleBasedHit.nameAr };
-  const categoryHit = promo.categoryTargets.find((t) =>
+  const categoryHit = candidate.categoryTargets.find((t) =>
     product.categoryPaths.some((p) => (t.includeDescendants ? p.startsWith(t.path) : p === t.path))
   );
   if (categoryHit) return { source: 'CATEGORY', sourceNameEn: categoryHit.nameEn, sourceNameAr: categoryHit.nameAr };
   // Covered via the flat union (`productIds`) but none of the above matched
   // explicitly — shouldn't happen given how that union is built, but falls
   // back to PRODUCT rather than silently returning "not covered".
-  if (promo.productIds.includes(product.id)) return { source: 'PRODUCT' };
+  if (candidate.productIds.includes(product.id)) return { source: 'PRODUCT' };
   return null;
 }
 
-function promotionCoversProduct(
-  promo: PromotionCandidate,
+/** Whether a candidate (Promotion or ComboRule) covers this product at all —
+ *  shared by pickPromotion() and pickComboRule(). */
+export function coversTarget(
+  candidate: TargetCandidate,
   product: { id: string; categoryPaths: string[]; collectionIds: string[] }
 ): boolean {
-  return matchPromotion(promo, product) !== null;
+  return matchTarget(candidate, product) !== null;
 }
 
 /**
@@ -178,7 +196,7 @@ export function pickPromotion(
   },
   promotions: PromotionCandidate[]
 ): PickedPromotion | null {
-  const matches = promotions.filter((p) => promotionCoversProduct(p, product));
+  const matches = promotions.filter((p) => coversTarget(p, product));
   if (matches.length === 0) return null;
 
   const topPriority = Math.max(...matches.map((m) => m.priority));
@@ -195,6 +213,6 @@ export function pickPromotion(
   }
   // best came from `matches`, which is pre-filtered to promotions that DO
   // match this product, so this can never be null.
-  const match = matchPromotion(best, product)!;
+  const match = matchTarget(best, product)!;
   return { id: best.id, type: best.type, value: best.value, stackable: best.stackable, nameEn: best.nameEn, nameAr: best.nameAr, ...match };
 }
