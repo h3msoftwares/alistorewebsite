@@ -2354,7 +2354,8 @@ a.home-card__name:hover { text-decoration: underline; }
   text-overflow: ellipsis;
 }
 .admin-sidebar__user-role { font-size: var(--fs-2xs); color: var(--color-text-muted-on-dark); }
-.admin-sidebar__logout {
+.admin-sidebar__logout,
+.admin-sidebar__profile-link {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -2367,7 +2368,8 @@ a.home-card__name:hover { text-decoration: underline; }
   color: var(--color-text-muted-on-dark);
   cursor: pointer;
 }
-.admin-sidebar__logout:hover { background: rgba(255, 255, 255, 0.1); color: var(--color-text-on-dark); }
+.admin-sidebar__logout:hover,
+.admin-sidebar__profile-link:hover { background: rgba(255, 255, 255, 0.1); color: var(--color-text-on-dark); }
 
 /* ---- mobile: bottom tab bar + "More" drawer ---- */
 .admin-mobile-nav {

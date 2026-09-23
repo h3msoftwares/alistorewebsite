@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { PanelLeftClose } from 'lucide-react';
+import { PanelLeftClose, UserCog } from 'lucide-react';
 import { Icon } from '@/components/ui/icon';
 import { initialsOf } from '@/components/chrome/topbar';
 import { LogoutButton } from '@/components/chrome/logout-button';
@@ -67,6 +67,14 @@ export function AdminSidebar({ locale, onCollapse }: { locale: string; onCollaps
             <span className="admin-sidebar__user-name">{user.name}</span>
             <span className="admin-sidebar__user-role">{user.roleName || (user.role === 'ADMIN' ? t('Admin', 'مسؤول') : t('Staff', 'موظف'))}</span>
           </span>
+          <Link
+            href={`/${locale}/admin/profile`}
+            className="admin-sidebar__profile-link"
+            title={t('My profile', 'ملفي الشخصي')}
+            aria-label={t('My profile', 'ملفي الشخصي')}
+          >
+            <Icon as={UserCog} size={16} />
+          </Link>
           <LogoutButton locale={locale} variant="icon" />
         </div>
       )}

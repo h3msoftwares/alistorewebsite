@@ -48,6 +48,11 @@ describe('requiredPermissionForPath', () => {
     expect(requiredPermissionForPath('/en/account')).toBeNull();
     expect(requiredPermissionForPath('/en/administrator-notes')).toBeNull();
   });
+
+  it('never gates the self-service profile page behind a business permission', () => {
+    expect(requiredPermissionForPath('/en/admin/profile')).toBeNull();
+    expect(requiredPermissionForPath('/admin/profile')).toBeNull();
+  });
 });
 
 describe('areaLabel', () => {

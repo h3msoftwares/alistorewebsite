@@ -131,6 +131,13 @@ export function requiredPermissionForPath(pathname: string): string | null {
   const m = pathname.match(/\/admin(\/.*)?$/);
   if (!m) return null; // not an admin route
   const sub = (m[1] ?? '').replace(/\/$/, '');
+  // Every signed-in STAFF/ADMIN can always reach their own profile — editing
+  // your own name/phone/password/email is self-service, not a business-data
+  // area, so it must never depend on a granted permission (a custom STAFF
+  // role with nothing checked would otherwise be unable to even fix its own
+  // account). AdminLayout's own STAFF/ADMIN role check already gates access
+  // to this whole subtree before this function ever runs.
+  if (sub === '/profile') return null;
   // Most specific section whose href prefixes the path.
   const hit = [...ADMIN_SECTIONS]
     .filter((s) => s.href !== '' && (sub === s.href || sub.startsWith(s.href + '/')))

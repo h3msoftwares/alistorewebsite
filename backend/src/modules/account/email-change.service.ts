@@ -95,6 +95,12 @@ export async function requestEmailChange(
   }
 }
 
+export interface ConfirmedEmailChange {
+  userId: string;
+  oldEmail: string | null;
+  newEmail: string;
+}
+
 /**
  * Step 2: consume a confirmation token from the link sent to the NEW
  * address. One generic error for "not found" / "expired" / "already used" —
@@ -107,8 +113,12 @@ export async function requestEmailChange(
  * Re-checks the uniqueness race at confirm time too — the window between
  * request and confirm could be minutes or hours, long enough for the address
  * to have been claimed by someone else in the meantime.
+ *
+ * Returns who changed (and old/new address) purely so the caller
+ * (email-change.controller.ts) can write the AuditLog row — this route is
+ * public/token-only, so there's no req.user to pull an actor from otherwise.
  */
-export async function confirmEmailChange(token: string): Promise<void> {
+export async function confirmEmailChange(token: string): Promise<ConfirmedEmailChange> {
   const record = await prisma.emailChangeRequest.findUnique({
     where: { tokenHash: hashToken(token) },
     include: { user: true },
@@ -147,4 +157,6 @@ export async function confirmEmailChange(token: string): Promise<void> {
       console.error('[email-change] unexpected mailer error (changed notice)', err);
     });
   }
+
+  return { userId: record.userID, oldEmail, newEmail: record.newEmail };
 }

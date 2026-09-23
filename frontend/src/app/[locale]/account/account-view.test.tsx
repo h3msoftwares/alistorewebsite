@@ -24,7 +24,13 @@ const requestEmailChange = {
   error: null as unknown,
 };
 
-const auth = { status: 'authenticated' as 'authenticated' | 'loading' | 'guest', isAdmin: false };
+const auth = {
+  status: 'authenticated' as 'authenticated' | 'loading' | 'guest',
+  isAdmin: false,
+  // `isAdmin` covers ADMIN + STAFF (see selectIsAdmin); EmailSection gates on
+  // the exact role, so tests that need to distinguish the two set this too.
+  user: { id: 'u1', name: 'Ali', role: 'CUSTOMER' as 'CUSTOMER' | 'STAFF' | 'ADMIN' },
+};
 const profile = {
   data: { id: 'u1', name: 'Ali', email: 'ali@test.dev', phone: '0790000000', emailVerified: '2026-01-01', role: 'CUSTOMER', isActive: true, dateCreated: 'x' },
   isPending: false,
@@ -78,6 +84,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   auth.status = 'authenticated';
   auth.isAdmin = false;
+  auth.user = { id: 'u1', name: 'Ali', role: 'CUSTOMER' };
   Object.assign(myOrders, {
     data: [
       { id: 'o1', orderNumber: 'AS-1001', dateCreated: '2026-02-03T10:00:00Z', total: '42.50', status: 'SHIPPED' },
@@ -249,5 +256,30 @@ describe('<AccountView>', () => {
     auth.isAdmin = false;
     renderView();
     expect(screen.queryByRole('link', { name: 'Admin dashboard' })).not.toBeInTheDocument();
+  });
+
+  it('shows the email-change form for an ADMIN', () => {
+    auth.isAdmin = true;
+    auth.user = { id: 'u1', name: 'Ali', role: 'ADMIN' };
+    renderView();
+    expect(screen.getByRole('button', { name: 'Send confirmation link' })).toBeInTheDocument();
+  });
+
+  // isAdmin (selectIsAdmin) is true for STAFF too, but the backend route is
+  // ADMIN-only (email-change.routes.ts requireRole('ADMIN')) — the form must
+  // gate on the exact role, not the broader flag, or STAFF gets a dead-end
+  // form that always 403s.
+  it('hides the email-change form for STAFF even though isAdmin is true', () => {
+    auth.isAdmin = true;
+    auth.user = { id: 'u1', name: 'Ali', role: 'STAFF' };
+    renderView();
+    expect(screen.queryByRole('button', { name: 'Send confirmation link' })).not.toBeInTheDocument();
+  });
+
+  it('hides the email-change form for a plain customer', () => {
+    auth.isAdmin = false;
+    auth.user = { id: 'u1', name: 'Ali', role: 'CUSTOMER' };
+    renderView();
+    expect(screen.queryByRole('button', { name: 'Send confirmation link' })).not.toBeInTheDocument();
   });
 });

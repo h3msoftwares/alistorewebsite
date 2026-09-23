@@ -192,6 +192,12 @@ describe('POST /api/account/email-change/confirm', () => {
           .send({ identifier: 'owner@old.test', password: OLD_PASSWORD })
       ).status
     ).toBe(401);
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityType: 'User', entityID: user.id, action: 'email_change.confirmed' },
+    });
+    expect(log.actorID).toBe(user.id);
+    expect(log.metadata).toMatchObject({ oldEmail: 'owner@old.test', newEmail: 'owner@new.test' });
   });
 
   it('a token cannot be replayed a second time', async () => {

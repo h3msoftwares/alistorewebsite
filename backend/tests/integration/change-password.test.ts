@@ -89,4 +89,38 @@ describe('POST /api/auth/change-password', () => {
       (await request(app).post('/api/auth/login').send({ identifier: user.email, password: OLD })).status
     ).toBe(401);
   });
+
+  it('records an AuditLog row on success — who and when, never the password', async () => {
+    const { user, token } = await makeUser();
+
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set(bearer(token))
+      .send({ currentPassword: OLD, newPassword: NEW });
+    expect(res.status).toBe(200);
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityType: 'User', entityID: user.id, action: 'password_change' },
+    });
+    expect(log.actorID).toBe(user.id);
+    expect(JSON.stringify(log.metadata)).not.toContain(NEW);
+    expect(JSON.stringify(log.metadata)).not.toContain(OLD);
+  });
+
+  it('records an AuditLog row on a failed attempt (wrong current password), without the password', async () => {
+    const { user, token } = await makeUser();
+
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set(bearer(token))
+      .send({ currentPassword: 'not-it', newPassword: NEW });
+    expect(res.status).toBe(400);
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { entityType: 'User', entityID: user.id, action: 'password_change.failed' },
+    });
+    expect(log.actorID).toBe(user.id);
+    expect(JSON.stringify(log.metadata)).not.toContain(NEW);
+    expect(JSON.stringify(log.metadata)).not.toContain('not-it');
+  });
 });

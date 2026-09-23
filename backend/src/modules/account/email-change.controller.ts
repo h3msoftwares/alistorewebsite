@@ -39,6 +39,15 @@ export async function requestEmailChangeHandler(req: Request, res: Response) {
 
 export async function confirmEmailChangeHandler(req: Request, res: Response) {
   const { token } = req.body as { token: string };
-  await service.confirmEmailChange(token);
+  const { userId, oldEmail, newEmail } = await service.confirmEmailChange(token);
+
+  await recordAudit({
+    entityType: 'User',
+    entityID: userId,
+    action: 'email_change.confirmed',
+    actorID: userId,
+    metadata: { oldEmail, newEmail },
+  });
+
   res.status(200).json({ message: CONFIRM_MESSAGE });
 }
