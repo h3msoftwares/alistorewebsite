@@ -1,0 +1,28 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "alistore-frontend",
+	"compatibility_date": "2026-09-25",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			// Self-reference service binding, the service name must match the worker name
+			// see https://opennext.js.org/cloudflare/caching
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "alistore-frontend"
+		}
+	]
+	// No "images" binding: this app never uses Next's built-in image
+	// optimizer — next.config.mjs sets a custom ImageKit loader
+	// (loaderFile: './src/lib/imagekit-loader.ts'), so <Image> builds URLs
+	// straight to ImageKit's CDN client-side, no /_next/image round trip to
+	// bind Cloudflare Images to. Add this back only if that loader is ever
+	// removed in favor of Next's default optimizer.
+}

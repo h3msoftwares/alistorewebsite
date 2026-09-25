@@ -155,6 +155,50 @@ frontend calls Railway's domain directly).
 4. (Optional) Site configuration → Build & deploy → Deploy notifications →
    add a Build hook, store it as the `NETLIFY_DEPLOY_HOOK` repo secret for CI.
 
+### Frontend → Cloudflare Workers (migration in progress)
+
+Being evaluated as Netlify's replacement (build-minute limits hit on the
+free tier) via the **OpenNext Cloudflare adapter** (`@opennextjs/cloudflare`)
+— full Next.js feature support (SSR, `proxy.ts`, everything this app uses),
+unlike the older/more limited `next-on-pages` adapter. `frontend/wrangler.jsonc`
+and `frontend/open-next.config.ts` declare the Worker; **until this migration
+is confirmed working end-to-end on Cloudflare's own free subdomain, Netlify
+remains the live production deployment** — don't remove `netlify.toml` or the
+Netlify site as part of this section.
+
+Same `/api/*` same-origin-cookie problem as Netlify (see that section's intro
+and `next.config.mjs`'s `rewrites()` comment), solved differently: Cloudflare
+Workers have no edge-redirect layer like Netlify's `netlify.toml`, so the
+proxy is a Next.js-level `rewrites()` rule in `next.config.mjs` instead —
+active only when `API_SERVER_URL` is set, so it's a no-op on Netlify (whose
+own edge redirect already wins there) and in local dev (unset).
+
+1. Cloudflare dashboard → Workers & Pages → Create → Import a Git repository
+   → this repo. Root directory: `frontend`.
+2. Build command: `npx opennextjs-cloudflare build` (it runs `next build`
+   itself as its first phase — confirmed from its own build log output — so
+   a separate `npm run build` step first is redundant, just doubles build
+   time). Deploy command: leave Cloudflare's own Git-integration default (it
+   runs `wrangler deploy` against the already-built `.open-next/` output) —
+   don't use `npm run deploy` here, that script re-runs the build itself.
+3. Add the frontend env vars (Settings → Variables and Secrets) — **same
+   values as the Netlify section above**: `NEXT_PUBLIC_API_URL` empty,
+   `API_SERVER_URL` = the Railway backend's public URL, plus every other
+   `NEXT_PUBLIC_*` var from `frontend/.env.example` that Netlify already has
+   set.
+4. First deploy lands on the free `alistore-frontend.<your-subdomain>.workers.dev`
+   URL (worker name from `wrangler.jsonc`'s `name` field) — no custom domain,
+   no DNS change, Netlify totally unaffected. Verify login/cart/checkout
+   there before ever touching DNS or a custom domain.
+5. Local preview without touching any real Cloudflare account: copy
+   `frontend/.dev.vars.example` to `frontend/.dev.vars`, then
+   `npm run preview` (builds + runs `wrangler dev` against the real Railway
+   backend, entirely on your own machine).
+6. Cutover (only after step 4 passes): point the real domain at Cloudflare,
+   update `CORS_ORIGIN`/`FRONTEND_URL` on Railway to match, then decommission
+   the Netlify site. Not yet done as of this writing — treat this whole
+   subsection as describing the parallel test path, not the live setup.
+
 ## Load test
 
 ```bash

@@ -1,0 +1,17 @@
+# Local vars for `wrangler dev` / `npm run preview` (the Cloudflare Workers
+# equivalent of `frontend/.env.local` for `next dev`) — copy to `.dev.vars`
+# and fill in. Gitignored; `.dev.vars.example` itself is the only variant
+# meant to be committed. See frontend/.env.example for what each var does —
+# these are the same names, just consumed by the Worker at runtime instead
+# of by `next dev`.
+NEXTJS_ENV=development
+
+# Empty, same reasoning as Netlify's setup (see next.config.mjs's rewrites()
+# comment and docs/DEPLOYMENT.md): a same-origin /api/* rewrite to
+# API_SERVER_URL below keeps the backend's SameSite=Strict cookies working.
+NEXT_PUBLIC_API_URL=
+
+# Point at whichever backend you want this local Worker preview to talk to —
+# usually the real Railway backend, since there's no point standing up a
+# second local Postgres just to preview a frontend build.
+API_SERVER_URL=https://alistorewebsite-production.up.railway.app

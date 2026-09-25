@@ -161,6 +161,20 @@ const nextConfig = {
     deviceSizes: [400, 600, 828, 1080, 1200, 1920, 2000],
     imageSizes: [80, 120, 160, 256, 300],
   },
+  // Same same-origin-cookie proxy netlify.toml's [[redirects]] already does
+  // for the Netlify deploy (see that file's comment — SameSite=Strict auth/
+  // CSRF/cart cookies never round-trip cross-site). Netlify's own edge
+  // redirect intercepts /api/* before it ever reaches this Next.js server,
+  // so this rewrite is dead code there; on a host with no such edge-redirect
+  // layer (Cloudflare Workers via OpenNext), it's the only mechanism, so it
+  // has to live here instead of in a host-specific config file. Only active
+  // when API_SERVER_URL is actually set — unset in local dev, where the
+  // browser already talks to the backend directly (see apiOrigin above).
+  async rewrites() {
+    const backendUrl = process.env.API_SERVER_URL;
+    if (!backendUrl) return [];
+    return [{ source: '/api/:path*', destination: `${backendUrl.replace(/\/+$/, '')}/api/:path*` }];
+  },
 };
 
 // `ANALYZE=true npm run build` (or `npm run analyze`) emits the interactive
@@ -169,3 +183,5 @@ const nextConfig = {
 const withBundleAnalyzer = bundleAnalyzer({ enabled: process.env.ANALYZE === 'true' });
 
 export default withBundleAnalyzer(nextConfig);
+
+import('@opennextjs/cloudflare').then(m => m.initOpenNextCloudflareForDev());
