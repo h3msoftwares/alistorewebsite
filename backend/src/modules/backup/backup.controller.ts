@@ -43,15 +43,23 @@ export async function runBackupHandler(req: Request, res: Response) {
         metadata: { file: result.file?.name, bytes: result.file?.bytes, pruned: result.pruned },
       })
     )
-    .catch((err: Error) =>
-      recordAudit({
+    .catch((err: Error) => {
+      // recordAudit alone left this failure invisible in Railway's logs —
+      // confirmed live: a failed backup showed nothing there to diagnose,
+      // only a silent audit row (readable via direct DB access only, which
+      // this app's own API doesn't expose and isn't something to reach for
+      // casually against production). console.error is the same
+      // fire-and-forget background job, so it can't affect the already-sent
+      // 202 response either way.
+      console.error('[backup] manual run failed:', err);
+      return recordAudit({
         entityType: 'Backup',
         entityID: 'manual',
         action: 'backup.run.failed',
         actorID,
         metadata: { error: err.message },
-      })
-    );
+      });
+    });
 }
 
 export async function listBackupsHandler(_req: Request, res: Response) {
@@ -112,6 +120,9 @@ export async function restoreBackupHandler(req: Request, res: Response) {
       });
     })
     .catch(async (err: Error) => {
+      // Same reasoning as runBackupHandler's catch — recordAudit alone left
+      // a restore failure invisible in Railway's logs.
+      console.error('[backup] restore failed:', err);
       restoreStatus = { state: 'error', id, at, error: err.message };
       await recordAudit({
         entityType: 'Backup',
