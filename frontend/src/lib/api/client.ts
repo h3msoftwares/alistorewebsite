@@ -6,14 +6,25 @@ import { ApiError } from './errors';
 // base to resolve against there, so they always need Railway's real,
 // absolute URL. Browser-side calls instead want a relative path in
 // production (NEXT_PUBLIC_API_URL set to "") so the backend's
-// SameSite=Strict cookies stay same-origin via netlify.toml's proxy — see
-// that file's comment. API_SERVER_URL is a plain (non-NEXT_PUBLIC_) var, so
-// Next only makes it available server-side and it never leaks into the
-// browser bundle.
+// SameSite=Strict cookies stay same-origin via the host's own proxy
+// (netlify.toml's redirect, or next.config.mjs's rewrites() on Cloudflare)
+// — see that config's comment. API_SERVER_URL is a plain (non-NEXT_PUBLIC_)
+// var, so Next only makes it available server-side and it never leaks into
+// the browser bundle.
+//
+// 'SAME_ORIGIN' is an equivalent sentinel for NEXT_PUBLIC_API_URL, for a
+// host whose dashboard won't accept a saved empty string value (confirmed
+// live: Cloudflare's Build Variables form rejects one outright) — kept in
+// sync by hand with next.config.mjs's matching normalizeApiUrl().
+function normalizeApiUrl(raw: string | undefined): string {
+  if (raw === undefined) return 'http://localhost:4000';
+  if (raw === 'SAME_ORIGIN') return '';
+  return raw;
+}
 export const API_URL =
   typeof window === 'undefined'
     ? process.env.API_SERVER_URL || 'http://localhost:4000'
-    : (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000');
+    : normalizeApiUrl(process.env.NEXT_PUBLIC_API_URL);
 
 export type QueryValue = string | number | boolean | undefined | null;
 
