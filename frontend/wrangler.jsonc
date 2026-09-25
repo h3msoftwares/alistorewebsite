@@ -1,7 +1,17 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"main": ".open-next/worker.js",
-	"name": "alistore-frontend",
+	// Must match the actual Worker service name Cloudflare's dashboard
+	// created when the repo was connected (Workers & Pages > Create >
+	// Import a Git repository defaults the service name to the repo name,
+	// not this file's own "name" field). Confirmed live: a mismatch here
+	// doesn't just misname the Worker — Wrangler's CI silently overrides
+	// the actual deploy target to the real name, but the self-reference
+	// service binding below is a literal reference and does NOT get that
+	// override, so it pointed at a Worker that was never created and
+	// deploy failed with "Service binding 'WORKER_SELF_REFERENCE'
+	// references Worker 'alistore-frontend' which was not found".
+	"name": "alistorewebsite",
 	"compatibility_date": "2026-09-25",
 	"compatibility_flags": [
 		"nodejs_compat",
@@ -16,7 +26,7 @@
 			// Self-reference service binding, the service name must match the worker name
 			// see https://opennext.js.org/cloudflare/caching
 			"binding": "WORKER_SELF_REFERENCE",
-			"service": "alistore-frontend"
+			"service": "alistorewebsite"
 		}
 	]
 	// No "images" binding: this app never uses Next's built-in image
