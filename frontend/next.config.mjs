@@ -4,12 +4,23 @@ import bundleAnalyzer from '@next/bundle-analyzer';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
-// The API the browser talks to (fetch/XHR). Same value + same `??` (not
-// `||`) as client.ts's own fallback: an unset var means local dev, but a
-// deliberately EMPTY string means production's same-origin Netlify-proxy
-// setup (see netlify.toml) — that case must stay empty, not fall back to
-// localhost, since 'self' below already covers same-origin calls.
-const apiOrigin = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/+$/, '');
+// The API the browser talks to (fetch/XHR). Same value + same fallback
+// logic as client.ts's own API_URL (kept in sync by hand — this plain
+// Node-loaded config file can't import from src/lib, same reasoning as
+// robots.ts's PRIVATE_PATHS comment). An unset var means local dev, but a
+// deliberately EMPTY string means production's same-origin proxy setup
+// (netlify.toml's redirect, or next.config.mjs's own rewrites() below on
+// Cloudflare) — that case must resolve to '', not fall back to localhost,
+// since 'self' below already covers same-origin calls. 'SAME_ORIGIN' is an
+// equivalent sentinel for hosts whose dashboard won't accept a saved empty
+// string value (confirmed live: Cloudflare's Build Variables form rejects
+// an empty value outright) — see client.ts's matching normalizeApiUrl().
+function normalizeApiUrl(raw) {
+  if (raw === undefined) return 'http://localhost:4000';
+  if (raw === 'SAME_ORIGIN') return '';
+  return raw;
+}
+const apiOrigin = normalizeApiUrl(process.env.NEXT_PUBLIC_API_URL).replace(/\/+$/, '');
 
 // The admin image uploader (lib/imagekit-upload.ts) POSTs files straight from
 // the browser to ImageKit's upload endpoint, so `connect-src` must name it.
