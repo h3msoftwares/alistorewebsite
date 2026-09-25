@@ -175,9 +175,11 @@ own edge redirect already wins there) and in local dev (unset).
 
 1. Cloudflare dashboard → Workers & Pages → Create → Import a Git repository
    → this repo. Root directory: `frontend`.
-2. Build command: `npm run build && npx opennextjs-cloudflare build`. Deploy
-   command: leave Cloudflare's own Git-integration default (it runs
-   `wrangler deploy` against the already-built `.open-next/` output) —
+2. Build command: `npx opennextjs-cloudflare build` (it runs `next build`
+   itself as its first phase — confirmed from its own build log output — so
+   a separate `npm run build` step first is redundant, just doubles build
+   time). Deploy command: leave Cloudflare's own Git-integration default (it
+   runs `wrangler deploy` against the already-built `.open-next/` output) —
    don't use `npm run deploy` here, that script re-runs the build itself.
 3. Add the frontend env vars (Settings → Variables and Secrets) — **same
    values as the Netlify section above**: `NEXT_PUBLIC_API_URL` empty,
