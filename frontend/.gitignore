@@ -10,3 +10,11 @@ coverage/
 # local .env backups
 .env.bak
 .env*.bak
+
+# OpenNext
+.open-next
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
