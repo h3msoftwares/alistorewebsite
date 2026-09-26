@@ -1,4 +1,4 @@
-import { Prisma, ReturnStatus } from '@prisma/client';
+import { Prisma, ReturnStatus, type OrderStatus } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { recordAudit } from '../../lib/audit';
@@ -49,6 +49,8 @@ async function performReturnRequest(
   requestedBy: string | undefined
 ) {
   return prisma.$transaction(async (tx) => {
+    // Keep request eligibility and legacy whole-order restocking mutually exclusive.
+    await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${orderId}::uuid FOR UPDATE`;
     const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
     if (!order) throw new AppError('NOT_FOUND', 'Order not found');
     if (order.status !== 'DELIVERED') {
@@ -251,6 +253,12 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
       include: { items: true, order: { select: { orderNumber: true } } },
     });
     if (!existing) throw new AppError('NOT_FOUND', 'Return not found');
+    // Cancellation claims this same order row before calculating its remaining
+    // restock. Whichever operation wins, each unit is restored only once.
+    const [order] = await tx.$queryRaw<{ status: OrderStatus }[]>`
+      SELECT "status" FROM "order" WHERE "id" = ${existing.orderID}::uuid FOR UPDATE
+    `;
+    if (!order) throw new AppError('NOT_FOUND', 'Order not found');
     if (!LEGAL_TRANSITIONS[existing.status].includes(next)) {
       throw new AppError('CONFLICT', `Cannot move a return from ${existing.status} to ${next}`);
     }
@@ -263,7 +271,9 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
       throw new AppError('CONFLICT', 'This return was already updated by someone else');
     }
 
-    if (next === 'RECEIVED') {
+    // A whole-order cancellation/return has already accounted for every unit.
+    // An outstanding return may still be received, but must not restock again.
+    if (next === 'RECEIVED' && order.status !== 'CANCELLED' && order.status !== 'RETURNED') {
       for (const item of existing.items) {
         const orderItem = await tx.orderItem.findUniqueOrThrow({ where: { id: item.orderItemID } });
         await tx.productVariant.update({

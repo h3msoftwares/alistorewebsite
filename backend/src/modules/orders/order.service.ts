@@ -740,27 +740,36 @@ export async function getOrderById(id: string, userID?: string) {
   return order;
 }
 
-/** Restores stock for every line of a cancelled/returned order — one
- *  incremented ProductVariant + one RETURN StockMovement per line, symmetric
- *  with checkout's SALE-type decrement. Shared by performCancellation and the
- *  RETURNED path in updateOrderStatus() below. */
+/** Restores only the quantity not already restocked by per-item returns.
+ *  Callers hold the order row lock, shared with per-item return receipt.
+ *  Stock movements record actual receipt; returnedQuantity also includes
+ *  pending requests and must not be used as the already-restocked amount. */
 async function restoreStock(
   tx: Prisma.TransactionClient,
   items: OrderItem[],
   orderNumber: string,
   verb: string
 ): Promise<void> {
+  const priorRestocks = await tx.stockMovement.groupBy({
+    by: ['orderItemID'],
+    where: { orderItemID: { in: items.map((item) => item.id) }, type: 'RETURN' },
+    _sum: { quantity: true },
+  });
+  const restockedByItem = new Map(priorRestocks.map((r) => [r.orderItemID, r._sum.quantity ?? 0]));
   for (const item of items) {
+    const quantity = Math.max(0, item.quantity - (restockedByItem.get(item.id) ?? 0));
+    if (quantity === 0) continue;
     await tx.productVariant.update({
       where: { id: item.variantID },
-      data: { stockQuantity: { increment: item.quantity } },
+      data: { stockQuantity: { increment: quantity } },
     });
     await tx.stockMovement.create({
       data: {
         variantID: item.variantID,
-        quantity: item.quantity,
+        quantity,
         type: 'RETURN',
         orderID: item.orderID,
+        orderItemID: item.id,
         reason: `Order ${orderNumber} ${verb}`,
       },
     });
@@ -967,6 +976,8 @@ export async function updateOrderStatus(
   // re-selecting RETURNED on an already-returned order.
   if (status === 'RETURNED') {
     const { order, previousStatus } = await prisma.$transaction(async (tx) => {
+      // Serialize the guard with per-item return requests and receipt.
+      await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${id}::uuid FOR UPDATE`;
       const existing = await tx.order.findUnique({ where: { id }, include: { items: true } });
       if (!existing) throw new AppError('NOT_FOUND', 'Order not found');
       if (existing.status === 'RETURNED') {
@@ -982,15 +993,16 @@ export async function updateOrderStatus(
       // every line here after a Return already reached RECEIVED for one of
       // them would restore those units a second time. Refuse and point at
       // the Returns page instead, which already has an active claim on
-      // whichever quantities are in flight.
-      const activeReturn = await tx.return.findFirst({
-        where: { orderID: id, status: { in: ['REQUESTED', 'APPROVED', 'IN_TRANSIT', 'RECEIVED'] } },
+      // whichever quantities are in flight or were already restocked.
+      // REFUNDED still represents stock restored at RECEIVED.
+      const perItemReturn = await tx.return.findFirst({
+        where: { orderID: id, status: { notIn: ['REJECTED', 'CANCELLED'] } },
         select: { id: true },
       });
-      if (activeReturn) {
+      if (perItemReturn) {
         throw new AppError(
           'CONFLICT',
-          'This order has an active per-item return — use the Returns page instead of marking the whole order returned.'
+          'This order has a per-item return — use the Returns page instead of marking the whole order returned.'
         );
       }
 

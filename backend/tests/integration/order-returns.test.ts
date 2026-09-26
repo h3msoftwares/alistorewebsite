@@ -48,6 +48,33 @@ async function deliveredOrder(quantity = 4) {
   return { buyer, admin, orderId, orderItemId, orderNumber };
 }
 
+async function requestItemReturn(order: Awaited<ReturnType<typeof deliveredOrder>>, quantity: number) {
+  const res = await request(app)
+    .post(`/api/orders/${order.orderId}/returns`)
+    .set(bearer(order.buyer.token))
+    .send({ items: [{ orderItemID: order.orderItemId, quantity }] });
+  expect(res.status).toBe(201);
+  return res.body.return.id as string;
+}
+
+async function advanceReturn(returnId: string, adminToken: string, statuses: string[]) {
+  for (const status of statuses) {
+    const res = await request(app)
+      .patch(`/api/admin/returns/${returnId}/status`)
+      .set(bearer(adminToken))
+      .send({ status });
+    expect(res.status).toBe(200);
+  }
+}
+
+async function returnStockTotal(orderId: string) {
+  const movements = await prisma.stockMovement.aggregate({
+    where: { orderID: orderId, type: 'RETURN' },
+    _sum: { quantity: true },
+  });
+  return movements._sum.quantity ?? 0;
+}
+
 describe('Per-item returns', () => {
   it('rejects a return request on an order that is not DELIVERED', async () => {
     const buyer = await createCustomer();
@@ -254,5 +281,83 @@ describe('Per-item returns', () => {
       .set(bearer(admin.token))
       .send({ status: 'RETURNED' });
     expect(res.status).toBe(409);
+  });
+
+  it('blocks legacy whole-order restocking after a per-item return was REFUNDED', async () => {
+    const order = await deliveredOrder(4);
+    const returnId = await requestItemReturn(order, 2);
+    await advanceReturn(returnId, order.admin.token, ['APPROVED', 'IN_TRANSIT', 'RECEIVED', 'REFUNDED']);
+    expect((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stockQuantity).toBe(8);
+
+    const res = await request(app)
+      .patch(`/api/admin/orders/${order.orderId}/status`)
+      .set(bearer(order.admin.token))
+      .send({ status: 'RETURNED' });
+
+    expect((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stockQuantity).toBe(8);
+    expect(await returnStockTotal(order.orderId)).toBe(2);
+    expect(res.status).toBe(409);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.orderId } })).status).toBe('DELIVERED');
+  });
+
+  it.each(['RECEIVED', 'REFUNDED'])('cancellation restores only the remainder after multiple %s returns', async (status) => {
+    const order = await deliveredOrder(4);
+    for (let i = 0; i < 2; i++) {
+      const returnId = await requestItemReturn(order, 1);
+      await advanceReturn(returnId, order.admin.token, [
+        'APPROVED', 'IN_TRANSIT', 'RECEIVED', ...(status === 'REFUNDED' ? ['REFUNDED'] : []),
+      ]);
+    }
+    // Claimed but not received: this unit must still be restored by cancellation.
+    const pendingReturnId = await requestItemReturn(order, 1);
+    expect((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stockQuantity).toBe(8);
+
+    const cancel = () => request(app)
+      .patch(`/api/admin/orders/${order.orderId}/status`)
+      .set(bearer(order.admin.token))
+      .send({ status: 'CANCELLED' });
+    expect((await cancel()).status).toBe(200);
+    expect((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stockQuantity).toBe(10);
+    expect(await returnStockTotal(order.orderId)).toBe(4);
+    const cancellationMovements = await prisma.stockMovement.findMany({
+      where: { orderID: order.orderId, reason: `Order ${order.orderNumber} cancelled` },
+    });
+    expect(cancellationMovements).toHaveLength(1);
+    expect(cancellationMovements[0].quantity).toBe(2);
+
+    expect((await cancel()).status).toBe(409);
+    await advanceReturn(pendingReturnId, order.admin.token, ['APPROVED', 'IN_TRANSIT', 'RECEIVED']);
+    expect((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stockQuantity).toBe(10);
+    expect(await returnStockTotal(order.orderId)).toBe(4);
+  });
+
+  it('cancelling a fully refunded order writes no additional restock movement', async () => {
+    const order = await deliveredOrder(4);
+    const returnId = await requestItemReturn(order, 4);
+    await advanceReturn(returnId, order.admin.token, ['APPROVED', 'IN_TRANSIT', 'RECEIVED', 'REFUNDED']);
+    const res = await request(app)
+      .patch(`/api/admin/orders/${order.orderId}/status`)
+      .set(bearer(order.admin.token))
+      .send({ status: 'CANCELLED' });
+    expect(res.status).toBe(200);
+    expect((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stockQuantity).toBe(10);
+    expect(await prisma.stockMovement.count({ where: { orderID: order.orderId, type: 'RETURN' } })).toBe(1);
+    expect(await returnStockTotal(order.orderId)).toBe(4);
+  });
+
+  it('serializes cancellation with receipt of a per-item return without double restocking', async () => {
+    const order = await deliveredOrder(4);
+    const returnId = await requestItemReturn(order, 2);
+    await advanceReturn(returnId, order.admin.token, ['APPROVED', 'IN_TRANSIT']);
+    const [cancel, receive] = await Promise.all([
+      request(app).patch(`/api/admin/orders/${order.orderId}/status`)
+        .set(bearer(order.admin.token)).send({ status: 'CANCELLED' }),
+      request(app).patch(`/api/admin/returns/${returnId}/status`)
+        .set(bearer(order.admin.token)).send({ status: 'RECEIVED' }),
+    ]);
+    expect(cancel.status).toBe(200);
+    expect(receive.status).toBe(200);
+    expect((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stockQuantity).toBe(10);
+    expect(await returnStockTotal(order.orderId)).toBe(4);
   });
 });
