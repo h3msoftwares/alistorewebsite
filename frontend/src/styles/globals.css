@@ -536,6 +536,27 @@ main > .container.section:first-child {
   width: auto;
 }
 
+/* Safety net, not just a narrow-viewport fix: brandNameEn/Ar is arbitrary
+   admin input (Settings > Brand), and .site-header__logo has `flex: none` +
+   `white-space: nowrap` (deliberate — see .topbar__nav/.topbar__actions'
+   own comments on why they're pulled out of flex flow instead of shrinking
+   in response to the typewriter animation) — nothing before this ever
+   capped how wide the animated name itself could grow. Confirmed live on a
+   narrower real device than this was tested on: an uncapped long name ran
+   directly into the search icon, since .topbar__actions is absolutely
+   positioned and pinned to the header's end edge regardless of how much
+   room the logo actually leaves it. Scales with viewport so it stays
+   proportionate at every width rather than a single fixed cutoff.
+   -webkit-line-clamp isn't in play here — this is one line, so
+   text-overflow: ellipsis is the correct (and simpler) truncation tool. */
+.topbar__logo-type {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  max-width: clamp(5rem, 32vw, 14rem);
+}
+
 /* Typewriter caret beside the animated brand name (hooks/use-typewriter.ts).
    The name itself is duplicated as plain text in a .visually-hidden span so
    the link's accessible name is stable and complete from first paint,
@@ -929,16 +950,36 @@ main > .container.section:first-child {
   .topbar__nav { display: none; }
   .topbar__menu-btn { display: inline-flex; }
 }
+/* Confirmed live: the account button's text label ("Log in"/"Account") was
+   only hidden below 600px, but .topbar__actions is absolutely positioned
+   (see its own comment for why) and so never shrinks or wraps in response
+   to available space on its own — between 600 and 900px, a real narrowed
+   desktop window still showed the full labeled button plus every icon
+   competing for the same pinned right edge with nothing giving way, and
+   the label ran off the visible edge. Hides at this design system's
+   existing standard tablet break (768px, already used above/below this
+   rule) instead of the previous one-off 600px, closing that gap. */
+@media (max-width: 768px) {
+  .topbar__account-label { display: none; }
+}
 @media (max-width: 600px) {
   .topbar__inner { gap: var(--space-2); }
-  .topbar__account-label { display: none; }
   .site-header__logo.topbar__logo { font-size: var(--fs-lg); }
 }
 /* Smallest screens: only search + cart stay in the topbar; favourites and
-   account are reachable from the menu drawer. */
+   account are reachable from the menu drawer. Confirmed live this never
+   actually worked: .topbar__fav's element also carries .icon-btn-wrap, and
+   .topbar__account's also carries .icon-btn — both set an unconditional
+   `display: inline-flex` (~2400 lines below this file, .icon-btn /
+   .icon-btn-wrap), same specificity as a single-class selector, later in
+   the cascade. Equal specificity + later source position wins regardless
+   of whether the earlier rule's @media condition matches, so those two
+   unconditional rules silently overrode this `display: none` at every
+   width. Compounding the selectors (0,2,0) instead of (0,1,0) fixes that
+   regardless of either rule's position in the file. */
 @media (max-width: 480px) {
-  .topbar__fav,
-  .topbar__account { display: none; }
+  .icon-btn-wrap.topbar__fav,
+  .icon-btn.topbar__account { display: none; }
 }
 
 /* ---- Search overlay (inside a Drawer) ---- */
