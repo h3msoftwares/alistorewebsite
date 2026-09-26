@@ -15,8 +15,7 @@ import { fromLocalInput, toLocalInput } from '../discounts/datetime-local';
 const comboTierSchema = z
   .object({
     minQty: z.number({ message: 'Enter a number' }).int().min(1, 'Must be at least 1'),
-    // A plain string in form state, same convention as settings-view.tsx's
-    // freeDeliveryThreshold — '' means open-ended (null on the wire), not 0.
+    // Blank means automatic: stop before the next minimum, or leave the last tier open-ended.
     maxQty: z.string(),
     price: z.number({ message: 'Enter a number' }).positive('Must be more than 0'),
   })
@@ -24,13 +23,27 @@ const comboTierSchema = z
     if (t.maxQty.trim() === '') return;
     const n = Number(t.maxQty);
     if (!Number.isInteger(n) || n < 1) {
-      ctx.addIssue({ code: 'custom', path: ['maxQty'], message: 'Whole number, or leave blank for no limit' });
+      ctx.addIssue({ code: 'custom', path: ['maxQty'], message: 'Whole number, or leave blank for automatic' });
       return;
     }
     if (n < t.minQty) {
       ctx.addIssue({ code: 'custom', path: ['maxQty'], message: 'Must be ≥ min quantity' });
     }
   });
+
+/** Resolve blank maximums without changing entered values or the display order. */
+function resolveComboTiers(tiers: z.infer<typeof comboTierSchema>[]) {
+  return tiers.map((tier) => {
+    const nextMin = Math.min(...tiers
+      .map((other) => other.minQty)
+      .filter((min) => Number.isInteger(min) && min > tier.minQty));
+    return {
+      minQty: tier.minQty,
+      maxQty: tier.maxQty.trim() !== '' ? Number(tier.maxQty) : Number.isFinite(nextMin) ? nextMin - 1 : null,
+      price: tier.price,
+    };
+  });
+}
 
 export const comboRuleSchema = z
   .object({
@@ -60,9 +73,9 @@ export const comboRuleSchema = z
     }
     // Same overlap check as the backend's tiersDontOverlap() — caught here
     // too so the admin sees it before submitting, not just on a 400.
-    const sorted = [...v.tiers].sort((a, b) => a.minQty - b.minQty);
+    const sorted = resolveComboTiers(v.tiers).sort((a, b) => a.minQty - b.minQty);
     for (let i = 1; i < sorted.length; i++) {
-      const prevEnd = sorted[i - 1].maxQty.trim() === '' ? Infinity : Number(sorted[i - 1].maxQty);
+      const prevEnd = sorted[i - 1].maxQty ?? Infinity;
       if (sorted[i].minQty <= prevEnd) {
         ctx.addIssue({ code: 'custom', path: ['tiers'], message: 'Tiers must not have overlapping quantity ranges' });
         break;
@@ -115,11 +128,7 @@ export function comboRuleBodyFromValues(form: ComboRuleFormValues): ComboRuleBod
     status: form.status,
     startsAt: fromLocalInput(form.startsAt),
     endsAt: fromLocalInput(form.endsAt),
-    tiers: form.tiers.map((t) => ({
-      minQty: t.minQty,
-      maxQty: t.maxQty.trim() === '' ? null : Number(t.maxQty),
-      price: t.price,
-    })),
+    tiers: resolveComboTiers(form.tiers),
   };
 }
 
@@ -172,8 +181,11 @@ export function ComboRuleFormFields<T extends ComboRuleFormValues>({
 
   const appliesToAll = useWatch({ control, name: 'appliesToAll' as never }) as unknown as boolean;
   const tiers = useFieldArray({ control, name: 'tiers' as never });
-  const tierErrors = errors.tiers as FieldErrors<ComboRuleFormValues['tiers'][number]>[] | undefined;
-  const tiersMessage = (errors.tiers as { message?: string } | undefined)?.message;
+  const tierValues = useWatch({ control, name: 'tiers' as never }) as unknown as ComboRuleFormValues['tiers'];
+  const resolvedTiers = resolveComboTiers(tierValues ?? []);
+  const tierErrors = errors.tiers as FieldErrors<ComboRuleFormValues>['tiers'];
+  // The resolver nests array-wide errors under root when tier inputs are registered.
+  const tiersMessage = tierErrors?.root?.message ?? tierErrors?.message;
 
   return (
     <>
@@ -424,6 +436,12 @@ export function ComboRuleFormFields<T extends ComboRuleFormValues>({
                 'سعر إجمالي ثابت لشراء مجموعة من القطع ضمن النطاق المحدد (مثال: "2-3 قطع = 5$"). يدفع المتسوق دائمًا السعر الأقل بين هذا التسعير أو تسعير كل قطعة على حدة.'
               )}
             </p>
+            <p className="admin-form__hint">
+              {t(
+                'Leave Max qty blank to end a tier just before the next minimum. The last tier has no limit. Enter a maximum to override it.',
+                'اترك أقصى كمية فارغة لتنتهي الشريحة قبل الحد الأدنى للشريحة التالية. الشريحة الأخيرة بلا حد. أدخل حدًا أقصى لتحديده يدويًا.'
+              )}
+            </p>
             {tiers.fields.map((field, i) => (
               <div key={field.id} className="admin-variant-row">
                 <Field label={t('Min qty', 'أدنى كمية')} error={tierErrors?.[i]?.minQty?.message as string | undefined}>
@@ -440,7 +458,11 @@ export function ComboRuleFormFields<T extends ComboRuleFormValues>({
                 </Field>
                 <Field
                   label={t('Max qty', 'أقصى كمية')}
-                  hint={t('Blank = no limit', 'فارغ = بلا حد')}
+                  hint={tierValues?.[i]?.maxQty.trim()
+                    ? t('Blank = automatic', 'فارغ = تلقائي')
+                    : resolvedTiers[i]?.maxQty != null
+                      ? t(`Auto: ${resolvedTiers[i].maxQty}`, `تلقائي: ${resolvedTiers[i].maxQty}`)
+                      : t('No limit', 'بلا حد')}
                   error={tierErrors?.[i]?.maxQty?.message as string | undefined}
                 >
                   {(p) => (
