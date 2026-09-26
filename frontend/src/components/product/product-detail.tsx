@@ -27,7 +27,7 @@ import { useFavourites } from '@/hooks/use-favourites';
 import { isApiError } from '@/lib/api/errors';
 import { formatCurrency } from '@/lib/format';
 import {
-  colorNameLabel,
+  colorLabel,
   colorNameToCss,
   getColorOptions,
   getSizeOptions,
@@ -438,7 +438,7 @@ export function ProductDetail({
                   {colorOptions.map((c) => (
                     <Swatch
                       key={c}
-                      colorName={colorNameLabel(c, locale)}
+                      colorName={colorLabel(c, locale)}
                       locale={locale}
                       swatchColor={colorNameToCss(c)}
                       selected={effectiveColor === c}

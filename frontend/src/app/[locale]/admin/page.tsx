@@ -7,6 +7,7 @@ import { ChartCard, StatGrid, TrendLine } from '@/components/admin/analytics';
 import { bucketLabel } from '@/components/admin/analytics/format';
 import { useAdminDashboard } from '@/hooks/use-orders';
 import { useAnalyticsOverview } from '@/hooks/use-analytics';
+import { colorLabel } from '@/lib/product-variants';
 import { NotificationBell } from '@/components/admin/notification-bell';
 
 /** Admin landing page: an at-a-glance "what needs attention" view. The
@@ -153,7 +154,8 @@ export default function AdminDashboardPage() {
                         <Link href={`${base}/products/${item.productId}`}>{isAr ? item.nameAr : item.nameEn}</Link>
                       </td>
                       <td data-label={t('Variant', 'الخيار')}>
-                        {[item.size, item.color].filter(Boolean).join(' / ') || t('One size', 'مقاس واحد')}
+                        {[item.size, item.color ? colorLabel(item.color, locale) : null].filter(Boolean).join(' / ') ||
+                          t('One size', 'مقاس واحد')}
                       </td>
                       <td data-label={t('SKU', 'رمز المنتج')}>{item.sku}</td>
                     </tr>

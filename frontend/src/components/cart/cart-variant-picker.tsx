@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Button, Field, Select } from '@/components/ui';
 import { useUpdateCartItem } from '@/hooks/use-cart';
 import { isApiError } from '@/lib/api';
+import { colorLabel } from '@/lib/product-variants';
 import type { CartItem } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
@@ -34,7 +35,13 @@ export function CartVariantPicker({
   const variantUpdate = useUpdateCartItem();
 
   const { product } = item.variant;
-  const variantBits = [item.variant.size, item.variant.color].filter(Boolean).join(' · ');
+  // item.variant.color is the same free-text-or-hex column colorLabel exists
+  // for (see its own doc comment) — confirmed live: joining it in raw showed
+  // a shopper "#0A0A0A" instead of a colour name for any variant created via
+  // the admin's colour-wheel picker.
+  const variantBits = [item.variant.size, item.variant.color ? colorLabel(item.variant.color, locale) : null]
+    .filter(Boolean)
+    .join(' · ');
   const siblingVariants = product.variants;
 
   const sizes = useMemo(
@@ -165,7 +172,7 @@ export function CartVariantPicker({
                   >
                     {colors.map((c) => (
                       <option key={c} value={c}>
-                        {c}
+                        {colorLabel(c, locale)}
                       </option>
                     ))}
                   </Select>

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  colorLabel,
   colorNameLabel,
   colorNameToCss,
   firstPurchasableVariant,
@@ -148,6 +149,25 @@ describe('hexColorLabel', () => {
   it('falls back to the bare uppercased value for anything that is not 6-digit hex', () => {
     expect(hexColorLabel('not-a-colour', 'en')).toBe('NOT-A-COLOUR');
     expect(hexColorLabel('', 'en')).toBe('');
+  });
+});
+
+describe('colorLabel', () => {
+  // The single dispatcher every display call site should use — ProductVariant.color
+  // is the same free-text-or-hex column regardless of which admin input wrote it
+  // (see the function's own doc comment), so a caller can't know in advance which
+  // formatter applies without checking. Confirmed live: joining a hex-based
+  // variant's colour straight into cart/order/admin text showed a shopper
+  // "#0A0A0A" instead of a name.
+  it('dispatches free-text names to colorNameLabel', () => {
+    expect(colorLabel('Navy', 'en')).toBe('Navy');
+    expect(colorLabel('Navy', 'ar')).toBe('كحلي');
+  });
+
+  it('dispatches 6-digit hex values to hexColorLabel', () => {
+    expect(colorLabel('#0a0a0a', 'en')).toBe(hexColorLabel('#0a0a0a', 'en'));
+    expect(colorLabel('#0a0a0a', 'en')).not.toBe('#0a0a0a');
+    expect(colorLabel('#190066', 'ar')).toBe('كحلي (#190066)');
   });
 });
 

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Badge, CatalogImage, PriceTag, SizeChip, Swatch } from '@/components/ui';
 import {
   HOVER_SCROLL_MS,
-  colorNameLabel,
+  colorLabel,
   colorNameToCss,
   getColorOptions,
   getSizeOptions,
@@ -130,7 +130,7 @@ export function HomeProductCard({
             {colors.map((color) => (
               <Swatch
                 key={color}
-                colorName={colorNameLabel(color, locale)}
+                colorName={colorLabel(color, locale)}
                 locale={locale}
                 imageUrl={product.images.find((img) => img.color === color)?.url}
                 swatchColor={colorNameToCss(color)}

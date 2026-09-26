@@ -14,7 +14,7 @@ import {
   resetFilters,
 } from '@/store/slices/uiFiltersSlice';
 import { Choice, Drawer, Icon, Input, Select } from '@/components/ui';
-import { colorNameLabel } from '@/lib/product-variants';
+import { colorLabel } from '@/lib/product-variants';
 import type { Category, ProductSort } from '@/lib/types';
 
 /**
@@ -112,7 +112,7 @@ export function ProductFilters({
             <option value="">{isAr ? 'كل الألوان' : 'Any colour'}</option>
             {colors.map((color) => (
               <option key={color} value={color}>
-                {colorNameLabel(color, isAr ? 'ar' : 'en')}
+                {colorLabel(color, isAr ? 'ar' : 'en')}
               </option>
             ))}
           </Select>
