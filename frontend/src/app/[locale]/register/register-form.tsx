@@ -142,13 +142,14 @@ export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; de
       <form onSubmit={onSubmit} noValidate className="stack" style={{ marginBlockStart: 'var(--space-5)' }}>
         <h2 style={{ fontSize: 'var(--fs-md)' }}>{t('Account', 'الحساب')}</h2>
 
-        <Field label={t('Full name', 'الاسم الكامل')} error={errors.name && t('Required', 'مطلوب')}>
+        <Field label={t('Full name', 'الاسم الكامل')} error={errors.name && t('Required', 'مطلوب')} required>
           {(p) => <Input {...p} {...register('name')} autoComplete="name" autoFocus disabled={busy} />}
         </Field>
 
         <Field
           label={t('Email', 'البريد الإلكتروني')}
           error={errors.email && t('Enter a valid email address.', 'أدخل بريدًا إلكترونيًا صالحًا.')}
+          required
         >
           {(p) => <Input {...p} {...register('email')} type="email" autoComplete="email" disabled={busy} />}
         </Field>
@@ -156,6 +157,7 @@ export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; de
         <Field
           label={t('Password', 'كلمة المرور')}
           error={errors.password && t('Must be at least 8 characters.', 'يجب أن تتكون من 8 أحرف على الأقل.')}
+          required
         >
           {(p) => (
             <Input {...p} {...register('password')} type="password" autoComplete="new-password" disabled={busy} />
@@ -170,6 +172,7 @@ export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; de
               ? t('Passwords do not match.', 'كلمتا المرور غير متطابقتين.')
               : t('Required', 'مطلوب'))
           }
+          required
         >
           {(p) => (
             <Input
@@ -189,6 +192,7 @@ export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; de
         <Field
           label={t('Contact phone', 'هاتف التواصل')}
           error={errors.address?.phone && t('Enter a valid phone number.', 'أدخل رقم هاتف صالحًا.')}
+          required
         >
           {(p) => <Input {...p} {...register('address.phone')} type="tel" autoComplete="tel" disabled={busy} />}
         </Field>
@@ -196,17 +200,18 @@ export function RegisterForm({ locale, defaultEmail = '' }: { locale: Locale; de
         <Field
           label={t('Street address', 'عنوان الشارع')}
           error={errors.address?.addressLine && t('Enter your street address.', 'أدخل عنوان الشارع.')}
+          required
         >
           {(p) => (
             <Input {...p} {...register('address.addressLine')} autoComplete="street-address" disabled={busy} />
           )}
         </Field>
 
-        <Field label={t('City', 'المدينة')} error={errors.address?.city && t('Required', 'مطلوب')}>
+        <Field label={t('City', 'المدينة')} error={errors.address?.city && t('Required', 'مطلوب')} required>
           {(p) => <Input {...p} {...register('address.city')} autoComplete="address-level2" disabled={busy} />}
         </Field>
 
-        <Field label={t('Governorate', 'المحافظة')} error={errors.address?.region && t('Required', 'مطلوب')}>
+        <Field label={t('Governorate', 'المحافظة')} error={errors.address?.region && t('Required', 'مطلوب')} required>
           {(p) => (
             <Select {...p} {...register('address.region')} defaultValue="" disabled={busy}>
               <option value="" disabled>
