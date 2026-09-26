@@ -7,7 +7,7 @@ import { useFavourites } from '@/hooks/use-favourites';
 import { useAddToCart } from '@/hooks/use-cart';
 import { productToGaItem, trackAddToCart } from '@/lib/analytics/ga';
 import { Badge, CatalogImage, Icon, PriceTag, SizeChip, Swatch } from '@/components/ui';
-import { HOVER_SCROLL_MS, colorNameLabel, colorNameToCss, isOptionOutOfStock, pickImageGallery } from '@/lib/product-variants';
+import { HOVER_SCROLL_MS, colorLabel, colorNameToCss, isOptionOutOfStock, pickImageGallery } from '@/lib/product-variants';
 import type { Product } from '@/lib/types';
 import { ProductZoomModal } from './product-zoom-modal';
 
@@ -207,7 +207,7 @@ export function ProductPreviewCard({
             {colors.map((color) => (
               <Swatch
                 key={color}
-                colorName={colorNameLabel(color, locale)}
+                colorName={colorLabel(color, locale)}
                 locale={locale}
                 imageUrl={product.images.find((img) => img.color === color)?.url}
                 swatchColor={colorNameToCss(color)}

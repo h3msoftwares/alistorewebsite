@@ -21,6 +21,7 @@ import {
 import { useAdminReturns, useUpdateReturnStatus } from '@/hooks/use-returns';
 import { useStepUp } from '@/hooks/use-auth';
 import { isApiError } from '@/lib/api';
+import { colorLabel } from '@/lib/product-variants';
 import type { Return, ReturnStatus } from '@/lib/types';
 
 const STATUS_FILTER_OPTIONS: { value: ReturnStatus; en: string; ar: string }[] = [
@@ -269,18 +270,23 @@ export default function AdminReturnsPage() {
                     <tr>
                       <td colSpan={7}>
                         <ul className="checkout__lines">
-                          {r.items.map((ri) => (
-                            <li key={ri.id}>
-                              <span>
-                                {ri.orderItem?.productName}
-                                {[ri.orderItem?.size, ri.orderItem?.color].filter(Boolean).length
-                                  ? ` (${[ri.orderItem?.size, ri.orderItem?.color].filter(Boolean).join(' / ')})`
-                                  : ''}{' '}
-                                × {ri.quantity}
-                              </span>
-                              <span className="is-numeric">{money(Number(ri.refundAmount))}</span>
-                            </li>
-                          ))}
+                          {r.items.map((ri) => {
+                            const itemVariantBits = [
+                              ri.orderItem?.size,
+                              ri.orderItem?.color ? colorLabel(ri.orderItem.color, locale) : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' / ');
+                            return (
+                              <li key={ri.id}>
+                                <span>
+                                  {ri.orderItem?.productName}
+                                  {itemVariantBits ? ` (${itemVariantBits})` : ''} × {ri.quantity}
+                                </span>
+                                <span className="is-numeric">{money(Number(ri.refundAmount))}</span>
+                              </li>
+                            );
+                          })}
                         </ul>
                         {r.reason && (
                           <p className="admin-form__hint" style={{ margin: 0 }}>

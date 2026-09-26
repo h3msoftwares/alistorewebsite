@@ -243,3 +243,18 @@ export function hexColorLabel(hex: string, locale: 'en' | 'ar'): string {
   const name = locale === 'ar' ? COLOR_NAME_MAP[bestKey].ar : bestKey.replace(/\b\w/g, (c) => c.toUpperCase());
   return `${name} (${hexLabel})`;
 }
+
+/**
+ * The one function every call site displaying a `ProductVariant.color` (or
+ * an order/return line item's stored `color` snapshot, same underlying
+ * value) to a shopper or admin should go through — `color` is the same
+ * database column regardless of which admin input wrote it, so a page has
+ * no way to know in advance whether a given value is an old free-text name
+ * or a hex from the variants-matrix colour wheel (see hexColorLabel's own
+ * comment) without checking. Confirmed live: cart-variant-picker.tsx joined
+ * `item.variant.color` straight into the line-item text with neither
+ * check, so a hex-based variant showed a shopper "#0A0A0A" — this is the
+ * fix point for that whole class of bug, not just that one call site. */
+export function colorLabel(value: string, locale: 'en' | 'ar'): string {
+  return HEX_RE.test(value) ? hexColorLabel(value, locale) : colorNameLabel(value, locale);
+}

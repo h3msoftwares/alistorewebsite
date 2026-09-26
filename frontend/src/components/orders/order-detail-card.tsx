@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Alert, Button, Choice, QuantityStepper, StatusPill, Textarea } from '@/components/ui';
 import { formatCurrency } from '@/lib/format';
+import { colorLabel } from '@/lib/product-variants';
 import { regionLabel } from '@/lib/regions';
 import type { CreateReturnBody, Order, ReturnStatus } from '@/lib/types';
 
@@ -115,7 +116,7 @@ export function OrderDetailCard({
 
       <ul className="checkout__lines">
         {order.items.map((i) => {
-          const variantBits = [i.size, i.color].filter(Boolean).join(' / ');
+          const variantBits = [i.size, i.color ? colorLabel(i.color, locale) : null].filter(Boolean).join(' / ');
           return (
             <li key={i.id}>
               <span>
@@ -233,11 +234,14 @@ export function OrderDetailCard({
               {returnableItems.map((i) => {
                 const remaining = i.quantity - i.returnedQuantity;
                 const checked = Boolean(selectedQty[i.id]);
+                const itemVariantBits = [i.size, i.color ? colorLabel(i.color, locale) : null]
+                  .filter(Boolean)
+                  .join(' / ');
                 return (
                   <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
                     <Choice
                       type="checkbox"
-                      label={`${i.productName}${[i.size, i.color].filter(Boolean).length ? ` (${[i.size, i.color].filter(Boolean).join(' / ')})` : ''}`}
+                      label={`${i.productName}${itemVariantBits ? ` (${itemVariantBits})` : ''}`}
                       checked={checked}
                       onChange={() => toggleItem(i.id, remaining)}
                     />

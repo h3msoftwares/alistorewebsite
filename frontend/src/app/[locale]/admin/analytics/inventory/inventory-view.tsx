@@ -11,12 +11,14 @@ import {
 } from '@/components/admin/analytics';
 import { money, num, pct } from '@/components/admin/analytics/format';
 import { useAnalyticsInventory } from '@/hooks/use-analytics';
+import { colorLabel } from '@/lib/product-variants';
 import type { Breakdown } from '@/lib/types';
 import { useAnalyticsRange } from '../range-context';
 
 const toBars = (rows: Breakdown[]) => rows.slice(0, 8).map((r) => ({ label: r.label, value: r.units }));
 const variantLabel = (r: { size: string | null; color: string | null }, isAr: boolean) =>
-  [r.size, r.color].filter(Boolean).join(' / ') || (isAr ? 'مقاس واحد' : 'one size');
+  [r.size, r.color ? colorLabel(r.color, isAr ? 'ar' : 'en') : null].filter(Boolean).join(' / ') ||
+  (isAr ? 'مقاس واحد' : 'one size');
 
 const STOCK_TYPE_LABELS: Record<string, { en: string; ar: string }> = {
   INITIAL: { en: 'Initial', ar: 'أولي' },

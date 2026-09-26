@@ -1,4 +1,5 @@
 import { formatCurrency } from '@/lib/format';
+import { colorLabel } from '@/lib/product-variants';
 import { regionLabel } from '@/lib/regions';
 import type { ReceiptFormat } from '@/lib/print-preferences';
 import type { Order } from '@/lib/types';
@@ -87,7 +88,7 @@ export function OrderReceipt({
         </thead>
         <tbody>
           {order.items.map((i) => {
-            const variantBits = [i.size, i.color].filter(Boolean).join(' / ');
+            const variantBits = [i.size, i.color ? colorLabel(i.color, locale) : null].filter(Boolean).join(' / ');
             return (
               <tr key={i.id}>
                 <td>
