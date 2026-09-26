@@ -28,7 +28,28 @@
 			"binding": "WORKER_SELF_REFERENCE",
 			"service": "alistorewebsite"
 		}
-	]
+	],
+	// Confirmed live: setting API_SERVER_URL as a Cloudflare "Build Variable"
+	// (Settings > Build > Build Variables and Secrets) only makes it visible
+	// to the ONE-OFF `npx opennextjs-cloudflare build` process during CI — it
+	// is NOT carried into the deployed Worker's own runtime `env`, which is a
+	// completely separate binding surface (this "vars" block, or dashboard
+	// Settings > Variables, distinct from the Build-scoped one). Every
+	// statically-generated page (the home page, prerendered at build time)
+	// worked fine regardless, since it never re-reads this at request time —
+	// but any `force-dynamic` page doing its own server-side fetch per
+	// request (e.g. app/[locale]/category/[slug]/page.tsx) read
+	// process.env.API_SERVER_URL as undefined on every live request, fell
+	// back to client.ts's localhost:4000 default, and failed with "Network
+	// connection lost" trying to reach a host that doesn't exist inside the
+	// Worker — reproduced exactly locally via `wrangler dev` with this var
+	// present only at build time, absent from runtime. Not a secret (same
+	// public Railway URL netlify.toml already hardcodes in its own
+	// [[redirects]] "to" field), so a plain checked-in value here is fine —
+	// and more reliable than a second, easy-to-miss dashboard field.
+	"vars": {
+		"API_SERVER_URL": "https://alistorewebsite-production.up.railway.app"
+	}
 	// No "images" binding: this app never uses Next's built-in image
 	// optimizer — next.config.mjs sets a custom ImageKit loader
 	// (loaderFile: './src/lib/imagekit-loader.ts'), so <Image> builds URLs

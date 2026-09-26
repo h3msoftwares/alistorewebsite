@@ -201,10 +201,26 @@ own edge redirect already wins there) and in local dev (unset).
    saved empty value. `client.ts`'s `normalizeApiUrl()` and
    `next.config.mjs`'s matching helper treat `SAME_ORIGIN` identically to
    `""` (relative same-origin API calls, proxied by `rewrites()` below).
-   Also add `API_SERVER_URL` = the Railway backend's public URL, plus every
-   other `NEXT_PUBLIC_*` var from `frontend/.env.example` that Netlify
-   already has set.
-5. First deploy lands on the free `<worker-name>.<your-subdomain>.workers.dev`
+   Also add every other `NEXT_PUBLIC_*` var from `frontend/.env.example`
+   that Netlify already has set. **Do NOT put `API_SERVER_URL` here** —
+   see the next point, it needs a different mechanism entirely on this
+   host.
+5. **`API_SERVER_URL` must be a Worker runtime binding, not a Build
+   Variable** — confirmed live: a Build Variable is only visible to the
+   one-off `npx opennextjs-cloudflare build` CI process, never carried into
+   the deployed Worker's own runtime `env` (a completely separate binding
+   surface). The home page worked fine regardless (statically prerendered
+   at build time, never re-reads this), but any `force-dynamic` page doing
+   its own server-side fetch per request (e.g. the category page) read
+   `process.env.API_SERVER_URL` as `undefined` on every live request,
+   fell back to `client.ts`'s `localhost:4000` default, and failed with
+   "Network connection lost" trying to reach a host that doesn't exist
+   inside the Worker. Already fixed in `frontend/wrangler.jsonc`'s own
+   `"vars"` block (checked into the repo — not a secret, same public
+   Railway URL `netlify.toml` already hardcodes) — nothing to configure
+   in the dashboard for this one specifically, just don't be tempted to
+   "fix" a missing value by adding it as a Build Variable instead.
+6. First deploy lands on the free `<worker-name>.<your-subdomain>.workers.dev`
    URL (worker name from `wrangler.jsonc`'s `name` field — **must match the
    Worker service name Cloudflare's dashboard actually created** when the
    repo was connected, which defaults to the repo name, not whatever
@@ -212,12 +228,14 @@ own edge redirect already wins there) and in local dev (unset).
    service binding specifically, confirmed live — see that field's own
    comment in `wrangler.jsonc`). No custom domain, no DNS change, Netlify
    totally unaffected. Verify login/cart/checkout there before ever
-   touching DNS or a custom domain.
-6. Local preview without touching any real Cloudflare account: copy
+   touching DNS or a custom domain — and specifically click through to a
+   category or product page too, not just the home page, per the
+   `API_SERVER_URL` note above.
+7. Local preview without touching any real Cloudflare account: copy
    `frontend/.dev.vars.example` to `frontend/.dev.vars`, then
    `npm run preview` (builds + runs `wrangler dev` against the real Railway
    backend, entirely on your own machine).
-7. Cutover (only after step 5 passes): point the real domain at Cloudflare,
+8. Cutover (only after step 6 passes): point the real domain at Cloudflare,
    update `CORS_ORIGIN`/`FRONTEND_URL` on Railway to match, then decommission
    the Netlify site. Not yet done as of this writing — treat this whole
    subsection as describing the parallel test path, not the live setup.
