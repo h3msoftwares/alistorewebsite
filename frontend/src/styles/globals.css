@@ -909,7 +909,19 @@ main > .container.section:first-child {
   align-items: center;
   gap: var(--space-1);
 }
-.topbar__account {
+/* Compound selector (0,2,0), not bare .topbar__account (0,1,0) — confirmed
+   live: .icon-btn's own `width: var(--control-h)` (44px, ~2400 lines below
+   this file) has equal specificity to a bare .topbar__account and comes
+   later in the cascade, so it silently won regardless of this rule's intent
+   to let the button grow to fit its icon + "Log in" label (same root cause,
+   same fix, as the .icon-btn-wrap.topbar__fav / .icon-btn.topbar__account
+   display:none rule below — see that comment). The button was staying
+   pinned at exactly 44px no matter the viewport, and the label rendered
+   past that fixed boundary via the browser's default `overflow: visible`
+   instead of actually being laid out — which reads as the text getting cut
+   off right at the header's end edge (.topbar__actions is pinned there),
+   confirmed live at every width tested, not just narrow ones. */
+.icon-btn.topbar__account {
   width: auto;
   gap: var(--space-2);
   padding-inline: var(--space-2);
