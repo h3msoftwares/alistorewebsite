@@ -1,4 +1,5 @@
 import { round2 } from './money';
+import { allocateCents } from './allocate-cents';
 import { coversTarget, type TargetCandidate } from './pricing';
 
 // Cart-level "buy N, pay $X total" combo/tiered pricing — deliberately its
@@ -73,9 +74,11 @@ export interface ComboPricingLine {
 export interface ComboPricingResult {
   /** lineId -> the combo-adjusted total for that line's FULL quantity. Equal
    *  to `round2(individualUnitPrice * quantity)` for a line no combo rule
-   *  touched. Callers needing a per-unit price (e.g. OrderItem.unitPrice)
-   *  divide this by the line's quantity — see the design plan (Q4). */
+   *  touched. These totals are before any order-level coupon. */
   lineTotals: Map<string, number>;
+  /** Exact per-unit allocations before coupons, in original line/unit
+   * order. Checkout preserves these instead of losing them to an average. */
+  lineUnitPricesCents: Map<string, number[]>;
   /** lineId -> the ComboRule id attributed to that line, or null. */
   lineComboRuleIds: Map<string, string | null>;
   subtotal: number;
@@ -98,6 +101,7 @@ export const MAX_COMBO_DP_UNITS = 300;
 
 interface Unit {
   lineId: string;
+  unitIndex: number;
   price: number;
 }
 
@@ -144,41 +148,24 @@ function computeGroupedCost(
  *  each unit's own individual price (a $10-vs-$4 pair sharing a $12 group
  *  price splits ~8.57/3.43, not 6/6 — see the design plan's allocation
  *  note), then reconciles cent-level rounding with a largest-remainder pass
- *  so the members' shares sum EXACTLY to `groupPrice`. */
+ *  so the returned integer-cent shares sum EXACTLY to `groupPrice` in cents. */
 function allocateGroup(members: Unit[], groupPrice: number): number[] {
-  const sum = members.reduce((s, m) => s + m.price, 0);
-  const targetCents = Math.round(groupPrice * 100);
-  if (sum <= 0) {
-    // Degenerate (a real priced product is never <= 0) — split evenly
-    // rather than divide by zero.
-    const base = Math.floor(targetCents / members.length);
-    const cents = members.map(() => base);
-    let remainder = targetCents - base * members.length;
-    for (let i = 0; i < cents.length && remainder > 0; i++, remainder--) cents[i] += 1;
-    return cents.map((c) => c / 100);
-  }
-  const raw = members.map((m) => (m.price / sum) * groupPrice * 100);
-  const cents = raw.map((r) => Math.floor(r));
-  let remainder = targetCents - cents.reduce((s, c) => s + c, 0);
-  const byFractionDesc = raw
-    .map((r, i) => ({ i, frac: r - cents[i] }))
-    .sort((a, b) => b.frac - a.frac);
-  for (let idx = 0; idx < byFractionDesc.length && remainder > 0; idx++, remainder--) {
-    cents[byFractionDesc[idx].i] += 1;
-  }
-  return cents.map((c) => c / 100);
+  return allocateCents(
+    Math.round(round2(groupPrice) * 100),
+    members.map((member) => Math.round(round2(member.price) * 100)),
+  );
 }
 
 /** Prices every unit pooled under ONE ComboRule (already attributed by
  *  pickComboRule — see applyComboPricing). Returns lineId -> that rule's
- *  contribution to that line's total. */
-function priceRuleGroup(lines: ComboPricingLine[], tiers: ComboTierCandidate[]): Map<string, number> {
-  const totals = new Map<string, number>();
-  for (const line of lines) totals.set(line.lineId, 0);
+ *  per-unit shares in integer cents, preserving each original unit index. */
+function priceRuleGroup(lines: ComboPricingLine[], tiers: ComboTierCandidate[]): Map<string, number[]> {
+  const unitPrices = new Map(lines.map((line) => [line.lineId,
+    Array<number>(line.quantity).fill(Math.round(round2(line.individualUnitPrice) * 100))]));
 
   const units: Unit[] = [];
   for (const line of lines) {
-    for (let i = 0; i < line.quantity; i++) units.push({ lineId: line.lineId, price: line.individualUnitPrice });
+    for (let i = 0; i < line.quantity; i++) units.push({ lineId: line.lineId, unitIndex: i, price: line.individualUnitPrice });
   }
   // Most expensive first: for a fixed number of grouped units, hiding the
   // priciest ones inside a flat-price group and leaving the cheapest priced
@@ -186,11 +173,9 @@ function priceRuleGroup(lines: ComboPricingLine[], tiers: ComboTierCandidate[]):
   // argument — see the design plan's Q2).
   units.sort((a, b) => b.price - a.price);
 
-  const add = (lineId: string, amount: number) => totals.set(lineId, totals.get(lineId)! + amount);
-
   const n = units.length;
   const dpN = Math.min(n, MAX_COMBO_DP_UNITS);
-  for (let i = dpN; i < n; i++) add(units[i].lineId, units[i].price); // beyond the cap: always individual
+  // Units beyond the cap retain their initialized individual price.
 
   const { cost, choice } = computeGroupedCost(dpN, tiers);
   const prefix = new Array(dpN + 1).fill(0);
@@ -212,7 +197,7 @@ function priceRuleGroup(lines: ComboPricingLine[], tiers: ComboTierCandidate[]):
   }
 
   // Positions [bestK, dpN) — the cheapest units in the DP pool — stay individual.
-  for (let i = bestK; i < dpN; i++) add(units[i].lineId, units[i].price);
+  // Their initialized individual prices need no changes.
 
   // Positions [0, bestK) — the most expensive units — are grouped, per the
   // group sizes/prices reconstructed by walking the DP's choice trail
@@ -228,11 +213,10 @@ function priceRuleGroup(lines: ComboPricingLine[], tiers: ComboTierCandidate[]):
     const members = units.slice(cursor, cursor + group.g);
     cursor += group.g;
     const shares = allocateGroup(members, group.price);
-    members.forEach((m, i) => add(m.lineId, shares[i]));
+    members.forEach((m, i) => { unitPrices.get(m.lineId)![m.unitIndex] = shares[i]; });
   }
 
-  for (const [lineId, total] of totals) totals.set(lineId, round2(total));
-  return totals;
+  return unitPrices;
 }
 
 /**
@@ -248,10 +232,13 @@ function priceRuleGroup(lines: ComboPricingLine[], tiers: ComboTierCandidate[]):
  */
 export function applyComboPricing(lines: ComboPricingLine[], comboRules: ComboRuleCandidate[]): ComboPricingResult {
   const lineTotals = new Map<string, number>();
+  const lineUnitPricesCents = new Map<string, number[]>();
   const lineComboRuleIds = new Map<string, string | null>();
   const buckets = new Map<string, { rule: ComboRuleCandidate; lines: ComboPricingLine[] }>();
 
   for (const line of lines) {
+    lineUnitPricesCents.set(line.lineId,
+      Array<number>(line.quantity).fill(Math.round(round2(line.individualUnitPrice) * 100)));
     const picked = comboRules.length
       ? pickComboRule({ id: line.productId, categoryPaths: line.categoryPaths, collectionIds: line.collectionIds }, comboRules)
       : null;
@@ -270,7 +257,10 @@ export function applyComboPricing(lines: ComboPricingLine[], comboRules: ComboRu
 
   for (const { rule, lines: ruleLines } of buckets.values()) {
     const perLine = priceRuleGroup(ruleLines, rule.tiers);
-    for (const [lineId, total] of perLine) lineTotals.set(lineId, total);
+    for (const [lineId, units] of perLine) {
+      lineUnitPricesCents.set(lineId, units);
+      lineTotals.set(lineId, units.reduce((sum, cents) => sum + cents, 0) / 100);
+    }
   }
 
   let subtotal = 0;
@@ -283,6 +273,7 @@ export function applyComboPricing(lines: ComboPricingLine[], comboRules: ComboRu
 
   return {
     lineTotals,
+    lineUnitPricesCents,
     lineComboRuleIds,
     subtotal,
     comboSavings: round2(Math.max(0, round2(individualSubtotal) - subtotal)),

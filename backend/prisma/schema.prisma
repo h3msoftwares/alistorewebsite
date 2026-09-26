@@ -1292,8 +1292,11 @@ model OrderItem {
   size             String?
   color            String?
   quantity         Int
-  unitPrice        Decimal @db.Decimal(12, 2)
-  lineTotal        Decimal @db.Decimal(12, 2) // unitPrice * quantity at order time
+  unitPrice        Decimal @db.Decimal(12, 2) // rounded post-coupon average; not an exact per-unit allocation
+  lineTotal        Decimal @db.Decimal(12, 2) // exact post-coupon merchandise total on new checkouts
+  // Versioned exact unit allocations in cents + pre-coupon total. Null on
+  // legacy orders, whose lineTotal/unitPrice were stored before coupons.
+  priceBreakdown   Json?
   // Materialized claim counter for per-item returns — mirrors
   // ProductVariant.stockQuantity's own pattern. Every active (not
   // REJECTED/CANCELLED) ReturnItem.quantity against this line is claimed

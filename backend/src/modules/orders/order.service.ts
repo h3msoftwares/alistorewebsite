@@ -17,6 +17,7 @@ import { activeComboRules } from '../combos/combo-rule.service';
 import { resolveCoupon, couponAmountOff } from '../discounts/coupon.service';
 import { lineUnitPrice } from '../../lib/line-pricing';
 import { applyComboPricing, type ComboPricingLine } from '../../lib/combo-pricing';
+import { checkoutItemPrices } from '../../lib/checkout-pricing';
 import { PROMOTION_PRODUCT_INCLUDE, productCategoryPaths, productCollectionIds } from '../catalog/category-tree';
 import { round2 } from '../../lib/money';
 import {
@@ -391,6 +392,8 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     const cartItems = cart
       ? await tx.cartItem.findMany({
           where: { cartID: cart.id },
+          // Stable tie-breaking for combo and coupon cent allocations.
+          orderBy: { id: 'asc' },
           include: {
             variant: {
               include: {
@@ -445,7 +448,6 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       individualUnitPrice: lineUnitPrice(i.variant, promotions),
     }));
     const priced = applyComboPricing(comboLines, comboRules);
-    const lineTotalFor = (i: (typeof cartItems)[number]) => priced.lineTotals.get(i.id)!;
     const subtotal = priced.subtotal;
 
     // If the client told us what subtotal its cart view last showed the
@@ -508,6 +510,8 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       discountAmount = couponAmountOff(coupon, subtotal);
       couponToRedeem = { id: coupon.id, maxRedemptions: coupon.maxRedemptions };
     }
+
+    const itemPrices = checkoutItemPrices(priced, discountAmount);
 
     // Admin-configured delivery fee (flat, per-region override, or free by
     // threshold / free-region list — see lib/delivery-fee.ts). Assessed on the
@@ -585,16 +589,6 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
         paymentMethod: 'COD',
         items: {
           create: cartItems.map((i) => {
-            // lineTotal is the authoritative, exact amount charged for this
-            // line (it's what subtotal is actually built from — see
-            // applyComboPricing()); unitPrice is back-derived from it, so a
-            // line a combo rule split across grouped/individual portions (or
-            // grouped together with a DIFFERENT line's units) still stores a
-            // sensible per-unit figure without unitPrice * quantity ever
-            // being asked to reproduce a value combo pricing didn't compute
-            // that way in the first place. See the design plan (Q4).
-            const lineTotal = lineTotalFor(i);
-            const unitPrice = round2(lineTotal / i.quantity);
             return {
               variantID: i.variantID,
               productName: i.variant.product.nameEn,
@@ -604,8 +598,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
               size: i.variant.size,
               color: i.variant.color,
               quantity: i.quantity,
-              unitPrice,
-              lineTotal,
+              ...itemPrices.get(i.id)!,
             };
           }),
         },

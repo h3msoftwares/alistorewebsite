@@ -9,9 +9,9 @@ import type { AnalyticsRangeQuery } from './analytics.schema';
  *
  * Money notes that hold across every endpoint:
  *  - "Revenue" means merchandise = `SUM(Order.subtotal)`; the admin-set delivery
- *    fee (`Order.deliveryFee`, and `total = subtotal + deliveryFee`) is reported
- *    separately as `deliveryRevenue` and never counted as sales. Orders still
- *    carry no discount, tax or refund.
+ *    fee is reported separately as `deliveryRevenue`. This existing metric
+ *    is BEFORE coupons and refunds, not cash collected. Item breakdowns use
+ *    the pre-coupon snapshot (legacy lineTotal was already pre-coupon).
  *  - "Sales" figures exclude CANCELLED orders; a few also expose a DELIVERED-only
  *    ("collected") number.
  *  - Guest orders (`userID IS NULL`) are excluded from customer analytics and
@@ -41,6 +41,13 @@ const CANCELLED = Prisma.sql`'CANCELLED'`;
 const bucket = (g: Granularity, col: Prisma.Sql) => Prisma.sql`date_trunc(${g}::text, ${col})`;
 
 const num = (v: unknown) => (v == null ? 0 : Number(v));
+
+// New lineTotal is post-coupon. Keep line reports on the same pre-coupon
+// basis as SUM(Order.subtotal), including ranges spanning legacy orders.
+const merchandiseLineRevenue = Prisma.sql`COALESCE(
+  (oi."priceBreakdown"->>'beforeCouponLineTotalCents')::numeric / 100,
+  oi."lineTotal"
+)`;
 
 // --------------------------------------------------------------- overview ----
 
@@ -131,7 +138,7 @@ export async function sales(q: AnalyticsRangeQuery) {
     byProduct,
     bySize,
     byColour,
-    note: 'Line revenue = OrderItem.lineTotal. Excludes CANCELLED orders.',
+    note: 'Line revenue is merchandise before coupons, matching Order.subtotal. Excludes CANCELLED orders.',
   };
 }
 
@@ -342,7 +349,7 @@ export async function products(q: AnalyticsRangeQuery) {
     >(Prisma.sql`
       SELECT oi."productName" AS name, oi."productSKU" AS sku, pv."productID" AS "productId",
         SUM(oi."quantity")::int          AS units,
-        SUM(oi."lineTotal")::float8      AS revenue,
+        SUM(${merchandiseLineRevenue})::float8 AS revenue,
         COUNT(DISTINCT oi."orderID")::int AS orders,
         COUNT(DISTINCT o."userID")::int   AS buyers
       FROM "orderitem" oi
@@ -404,12 +411,12 @@ function revenueSeries(from: Date, to: Date, g: Granularity) {
   `);
 }
 
-/** SUM(lineTotal) / SUM(quantity) grouped by an arbitrary label expression over
+/** Pre-coupon merchandise revenue / quantity grouped by a label expression over
  *  OrderItem, optionally with extra JOINs (for category). */
 function itemBreakdown(from: Date, to: Date, label: Prisma.Sql, joins: Prisma.Sql) {
   return prisma.$queryRaw<{ label: string; revenue: number; units: number }[]>(Prisma.sql`
     SELECT ${label} AS label,
-           SUM(oi."lineTotal")::float8 AS revenue,
+           SUM(${merchandiseLineRevenue})::float8 AS revenue,
            SUM(oi."quantity")::int     AS units
     FROM "orderitem" oi
     JOIN "order" o ON o."id" = oi."orderID"
