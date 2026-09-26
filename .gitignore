@@ -29,3 +29,6 @@ CLAUDE.md
 
 # Playwright MCP session artifacts (screenshots, console/network logs) — local scratch, not source
 /.playwright-mcp
+
+.codex/
+.worktrees/
