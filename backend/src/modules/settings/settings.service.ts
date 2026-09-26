@@ -15,7 +15,7 @@ const settingsInclude = {
   },
   reviewImages: { orderBy: { sortOrder: 'asc' as const } },
   showcases: { orderBy: { sortOrder: 'asc' as const } },
-  heroCtaCollection: { select: { id: true, slug: true, nameEn: true, nameAr: true } },
+  heroCtaCategory: { select: { id: true, slug: true, nameEn: true, nameAr: true } },
 };
 
 // '' / null / undefined ⇒ null; otherwise the trimmed value.
@@ -78,8 +78,8 @@ function scalarData(input: UpdateSettingsInput): Record<string, unknown> {
       out[key] = v === undefined ? undefined : v === '' || v === null ? null : v;
     }
   }
-  if ('heroCtaCollectionId' in input) {
-    out.heroCtaCollectionID = input.heroCtaCollectionId ? input.heroCtaCollectionId : null;
+  if ('heroCtaCategoryId' in input) {
+    out.heroCtaCategoryID = input.heroCtaCategoryId ? input.heroCtaCategoryId : null;
   }
 
   if (input.autoTagRestock !== undefined) out.autoTagRestock = input.autoTagRestock;
@@ -95,12 +95,12 @@ function scalarData(input: UpdateSettingsInput): Record<string, unknown> {
 }
 
 export async function updateSettings(input: UpdateSettingsInput) {
-  if (input.heroCtaCollectionId) {
-    const exists = await prisma.collection.findUnique({
-      where: { id: input.heroCtaCollectionId },
+  if (input.heroCtaCategoryId) {
+    const exists = await prisma.category.findUnique({
+      where: { id: input.heroCtaCategoryId },
       select: { id: true },
     });
-    if (!exists) throw new AppError('NOT_FOUND', 'heroCtaCollectionId does not match a collection');
+    if (!exists) throw new AppError('NOT_FOUND', 'heroCtaCategoryId does not match a category');
   }
 
   const data = scalarData(input);

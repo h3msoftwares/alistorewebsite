@@ -86,20 +86,16 @@ export function Hero({ locale }: { locale: string }) {
       : settings.heroCtaLabelEn
     : t('Discover', 'اكتشف الآن');
 
-  // Two different route shapes here, not one: an admin-picked CTA is a real
-  // `Collection` (heroCtaCollectionID, see backend/settings.schema.ts) and
-  // those pages live at /{locale}/{slug} (app/[locale]/[collection]/page.tsx).
-  // The fallback ("First nav collection" in the admin panel) instead follows
-  // the CATEGORY nav tree, whose pages live at /{locale}/category/{slug}
-  // (app/[locale]/category/[slug]/page.tsx) — a different entity with a
-  // different route since the catalog redesign split Category from
-  // Collection (see collection-banner.tsx's doc comment for the same split).
-  // Reusing the Collection URL shape for a Category slug sent visitors to
-  // the wrong page — confirmed live: the fallback landed on /en/women
-  // instead of the intended /en/category/women.
-  const ctaHref = settings?.heroCtaCollection
-    ? `/${locale}/${settings.heroCtaCollection.slug}`
-    : `/${locale}/category/${navCategories?.[0]?.slug ?? 'women'}`;
+  // Admin-set CTA category (heroCtaCategoryID — always Category, never
+  // Collection; see schema.prisma's comment on that field for why), else the
+  // first nav category, else the seeded /women. Every case is a Category
+  // page, so there's exactly one route shape to build: /{locale}/category/
+  // {slug} (app/[locale]/category/[slug]/page.tsx) — no more branching
+  // between two different entities' URL shapes here (see git history for
+  // the bug that split-entity branching caused before this field was
+  // migrated off Collection).
+  const ctaSlug = settings?.heroCtaCategory?.slug ?? navCategories?.[0]?.slug ?? 'women';
+  const ctaHref = `/${locale}/category/${ctaSlug}`;
 
   return (
     <section ref={ref} className="hero" data-home-hero aria-labelledby="hero-title">

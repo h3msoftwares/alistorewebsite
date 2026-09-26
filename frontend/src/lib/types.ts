@@ -894,7 +894,7 @@ export interface SiteSettings {
   heroLedeAr: string;
   heroCtaLabelEn: string;
   heroCtaLabelAr: string;
-  heroCtaCollectionID: UUID | null;
+  heroCtaCategoryID: UUID | null;
   homeMoreHeadingEn: string;
   homeMoreHeadingAr: string;
   /** Optional "Our story" page — null in a language ⇒ fall back to the other;
@@ -923,8 +923,9 @@ export interface SiteSettings {
   reviewImages: ReviewImage[];
   /** Built-in smart home rows (best sellers / new / on sale), by `sortOrder`. */
   showcases: HomeShowcase[];
-  /** Resolved collection for the hero CTA, when one is set. */
-  heroCtaCollection: Pick<Collection, 'id' | 'slug' | 'nameEn' | 'nameAr'> | null;
+  /** Resolved category for the hero CTA, when one is set — always routes to
+   *  /category/{slug} (see frontend/src/components/home/hero.tsx). */
+  heroCtaCategory: Pick<Category, 'id' | 'slug' | 'nameEn' | 'nameAr'> | null;
   /** Auto-tags a product "Restocked" the first time one of its variants'
    *  stock crosses 0 -> positive. Off by default — the tag then stays a
    *  manual, per-product toggle on the product edit page. */
@@ -944,8 +945,8 @@ export type SiteSettingsBody = Partial<
     SiteSettings,
     | 'id'
     | 'announcementLines'
-    | 'heroCtaCollection'
-    | 'heroCtaCollectionID'
+    | 'heroCtaCategory'
+    | 'heroCtaCategoryID'
     | 'deliveryRates'
     | 'freeDeliveryThreshold'
     | 'storeLocations'
@@ -953,7 +954,7 @@ export type SiteSettingsBody = Partial<
     | 'showcases'
   >
 > & {
-  heroCtaCollectionId?: UUID | '' | null;
+  heroCtaCategoryId?: UUID | '' | null;
   announcementLines?: { textEn: string; textAr: string }[];
   deliveryRates?: { region: string; fee: number }[];
   /** Replace-all: the whole customer-review strip, in order. */

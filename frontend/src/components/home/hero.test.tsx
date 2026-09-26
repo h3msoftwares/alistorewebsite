@@ -20,11 +20,13 @@ beforeEach(() => {
 });
 
 describe('<Hero>', () => {
-  // Two different route shapes: a Collection page lives at /{locale}/{slug},
-  // a Category page at /{locale}/category/{slug} — see hero.tsx's doc
-  // comment. Confirmed live bug: the fallback used to reuse the Collection
-  // URL shape for a Category slug, sending visitors to the wrong page.
-  it('links to /category/<slug> when no admin CTA collection is set, following the first nav category', () => {
+  // Every case here is a Category page (/{locale}/category/{slug}) —
+  // heroCtaCategory was migrated off Collection (which lived at a different
+  // route, /{locale}/{slug}) specifically because an admin picking "Men"
+  // meant the Men Category, not some separate same-named Collection record;
+  // reusing the Collection route shape for it sent visitors to the wrong
+  // page. See schema.prisma's comment on heroCtaCategoryID.
+  it('links to /category/<slug> when no admin CTA category is set, following the first nav category', () => {
     settings.data = null;
     navCategories.data = [{ id: 'c1', slug: 'men', showInNav: true, sortOrder: 0 }];
     renderHero();
@@ -38,16 +40,16 @@ describe('<Hero>', () => {
     expect(screen.getByRole('link', { name: /discover/i })).toHaveAttribute('href', '/en/category/women');
   });
 
-  it('links to /{slug} (no /category/ prefix) when the admin explicitly picked a real Collection', () => {
+  it('links to /category/<slug> for the admin-picked category, overriding the nav fallback', () => {
     settings.data = {
       heroEyebrowEn: 'Limited stock',
       heroHeadlineEn: 'Buy it before someone else does.',
       heroLedeEn: 'Women, men and kids.',
       heroCtaLabelEn: 'Discover',
-      heroCtaCollection: { id: 'col1', slug: 'summer-picks', nameEn: 'Summer picks', nameAr: 'اختيارات الصيف' },
+      heroCtaCategory: { id: 'cat1', slug: 'kids-pajamas', nameEn: "Kids' Pajamas", nameAr: 'بيجامات أطفال' },
     };
     navCategories.data = [{ id: 'c1', slug: 'men', showInNav: true, sortOrder: 0 }];
     renderHero();
-    expect(screen.getByRole('link', { name: /discover/i })).toHaveAttribute('href', '/en/summer-picks');
+    expect(screen.getByRole('link', { name: /discover/i })).toHaveAttribute('href', '/en/category/kids-pajamas');
   });
 });
