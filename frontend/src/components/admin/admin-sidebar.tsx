@@ -2,13 +2,15 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { PanelLeftClose, UserCog } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { Languages, PanelLeftClose, UserCog } from 'lucide-react';
 import { Icon } from '@/components/ui/icon';
 import { initialsOf } from '@/components/chrome/topbar';
 import { LogoutButton } from '@/components/chrome/logout-button';
 import { useAuth } from '@/hooks/use-auth';
 import { useSettings } from '@/hooks/use-settings';
 import { groupAdminNavItems, useAdminNavItems } from '@/hooks/use-admin-nav';
+import { swapLocalePath } from '@/lib/locale-path';
 import { ADMIN_NAV_GROUP_LABEL } from '@/lib/rbac';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 
@@ -23,6 +25,9 @@ export function AdminSidebar({ locale, onCollapse }: { locale: string; onCollaps
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { user } = useAuth();
   const { data: settings } = useSettings();
+  const pathname = usePathname();
+  const otherLocale = isAr ? 'en' : 'ar';
+  const otherLocaleHref = swapLocalePath(pathname ?? `/${locale}/admin`, otherLocale);
   const brandName = settings ? (isAr ? settings.brandNameAr : settings.brandNameEn) : isAr ? DEFAULT_BRAND_NAME_AR : DEFAULT_BRAND_NAME_EN;
   const groups = groupAdminNavItems(useAdminNavItems(locale));
 
@@ -74,6 +79,14 @@ export function AdminSidebar({ locale, onCollapse }: { locale: string; onCollaps
             aria-label={t('My profile', 'ملفي الشخصي')}
           >
             <Icon as={UserCog} size={16} />
+          </Link>
+          <Link
+            href={otherLocaleHref}
+            className="admin-sidebar__profile-link"
+            title={t('Switch to Arabic', 'التغيير إلى الإنجليزية')}
+            aria-label={t('Switch to Arabic', 'التغيير إلى الإنجليزية')}
+          >
+            <Icon as={Languages} size={16} />
           </Link>
           <LogoutButton locale={locale} variant="icon" />
         </div>

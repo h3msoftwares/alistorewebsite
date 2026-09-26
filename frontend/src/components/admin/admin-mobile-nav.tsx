@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu } from 'lucide-react';
+import { Languages, Menu } from 'lucide-react';
 import { Icon } from '@/components/ui/icon';
 import { Drawer } from '@/components/ui/drawer';
 import { groupAdminNavItems, useAdminNavItems } from '@/hooks/use-admin-nav';
 import { LogoutButton } from '@/components/chrome/logout-button';
+import { swapLocalePath } from '@/lib/locale-path';
 import { usePermissions, ADMIN_NAV_GROUP_LABEL } from '@/lib/rbac';
 import { useAdminDashboard } from '@/hooks/use-orders';
 
@@ -38,6 +39,8 @@ export function AdminMobileNav({ locale }: { locale: string }) {
 
   const flaggedCount = has('orders:view') ? dashboard?.flaggedOrders : undefined;
   const groups = groupAdminNavItems(items);
+  const otherLocale = isAr ? 'en' : 'ar';
+  const otherLocaleHref = swapLocalePath(pathname ?? `/${locale}/admin`, otherLocale);
 
   return (
     <>
@@ -71,6 +74,14 @@ export function AdminMobileNav({ locale }: { locale: string }) {
             </div>
           ))}
           <div className="admin-sidebar__group">
+            <Link
+              href={otherLocaleHref}
+              className="admin-sidebar__link"
+              onClick={() => setOpen(false)}
+            >
+              <Icon as={Languages} size={18} />
+              {t('Switch to Arabic', 'التغيير إلى الإنجليزية')}
+            </Link>
             <LogoutButton locale={locale} variant="admin-nav" onDone={() => setOpen(false)} />
           </div>
         </nav>
