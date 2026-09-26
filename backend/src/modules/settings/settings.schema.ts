@@ -31,8 +31,8 @@ export const updateSettingsSchema = z.object({
   heroLedeAr: z.string().trim().max(280).optional(),
   heroCtaLabelEn: z.string().trim().max(40).optional(),
   heroCtaLabelAr: z.string().trim().max(40).optional(),
-  // '' / null ⇒ clear (fall back to the first nav collection on the storefront).
-  heroCtaCollectionId: z.string().uuid().or(z.literal('')).nullish(),
+  // '' / null ⇒ clear (fall back to the first nav category on the storefront).
+  heroCtaCategoryId: z.string().uuid().or(z.literal('')).nullish(),
   homeMoreHeadingEn: z.string().trim().max(80).optional(),
   homeMoreHeadingAr: z.string().trim().max(80).optional(),
 

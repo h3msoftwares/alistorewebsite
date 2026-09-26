@@ -353,12 +353,11 @@ model Collection {
   dateCreated       DateTime       @default(now())
   lastEdit          DateTime       @default(now()) @updatedAt
 
-  images      CollectionImage[]
-  products    CollectionProduct[]
-  rules       CollectionRule[]
-  siteHeroFor SiteSetting[]
-  promotions  PromotionCollection[]
-  comboRules  ComboRuleCollection[]
+  images     CollectionImage[]
+  products   CollectionProduct[]
+  rules      CollectionRule[]
+  promotions PromotionCollection[]
+  comboRules ComboRuleCollection[]
 
   @@index([isActive])
   @@index([archivedAt])
@@ -538,6 +537,7 @@ model Category {
   productLinks    ProductCategory[]
   promotions      PromotionCategory[]
   comboRules      ComboRuleCategory[]
+  siteHeroFor     SiteSetting[]
 
   @@index([parentID, sortOrder])
   @@index([path])
@@ -743,9 +743,9 @@ model PromotionCollection {
 // (see lib/combo-pricing.ts pickComboRule()), so a cart line's eligible
 // units are never pooled into two different rules' groupings at once.
 model ComboRule {
-  id     String          @id @default(uuid()) @db.Uuid
-  nameEn String
-  nameAr String
+  id           String          @id @default(uuid()) @db.Uuid
+  nameEn       String
+  nameAr       String
   // Reuses PromotionStatus (same DRAFT/ACTIVE/PAUSED/ENDED meaning) rather
   // than a parallel ComboRuleStatus enum — same precedent as DiscountType
   // being shared across Product/Promotion/Coupon/LoyaltyRule.
@@ -1280,31 +1280,31 @@ model OrderAccessToken {
 }
 
 model OrderItem {
-  id              String  @id @default(uuid()) @db.Uuid
-  orderID         String  @db.Uuid
-  variantID       String  @db.Uuid
+  id               String  @id @default(uuid()) @db.Uuid
+  orderID          String  @db.Uuid
+  variantID        String  @db.Uuid
   // Full snapshot so a historical order stays displayable even if the
   // product/variant is later edited or deleted.
-  productName     String
-  productSKU      String
-  variantSKU      String
-  productImageUrl String?
-  size            String?
-  color           String?
-  quantity        Int
-  unitPrice       Decimal @db.Decimal(12, 2)
-  lineTotal       Decimal @db.Decimal(12, 2) // unitPrice * quantity at order time
+  productName      String
+  productSKU       String
+  variantSKU       String
+  productImageUrl  String?
+  size             String?
+  color            String?
+  quantity         Int
+  unitPrice        Decimal @db.Decimal(12, 2)
+  lineTotal        Decimal @db.Decimal(12, 2) // unitPrice * quantity at order time
   // Materialized claim counter for per-item returns — mirrors
   // ProductVariant.stockQuantity's own pattern. Every active (not
   // REJECTED/CANCELLED) ReturnItem.quantity against this line is claimed
   // here atomically at request time, so two concurrent return requests can
   // never together return more than `quantity` units. See return.service.ts.
-  returnedQuantity Int @default(0)
+  returnedQuantity Int     @default(0)
 
-  order       Order          @relation(fields: [orderID], references: [id], onDelete: Cascade)
-  variant     ProductVariant @relation(fields: [variantID], references: [id])
+  order          Order           @relation(fields: [orderID], references: [id], onDelete: Cascade)
+  variant        ProductVariant  @relation(fields: [variantID], references: [id])
   stockMovements StockMovement[]
-  returnItems ReturnItem[]
+  returnItems    ReturnItem[]
 
   @@index([orderID])
   @@map("orderitem")
@@ -1363,23 +1363,30 @@ model ReturnItem {
 // name, the announcement strip, the home hero copy, and the footer's
 // social / contact links.
 model SiteSetting {
-  id                  Int     @id @default(1)
-  brandNameEn         String  @default("Ali'sStore")
-  brandNameAr         String  @default("Ali'sStore")
-  announcementActive  Boolean @default(true)
-  heroEyebrowEn       String  @default("Limited stock")
-  heroEyebrowAr       String  @default("كمية محدودة")
-  heroHeadlineEn      String  @default("Buy it before someone else does.")
-  heroHeadlineAr      String  @default("خدها قبل ما حدا غيرك ياخدها.")
-  heroLedeEn          String  @default("Women, men and kids — clothing you actually wear, paid for on delivery.")
-  heroLedeAr          String  @default("نساء ورجال وأطفال — ملابس ترتديها فعلاً، وتدفع عند الاستلام.")
-  heroCtaLabelEn      String  @default("Discover")
-  heroCtaLabelAr      String  @default("اكتشف الآن")
-  // Which collection the hero's Discover button points at. null ⇒ the
-  // storefront falls back to the first nav collection.
-  heroCtaCollectionID String? @db.Uuid
-  homeMoreHeadingEn   String  @default("More to explore")
-  homeMoreHeadingAr   String  @default("المزيد لاكتشافه")
+  id                 Int     @id @default(1)
+  brandNameEn        String  @default("Ali'sStore")
+  brandNameAr        String  @default("Ali'sStore")
+  announcementActive Boolean @default(true)
+  heroEyebrowEn      String  @default("Limited stock")
+  heroEyebrowAr      String  @default("كمية محدودة")
+  heroHeadlineEn     String  @default("Buy it before someone else does.")
+  heroHeadlineAr     String  @default("خدها قبل ما حدا غيرك ياخدها.")
+  heroLedeEn         String  @default("Women, men and kids — clothing you actually wear, paid for on delivery.")
+  heroLedeAr         String  @default("نساء ورجال وأطفال — ملابس ترتديها فعلاً، وتدفع عند الاستلام.")
+  heroCtaLabelEn     String  @default("Discover")
+  heroCtaLabelAr     String  @default("اكتشف الآن")
+  // Which category the hero's Discover button points at (always a
+  // /category/{slug} page — see frontend hero.tsx). null ⇒ the storefront
+  // falls back to the first nav category. Was Collection-based pre-redesign
+  // (heroCtaCollectionID); migrated to Category to match every other
+  // storefront-chrome field this model already keyed off Category for (see
+  // catalog-redesign-implementation-plan.md's Stage 1 nav/banner decision) —
+  // confirmed live: pointing this at a Collection produced a real, working
+  // page (Collection has its own /{slug} route), but a different one than
+  // an admin picking "Men" here actually meant.
+  heroCtaCategoryID  String? @db.Uuid
+  homeMoreHeadingEn  String  @default("More to explore")
+  homeMoreHeadingAr  String  @default("المزيد لاكتشافه")
 
   // Optional "Our story" page. Title + body both null / "" in every language ⇒
   // the page and its footer link are hidden. Body is plain text; blank lines
@@ -1423,7 +1430,7 @@ model SiteSetting {
 
   lastEdit DateTime @updatedAt
 
-  heroCtaCollection Collection?        @relation(fields: [heroCtaCollectionID], references: [id], onDelete: SetNull)
+  heroCtaCategory   Category?          @relation(fields: [heroCtaCategoryID], references: [id], onDelete: SetNull)
   announcementLines AnnouncementLine[]
   deliveryRates     DeliveryRate[]
   storeLocations    StoreLocation[]

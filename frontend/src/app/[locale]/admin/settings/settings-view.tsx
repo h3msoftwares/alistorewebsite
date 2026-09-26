@@ -18,7 +18,7 @@ import {
   Select,
   Textarea,
 } from '@/components/ui';
-import { useAdminCollections } from '@/hooks/use-catalog';
+import { useAdminCategories } from '@/hooks/use-catalog';
 import { usePermissions } from '@/lib/rbac';
 import { useSettings, useUpdateSettings } from '@/hooks/use-settings';
 import { ImageUploader } from '@/components/admin/image-uploader';
@@ -83,7 +83,7 @@ const settingsFormSchema = z.object({
   heroLedeAr: z.string(),
   heroCtaLabelEn: z.string(),
   heroCtaLabelAr: z.string(),
-  heroCtaCollectionId: z.string(),
+  heroCtaCategoryId: z.string(),
   homeMoreHeadingEn: z.string(),
   homeMoreHeadingAr: z.string(),
   // ---- Our story page ----
@@ -309,7 +309,7 @@ export function AdminSettingsPage() {
   const canManage = usePermissions().has('settings:manage');
 
   const { data: settings, isPending, isError, refetch } = useSettings();
-  const { data: collections } = useAdminCollections({ status: 'all' });
+  const { data: categories } = useAdminCategories({ status: 'all' });
   const updateSettings = useUpdateSettings();
 
   const [error, setError] = useState<string | null>(null);
@@ -347,7 +347,7 @@ export function AdminSettingsPage() {
     heroLedeAr: settings.heroLedeAr,
     heroCtaLabelEn: settings.heroCtaLabelEn,
     heroCtaLabelAr: settings.heroCtaLabelAr,
-    heroCtaCollectionId: settings.heroCtaCollectionID ?? '',
+    heroCtaCategoryId: settings.heroCtaCategoryID ?? '',
     homeMoreHeadingEn: settings.homeMoreHeadingEn,
     homeMoreHeadingAr: settings.homeMoreHeadingAr,
     storyTitleEn: settings.storyTitleEn ?? '',
@@ -682,14 +682,20 @@ export function AdminSettingsPage() {
           </div>
           <Field
             label={t('Button links to', 'الزر يفتح')}
-            hint={t('Leave as "First nav collection" to follow the nav automatically', 'اتركه على "أول مجموعة في التنقل" ليتبع التنقل تلقائيًا')}
+            hint={t('Leave as "First nav category" to follow the nav automatically', 'اتركه على "أول فئة في التنقل" ليتبع التنقل تلقائيًا')}
           >
             {(p) => (
-              <Select {...p} {...register('heroCtaCollectionId')} disabled={busy}>
-                <option value="">{t('First nav collection', 'أول مجموعة في التنقل')}</option>
-                {(collections ?? []).map((c) => (
+              <Select {...p} {...register('heroCtaCategoryId')} disabled={busy}>
+                <option value="">{t('First nav category', 'أول فئة في التنقل')}</option>
+                {(categories ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
-                    {isAr ? c.nameAr : c.nameEn}
+                    {/* Every level of a 4-deep tree is listed flat here, so a
+                        repeated name (e.g. "Shoes" under both Men and Women)
+                        needs disambiguating — the slug path does that without
+                        depending on list order or a populated parent chain,
+                        both of which useAdminCategories's flat response can't
+                        guarantee. */}
+                    {(isAr ? c.nameAr : c.nameEn) + (c.depth > 0 ? ` (${c.path})` : '')}
                   </option>
                 ))}
               </Select>

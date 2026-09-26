@@ -3,7 +3,7 @@ import request from 'supertest';
 import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
 import { createAdmin, createCustomer, bearer } from '../helpers/auth';
-import { makeCollection } from '../helpers/factories';
+import { makeCategory } from '../helpers/factories';
 
 const app = buildApp();
 
@@ -135,25 +135,25 @@ describe('Site settings API', () => {
     expect(cleared.body.settings.announcementLines).toHaveLength(0);
   });
 
-  it('links / clears the hero CTA collection and rejects an unknown id', async () => {
-    const col = await makeCollection({ slug: 'summer-hero' });
+  it('links / clears the hero CTA category and rejects an unknown id', async () => {
+    const cat = await makeCategory({ slug: 'summer-hero' });
 
     const linked = await request(app)
       .patch('/api/settings')
       .set(bearer(adminToken))
-      .send({ heroCtaCollectionId: col.id });
-    expect(linked.body.settings.heroCtaCollection).toMatchObject({ id: col.id, slug: 'summer-hero' });
+      .send({ heroCtaCategoryId: cat.id });
+    expect(linked.body.settings.heroCtaCategory).toMatchObject({ id: cat.id, slug: 'summer-hero' });
 
     const cleared = await request(app)
       .patch('/api/settings')
       .set(bearer(adminToken))
-      .send({ heroCtaCollectionId: '' });
-    expect(cleared.body.settings.heroCtaCollectionID).toBeNull();
+      .send({ heroCtaCategoryId: '' });
+    expect(cleared.body.settings.heroCtaCategoryID).toBeNull();
 
     const bad = await request(app)
       .patch('/api/settings')
       .set(bearer(adminToken))
-      .send({ heroCtaCollectionId: '00000000-0000-4000-8000-000000000000' });
+      .send({ heroCtaCategoryId: '00000000-0000-4000-8000-000000000000' });
     expect(bad.status).toBe(404);
   });
 
