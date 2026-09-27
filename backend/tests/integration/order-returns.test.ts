@@ -300,6 +300,56 @@ describe('Per-item returns', () => {
     expect((await prisma.order.findUniqueOrThrow({ where: { id: order.orderId } })).status).toBe('DELIVERED');
   });
 
+  describe.each(['customer', 'guest'])('%s cancellation after a status rollback', (via) => {
+    describe.each(['PENDING', 'CONFIRMED'])('order reverted to %s', (status) => {
+      it.each(['REQUESTED', 'RECEIVED', 'REFUNDED'])('refuses cancellation with a %s return without restoring stock', async (returnStatus) => {
+        const order = await deliveredOrder(4);
+        const returnId = await requestItemReturn(order, 2);
+        if (returnStatus !== 'REQUESTED') {
+          await advanceReturn(returnId, order.admin.token, [
+            'APPROVED', 'IN_TRANSIT', 'RECEIVED', ...(returnStatus === 'REFUNDED' ? ['REFUNDED'] : []),
+          ]);
+        }
+        // Exercise the real admin rollback, which remains allowed by this fix.
+        await request(app).patch(`/api/admin/orders/${order.orderId}/status`)
+          .set(bearer(order.admin.token)).send({ status }).expect(200);
+        const before = await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } });
+        const restocked = await returnStockTotal(order.orderId);
+        expect(before.stockQuantity).toBe(returnStatus === 'REQUESTED' ? 6 : 8);
+
+        let response;
+        if (via === 'customer') {
+          response = await request(app).post(`/api/orders/${order.orderId}/cancel`).set(bearer(order.buyer.token));
+        } else {
+          const lookup = await request(app).post('/api/orders/lookup')
+            .send({ orderNumber: order.orderNumber, contact: delivery.deliveryPhone }).expect(200);
+          response = await request(app).post(`/api/orders/track/${lookup.body.token}/cancel`);
+        }
+
+        expect(response.status).toBe(409);
+        expect(response.body.error.message).toMatch(/per-item return/i);
+        expect((await prisma.order.findUniqueOrThrow({ where: { id: order.orderId } })).status).toBe(status);
+        expect((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stockQuantity).toBe(before.stockQuantity);
+        expect(await returnStockTotal(order.orderId)).toBe(restocked);
+        expect((await prisma.return.findUniqueOrThrow({ where: { id: returnId } })).status).toBe(returnStatus);
+        expect((await prisma.orderItem.findUniqueOrThrow({ where: { id: order.orderItemId } })).returnedQuantity).toBe(2);
+        expect(await prisma.auditLog.count({ where: { entityID: order.orderId, action: 'order.cancelled' } })).toBe(0);
+      });
+    });
+  });
+
+  it.each(['REJECTED', 'CANCELLED'])('a %s return does not block ordinary customer cancellation', async (status) => {
+    const order = await deliveredOrder(4);
+    const returnId = await requestItemReturn(order, 2);
+    await advanceReturn(returnId, order.admin.token, [status]);
+    await request(app).patch(`/api/admin/orders/${order.orderId}/status`)
+      .set(bearer(order.admin.token)).send({ status: 'PENDING' }).expect(200);
+
+    await request(app).post(`/api/orders/${order.orderId}/cancel`).set(bearer(order.buyer.token)).expect(200);
+    expect((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stockQuantity).toBe(10);
+    expect(await returnStockTotal(order.orderId)).toBe(4);
+  });
+
   it.each(['RECEIVED', 'REFUNDED'])('cancellation restores only the remainder after multiple %s returns', async (status) => {
     const order = await deliveredOrder(4);
     for (let i = 0; i < 2; i++) {

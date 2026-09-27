@@ -733,6 +733,16 @@ export async function getOrderById(id: string, userID?: string) {
   return order;
 }
 
+/** Shared whole-order guard: pending claims and completed refunds both count.
+ *  Call under the order row lock shared with per-item return requests/receipt. */
+async function hasPerItemReturn(tx: Prisma.TransactionClient, orderID: string): Promise<boolean> {
+  const existing = await tx.return.findFirst({
+    where: { orderID, status: { notIn: ['REJECTED', 'CANCELLED'] } },
+    select: { id: true },
+  });
+  return existing !== null;
+}
+
 /** Restores only the quantity not already restocked by per-item returns.
  *  Callers hold the order row lock, shared with per-item return receipt.
  *  Stock movements record actual receipt; returnedQuantity also includes
@@ -820,6 +830,17 @@ async function performCancellation(
     });
     if (claim.count === 0) {
       throw new AppError('CONFLICT', 'This order can no longer be cancelled');
+    }
+
+    // The status claim holds the order row lock. Check return history while
+    // holding it, even if an admin reverted the order to PENDING/CONFIRMED.
+    // A customer cancellation cannot prove the remaining units came back.
+    // Throwing rolls back the status claim as well as preventing any restock.
+    if (opts.enforceCancellableGate && await hasPerItemReturn(tx, id)) {
+      throw new AppError(
+        'CONFLICT',
+        'This order has a per-item return and cannot be cancelled. Please contact the store.'
+      );
     }
 
     await restoreStock(tx, existing.items, existing.orderNumber, 'cancelled');
@@ -988,11 +1009,7 @@ export async function updateOrderStatus(
       // the Returns page instead, which already has an active claim on
       // whichever quantities are in flight or were already restocked.
       // REFUNDED still represents stock restored at RECEIVED.
-      const perItemReturn = await tx.return.findFirst({
-        where: { orderID: id, status: { notIn: ['REJECTED', 'CANCELLED'] } },
-        select: { id: true },
-      });
-      if (perItemReturn) {
+      if (await hasPerItemReturn(tx, id)) {
         throw new AppError(
           'CONFLICT',
           'This order has a per-item return — use the Returns page instead of marking the whole order returned.'
