@@ -126,7 +126,7 @@ async function performReturnRequest(
       ...(refundBreakdown ? { refundBreakdown } : {}),
     }));
 
-    return tx.return.create({
+    const created = await tx.return.create({
       data: {
         orderID: orderId,
         reason,
@@ -136,6 +136,22 @@ async function performReturnRequest(
       },
       include: RETURN_INCLUDE,
     });
+    const calculatedItems = preview.items.filter((item) => item.refundBreakdown).map((item) => ({
+      orderItemID: item.orderItemID, quantity: item.quantity, ...item.refundBreakdown,
+    }));
+    if (calculatedItems.length) {
+      // Persist the accepted calculation atomically with its Return, rather
+      // than relying on the UI or the best-effort request/status audit events.
+      // Read-only previews do not issue refunds or create audit events.
+      await tx.auditLog.create({
+        data: {
+          entityType: 'return', entityID: created.id, action: 'return.refund_calculated',
+          actorID: requestedBy ?? null,
+          metadata: { orderID: orderId, refundCents: preview.refundCents, items: calculatedItems },
+        },
+      });
+    }
+    return created;
   });
 }
 
