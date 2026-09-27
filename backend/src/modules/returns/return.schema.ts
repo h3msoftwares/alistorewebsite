@@ -16,6 +16,7 @@ const returnStatus = z.enum([
 // returnedQuantity claim in return.service.ts, not expressible here.
 export const createReturnSchema = z.object({
   reason: z.string().trim().max(1000).optional(),
+  expectedRefundCents: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
   items: z
     .array(
       z.object({

@@ -5,7 +5,7 @@ import { Alert, Button, Choice, QuantityStepper, StatusPill, Textarea } from '@/
 import { formatCurrency } from '@/lib/format';
 import { colorLabel } from '@/lib/product-variants';
 import { regionLabel } from '@/lib/regions';
-import type { CreateReturnBody, Order, ReturnStatus } from '@/lib/types';
+import type { CreateReturnBody, Order, ReturnStatus, ReturnPreview, RefundCalculation } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
 
@@ -42,6 +42,25 @@ const RETURN_STATUS_LABEL: Record<ReturnStatus, { en: string; ar: string }> = {
   CANCELLED: { en: 'Cancelled', ar: 'مُلغى' },
 };
 
+function RefundExplanation({ calculation: c, locale }: { calculation: RefundCalculation; locale: Locale }) {
+  const t = (en: string, ar: string) => locale === 'ar' ? ar : en;
+  const money = (cents: number) => formatCurrency(cents / 100, locale);
+  const rows = [
+    [t('Original amount paid for this line', 'المبلغ الأصلي المدفوع لهذا البند'), c.originalNetCents],
+    [t(`Price of ${c.keptQuantity} kept unit(s), before coupon`, `سعر ${c.keptQuantity} وحدات محتفظ بها قبل القسيمة`), c.keptGrossCents],
+    [t('Kept amount after preserved coupon', 'المبلغ المحتفظ به بعد القسيمة الأصلية'), c.keptNetCents],
+    [t('Proportional value of all returned units', 'القيمة النسبية لجميع الوحدات المرتجعة'), c.proportionalRefundCents],
+    [t('Quantity-discount adjustment (deducted)', 'تعديل خصم الكمية (يُخصم)'), c.quantityDiscountAdjustmentCents],
+    [t('Previously refunded', 'المبالغ المستردة سابقاً'), c.previousRefundCents],
+    ...(c.reservedRefundCents > 0 ? [[t('Other pending refunds (reserved)', 'مبالغ طلبات إرجاع أخرى معلّقة'), c.reservedRefundCents] as const] : []),
+    [t('Refund for this request', 'المبلغ المسترد لهذا الطلب'), c.refundCents],
+  ] as const;
+  return <div className="stack" style={{ marginBlock: 'var(--space-2)' }}>
+    {rows.map(([label, cents]) => <div className="checkout__row" key={label}><span>{label}</span><span className="is-numeric">{money(cents)}</span></div>)}
+    {c.refundCents === 0 && <p>{t('This return has no refundable amount after the quantity-discount adjustment.', 'لا ينتج عن هذا الإرجاع مبلغ مسترد بعد تعديل خصم الكمية.')}</p>}
+  </div>;
+}
+
 /**
  * Renders one order's items/delivery/total, a Cancel button when
  * cancellable, a "Request a return" form when delivered, and a read-only
@@ -57,6 +76,7 @@ export function OrderDetailCard({
   cancelling,
   cancelError,
   onRequestReturn,
+  onPreviewReturn,
   requestingReturn,
   requestReturnError,
   onCancelReturn,
@@ -68,6 +88,7 @@ export function OrderDetailCard({
   cancelling?: boolean;
   cancelError?: string | null;
   onRequestReturn?: (body: CreateReturnBody) => void;
+  onPreviewReturn?: (body: CreateReturnBody) => Promise<ReturnPreview>;
   requestingReturn?: boolean;
   requestReturnError?: string | null;
   onCancelReturn?: (returnId: string) => void;
@@ -82,9 +103,20 @@ export function OrderDetailCard({
   const [showReturnForm, setShowReturnForm] = useState(false);
   const [selectedQty, setSelectedQty] = useState<Record<string, number>>({});
   const [reason, setReason] = useState('');
+  const [preview, setPreview] = useState<{ key: string; value: ReturnPreview } | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewKey = JSON.stringify([selectedQty, order.returns]);
+  const currentPreview = preview?.key === previewKey ? preview.value : null;
+  const affected = (i: Order['items'][number]) => i.priceBreakdown?.version === 2
+    && (i.priceBreakdown.rule != null || (i.priceBreakdown.couponDiscountCents ?? 0) > 0);
+  const unresolved = new Set((order.returns ?? []).filter((r) => !['REFUNDED', 'REJECTED', 'CANCELLED'].includes(r.status))
+    .flatMap((r) => r.items.map((i) => i.orderItemID)));
 
-  const returnableItems = order.items.filter((i) => i.quantity - i.returnedQuantity > 0);
+  const returnableItems = order.items.filter((i) => i.quantity - i.returnedQuantity > 0 && !(affected(i) && unresolved.has(i.id)));
   const canRequestReturn = Boolean(onRequestReturn) && order.status === 'DELIVERED' && returnableItems.length > 0;
+  const selectedItems = returnableItems.filter((i) => selectedQty[i.id] > 0)
+    .map((i) => ({ orderItemID: i.id, quantity: Math.min(selectedQty[i.id], i.quantity - i.returnedQuantity) }));
 
   const toggleItem = (itemId: string, remaining: number) => {
     setSelectedQty((prev) => {
@@ -95,12 +127,28 @@ export function OrderDetailCard({
     });
   };
 
+  const requestBody = () => ({
+    items: selectedItems,
+    reason: reason.trim() || undefined,
+  });
+  const loadPreview = async () => {
+    if (!onPreviewReturn) return;
+    setPreviewError(null);
+    setPreviewing(true);
+    setPreview(null);
+    try {
+      const value = await onPreviewReturn(requestBody());
+      setPreview({ key: previewKey, value });
+    } catch (e) {
+      setPreviewError(e instanceof Error ? e.message : t('Could not calculate the refund.', 'تعذّر حساب المبلغ المسترد.'));
+    } finally {
+      setPreviewing(false);
+    }
+  };
   const submitReturn = () => {
-    const items = Object.entries(selectedQty)
-      .filter(([, quantity]) => quantity > 0)
-      .map(([orderItemID, quantity]) => ({ orderItemID, quantity }));
-    if (items.length === 0 || !onRequestReturn) return;
-    onRequestReturn({ items, reason: reason.trim() || undefined });
+    const body = requestBody();
+    if (!body.items.length || !onRequestReturn || (onPreviewReturn && !currentPreview)) return;
+    onRequestReturn({ ...body, ...(currentPreview ? { expectedRefundCents: currentPreview.refundCents } : {}) });
   };
 
   return (
@@ -142,6 +190,13 @@ export function OrderDetailCard({
           <span className="is-numeric">−{money(Number(order.discountAmount))}</span>
         </div>
       )}
+      {order.items.some(affected) && <p className="admin-form__hint">
+        {t('Partial returns can reduce your quantity discount. We reprice the units you keep using the rates and sale/promotion price from your purchase, preserve your coupon percentage, and deduct prior refunds. The adjustment is shown before you submit.',
+          'قد يقل خصم الكمية عند الإرجاع الجزئي. نعيد حساب سعر الوحدات المحتفظ بها بأسعار الشراء الأصلية والتخفيضات والعروض وقت الشراء، مع الحفاظ على نسبة القسيمة وطرح المبالغ المستردة سابقاً. يظهر التعديل قبل إرسال الطلب.')}
+      </p>}
+      {order.items.some((i) => affected(i) && unresolved.has(i.id) && i.quantity > i.returnedQuantity) && <p>
+        {t('Finish or withdraw the existing return before requesting another return for the same discounted line.', 'أكمل طلب الإرجاع الحالي أو اسحبه قبل طلب إرجاع آخر لنفس البند المخفّض.')}
+      </p>}
       <div className="checkout__row">
         <span>{t('Delivery', 'التوصيل')}</span>
         <span className="is-numeric">
@@ -198,9 +253,12 @@ export function OrderDetailCard({
                 {r.items.map((ri) => {
                   const orderLine = order.items.find((i) => i.id === ri.orderItemID);
                   return (
-                    <li key={ri.id}>
+                    <li key={ri.id} style={{ display: 'block' }}>
+                      <div className="checkout__row">
                       <span>{orderLine?.productName ?? ri.orderItem?.productName} × {ri.quantity}</span>
                       <span className="is-numeric">{money(Number(ri.refundAmount))}</span>
+                      </div>
+                      {ri.refundBreakdown && <RefundExplanation calculation={ri.refundBreakdown} locale={locale} />}
                     </li>
                   );
                 })}
@@ -247,7 +305,7 @@ export function OrderDetailCard({
                     />
                     {checked && (
                       <QuantityStepper
-                        value={selectedQty[i.id]}
+                        value={Math.min(selectedQty[i.id], remaining)}
                         onChange={(next) => setSelectedQty((prev) => ({ ...prev, [i.id]: next }))}
                         min={1}
                         max={remaining}
@@ -264,11 +322,25 @@ export function OrderDetailCard({
                 rows={2}
               />
               {requestReturnError && <Alert tone="danger">{requestReturnError}</Alert>}
+              {previewError && <Alert tone="danger">{previewError}</Alert>}
+              {onPreviewReturn && <Button type="button" variant="outline" loading={previewing}
+                disabled={!selectedItems.length || requestingReturn} onClick={loadPreview}>
+                {t('Preview refund', 'معاينة المبلغ المسترد')}
+              </Button>}
+              {currentPreview && <div className="stack" aria-label={t('Refund preview', 'معاينة الاسترداد')}>
+                {currentPreview.items.map((item) => <div key={item.orderItemID}>
+                  <strong>{item.productName} × {item.quantity}</strong>
+                  {item.refundBreakdown ? <RefundExplanation calculation={item.refundBreakdown} locale={locale} />
+                    : <p>{t('Refund', 'المبلغ المسترد')}: {money(item.refundCents / 100)}</p>}
+                </div>)}
+                <div className="checkout__row checkout__row--total"><span>{t('Total refund', 'إجمالي الاسترداد')}</span><span>{money(currentPreview.refundCents / 100)}</span></div>
+                <p>{t('Preview only. Availability and refund are checked again when you submit.', 'هذه معاينة فقط. يُعاد التحقق من أهلية الإرجاع والمبلغ عند الإرسال.')}</p>
+              </div>}
               <div className="admin-form__actions">
                 <Button
                   type="button"
                   loading={requestingReturn}
-                  disabled={Object.values(selectedQty).every((q) => !q)}
+                  disabled={!selectedItems.length || previewing || Boolean(onPreviewReturn && !currentPreview)}
                   onClick={submitReturn}
                 >
                   {t('Submit return request', 'إرسال طلب الإرجاع')}

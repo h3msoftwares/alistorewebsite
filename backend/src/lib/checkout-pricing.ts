@@ -1,14 +1,11 @@
 import type { ComboPricingResult } from './combo-pricing';
 import { allocateCents } from './allocate-cents';
 import { round2 } from './money';
+import type { PurchasePricingSnapshot } from './return-pricing';
 
 /** Versioned checkout snapshot. Unit array indexes are stable allocation
  * positions, not physical item identifiers. Null on legacy OrderItems. */
-export type OrderItemPriceBreakdown = {
-  version: 1;
-  beforeCouponLineTotalCents: number;
-  unitPricesCents: number[];
-};
+export type OrderItemPriceBreakdown = PurchasePricingSnapshot;
 
 type ItemPrices = {
   unitPrice: number;
@@ -39,7 +36,11 @@ export function checkoutItemPrices(priced: ComboPricingResult, discountAmount: n
       // value to reconstruct a partial or full line's exact paid amount.
       unitPrice: round2(lineTotal / units.length),
       lineTotal,
-      priceBreakdown: { version: 1, beforeCouponLineTotalCents: lineCents[index], unitPricesCents },
+      priceBreakdown: {
+        ...priced.linePricingBasis.get(lineId)!, version: 2,
+        beforeCouponLineTotalCents: lineCents[index], couponDiscountCents: discounts[index],
+        netLineTotalCents: lineCents[index] - discounts[index], unitPricesCents,
+      },
     }];
   }));
 }

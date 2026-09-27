@@ -1,5 +1,15 @@
 import { api } from './client';
-import type { CreateReturnBody, Return, ReturnStatus, UUID } from '../types';
+import type { CreateReturnBody, Return, ReturnStatus, ReturnPreview, UUID } from '../types';
+
+export function previewReturn(orderId: UUID, body: CreateReturnBody) {
+  return api.post<ReturnPreview>(`/api/orders/${orderId}/returns/preview`, body);
+}
+export function previewReturnByToken(token: string, body: CreateReturnBody) {
+  return api.post<ReturnPreview>(`/api/orders/track/${token}/returns/preview`, body);
+}
+export function adminPreviewReturn(orderId: UUID, body: CreateReturnBody) {
+  return api.post<ReturnPreview>(`/api/admin/orders/${orderId}/returns/preview`, body);
+}
 
 // ---- Storefront (session + guest-token variants, same shape as orders.ts's
 // own cancel/cancelByToken pair) ----

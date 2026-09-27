@@ -30,6 +30,8 @@ import {
 } from '../returns/return.schema';
 import {
   requestReturnHandler,
+  previewReturnHandler,
+  previewReturnByTokenHandler,
   requestReturnByTokenHandler,
   cancelReturnHandler,
   cancelReturnByTokenHandler,
@@ -150,6 +152,8 @@ export function orderRoutes(
     asyncHandler(getOrderHandler)
   );
   router.post('/:id/cancel', requireAuth, validate({ params: orderIdParamSchema }), asyncHandler(cancelOrderHandler));
+  router.post('/:id/returns/preview', requireAuth,
+    validate({ params: orderIdParamSchema, body: createReturnSchema }), asyncHandler(previewReturnHandler));
   router.post(
     '/:id/returns',
     requireAuth,
@@ -184,6 +188,8 @@ export function orderRoutes(
     validate({ params: orderTrackTokenParamSchema, body: createReturnSchema }),
     asyncHandler(requestReturnByTokenHandler)
   );
+  router.post('/track/:token/returns/preview', trackIpLimiter,
+    validate({ params: orderTrackTokenParamSchema, body: createReturnSchema }), asyncHandler(previewReturnByTokenHandler));
   router.post(
     '/track/:token/returns/:returnId/cancel',
     trackIpLimiter,

@@ -16,9 +16,11 @@ describe('checkout snapshots after volume pricing', () => {
     const priced = applyComboPricing([line('a', 3, 12), line('b', 1, 20)], [rule]);
     const items = checkoutItemPrices(priced, 5);
     expect(priced.subtotal).toBe(50);
-    expect(items.get('a')).toEqual({
+    expect(items.get('a')).toMatchObject({
       unitPrice: 9, lineTotal: 27,
-      priceBreakdown: { version: 1, beforeCouponLineTotalCents: 3000, unitPricesCents: [900, 900, 900] },
+      priceBreakdown: { version: 2, beforeCouponLineTotalCents: 3000, couponDiscountCents: 300,
+        netLineTotalCents: 2700, individualUnitPriceCents: 1200, quantity: 3,
+        rule: { id: 'volume' }, tiers: [{ minQty: 3, unitPriceCents: 1000 }], unitPricesCents: [900, 900, 900] },
     });
     expect(items.get('b')!.lineTotal).toBe(18);
   });

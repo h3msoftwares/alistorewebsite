@@ -7,7 +7,7 @@ import { OrderDetailCard } from '@/components/orders/order-detail-card';
 import { useAuth } from '@/hooks/use-auth';
 import { useCancelOrder, useOrder } from '@/hooks/use-orders';
 import { useCancelReturn, useRequestReturn } from '@/hooks/use-returns';
-import { isApiError } from '@/lib/api';
+import { isApiError, returnsApi } from '@/lib/api';
 import type { CreateReturnBody } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
@@ -77,6 +77,7 @@ export function OrderDetailView({ locale, id }: { locale: Locale; id: string }) 
                 : t('Could not cancel the order. Try again.', 'تعذّر إلغاء الطلب. حاول مرة أخرى.')
               : null
           }
+          onPreviewReturn={(body) => returnsApi.previewReturn(id, body)}
           onRequestReturn={(body: CreateReturnBody) => requestReturn.mutate({ orderId: id, body })}
           requestingReturn={requestReturn.isPending}
           requestReturnError={

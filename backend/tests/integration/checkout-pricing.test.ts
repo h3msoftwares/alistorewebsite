@@ -46,8 +46,10 @@ describe('checkout persists exact per-unit prices', () => {
     expect(Number(order.discountAmount)).toBe(3);
     expect(Number(item.unitPrice)).toBe(9);
     expect(Number(item.lineTotal)).toBe(27);
-    expect(item.priceBreakdown).toEqual({
-      version: 1, beforeCouponLineTotalCents: 3000, unitPricesCents: [900, 900, 900],
+    expect(item.priceBreakdown).toMatchObject({
+      version: 2, beforeCouponLineTotalCents: 3000, couponDiscountCents: 300,
+      netLineTotalCents: 2700, individualUnitPriceCents: 1200, quantity: 3,
+      tiers: [{ minQty: 3, unitPriceCents: 1000 }], unitPricesCents: [900, 900, 900],
     });
     expect(Number(order.total)).toBeCloseTo(Number(item.lineTotal) + Number(order.deliveryFee), 2);
 

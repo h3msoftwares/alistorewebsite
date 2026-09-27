@@ -15,6 +15,7 @@ vi.mock('@/lib/api', () => ({
   },
   returnsApi: {
     adminRequestReturn: vi.fn(),
+    adminPreviewReturn: vi.fn(),
   },
   isApiError: (e: unknown) => e instanceof Error && 'code' in e,
 }));
@@ -58,6 +59,7 @@ beforeEach(() => {
   mock.adminUpdateOrderStatus.mockResolvedValue({ ...order, status: 'CONFIRMED' } as never);
   mock.adminMarkCollected.mockResolvedValue({ ...order, paymentStatus: 'COLLECTED' } as never);
   mock.adminReviewOrder.mockResolvedValue({ ...order, flaggedForReview: false } as never);
+  returnsMock.adminPreviewReturn.mockResolvedValue({ refundCents: 4000, items: [{ orderItemID: 'i1', productName: 'Cotton Tee', quantity: 2, refundCents: 4000 }] });
   returnsMock.adminRequestReturn.mockResolvedValue({ id: 'r1' } as never);
 });
 
@@ -144,12 +146,15 @@ describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
 
     await user.click(screen.getByRole('button', { name: 'Request a return' }));
     await user.click(screen.getByRole('checkbox', { name: /Cotton Tee \(M \/ Black\)/ }));
+    await user.click(screen.getByRole('button', { name: 'Preview refund' }));
+    await screen.findByText('Total refund');
     await user.click(screen.getByRole('button', { name: 'Submit return request' }));
 
     await waitFor(() =>
       expect(returnsMock.adminRequestReturn).toHaveBeenCalledWith('o1', {
         items: [{ orderItemID: 'i1', quantity: 2 }],
         reason: undefined,
+        expectedRefundCents: 4000,
       })
     );
   });

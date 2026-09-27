@@ -1282,7 +1282,8 @@ model OrderItem {
   quantity         Int
   unitPrice        Decimal @db.Decimal(12, 2) // rounded post-coupon average; not an exact per-unit allocation
   lineTotal        Decimal @db.Decimal(12, 2) // exact post-coupon merchandise total on new checkouts
-  // Versioned exact unit allocations in cents + pre-coupon total. Null on
+  // V2 adds purchase-time rate bands, individual price, rule identity, and
+  // exact coupon allocation basis to the unit allocations. Null on
   // legacy orders, whose lineTotal/unitPrice were stored before coupons.
   priceBreakdown   Json?
   // Materialized claim counter for per-item returns — mirrors
@@ -1337,7 +1338,8 @@ model ReturnItem {
   returnID     String  @db.Uuid
   orderItemID  String  @db.Uuid
   quantity     Int
-  refundAmount Decimal @db.Decimal(12, 2) // OrderItem.unitPrice * quantity, snapshotted at request time
+  refundAmount Decimal @db.Decimal(12, 2) // exact refund calculation, snapshotted at request time
+  refundBreakdown Json? // immutable explanation of kept-quantity repricing; null on historical returns
 
   return    Return    @relation(fields: [returnID], references: [id], onDelete: Cascade)
   orderItem OrderItem @relation(fields: [orderItemID], references: [id], onDelete: Cascade)

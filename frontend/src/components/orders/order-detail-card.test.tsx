@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OrderDetailCard } from './order-detail-card';
-import type { Order } from '@/lib/types';
+import type { Order, RefundCalculation, ReturnPreview } from '@/lib/types';
 
 const baseOrder: Order = {
   id: 'o1',
@@ -119,5 +119,78 @@ describe('<OrderDetailCard> — returns', () => {
     };
     render(<OrderDetailCard locale="en" order={order} onCancelReturn={() => {}} />);
     expect(screen.queryByRole('button', { name: 'Withdraw request' })).not.toBeInTheDocument();
+  });
+});
+
+const calculation: RefundCalculation = {
+  version: 1, method: 'KEPT_QUANTITY', originalQuantity: 7, returnedQuantity: 3, keptQuantity: 4,
+  originalNetCents: 5600, keptGrossCents: 4000, keptNetCents: 4000,
+  couponDiscountCents: 0, couponBasisCents: 5600, proportionalRefundCents: 2400,
+  quantityDiscountAdjustmentCents: 800, cumulativeRefundCents: 1600, previousRefundCents: 0, reservedRefundCents: 0, refundCents: 1600,
+};
+const volumeOrder: Order = { ...baseOrder, subtotal: 56, total: 56, items: [{ ...baseOrder.items[0],
+  quantity: 7, returnedQuantity: 0, unitPrice: 8, lineTotal: 56,
+  priceBreakdown: { version: 2, rule: { id: 'rule' }, couponDiscountCents: 0 } }] };
+const refundPreview: ReturnPreview = { refundCents: 1600, items: [{ orderItemID: 'oi1', productName: 'Test Shirt', quantity: 3,
+  refundCents: 1600, refundBreakdown: calculation }] };
+
+describe('quantity-discount return disclosure', () => {
+  it('requires a preview, displays the adjustment, and invalidates it when quantity changes', async () => {
+    const user = userEvent.setup();
+    const preview = vi.fn().mockResolvedValue(refundPreview);
+    const submit = vi.fn();
+    render(<OrderDetailCard locale="en" order={volumeOrder} onPreviewReturn={preview} onRequestReturn={submit} />);
+    expect(screen.getByText(/Partial returns can reduce your quantity discount/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Request a return' }));
+    await user.click(screen.getByRole('checkbox', { name: /Test Shirt/ }));
+    for (let n = 0; n < 4; n++) await user.click(screen.getByRole('button', { name: /Decrease/ }));
+    expect(screen.getByRole('button', { name: 'Submit return request' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Preview refund' }));
+    const adjustment = await screen.findByText('Quantity-discount adjustment (deducted)');
+    expect(within(adjustment.parentElement!).getByText('$8.00')).toBeInTheDocument();
+    expect(preview).toHaveBeenCalledWith({ items: [{ orderItemID: 'oi1', quantity: 3 }], reason: undefined });
+    expect(screen.getByText('Price of 4 kept unit(s), before coupon')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Submit return request' }));
+    expect(submit).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: /Decrease/ }));
+    expect(screen.queryByText('Quantity-discount adjustment (deducted)')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Submit return request' })).toBeDisabled();
+  });
+  it('shows preview errors and never submits without a successful preview', async () => {
+    const user = userEvent.setup();
+    const submit = vi.fn();
+    render(<OrderDetailCard locale="en" order={volumeOrder} onPreviewReturn={vi.fn().mockRejectedValue(new Error('Resolve existing return'))} onRequestReturn={submit} />);
+    await user.click(screen.getByRole('button', { name: 'Request a return' }));
+    await user.click(screen.getByRole('checkbox', { name: /Test Shirt/ }));
+    await user.click(screen.getByRole('button', { name: 'Preview refund' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Resolve existing return');
+    expect(screen.getByRole('button', { name: 'Submit return request' })).toBeDisabled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+  it('displays the saved adjustment after approval in the shared read-only view', () => {
+    const order: Order = { ...volumeOrder, returns: [{ id: 'r', orderID: 'o1', status: 'APPROVED', refundAmount: 16, dateCreated: '',
+      items: [{ id: 'ri', returnID: 'r', orderItemID: 'oi1', quantity: 3, refundAmount: 16, refundBreakdown: calculation }] }] };
+    render(<OrderDetailCard locale="en" order={order} />);
+    expect(screen.getByText('Approved')).toBeInTheDocument();
+    expect(within(screen.getByText('Quantity-discount adjustment (deducted)').parentElement!).getByText('$8.00')).toBeInTheDocument();
+    expect(within(screen.getByText('Refund for this request').parentElement!).getByText('$16.00')).toBeInTheDocument();
+  });
+  it('blocks another return while this discounted line has an unresolved return', () => {
+    const order: Order = { ...volumeOrder, returns: [{ id: 'r', orderID: 'o1', status: 'RECEIVED', dateCreated: '',
+      items: [{ id: 'ri', returnID: 'r', orderItemID: 'oi1', quantity: 3, refundAmount: 16 }] }] };
+    render(<OrderDetailCard locale="en" order={order} onRequestReturn={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'Request a return' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Finish or withdraw the existing return/)).toBeInTheDocument();
+  });
+  it('makes a zero-refund result explicit before submission', async () => {
+    const user = userEvent.setup();
+    const zero = { ...refundPreview, refundCents: 0, items: [{ ...refundPreview.items[0], refundCents: 0,
+      refundBreakdown: { ...calculation, refundCents: 0 } }] };
+    render(<OrderDetailCard locale="en" order={volumeOrder} onPreviewReturn={vi.fn().mockResolvedValue(zero)} onRequestReturn={() => {}} />);
+    await user.click(screen.getByRole('button', { name: 'Request a return' }));
+    await user.click(screen.getByRole('checkbox', { name: /Test Shirt/ }));
+    await user.click(screen.getByRole('button', { name: 'Preview refund' }));
+    expect(await screen.findByText('This return has no refundable amount after the quantity-discount adjustment.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Submit return request' })).toBeEnabled());
   });
 });

@@ -2,7 +2,7 @@ import { Prisma, ReturnStatus, type OrderStatus } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { recordAudit } from '../../lib/audit';
-import { round2 } from '../../lib/money';
+import { calculateKeptRefund, moneyCents, readPurchasePricing, type RefundCalculation } from '../../lib/return-pricing';
 import {
   sendReturnRequestedNotification,
   sendReturnStatusChangedNotification,
@@ -33,62 +33,105 @@ const ADMIN_RETURN_INCLUDE = {
   requester: { select: { name: true, email: true } },
 } satisfies Prisma.ReturnInclude;
 
+async function prepareReturn(tx: Prisma.TransactionClient, orderId: string, items: ReturnRequestItem[]) {
+  // All claims and finalizations share this lock, including previews. Preview
+  // does not reserve anything; submission validates again under the same lock.
+  await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${orderId}::uuid FOR UPDATE`;
+  const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
+  if (!order) throw new AppError('NOT_FOUND', 'Order not found');
+  if (order.status !== 'DELIVERED') throw new AppError('CONFLICT', 'Only delivered orders can have a return requested');
+  if (!items.length || new Set(items.map((i) => i.orderItemID)).size !== items.length) {
+    throw new AppError('VALIDATION_ERROR', 'Select each order line once');
+  }
+  const prior = await tx.returnItem.findMany({
+    where: { orderItemID: { in: items.map((i) => i.orderItemID) }, return: { status: { notIn: ['REJECTED', 'CANCELLED'] } } },
+    include: { return: { select: { status: true } } },
+  });
+  const calculations = items.map(({ orderItemID, quantity }) => {
+    const line = order.items.find((i) => i.id === orderItemID);
+    if (!line) throw new AppError('VALIDATION_ERROR', 'One of the selected items does not belong to this order');
+    const remaining = line.quantity - line.returnedQuantity;
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > remaining) {
+      throw new AppError('CONFLICT', `Only ${remaining} unit(s) of ${line.productName} can still be returned`, { orderItemID, remaining });
+    }
+    const s = readPurchasePricing(line.priceBreakdown);
+    const history = prior.filter((i) => i.orderItemID === orderItemID);
+    if (s && (s.rule !== null || s.couponDiscountCents > 0) && history.some((i) => i.return.status !== 'REFUNDED')) {
+      throw new AppError('CONFLICT', 'Resolve the existing return for this line before requesting another', { orderItemID });
+    }
+    const previousRefundCents = history.filter((i) => i.return.status === 'REFUNDED').reduce((sum, i) => sum + moneyCents(i.refundAmount), 0);
+    // Undiscounted/historical lines may keep their existing parallel-return
+    // behavior. Reserve their pending amounts without calling them issued.
+    const reservedRefundCents = history.filter((i) => i.return.status !== 'REFUNDED').reduce((sum, i) => sum + moneyCents(i.refundAmount), 0);
+    const returnedQuantity = history.reduce((sum, i) => sum + i.quantity, quantity);
+    let refundBreakdown: RefundCalculation | undefined;
+    let refundCents: number;
+    if (s) {
+      if (s.quantity !== line.quantity || s.netLineTotalCents !== moneyCents(line.lineTotal)) {
+        throw new AppError('CONFLICT', 'Purchase pricing snapshot does not match the order line');
+      }
+      refundBreakdown = calculateKeptRefund(s, returnedQuantity, previousRefundCents, reservedRefundCents);
+      refundCents = refundBreakdown.refundCents;
+    } else {
+      // Historical null/v1 snapshots retain the existing unit-price policy,
+      // bounded by the original line amount (including its last rounding cent).
+      refundCents = Math.max(0, Math.min(moneyCents(line.unitPrice) * quantity, moneyCents(line.lineTotal) - previousRefundCents - reservedRefundCents));
+    }
+    return { orderItemID, productName: line.productName, quantity, refundCents, refundBreakdown };
+  });
+  return { items: calculations, refundCents: calculations.reduce((sum, item) => sum + item.refundCents, 0) };
+}
+
+export async function previewReturn(orderId: string, items: ReturnRequestItem[]) {
+  return prisma.$transaction((tx) => prepareReturn(tx, orderId, items));
+}
+
+export async function previewOwnedReturn(orderId: string, userID: string, items: ReturnRequestItem[]) {
+  const owned = await prisma.order.findFirst({ where: { id: orderId, userID }, select: { id: true } });
+  if (!owned) throw new AppError('NOT_FOUND', 'Order not found');
+  return previewReturn(orderId, items);
+}
+
+export async function previewReturnByToken(token: string, items: ReturnRequestItem[]) {
+  const record = await findValidAccessToken(token);
+  if (!record) throw new AppError('NOT_FOUND', 'Order not found');
+  return previewReturn(record.orderID, items);
+}
+
 /**
  * The one place that actually creates a Return: validates the order is
  * DELIVERED, that every requested line belongs to it, and atomically claims
  * `returnedQuantity` per line before creating the Return + ReturnItem rows.
- * The claim is a guarded conditional UPDATE (predicate + write in one
- * statement, same shape as checkout's stock claim in order.service.ts) —
- * not a read-then-write — so two concurrent return requests against the
- * same line can never together claim more than its `quantity`.
+ * The order row lock serializes quantity checks, pricing history, and claims
+ * with every return finalization/cancellation. Concurrent requests cannot
+ * both allocate a discounted line or exceed the purchased quantity.
  */
 async function performReturnRequest(
   orderId: string,
   items: ReturnRequestItem[],
   reason: string | undefined,
-  requestedBy: string | undefined
+  requestedBy: string | undefined,
+  expectedRefundCents?: number
 ) {
   return prisma.$transaction(async (tx) => {
-    // Keep request eligibility and legacy whole-order restocking mutually exclusive.
-    await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${orderId}::uuid FOR UPDATE`;
-    const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
-    if (!order) throw new AppError('NOT_FOUND', 'Order not found');
-    if (order.status !== 'DELIVERED') {
-      throw new AppError('CONFLICT', 'Only delivered orders can have a return requested');
+    const preview = await prepareReturn(tx, orderId, items);
+    if (expectedRefundCents !== undefined && expectedRefundCents !== preview.refundCents) {
+      throw new AppError('CONFLICT', 'The refund changed. Preview it again before submitting.', { refundCents: preview.refundCents });
     }
-
-    const orderItemsById = new Map(order.items.map((i) => [i.id, i]));
-    const returnItemsData: { orderItemID: string; quantity: number; refundAmount: number }[] = [];
-    let totalRefund = 0;
-
-    for (const { orderItemID, quantity } of items) {
-      const orderItem = orderItemsById.get(orderItemID);
-      if (!orderItem) {
-        throw new AppError('VALIDATION_ERROR', 'One of the selected items does not belong to this order');
-      }
-      const claimed = await tx.orderItem.updateMany({
-        where: { id: orderItemID, returnedQuantity: { lte: orderItem.quantity - quantity } },
-        data: { returnedQuantity: { increment: quantity } },
-      });
-      if (claimed.count === 0) {
-        const remaining = Math.max(orderItem.quantity - orderItem.returnedQuantity, 0);
-        throw new AppError(
-          'CONFLICT',
-          `Only ${remaining} unit(s) of ${orderItem.productName} can still be returned`,
-          { orderItemID, remaining }
-        );
-      }
-      const refundAmount = round2(Number(orderItem.unitPrice) * quantity);
-      totalRefund = round2(totalRefund + refundAmount);
-      returnItemsData.push({ orderItemID, quantity, refundAmount });
+    for (const item of preview.items) {
+      await tx.orderItem.update({ where: { id: item.orderItemID }, data: { returnedQuantity: { increment: item.quantity } } });
     }
+    const returnItemsData = preview.items.map(({ orderItemID, quantity, refundCents, refundBreakdown }) => ({
+      orderItemID, quantity, refundAmount: refundCents / 100,
+      ...(refundBreakdown ? { refundBreakdown } : {}),
+    }));
 
     return tx.return.create({
       data: {
         orderID: orderId,
         reason,
         requestedBy: requestedBy ?? null,
-        refundAmount: totalRefund,
+        refundAmount: preview.refundCents / 100,
         items: { create: returnItemsData },
       },
       include: RETURN_INCLUDE,
@@ -101,11 +144,12 @@ export async function requestReturn(
   orderId: string,
   userID: string,
   items: ReturnRequestItem[],
-  reason?: string
+  reason?: string,
+  expectedRefundCents?: number
 ) {
   const owned = await prisma.order.findFirst({ where: { id: orderId, userID }, select: { id: true } });
   if (!owned) throw new AppError('NOT_FOUND', 'Order not found');
-  const ret = await performReturnRequest(orderId, items, reason, userID);
+  const ret = await performReturnRequest(orderId, items, reason, userID, expectedRefundCents);
   await recordAudit({
     entityType: 'return',
     entityID: ret.id,
@@ -127,9 +171,10 @@ export async function adminRequestReturn(
   orderId: string,
   actorId: string,
   items: ReturnRequestItem[],
-  reason?: string
+  reason?: string,
+  expectedRefundCents?: number
 ) {
-  const ret = await performReturnRequest(orderId, items, reason, actorId);
+  const ret = await performReturnRequest(orderId, items, reason, actorId, expectedRefundCents);
   await recordAudit({
     entityType: 'return',
     entityID: ret.id,
@@ -145,10 +190,10 @@ export async function adminRequestReturn(
 
 /** Token-based return request — a guest's tracking-page "request a return",
  *  proven by the OrderAccessToken instead of a login session. */
-export async function requestReturnByToken(rawToken: string, items: ReturnRequestItem[], reason?: string) {
+export async function requestReturnByToken(rawToken: string, items: ReturnRequestItem[], reason?: string, expectedRefundCents?: number) {
   const record = await findValidAccessToken(rawToken);
   if (!record) throw new AppError('NOT_FOUND', 'Order not found');
-  const ret = await performReturnRequest(record.orderID, items, reason, undefined);
+  const ret = await performReturnRequest(record.orderID, items, reason, undefined, expectedRefundCents);
   await recordAudit({
     entityType: 'return',
     entityID: ret.id,
@@ -168,6 +213,7 @@ export async function requestReturnByToken(rawToken: string, items: ReturnReques
  *  cancel-click can't both "succeed" against a stale read. */
 async function performCancelReturn(returnId: string, orderId: string) {
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${orderId}::uuid FOR UPDATE`;
     const existing = await tx.return.findUnique({ where: { id: returnId }, include: { items: true } });
     if (!existing || existing.orderID !== orderId) throw new AppError('NOT_FOUND', 'Return not found');
 

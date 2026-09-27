@@ -1,5 +1,6 @@
 import { round2 } from './money';
 import type { TargetCandidate } from './pricing';
+import type { PurchasePricingSnapshot } from './return-pricing';
 
 /** Price is a per-unit rate. maxQty is derived, never an input to pricing. */
 export interface ComboTierCandidate {
@@ -60,6 +61,7 @@ export interface ComboPricingLine {
   individualUnitPrice: number;
 }
 export interface ComboPricingResult {
+  linePricingBasis: Map<string, Pick<PurchasePricingSnapshot, 'pricingModel' | 'quantity' | 'individualUnitPriceCents' | 'tiers' | 'rule'>>;
   lineTotals: Map<string, number>;
   lineUnitPricesCents: Map<string, number[]>;
   lineComboRuleIds: Map<string, string | null>;
@@ -74,18 +76,24 @@ export function applyComboPricing(lines: ComboPricingLine[], rules: ComboRuleCan
   const lineTotals = new Map<string, number>();
   const lineUnitPricesCents = new Map<string, number[]>();
   const lineComboRuleIds = new Map<string, string | null>();
+  const linePricingBasis: ComboPricingResult['linePricingBasis'] = new Map();
   let subtotalCents = 0;
   let individualSubtotalCents = 0;
   for (const line of lines) {
     const rule = pickComboRule({ id: line.productId, categoryPaths: line.categoryPaths, collectionIds: line.collectionIds }, rules);
     const unitCents = volumeUnitPriceCents(line.quantity, line.individualUnitPrice, rule?.tiers ?? []);
     const individualCents = Math.round(round2(line.individualUnitPrice) * 100);
+    linePricingBasis.set(line.lineId, {
+      pricingModel: 'UNIT_RATE_BANDS', quantity: line.quantity, individualUnitPriceCents: individualCents,
+      tiers: deriveComboTiers(rule?.tiers ?? []).map((tier) => ({ minQty: tier.minQty, unitPriceCents: Math.round(round2(tier.price) * 100) })),
+      rule: rule ? { id: rule.id, nameEn: rule.nameEn, nameAr: rule.nameAr, priority: rule.priority } : null,
+    });
     lineTotals.set(line.lineId, unitCents * line.quantity / 100);
     lineUnitPricesCents.set(line.lineId, Array<number>(line.quantity).fill(unitCents));
     lineComboRuleIds.set(line.lineId, unitCents < individualCents ? rule?.id ?? null : null);
     subtotalCents += unitCents * line.quantity;
     individualSubtotalCents += individualCents * line.quantity;
   }
-  return { lineTotals, lineUnitPricesCents, lineComboRuleIds,
+  return { lineTotals, lineUnitPricesCents, lineComboRuleIds, linePricingBasis,
     subtotal: subtotalCents / 100, comboSavings: (individualSubtotalCents - subtotalCents) / 100 };
 }

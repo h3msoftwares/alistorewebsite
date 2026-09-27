@@ -1,5 +1,6 @@
 'use client';
 
+import { returnsApi } from '@/lib/api';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Printer } from 'lucide-react';
@@ -175,6 +176,7 @@ export default function AdminOrderDetailPage() {
         <OrderDetailCard
           locale={locale}
           order={order}
+          onPreviewReturn={(body) => returnsApi.adminPreviewReturn(order.id, body)}
           onRequestReturn={(body: CreateReturnBody) =>
             oa.run(
               order.id,

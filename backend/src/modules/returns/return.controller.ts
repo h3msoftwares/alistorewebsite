@@ -5,12 +5,25 @@ import { paramString } from '../../lib/params';
 
 // ---- Customer / guest ----
 
+export async function previewReturnHandler(req: Request, res: Response) {
+  res.json(await returnService.previewOwnedReturn(paramString(req.params.id), req.user!.id, req.body.items));
+}
+
+export async function previewReturnByTokenHandler(req: Request, res: Response) {
+  res.json(await returnService.previewReturnByToken(paramString(req.params.token), req.body.items));
+}
+
+export async function adminPreviewReturnHandler(req: Request, res: Response) {
+  res.json(await returnService.previewReturn(paramString(req.params.id), req.body.items));
+}
+
 export async function requestReturnHandler(req: Request, res: Response) {
   const ret = await returnService.requestReturn(
     paramString(req.params.id),
     req.user!.id,
     req.body.items,
-    req.body.reason
+    req.body.reason,
+    req.body.expectedRefundCents
   );
   res.status(201).json({ return: ret });
 }
@@ -19,7 +32,8 @@ export async function requestReturnByTokenHandler(req: Request, res: Response) {
   const ret = await returnService.requestReturnByToken(
     paramString(req.params.token),
     req.body.items,
-    req.body.reason
+    req.body.reason,
+    req.body.expectedRefundCents
   );
   res.status(201).json({ return: ret });
 }
@@ -48,7 +62,8 @@ export async function adminRequestReturnHandler(req: Request, res: Response) {
     paramString(req.params.id),
     req.user!.id,
     req.body.items,
-    req.body.reason
+    req.body.reason,
+    req.body.expectedRefundCents
   );
   res.status(201).json({ return: ret });
 }

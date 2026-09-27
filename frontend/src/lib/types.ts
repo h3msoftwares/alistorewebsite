@@ -498,6 +498,11 @@ export interface OrderItem {
   quantity: number;
   unitPrice: Decimalish;
   lineTotal: Decimalish;
+  priceBreakdown?: {
+    version: number;
+    rule?: { id: string } | null;
+    couponDiscountCents?: number;
+  } | null;
   /** Units of this line already claimed by an active (non-REJECTED/
    *  CANCELLED) Return — the stepper on "request a return" is capped at
    *  `quantity - returnedQuantity`. */
@@ -519,6 +524,7 @@ export interface ReturnItem {
   orderItemID: UUID;
   quantity: number;
   refundAmount: Decimalish;
+  refundBreakdown?: RefundCalculation | null;
   /** Present on the admin list response (joined) — enough to render a row
    *  without a second fetch. Absent on the customer-embedded shape, where
    *  the parent Order's own `items` already has this. */
@@ -547,7 +553,32 @@ export interface Return {
 
 export interface CreateReturnBody {
   reason?: string;
+  expectedRefundCents?: number;
   items: { orderItemID: UUID; quantity: number }[];
+}
+
+export interface RefundCalculation {
+  version: 1;
+  method: 'KEPT_QUANTITY' | 'LEGACY_UNIT_PRICE';
+  originalQuantity: number;
+  returnedQuantity: number;
+  keptQuantity: number;
+  originalNetCents: number;
+  keptGrossCents: number;
+  keptNetCents: number;
+  couponDiscountCents: number;
+  couponBasisCents: number;
+  proportionalRefundCents: number;
+  quantityDiscountAdjustmentCents: number;
+  cumulativeRefundCents: number;
+  previousRefundCents: number;
+  reservedRefundCents: number;
+  refundCents: number;
+}
+
+export interface ReturnPreview {
+  refundCents: number;
+  items: { orderItemID: UUID; productName: string; quantity: number; refundCents: number; refundBreakdown?: RefundCalculation }[];
 }
 
 export interface Order {

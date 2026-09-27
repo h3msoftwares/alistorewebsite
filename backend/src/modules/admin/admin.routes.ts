@@ -26,7 +26,7 @@ import roleRoutes from '../rbac/role.routes';
 import customerRoutes from '../customers/customers.routes';
 import returnRoutes from '../returns/return.routes';
 import { createReturnSchema } from '../returns/return.schema';
-import { adminRequestReturnHandler } from '../returns/return.controller';
+import { adminRequestReturnHandler, adminPreviewReturnHandler } from '../returns/return.controller';
 import notificationRoutes from '../notifications/notification.routes';
 
 const router = Router();
@@ -81,6 +81,8 @@ router.post(
   validate({ params: orderIdParamSchema, body: createReturnSchema }),
   asyncHandler(adminRequestReturnHandler)
 );
+router.post('/orders/:id/returns/preview', requirePermission('orders:manage'),
+  validate({ params: orderIdParamSchema, body: createReturnSchema }), asyncHandler(adminPreviewReturnHandler));
 
 // Step-up protected (S2): a direct stock write bypasses the ordinary
 // stock-movement trail, so treat it like the order-status change above —
