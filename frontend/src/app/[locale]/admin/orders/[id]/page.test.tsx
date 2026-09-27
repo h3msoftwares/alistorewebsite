@@ -64,6 +64,26 @@ beforeEach(() => {
 });
 
 describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
+  it.each([
+    ['Mark collected', 'adminMarkCollected', { paymentStatus: 'COLLECTED' }],
+    ['Mark reviewed', 'adminReviewOrder', { flaggedForReview: false }],
+  ] as const)('keeps order items visible after %s while the full order reloads', async (label, endpoint, changes) => {
+    const loadedOrder = { ...order, flaggedForReview: true };
+    // These endpoints return scalar order fields, without the items relation.
+    const summary = Object.fromEntries(Object.entries(loadedOrder).filter(([key]) => key !== 'items'));
+    mock[endpoint].mockResolvedValue({ ...summary, ...changes } as never);
+    mock.getOrder.mockResolvedValueOnce(loadedOrder as never)
+      .mockImplementation(() => new Promise(() => {}));
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('heading', { level: 1, name: order.orderNumber });
+
+    await user.click(screen.getByRole('button', { name: label }));
+    await waitFor(() => expect(mock.getOrder).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('heading', { level: 1, name: order.orderNumber })).toBeInTheDocument();
+    expect(screen.getByText(/Cotton Tee/)).toBeInTheDocument();
+  });
+
   it('shows the order number and its actual line items — the gap this page closes', async () => {
     renderPage();
     expect(await screen.findByRole('heading', { level: 1, name: 'AS-20260906-ABC123' })).toBeInTheDocument();

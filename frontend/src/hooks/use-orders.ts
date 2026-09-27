@@ -145,8 +145,9 @@ export function useMarkOrderCollected() {
   return useMutation({
     mutationFn: ({ id, collected }: { id: UUID; collected: boolean }) =>
       ordersApi.adminMarkCollected(id, collected),
-    onSuccess: (order) => {
-      qc.setQueryData(queryKeys.orders.detail(order.id), order);
+    onSuccess: () => {
+      // This mutation returns scalar fields only. Keep the complete cached
+      // order visible until the detail query reloads its items and returns.
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
       // dashboard "Awaiting COD" tile
       qc.invalidateQueries({ queryKey: queryKeys.orders.dashboard() });
@@ -158,8 +159,9 @@ export function useReviewOrder() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: UUID) => ordersApi.adminReviewOrder(id),
-    onSuccess: (order) => {
-      qc.setQueryData(queryKeys.orders.detail(order.id), order);
+    onSuccess: () => {
+      // The review response has no items/returns relations; it is not a
+      // replacement for the full detail query's result.
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
       // dashboard "Flagged for review" tile
       qc.invalidateQueries({ queryKey: queryKeys.orders.dashboard() });

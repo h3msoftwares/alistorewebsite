@@ -9,6 +9,9 @@ import type {
   UUID,
 } from '../types';
 
+/** Field-only updates omit relations returned by the order detail endpoint. */
+type OrderFields = Omit<Order, 'items' | 'returns'>;
+
 // ---- Storefront ----
 
 export function checkout(body: CheckoutBody) {
@@ -61,7 +64,7 @@ export function adminListOrders(status?: OrderStatus[], flagged?: boolean, await
 }
 
 export function adminReviewOrder(id: UUID) {
-  return api.patch<{ order: Order }>(`/api/admin/orders/${id}/review`).then((r) => r.order);
+  return api.patch<{ order: OrderFields }>(`/api/admin/orders/${id}/review`).then((r) => r.order);
 }
 
 export function adminUpdateOrderStatus(
@@ -79,7 +82,7 @@ export function adminUpdateOrderStatus(
 
 export function adminMarkCollected(id: UUID, collected: boolean) {
   return api
-    .patch<{ order: Order }>(`/api/admin/orders/${id}/collected`, { collected })
+    .patch<{ order: OrderFields }>(`/api/admin/orders/${id}/collected`, { collected })
     .then((r) => r.order);
 }
 
