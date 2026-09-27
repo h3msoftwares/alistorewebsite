@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createWrapper } from '@/test/utils';
 
 vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en', id: 'o1' }) }));
 vi.mock('@/hooks/use-settings', () => ({ useSettings: () => ({ data: null }) }));
+const permissions = vi.hoisted(() => ({ correct: false }));
+vi.mock('@/lib/rbac', () => ({ usePermissions: () => ({ has: () => permissions.correct }) }));
 
 vi.mock('@/lib/api', () => ({
   ordersApi: {
@@ -12,6 +14,7 @@ vi.mock('@/lib/api', () => ({
     adminUpdateOrderStatus: vi.fn(),
     adminMarkCollected: vi.fn(),
     adminReviewOrder: vi.fn(),
+    adminCorrectOrderStatus: vi.fn(),
   },
   returnsApi: {
     adminRequestReturn: vi.fn(),
@@ -54,16 +57,45 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  permissions.correct = false;
   vi.clearAllMocks();
   mock.getOrder.mockResolvedValue(order as never);
   mock.adminUpdateOrderStatus.mockResolvedValue({ ...order, status: 'CONFIRMED' } as never);
   mock.adminMarkCollected.mockResolvedValue({ ...order, paymentStatus: 'COLLECTED' } as never);
   mock.adminReviewOrder.mockResolvedValue({ ...order, flaggedForReview: false } as never);
+  mock.adminCorrectOrderStatus.mockResolvedValue(order as never);
   returnsMock.adminPreviewReturn.mockResolvedValue({ refundCents: 4000, items: [{ orderItemID: 'i1', productName: 'Cotton Tee', quantity: 2, refundCents: 4000 }] });
   returnsMock.adminRequestReturn.mockResolvedValue({ id: 'r1' } as never);
 });
 
 describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
+  it('offers only the next normal fulfillment step and hides correction without permission', async () => {
+    mock.getOrder.mockResolvedValue({ ...order, status: 'SHIPPED' } as never);
+    renderPage();
+    const select = await screen.findByRole('combobox', { name: /change status/i });
+    expect(within(select).queryByRole('option', { name: 'PENDING' })).not.toBeInTheDocument();
+    expect(within(select).queryByRole('option', { name: 'CONFIRMED' })).not.toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: 'DELIVERED' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Correct status' })).not.toBeInTheDocument();
+  });
+
+  it('uses a distinct correction action with a required reason and the displayed prior status', async () => {
+    permissions.correct = true;
+    mock.getOrder.mockResolvedValue({ ...order, status: 'DELIVERED' } as never);
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Correct status' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Corrected status' }), 'PENDING');
+    const apply = screen.getByRole('button', { name: 'Apply correction' });
+    expect(apply).toBeDisabled();
+    await user.type(screen.getByRole('textbox', { name: 'Reason for correction' }), 'Clicked the wrong order');
+    await user.click(apply);
+    await waitFor(() => expect(mock.adminCorrectOrderStatus).toHaveBeenCalledWith('o1', {
+      status: 'PENDING', expectedStatus: 'DELIVERED', reason: 'Clicked the wrong order',
+    }));
+    expect(mock.adminUpdateOrderStatus).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['Mark collected', 'adminMarkCollected', { paymentStatus: 'COLLECTED' }],
     ['Mark reviewed', 'adminReviewOrder', { flaggedForReview: false }],

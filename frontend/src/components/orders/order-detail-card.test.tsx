@@ -38,6 +38,10 @@ const baseOrder: Order = {
 };
 
 describe('<OrderDetailCard> — totals', () => {
+  it.each(['SHIPPED', 'DELIVERED'] as const)('does not offer customer/guest cancellation for %s orders', (status) => {
+    render(<OrderDetailCard locale="en" order={{ ...baseOrder, status }} onCancel={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /cancel order/i })).not.toBeInTheDocument();
+  });
   it('shows no discount row when the order has none', () => {
     render(<OrderDetailCard locale="en" order={baseOrder} />);
     expect(screen.queryByText(/Discount/)).not.toBeInTheDocument();

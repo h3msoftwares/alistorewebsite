@@ -23,7 +23,7 @@ import {
 import { AdminPager } from '@/components/admin/admin-pager';
 import { OrderActionModals } from '@/components/orders/order-action-modals';
 import { useAdminOrders } from '@/hooks/use-orders';
-import { ORDER_STATUSES, useOrderActions } from '@/hooks/use-order-actions';
+import { normalOrderStatuses, useOrderActions } from '@/hooks/use-order-actions';
 import { useOrderReceiptPrint } from '@/hooks/use-order-receipt-print';
 import { usePrintPreferences } from '@/hooks/use-print-preferences';
 import { useSettings } from '@/hooks/use-settings';
@@ -314,12 +314,17 @@ export default function AdminOrdersPage() {
                           disabled={busy}
                           onChange={(e) => oa.changeStatus(o, e.target.value as OrderStatus)}
                         >
-                          {ORDER_STATUSES.map((s) => (
+                          {normalOrderStatuses(o.status).map((s) => (
                             <option key={s} value={s}>
                               {s}
                             </option>
                           ))}
                         </Select>
+                        {oa.canCorrect && !['CANCELLED', 'RETURNED'].includes(o.status) && (
+                          <Button variant="outline" size="sm" disabled={busy} onClick={() => oa.openCorrection(o)}>
+                            {t('Correct status', 'تصحيح الحالة')}
+                          </Button>
+                        )}
                       </span>
                     </td>
                     <td>

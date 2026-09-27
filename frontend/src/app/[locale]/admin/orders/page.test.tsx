@@ -81,6 +81,7 @@ describe('AdminOrdersPage', () => {
   });
 
   it('moving an order to SHIPPED opens the estimate modal and passes the number through', async () => {
+    mock.adminListOrders.mockResolvedValue([{ ...order, status: 'CONFIRMED' }] as never);
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('AS-20260906-ABC123');
@@ -99,6 +100,7 @@ describe('AdminOrdersPage', () => {
   });
 
   it('shipping with a blank estimate sends null and closes the modal', async () => {
+    mock.adminListOrders.mockResolvedValue([{ ...order, status: 'CONFIRMED' }] as never);
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('AS-20260906-ABC123');
@@ -113,6 +115,7 @@ describe('AdminOrdersPage', () => {
   });
 
   it('closing the estimate modal aborts the status change', async () => {
+    mock.adminListOrders.mockResolvedValue([{ ...order, status: 'CONFIRMED' }] as never);
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('AS-20260906-ABC123');

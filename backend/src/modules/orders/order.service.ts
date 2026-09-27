@@ -965,6 +965,46 @@ interface UpdateOrderStatusOptions {
   estimatedDeliveryDays?: number | null;
 }
 
+const NEXT_FULFILLMENT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
+  PENDING: 'CONFIRMED', CONFIRMED: 'SHIPPED', SHIPPED: 'DELIVERED',
+};
+
+/** Corrections deliberately do not send lifecycle notifications or award
+ * loyalty milestones. Record the reason atomically with stock/status changes. */
+export async function correctOrderStatus(
+  id: string,
+  input: { status: OrderStatus; expectedStatus: OrderStatus; reason: string },
+  actorID: string
+) {
+  const reason = input.reason.trim();
+  if (!reason || reason.length > 1000) throw new AppError('VALIDATION_ERROR', 'A correction reason is required (up to 1000 characters)');
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${id}::uuid FOR UPDATE`;
+    const existing = await tx.order.findUnique({ where: { id }, include: { items: true } });
+    if (!existing) throw new AppError('NOT_FOUND', 'Order not found');
+    if (existing.status !== input.expectedStatus) throw new AppError('CONFLICT', 'Order status changed. Reload before correcting it.');
+    if (existing.status === input.status) throw new AppError('CONFLICT', 'Choose a different status for the correction');
+    if (existing.status === 'CANCELLED' || existing.status === 'RETURNED') {
+      throw new AppError('CONFLICT', 'Cancelled or returned orders cannot be reopened by a status correction');
+    }
+    if (await hasPerItemReturn(tx, id)) {
+      throw new AppError('CONFLICT', 'This order has a per-item return. Resolve it through the Returns page instead of correcting its status.');
+    }
+    if (input.status === 'CANCELLED' || input.status === 'RETURNED') {
+      await restoreStock(tx, existing.items, existing.orderNumber, 'status correction');
+    }
+    const updated = await tx.order.update({
+      where: { id }, data: { status: input.status },
+      include: { items: true, returns: { include: { items: true } } },
+    });
+    await tx.auditLog.create({ data: {
+      entityType: 'order', entityID: id, actorID, action: 'order.status_corrected',
+      metadata: { orderNumber: existing.orderNumber, from: existing.status, to: input.status, reason },
+    } });
+    return updated;
+  });
+}
+
 export async function updateOrderStatus(
   id: string,
   status: OrderStatus,
@@ -1064,8 +1104,11 @@ export async function updateOrderStatus(
   // performCancellation() now guards its own write against a stale read of
   // *this* path; this guards this path's write against a stale read racing
   // performCancellation().
+  if (existing.status !== status && NEXT_FULFILLMENT_STATUS[existing.status] !== status) {
+    throw new AppError('CONFLICT', `Cannot move an order from ${existing.status} to ${status}. Advance one step or use a status correction.`);
+  }
   const claim = await prisma.order.updateMany({
-    where: { id, status: { notIn: ['CANCELLED', 'RETURNED'] } },
+    where: { id, status: { equals: existing.status, notIn: ['CANCELLED', 'RETURNED'] } },
     data: {
       status,
       ...(opts.estimatedDeliveryDays !== undefined
@@ -1074,10 +1117,18 @@ export async function updateOrderStatus(
     },
   });
   if (claim.count === 0) {
-    throw new AppError('CONFLICT', 'This order has already been cancelled or returned and its status can no longer be changed');
+    throw new AppError('CONFLICT', 'Order status changed or is terminal. Reload before trying again.');
   }
 
-  const updated = await prisma.order.findUniqueOrThrow({ where: { id }, include: { items: true } });
+  const updated = await prisma.order.findUniqueOrThrow({ where: { id }, include: { items: true, returns: { include: { items: true } } } });
+  // A correction can move the order behind a milestone already announced.
+  // Advancing through it again must not replay the confirmation/shipping email.
+  const priorMilestone = (status === 'CONFIRMED' || status === 'SHIPPED')
+    ? await prisma.auditLog.findFirst({
+      where: { entityType: 'order', entityID: id, action: 'order.status_changed', metadata: { path: ['to'], equals: status } },
+      select: { id: true },
+    })
+    : null;
   await recordAudit({
     entityType: 'order',
     entityID: id,
@@ -1100,7 +1151,7 @@ export async function updateOrderStatus(
   // access token yet (checkout no longer pre-mints one), so mint a fresh
   // one for the tracking link now, same as lookupOrder()'s "lost my link"
   // flow; a logged-in customer's own /orders/[id] needs no token.
-  if (status === 'CONFIRMED' && existing.status !== 'CONFIRMED') {
+  if (status === 'CONFIRMED' && existing.status !== 'CONFIRMED' && !priorMilestone) {
     void (async () => {
       const orderUrl = updated.userID ? accountOrderUrl(updated.id) : trackingUrl(await mintAccessToken(prisma, updated.id));
       await sendOrderConfirmedNotifications(updated, orderUrl);
@@ -1112,7 +1163,7 @@ export async function updateOrderStatus(
   // Email the customer the first time an order enters SHIPPED (not on a
   // re-select of the same status). Fire-and-forget, after commit, never
   // throws — same discipline as the order-placed / cancelled notifications.
-  if (status === 'SHIPPED' && existing.status !== 'SHIPPED') {
+  if (status === 'SHIPPED' && existing.status !== 'SHIPPED' && !priorMilestone) {
     void sendOrderShippedNotifications(updated).catch((err) => {
       console.error('[order.service] failed to send order-shipped notification', err);
     });

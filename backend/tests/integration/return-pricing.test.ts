@@ -26,7 +26,7 @@ async function purchase(quantity = 7, coupon = 0, sale: boolean | number = false
   const checkout = await request(app).post('/api/orders/checkout').set(bearer(buyer.token))
     .send({ ...delivery, ...(coupon ? { couponCode: 'REFUND' } : {}) }).expect(201);
   const order = checkout.body.order;
-  await request(app).patch(`/api/admin/orders/${order.id}/status`).set(bearer(admin.token)).send({ status: 'DELIVERED' }).expect(200);
+  for (const status of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) await request(app).patch(`/api/admin/orders/${order.id}/status`).set(bearer(admin.token)).send({ status }).expect(200);
   return { buyer, admin, product, rule, order, line: order.items[0] };
 }
 type Purchase = Awaited<ReturnType<typeof purchase>>;

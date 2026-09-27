@@ -86,6 +86,10 @@ export function adminMarkCollected(id: UUID, collected: boolean) {
     .then((r) => r.order);
 }
 
+export function adminCorrectOrderStatus(id: UUID, body: { status: OrderStatus; expectedStatus: OrderStatus; reason: string }) {
+  return api.patch<{ order: Order }>(`/api/admin/orders/${id}/correction`, body).then((r) => r.order);
+}
+
 export function adminDashboard() {
   return api.get<AdminDashboard>('/api/admin/dashboard');
 }

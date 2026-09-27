@@ -28,9 +28,7 @@ beforeEach(async () => {
 });
 
 /** Logged-in customer: add `quantity` of the shared test variant to cart,
- *  check out, and (as an admin) fast-forward straight to DELIVERED — the
- *  plain status branch allows any non-terminal jump, so no need to step
- *  through CONFIRMED/SHIPPED first. */
+ *  check out, then advance through the normal fulfillment lifecycle. */
 async function deliveredOrder(quantity = 4) {
   const buyer = await createCustomer();
   const admin = await createAdmin();
@@ -40,11 +38,12 @@ async function deliveredOrder(quantity = 4) {
   const orderId = checkout.body.order.id as string;
   const orderItemId = checkout.body.order.items[0].id as string;
   const orderNumber = checkout.body.order.orderNumber as string;
-  const deliver = await request(app)
+  for (const status of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) {
+    await request(app)
     .patch(`/api/admin/orders/${orderId}/status`)
     .set(bearer(admin.token))
-    .send({ status: 'DELIVERED' });
-  expect(deliver.status).toBe(200);
+    .send({ status }).expect(200);
+  }
   return { buyer, admin, orderId, orderItemId, orderNumber };
 }
 
@@ -310,9 +309,8 @@ describe('Per-item returns', () => {
             'APPROVED', 'IN_TRANSIT', 'RECEIVED', ...(returnStatus === 'REFUNDED' ? ['REFUNDED'] : []),
           ]);
         }
-        // Exercise the real admin rollback, which remains allowed by this fix.
-        await request(app).patch(`/api/admin/orders/${order.orderId}/status`)
-          .set(bearer(order.admin.token)).send({ status }).expect(200);
+        // Simulate a historical rollback from before transition validation.
+        await prisma.order.update({ where: { id: order.orderId }, data: { status } });
         const before = await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } });
         const restocked = await returnStockTotal(order.orderId);
         expect(before.stockQuantity).toBe(returnStatus === 'REQUESTED' ? 6 : 8);
@@ -342,8 +340,7 @@ describe('Per-item returns', () => {
     const order = await deliveredOrder(4);
     const returnId = await requestItemReturn(order, 2);
     await advanceReturn(returnId, order.admin.token, [status]);
-    await request(app).patch(`/api/admin/orders/${order.orderId}/status`)
-      .set(bearer(order.admin.token)).send({ status: 'PENDING' }).expect(200);
+    await prisma.order.update({ where: { id: order.orderId }, data: { status: 'PENDING' } });
 
     await request(app).post(`/api/orders/${order.orderId}/cancel`).set(bearer(order.buyer.token)).expect(200);
     expect((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stockQuantity).toBe(10);

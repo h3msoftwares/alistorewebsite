@@ -155,6 +155,15 @@ export function useMarkOrderCollected() {
   });
 }
 
+export function useCorrectOrderStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: UUID; status: OrderStatus; expectedStatus: OrderStatus; reason: string }) =>
+      ordersApi.adminCorrectOrderStatus(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.orders.all() }),
+  });
+}
+
 export function useReviewOrder() {
   const qc = useQueryClient();
   return useMutation({

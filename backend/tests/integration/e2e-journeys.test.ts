@@ -165,6 +165,8 @@ describe('E2E — admin fulfilment journey', () => {
     expect(list.status).toBe(200);
     expect(list.body.orders.some((o: { id: string }) => o.id === orderId)).toBe(true);
 
+    await request(app).patch(`/api/admin/orders/${orderId}/status`)
+      .set(bearer(adminToken)).send({ status: 'CONFIRMED' }).expect(200);
     const shipped = await request(app)
       .patch(`/api/admin/orders/${orderId}/status`)
       .set(bearer(adminToken))

@@ -8,7 +8,7 @@ import { Alert, Badge, Button, EmptyState, Icon, ProductGridSkeleton, Select } f
 import { OrderActionModals } from '@/components/orders/order-action-modals';
 import { OrderDetailCard } from '@/components/orders/order-detail-card';
 import { useOrder } from '@/hooks/use-orders';
-import { ORDER_STATUSES, useOrderActions } from '@/hooks/use-order-actions';
+import { normalOrderStatuses, useOrderActions } from '@/hooks/use-order-actions';
 import { useOrderReceiptPrint } from '@/hooks/use-order-receipt-print';
 import { usePrintPreferences } from '@/hooks/use-print-preferences';
 import { useSettings } from '@/hooks/use-settings';
@@ -117,13 +117,18 @@ export default function AdminOrderDetailPage() {
                 disabled={oa.busyId === order.id}
                 onChange={(e) => oa.changeStatus(order, e.target.value as OrderStatus)}
               >
-                {ORDER_STATUSES.map((s) => (
+                {normalOrderStatuses(order.status).map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
                 ))}
               </Select>
             </label>
+            {oa.canCorrect && !['CANCELLED', 'RETURNED'].includes(order.status) && (
+              <Button variant="outline" size="sm" disabled={oa.busyId === order.id} onClick={() => oa.openCorrection(order)}>
+                {t('Correct status', 'تصحيح الحالة')}
+              </Button>
+            )}
             {order.estimatedDeliveryDays != null && (
               <button
                 type="button"

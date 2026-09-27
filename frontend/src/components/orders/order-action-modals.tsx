@@ -1,6 +1,8 @@
 'use client';
 
-import { Alert, Button, ConfirmModal, Field, Input, Modal } from '@/components/ui';
+import { Alert, Button, ConfirmModal, Field, Input, Modal, Select, Textarea } from '@/components/ui';
+import { ORDER_STATUSES } from '@/hooks/use-order-actions';
+import type { OrderStatus } from '@/lib/types';
 import type { OrderActionsApi } from '@/hooks/use-order-actions';
 
 /**
@@ -17,6 +19,26 @@ export function OrderActionModals({ locale, oa }: { locale: 'en' | 'ar'; oa: Ord
 
   return (
     <>
+      {pending?.kind === 'correction' && (
+        <Modal open onClose={oa.closeModal} title={t('Correct status', 'تصحيح الحالة')} closeLabel={t('Close', 'إغلاق')}>
+          <form className="admin-modal" onSubmit={(e) => { e.preventDefault(); void oa.submitCorrection(); }}>
+            <p>{t(`Correct an incorrectly recorded status for ${pending.order.orderNumber}. This is recorded separately with your reason. No customer email is sent.`, `صحح حالة مسجلة بالخطأ للطلب ${pending.order.orderNumber}. يسجل التصحيح منفصلاً مع السبب، دون إرسال بريد للزبون.`)}</p>
+            <Field label={t('Corrected status', 'الحالة الصحيحة')}>
+              {(p) => <Select {...p} value={oa.correctionStatus} onChange={(e) => oa.setCorrectionStatus(e.target.value as OrderStatus)}>
+                {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </Select>}
+            </Field>
+            <Field label={t('Reason for correction', 'سبب التصحيح')}>
+              {(p) => <Textarea {...p} required maxLength={1000} value={oa.correctionReason} onChange={(e) => oa.setCorrectionReason(e.target.value)} />}
+            </Field>
+            {['CANCELLED', 'RETURNED'].includes(oa.correctionStatus) && <Alert tone="warning">{t('This restores stock. Only proceed if every item is back in the store or was never dispatched. Orders with active or completed returns cannot be corrected.', 'سيعاد المخزون. تابع فقط إذا عادت كل القطع أو لم تشحن. لا يمكن تصحيح طلب له مرتجع نشط أو مكتمل.')}</Alert>}
+            <div className="admin-modal__actions">
+              <Button type="button" variant="ghost" onClick={oa.closeModal}>{t('Cancel', 'إلغاء')}</Button>
+              <Button type="submit" variant="primary" disabled={!oa.correctionReason.trim() || oa.correctionStatus === pending.order.status}>{t('Apply correction', 'تطبيق التصحيح')}</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
       <ConfirmModal
         open={pending?.kind === 'confirm'}
         onClose={oa.closeModal}

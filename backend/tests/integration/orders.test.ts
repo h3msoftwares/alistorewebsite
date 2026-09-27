@@ -369,6 +369,8 @@ describe('Orders API', () => {
       // Fulfilment work (status change, mark COD collected) is STAFF-reachable…
       const { token } = await createStaffWith(['orders:manage']);
 
+      for (const next of ['CONFIRMED', 'SHIPPED']) await request(app).patch(`/api/admin/orders/${orderId}/status`).set(bearer(token)).send({ status: next }).expect(200);
+
       const status = await request(app)
         .patch(`/api/admin/orders/${orderId}/status`)
         .set(bearer(token))

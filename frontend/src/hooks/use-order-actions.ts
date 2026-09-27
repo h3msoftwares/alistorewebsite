@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useUpdateOrderStatus, useMarkOrderCollected, useReviewOrder } from '@/hooks/use-orders';
+import { useUpdateOrderStatus, useMarkOrderCollected, useReviewOrder, useCorrectOrderStatus } from '@/hooks/use-orders';
+import { usePermissions } from '@/lib/rbac';
 import { useStepUp } from '@/hooks/use-auth';
 import { isApiError } from '@/lib/api';
 import type { Order, OrderStatus } from '@/lib/types';
@@ -10,12 +11,19 @@ import type { Order, OrderStatus } from '@/lib/types';
 // list and the order detail page so both offer the exact same transitions.
 export const ORDER_STATUSES: OrderStatus[] = ['PENDING', 'CONFIRMED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED'];
 
+export function normalOrderStatuses(current: OrderStatus): OrderStatus[] {
+  if (current === 'CANCELLED' || current === 'RETURNED') return [current];
+  const next: Partial<Record<OrderStatus, OrderStatus>> = { PENDING: 'CONFIRMED', CONFIRMED: 'SHIPPED', SHIPPED: 'DELIVERED' };
+  return [current, ...(next[current] ? [next[current]!] : []), 'CANCELLED', 'RETURNED'];
+}
+
 // Status changes that get a confirmation modal (both are effectively
 // terminal; CANCELLED also restocks + emails the customer).
 const CONFIRM_STATUSES: OrderStatus[] = ['CANCELLED', 'RETURNED'];
 
 /** What the admin is mid-way through doing — drives which modal is open. */
 export type PendingOrderAction =
+  | { kind: 'correction'; order: Order }
   | { kind: 'confirm'; order: Order; status: OrderStatus }
   | { kind: 'days'; order: Order; status: OrderStatus; mode: 'ship' | 'edit' };
 
@@ -36,6 +44,11 @@ export interface OrderActionMessages {
  * this was extracted.
  */
 export function useOrderActions(messages: OrderActionMessages) {
+  const { has } = usePermissions();
+  const canCorrect = has('orders:manage') && has('order_corrections:manage');
+  const correctStatus = useCorrectOrderStatus();
+  const [correctionStatus, setCorrectionStatus] = useState<OrderStatus>('PENDING');
+  const [correctionReason, setCorrectionReason] = useState('');
   const updateStatus = useUpdateOrderStatus();
   const markCollected = useMarkOrderCollected();
   const reviewOrder = useReviewOrder();
@@ -96,6 +109,10 @@ export function useOrderActions(messages: OrderActionMessages) {
   // to SHIPPED open a modal; everything else applies immediately.
   const changeStatus = (o: Order, next: OrderStatus) => {
     if (next === o.status) return;
+    if (!normalOrderStatuses(o.status).includes(next)) {
+      setActionError(messages.statusChangeFailed);
+      return;
+    }
     if (CONFIRM_STATUSES.includes(next)) {
       setPending({ kind: 'confirm', order: o, status: next });
       return;
@@ -140,7 +157,22 @@ export function useOrderActions(messages: OrderActionMessages) {
 
   const markReviewed = (o: Order) => run(o.id, () => reviewOrder.mutateAsync(o.id), messages.updateFailed);
 
+  const openCorrection = (order: Order) => {
+    if (!canCorrect || ['CANCELLED', 'RETURNED'].includes(order.status)) return;
+    setCorrectionStatus(order.status);
+    setCorrectionReason('');
+    setPending({ kind: 'correction', order });
+  };
+  const submitCorrection = async () => {
+    if (!canCorrect || pending?.kind !== 'correction' || !correctionReason.trim() || correctionStatus === pending.order.status) return;
+    const { order } = pending;
+    const body = { id: order.id, status: correctionStatus, expectedStatus: order.status, reason: correctionReason.trim() };
+    closeModal();
+    await run(order.id, () => correctStatus.mutateAsync(body), messages.statusChangeFailed);
+  };
+
   return {
+    canCorrect, openCorrection, submitCorrection, correctionStatus, setCorrectionStatus, correctionReason, setCorrectionReason,
     actionError,
     busyId,
     pending,

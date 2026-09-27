@@ -7,6 +7,7 @@ import { requireFreshAuth } from '../../middleware/step-up.middleware';
 import {
   orderIdParamSchema,
   updateOrderStatusSchema,
+  correctOrderStatusSchema,
   markCollectedSchema,
   adminListOrdersQuerySchema,
 } from '../orders/order.schema';
@@ -14,6 +15,7 @@ import { updateStockSchema, adminVariantParamSchema } from '../catalog/product.s
 import {
   listAllOrdersHandler,
   updateOrderStatusHandler,
+  correctOrderStatusHandler,
   markCodCollectedHandler,
   reviewOrderHandler,
   salesDashboardHandler,
@@ -56,6 +58,14 @@ router.patch(
   requireFreshAuth(),
   validate({ params: orderIdParamSchema, body: updateOrderStatusSchema }),
   asyncHandler(updateOrderStatusHandler)
+);
+router.patch(
+  '/orders/:id/correction',
+  requirePermission('orders:manage'),
+  requirePermission('order_corrections:manage'),
+  requireFreshAuth(),
+  validate({ params: orderIdParamSchema, body: correctOrderStatusSchema }),
+  asyncHandler(correctOrderStatusHandler)
 );
 router.patch(
   '/orders/:id/collected',

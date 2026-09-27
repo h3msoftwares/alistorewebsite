@@ -87,6 +87,11 @@ export async function markCodCollectedHandler(req: Request, res: Response) {
   res.json({ order });
 }
 
+export async function correctOrderStatusHandler(req: Request, res: Response) {
+  const order = await orderService.correctOrderStatus(paramString(req.params.id), req.body, req.user!.id);
+  res.json({ order });
+}
+
 export async function salesDashboardHandler(_req: Request, res: Response) {
   const stats = await orderService.salesDashboard();
   res.json(stats);

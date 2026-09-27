@@ -69,6 +69,12 @@ export const updateOrderStatusSchema = z.object({
   estimatedDeliveryDays: z.number().int().min(0).max(90).nullish(),
 });
 
+export const correctOrderStatusSchema = z.object({
+  status: orderStatus,
+  expectedStatus: orderStatus,
+  reason: z.string().trim().min(1).max(1000),
+});
+
 // One status, or several as a comma-separated list (e.g. `?status=CONFIRMED,SHIPPED`
 // for the dashboard's "confirmed but not delivered" shortcut) — the admin
 // orders list only ever needed a single value until that shortcut needed an

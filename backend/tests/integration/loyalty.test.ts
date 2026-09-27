@@ -48,11 +48,9 @@ async function placeAndDeliver(token: string, staffToken: string): Promise<strin
   expect(checkout.status).toBe(201);
   const orderId = checkout.body.order.id as string;
 
-  const res = await request(app)
-    .patch(`/api/admin/orders/${orderId}/status`)
-    .set(bearer(staffToken))
-    .send({ status: 'DELIVERED' });
-  expect(res.status).toBe(200);
+  for (const status of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) {
+    await request(app).patch(`/api/admin/orders/${orderId}/status`).set(bearer(staffToken)).send({ status }).expect(200);
+  }
   await flushAsync();
   return orderId;
 }

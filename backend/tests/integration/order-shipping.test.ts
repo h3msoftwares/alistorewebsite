@@ -39,6 +39,7 @@ async function placeOrder() {
   await request(app).post('/api/cart/items').set(bearer(token)).send({ variantId, quantity: 1 });
   const res = await request(app).post('/api/orders/checkout').set(bearer(token)).send(delivery);
   expect(res.status).toBe(201);
+  await prisma.order.update({ where: { id: res.body.order.id }, data: { status: 'CONFIRMED' } });
   return res.body.order.id as string;
 }
 
