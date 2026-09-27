@@ -4,267 +4,142 @@ import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
 import { createAdmin, createCustomer, createStaffWith, bearer } from '../helpers/auth';
 import { makeCategory, makeProduct } from '../helpers/factories';
+import { activeComboRules } from '../../src/modules/combos/combo-rule.service';
 
 const app = buildApp();
-
 let adminToken: string;
-
+let product: Awaited<ReturnType<typeof makeProduct>>;
 beforeEach(async () => {
   adminToken = (await createAdmin()).token;
+  const cat = await makeCategory();
+  product = await makeProduct(cat.id, { over: { price: 12 }, variants: [
+    { sku: 'SMALL', size: 'S', stockQuantity: 1000 }, { sku: 'LARGE', size: 'L', stockQuantity: 1000 },
+  ] });
 });
+const post = (body: unknown) => request(app).post('/api/combo-rules').set(bearer(adminToken)).send(body);
+const patch = (id: string, body: unknown) => request(app).patch('/api/combo-rules/' + id).set(bearer(adminToken)).send(body);
+const body = () => ({ nameEn: 'Volume', nameAr: 'Volume', status: 'ACTIVE', productIds: [product.id],
+  tiers: [{ minQty: 3, price: 10 }, { minQty: 5, price: 8.1 }] });
+const delivery = { deliveryName: 'Buyer', deliveryPhone: '0791234567', deliveryAddress: 'Street',
+  deliveryCity: 'Beirut', deliveryRegion: 'BEIRUT' };
 
-const getAdmin = (path: string) => request(app).get(path).set(bearer(adminToken));
-const postAdmin = (path: string, body: unknown) => request(app).post(path).set(bearer(adminToken)).send(body);
-const patchAdmin = (path: string, body: unknown) => request(app).patch(path).set(bearer(adminToken)).send(body);
-const deleteAdmin = (path: string) => request(app).delete(path).set(bearer(adminToken));
-
-describe('Combo rules API', () => {
-  it('requires staff/admin, and the dedicated combos:* permission (not discounts:*)', async () => {
-    const customer = (await createCustomer()).token;
-    expect((await request(app).get('/api/combo-rules')).status).toBe(401);
-    expect((await request(app).get('/api/combo-rules').set(bearer(customer))).status).toBe(403);
-
+describe('volume pricing API', () => {
+  it('requires combos:manage for writes and combos:view for reads', async () => {
     const viewer = await createStaffWith(['combos:view']);
-    expect((await request(app).get('/api/combo-rules').set(bearer(viewer.token))).status).toBe(200);
-    expect(
-      (await request(app).post('/api/combo-rules').set(bearer(viewer.token)).send({})).status
-    ).toBe(403);
-
-    // Holding discounts:manage alone must NOT unlock combo-rule writes —
-    // this is the whole point of combos being its own permission area.
-    const discountsOnly = await createStaffWith(['discounts:manage']);
-    expect(
-      (await request(app).post('/api/combo-rules').set(bearer(discountsOnly.token)).send({})).status
-    ).toBe(403);
-
     const manager = await createStaffWith(['combos:manage']);
-    const res = await request(app)
-      .post('/api/combo-rules')
-      .set(bearer(manager.token))
-      .send({ nameEn: 'x', nameAr: 'x', appliesToAll: true, tiers: [{ minQty: 2, maxQty: 2, price: 5 }] });
+    expect((await request(app).get('/api/combo-rules')).status).toBe(401);
+    expect((await request(app).get('/api/combo-rules').set(bearer(viewer.token))).status).toBe(200);
+    expect((await request(app).post('/api/combo-rules').set(bearer(viewer.token)).send(body())).status).toBe(403);
+    expect((await request(app).post('/api/combo-rules').set(bearer(manager.token)).send(body())).status).toBe(201);
+  });
+  it('derives stored bounds and creates only new rate-band rules', async () => {
+    const res = await post({ ...body(), tiers: [...body().tiers].reverse() });
     expect(res.status).toBe(201);
-  });
-
-  it('creates a combo rule targeting a product / category / collection / site-wide, validates tier shape, and rejects overlapping tiers', async () => {
-    const cat = await makeCategory({ slug: 'combo-cat' });
-    const product = await makeProduct(cat.id);
-
-    const byProduct = await postAdmin('/api/combo-rules', {
-      nameEn: 'By product',
-      nameAr: 'م',
-      status: 'ACTIVE',
-      productIds: [product.id],
-      tiers: [{ minQty: 2, maxQty: 3, price: 5 }],
-    });
-    expect(byProduct.status).toBe(201);
-    expect(byProduct.body.comboRule.products.map((p: { productID: string }) => p.productID)).toEqual([product.id]);
-    expect(byProduct.body.comboRule.tiers).toMatchObject([{ minQty: 2, maxQty: 3 }]);
-
-    // no target at all, and not appliesToAll
-    expect(
-      (await postAdmin('/api/combo-rules', { nameEn: 'x', nameAr: 'x', tiers: [{ minQty: 2, maxQty: 2, price: 5 }] }))
-        .status
-    ).toBe(400);
-    // appliesToAll AND specific targets together
-    expect(
-      (
-        await postAdmin('/api/combo-rules', {
-          nameEn: 'x',
-          nameAr: 'x',
-          appliesToAll: true,
-          productIds: [product.id],
-          tiers: [{ minQty: 2, maxQty: 2, price: 5 }],
-        })
-      ).status
-    ).toBe(400);
-    // no tiers at all
-    expect(
-      (await postAdmin('/api/combo-rules', { nameEn: 'x', nameAr: 'x', appliesToAll: true, tiers: [] })).status
-    ).toBe(400);
-    // maxQty < minQty
-    expect(
-      (
-        await postAdmin('/api/combo-rules', {
-          nameEn: 'x',
-          nameAr: 'x',
-          appliesToAll: true,
-          tiers: [{ minQty: 3, maxQty: 2, price: 5 }],
-        })
-      ).status
-    ).toBe(400);
-    // overlapping tier ranges
-    expect(
-      (
-        await postAdmin('/api/combo-rules', {
-          nameEn: 'x',
-          nameAr: 'x',
-          appliesToAll: true,
-          tiers: [
-            { minQty: 1, maxQty: 3, price: 5 },
-            { minQty: 2, maxQty: 4, price: 8 },
-          ],
-        })
-      ).status
-    ).toBe(400);
-  });
-
-  it('updates and deletes a combo rule, and records an AuditLog row for create/update/delete', async () => {
-    const created = await postAdmin('/api/combo-rules', {
-      nameEn: 'Audit me',
-      nameAr: 'م',
-      appliesToAll: true,
-      status: 'ACTIVE',
-      tiers: [{ minQty: 2, maxQty: 2, price: 5 }],
-    });
-    const id = created.body.comboRule.id;
-
-    const updated = await patchAdmin(`/api/combo-rules/${id}`, { priority: 7 });
+    expect(res.body.comboRule.pricingModel).toBe('UNIT_RATE_BANDS');
+    expect(res.body.comboRule.tiers).toMatchObject([
+      { minQty: 3, maxQty: 4, price: '10' }, { minQty: 5, maxQty: null, price: '8.1' },
+    ]);
+    const updated = await patch(res.body.comboRule.id, { tiers: [{ minQty: 3, price: 10 }, { minQty: 6, price: 8.5 }] });
     expect(updated.status).toBe(200);
-    expect(updated.body.comboRule.priority).toBe(7);
-
-    expect((await deleteAdmin(`/api/combo-rules/${id}`)).status).toBe(204);
-    expect((await getAdmin(`/api/combo-rules/${id}`)).status).toBe(404);
-
-    const logs = await prisma.auditLog.findMany({
-      where: { entityType: 'comboRule', entityID: id },
-      orderBy: { createdAt: 'asc' },
-    });
-    expect(logs.map((l) => l.action)).toEqual(['comboRule.created', 'comboRule.updated', 'comboRule.deleted']);
-    const updateLog = logs[1].metadata as { before: Record<string, unknown>; after: Record<string, unknown> };
-    expect(updateLog.before.priority).toBe(0);
-    expect(updateLog.after.priority).toBe(7);
+    expect(updated.body.comboRule.tiers).toMatchObject([{ minQty: 3, maxQty: 5 }, { minQty: 6, maxQty: null }]);
+  });
+  it.each([8, 7.9])('rejects a non-increasing total at rate %s and reports the actual boundary amounts', async (rate) => {
+    const res = await post({ ...body(), tiers: [{ minQty: 3, price: 10 }, { minQty: 5, price: rate }] });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('4 × $10.00 = $40.00');
+    expect(res.body.error.message).toContain('5 × $' + rate.toFixed(2));
+    expect(res.body.error.meta.boundaries.some((b: { valid: boolean }) => !b.valid)).toBe(true);
+    expect(await prisma.comboRule.count({ where: { products: { some: { productID: product.id } } } })).toBe(0);
+  });
+  it('validates the first threshold against every variant and rechecks partial updates', async () => {
+    expect((await post({ ...body(), tiers: [{ minQty: 3, price: 5 }] })).status).toBe(400);
+    const created = await post(body());
+    await prisma.productVariant.update({ where: { id: product.variants[1].id }, data: { price: 25 } });
+    const res = await patch(created.body.comboRule.id, { priority: 2 });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('LARGE: 2 × $25.00 = $50.00');
+  });
+  it('rejects all broad scopes, multiple products, editable maxima, duplicate minima and fractional cents', async () => {
+    const cases = [
+      { productIds: [] }, { productIds: [product.id, product.id] }, { appliesToAll: true },
+      { categoryTargets: [{ categoryId: product.primaryCategoryID, includeDescendants: true }] },
+      { collectionIds: [product.id] },
+      { tiers: [{ minQty: 3, maxQty: 5, price: 10 }] },
+      { tiers: [{ minQty: 3, price: 10 }, { minQty: 3, price: 9 }] },
+      { tiers: [{ minQty: 3, price: 10.001 }] },
+    ];
+    for (const over of cases) expect((await post({ ...body(), ...over })).status).toBe(400);
+  });
+  it('preserves legacy flat-price drafts, refuses conversion/activation, and excludes them from pricing', async () => {
+    const legacy = await prisma.comboRule.create({ data: {
+      nameEn: 'Loyalty', nameAr: 'Loyalty', status: 'DRAFT',
+      tiers: { create: { minQty: 5, maxQty: null, price: 7 } },
+      products: { create: { productID: product.id } },
+    }, include: { tiers: true } });
+    expect((await patch(legacy.id, { status: 'ACTIVE' })).status).toBe(400);
+    expect(await prisma.comboRule.findUnique({ where: { id: legacy.id }, include: { tiers: true } })).toEqual(legacy);
+    // Even an old ACTIVE row cannot reach the new pricing engine.
+    await prisma.comboRule.update({ where: { id: legacy.id }, data: { status: 'ACTIVE' } });
+    expect(await activeComboRules()).toEqual([]);
+  });
+  it('excludes unsupported stored targeting even if inserted outside the validated API', async () => {
+    const created = await post(body());
+    await prisma.comboRuleCategory.create({ data: { comboRuleID: created.body.comboRule.id, categoryID: product.primaryCategoryID } });
+    expect(await activeComboRules()).toEqual([]);
+  });
+  it('records create/update/delete audit events without changing scope', async () => {
+    const created = await post(body());
+    const id = created.body.comboRule.id;
+    expect((await patch(id, { priority: 7 })).status).toBe(200);
+    await request(app).delete('/api/combo-rules/' + id).set(bearer(adminToken)).expect(204);
+    expect((await prisma.auditLog.findMany({ where: { entityID: id }, orderBy: { createdAt: 'asc' } })).map((log) => log.action))
+      .toEqual(['comboRule.created', 'comboRule.updated', 'comboRule.deleted']);
   });
 });
 
-describe('Combo pricing — cart and checkout', () => {
-  const delivery = {
-    deliveryName: 'Jane Doe',
-    deliveryPhone: '0791234567',
-    deliveryAddress: '12 Rainbow Street',
-    deliveryCity: 'Amman',
-    deliveryRegion: 'MOUNT_LEBANON',
-  };
-
-  it('applies "2 for $5" combo pricing in the cart, and checkout snapshots the same total', async () => {
-    const cat = await makeCategory({ slug: 'combo-checkout-cat' });
-    const product = await makeProduct(cat.id, {
-      over: { price: 3.5 },
-      variants: [{ sku: 'combo-v1', stockQuantity: 10 }],
-    });
-    await postAdmin('/api/combo-rules', {
-      nameEn: 'Combo', nameAr: 'م', status: 'ACTIVE',
-      productIds: [product.id],
-      tiers: [{ minQty: 2, maxQty: 2, price: 5 }],
-    });
-
-    const customer = await createCustomer();
-    const agent = request.agent(app);
-    await agent
-      .post('/api/cart/items')
-      .set(bearer(customer.token))
-      .send({ variantId: product.variants[0].id, quantity: 4 });
-
-    const cart = await agent.get('/api/cart').set(bearer(customer.token));
-    expect(cart.body.subtotal).toBe(10); // two "2 for $5" groups, not 4 x $3.50 = $14
-    expect(cart.body.comboSavings).toBeCloseTo(4, 5);
-
-    const checkout = await agent
-      .post('/api/orders/checkout')
-      .set(bearer(customer.token))
-      .send({ ...delivery, expectedSubtotal: cart.body.subtotal });
-    expect(checkout.status).toBe(201);
-    expect(Number(checkout.body.order.subtotal)).toBe(10);
-    expect(Number(checkout.body.order.items[0].lineTotal)).toBe(10);
+describe('volume pricing in existing carts and checkout', () => {
+  it('counts each variant separately and preserves coupon allocation at checkout', async () => {
+    await post(body()).expect(201);
+    await prisma.coupon.create({ data: { code: 'TEN', type: 'PERCENT', value: 10 } });
+    const buyer = await createCustomer();
+    for (const [i, quantity] of [4, 2].entries()) {
+      await request(app).post('/api/cart/items').set(bearer(buyer.token))
+        .send({ variantId: product.variants[i].id, quantity }).expect(201);
+    }
+    const cart = await request(app).get('/api/cart').set(bearer(buyer.token)).expect(200);
+    expect(cart.body.subtotal).toBe(64); // 4 * $10 + 2 * $12; never 6 * $8.10
+    const checkout = await request(app).post('/api/orders/checkout').set(bearer(buyer.token))
+      .send({ ...delivery, expectedSubtotal: 64, couponCode: 'TEN' }).expect(201);
+    expect(Number(checkout.body.order.subtotal)).toBe(64);
+    expect(Number(checkout.body.order.total)).toBe(57.6);
+    const lines = checkout.body.order.items;
+    expect(Number(lines.find((i: { quantity: number }) => i.quantity === 4).lineTotal)).toBe(36);
+    expect(Number(lines.find((i: { quantity: number }) => i.quantity === 2).lineTotal)).toBe(21.6);
   });
-
-  it('a product covered by two active combo rules is priced only under the higher-priority one', async () => {
-    const cat = await makeCategory({ slug: 'combo-priority-cat' });
-    const product = await makeProduct(cat.id, {
-      over: { price: 4 },
-      variants: [{ sku: 'combo-v2', stockQuantity: 10 }],
-    });
-    await postAdmin('/api/combo-rules', {
-      nameEn: 'Worse', nameAr: 'م', status: 'ACTIVE', priority: 0,
-      productIds: [product.id],
-      tiers: [{ minQty: 2, maxQty: 2, price: 9 }],
-    });
-    await postAdmin('/api/combo-rules', {
-      nameEn: 'Better', nameAr: 'م', status: 'ACTIVE', priority: 1,
-      productIds: [product.id],
-      tiers: [{ minQty: 2, maxQty: 2, price: 5 }],
-    });
-
-    const customer = await createCustomer();
-    const agent = request.agent(app);
-    await agent
-      .post('/api/cart/items')
-      .set(bearer(customer.token))
-      .send({ variantId: product.variants[0].id, quantity: 2 });
-
-    const cart = await agent.get('/api/cart').set(bearer(customer.token));
-    expect(cart.body.subtotal).toBe(5);
+  it('scales beyond the old 300-unit cutoff', async () => {
+    await post(body()).expect(201);
+    const buyer = await createCustomer();
+    await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId: product.variants[0].id, quantity: 350 }).expect(201);
+    expect((await request(app).get('/api/cart').set(bearer(buyer.token))).body.subtotal).toBe(2835);
+    const checkout = await request(app).post('/api/orders/checkout').set(bearer(buyer.token)).send({ ...delivery, expectedSubtotal: 2835 }).expect(201);
+    expect(Number(checkout.body.order.items[0].lineTotal)).toBe(2835);
   });
-
-  it('ignores a DRAFT combo rule, applying it only once it is made ACTIVE', async () => {
-    const cat = await makeCategory({ slug: 'combo-draft-cat' });
-    const product = await makeProduct(cat.id, {
-      over: { price: 3.5 },
-      variants: [{ sku: 'combo-v3', stockQuantity: 10 }],
-    });
-    const rule = await postAdmin('/api/combo-rules', {
-      nameEn: 'Draft combo', nameAr: 'م', status: 'DRAFT',
-      productIds: [product.id],
-      tiers: [{ minQty: 2, maxQty: 2, price: 5 }],
-    });
-
-    const customer = await createCustomer();
-    const agent = request.agent(app);
-    await agent
-      .post('/api/cart/items')
-      .set(bearer(customer.token))
-      .send({ variantId: product.variants[0].id, quantity: 2 });
-
-    let cart = await agent.get('/api/cart').set(bearer(customer.token));
-    expect(cart.body.subtotal).toBe(7); // 2 x $3.50 — DRAFT rules never apply
-
-    await patchAdmin(`/api/combo-rules/${rule.body.comboRule.id}`, { status: 'ACTIVE' });
-    cart = await agent.get('/api/cart').set(bearer(customer.token));
-    expect(cart.body.subtotal).toBe(5);
+  it('lets a cheaper existing promotion win without stacking the volume rate', async () => {
+    await post(body()).expect(201);
+    await prisma.promotion.create({ data: { nameEn: 'Half', nameAr: 'Half', status: 'ACTIVE',
+      appliesToAll: true, type: 'PERCENT', value: 50, stackable: true } });
+    const buyer = await createCustomer();
+    await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId: product.variants[0].id, quantity: 7 });
+    expect((await request(app).get('/api/cart').set(bearer(buyer.token))).body.subtotal).toBe(42);
   });
-
-  it('rejects checkout (does not silently reprice) when a combo rule changes between viewing the cart and checking out', async () => {
-    const cat = await makeCategory({ slug: 'combo-race-cat' });
-    const product = await makeProduct(cat.id, {
-      over: { price: 3.5 },
-      variants: [{ sku: 'combo-v4', stockQuantity: 10 }],
-    });
-    const rule = await postAdmin('/api/combo-rules', {
-      nameEn: 'Race combo', nameAr: 'م', status: 'ACTIVE',
-      productIds: [product.id],
-      tiers: [{ minQty: 2, maxQty: 2, price: 5 }],
-    });
-
-    const customer = await createCustomer();
-    const agent = request.agent(app);
-    await agent
-      .post('/api/cart/items')
-      .set(bearer(customer.token))
-      .send({ variantId: product.variants[0].id, quantity: 2 });
-
-    const cart = await agent.get('/api/cart').set(bearer(customer.token));
-    expect(cart.body.subtotal).toBe(5);
-
-    // The rule is paused after the shopper last saw the cart, but before
-    // they place the order — the recomputed subtotal at checkout no longer
-    // matches what expectedSubtotal claims, so checkout must refuse rather
-    // than silently charging the new (higher) total.
-    await patchAdmin(`/api/combo-rules/${rule.body.comboRule.id}`, { status: 'PAUSED' });
-
-    const checkout = await agent
-      .post('/api/orders/checkout')
-      .set(bearer(customer.token))
-      .send({ ...delivery, expectedSubtotal: cart.body.subtotal });
-    expect(checkout.status).toBe(409);
-    expect(checkout.body.error.meta?.reason).toBe('PRICE_CHANGED');
+  it('reprices existing carts after pausing and rejects a stale checkout subtotal', async () => {
+    const created = await post(body());
+    const buyer = await createCustomer();
+    await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId: product.variants[0].id, quantity: 4 });
+    expect((await request(app).get('/api/cart').set(bearer(buyer.token))).body.subtotal).toBe(40);
+    await patch(created.body.comboRule.id, { status: 'PAUSED' }).expect(200);
+    expect((await request(app).get('/api/cart').set(bearer(buyer.token))).body.subtotal).toBe(48);
+    const stale = await request(app).post('/api/orders/checkout').set(bearer(buyer.token)).send({ ...delivery, expectedSubtotal: 40 }).expect(409);
+    expect(stale.body.error.meta.reason).toBe('PRICE_CHANGED');
   });
 });

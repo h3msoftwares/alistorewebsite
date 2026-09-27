@@ -16,7 +16,7 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/hooks/use-catalog', () => {
   // Stable query data, as in the real catalog hooks.
   const products = {
-    items: [{ id: 'p1', nameEn: 'Test product', nameAr: 'منتج', sku: 'TEST' }],
+    items: [{ id: 'p1', nameEn: 'Test product', nameAr: 'منتج', sku: 'TEST', price: 12, variants: [{ sku: 'TEST-S', price: null }] }],
     total: 1,
     page: 1,
     pageSize: 60,
@@ -25,6 +25,7 @@ vi.mock('@/hooks/use-catalog', () => {
     useAdminCollections: () => ({ data: [] }),
     useAdminCategories: () => ({ data: [] }),
     useProducts: () => ({ data: products }),
+    useProduct: (id: string | undefined) => ({ data: products.items.find((p) => p.id === id) }),
   };
 });
 
@@ -45,88 +46,56 @@ async function fillTwoTiers() {
 
   await user.type(screen.getByLabelText(/Name \(English\)/), 'Combo');
   await user.type(screen.getByLabelText(/Name \(Arabic\)/), 'عرض');
-  await user.click(screen.getByRole('checkbox', { name: 'Test product' }));
+  await user.selectOptions(screen.getByLabelText('Product'), 'p1');
   await user.clear(screen.getByLabelText('Min qty'));
   await user.type(screen.getByLabelText('Min qty'), '3');
-  await user.clear(screen.getByLabelText('Price ($)'));
-  await user.type(screen.getByLabelText('Price ($)'), '5');
+  await user.clear(screen.getByLabelText('Price per unit ($)'));
+  await user.type(screen.getByLabelText('Price per unit ($)'), '10');
   await user.click(screen.getByRole('button', { name: 'Add tier' }));
   await user.clear(screen.getAllByLabelText('Min qty')[1]);
   await user.type(screen.getAllByLabelText('Min qty')[1], '5');
-  await user.clear(screen.getAllByLabelText('Price ($)')[1]);
-  await user.type(screen.getAllByLabelText('Price ($)')[1], '7');
+  await user.clear(screen.getAllByLabelText('Price per unit ($)')[1]);
+  await user.type(screen.getAllByLabelText('Price per unit ($)')[1], '8.1');
   return user;
 }
 
 describe('NewComboRulePage', () => {
-  it('submits automatic bounds for the 3-for-5 and 5-for-7 tiers', async () => {
+  it('submits rates without editable maxima or broad targets', async () => {
     const user = await fillTwoTiers();
-    expect(screen.getByText('Auto: 4')).toBeInTheDocument();
-    expect(screen.getByText('No limit')).toBeInTheDocument();
-    expect(screen.getAllByLabelText('Max qty')[0]).toHaveValue(null);
-    expect(screen.getAllByLabelText('Max qty')[1]).toHaveValue(null);
+    expect(screen.getByText('Range: 3\u20134')).toBeInTheDocument();
+    expect(screen.getByText('Range: 5+')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Max qty')).not.toBeInTheDocument();
+    expect(screen.queryByText('Applies to all')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add combo rule' }));
     await waitFor(() => expect(mock.createComboRule).toHaveBeenCalledTimes(1));
-    expect(mock.createComboRule).toHaveBeenCalledWith(expect.objectContaining({
-      productIds: ['p1'],
-      tiers: [
-        { minQty: 3, maxQty: 4, price: 5 },
-        { minQty: 5, maxQty: null, price: 7 },
-      ],
-    }));
+    expect(mock.createComboRule).toHaveBeenCalledWith(expect.objectContaining({ productIds: ['p1'], appliesToAll: false,
+      categoryTargets: [], collectionIds: [], tiers: [{ minQty: 3, price: 10 }, { minQty: 5, price: 8.1 }] }));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/en/admin/combos'));
   });
-
-  it('updates automatic bounds when tiers are added, changed, and removed', async () => {
+  it('derives ranges when minima change or tiers are removed', async () => {
     const user = await fillTwoTiers();
-    await user.click(screen.getByRole('button', { name: 'Add tier' }));
-    await user.clear(screen.getAllByLabelText('Min qty')[2]);
-    await user.type(screen.getAllByLabelText('Min qty')[2], '8');
-    expect(screen.getByText('Auto: 4')).toBeInTheDocument();
-    expect(screen.getByText('Auto: 7')).toBeInTheDocument();
-
     await user.clear(screen.getAllByLabelText('Min qty')[1]);
     await user.type(screen.getAllByLabelText('Min qty')[1], '6');
-    expect(screen.getByText('Auto: 5')).toBeInTheDocument();
-    expect(screen.getByText('Auto: 7')).toBeInTheDocument();
-    await user.click(screen.getAllByRole('button', { name: 'Remove tier' })[2]);
-    expect(screen.queryByText('Auto: 7')).not.toBeInTheDocument();
-    expect(screen.getByText('No limit')).toBeInTheDocument();
-
-    await user.type(screen.getAllByLabelText('Max qty')[0], '3');
-    await user.clear(screen.getAllByLabelText('Min qty')[1]);
-    await user.type(screen.getAllByLabelText('Min qty')[1], '8');
-    expect(screen.getAllByLabelText('Max qty')[0]).toHaveValue(3);
-    expect(screen.queryByText('Auto: 7')).not.toBeInTheDocument();
-    await user.clear(screen.getAllByLabelText('Max qty')[0]);
-    expect(screen.getByText('Auto: 7')).toBeInTheDocument();
+    expect(screen.getByText('Range: 3\u20135')).toBeInTheDocument();
+    await user.click(screen.getAllByRole('button', { name: 'Remove tier' })[1]);
+    expect(screen.getByText('Range: 3+')).toBeInTheDocument();
   });
-
-  it('still shows explicit overlaps, then submits after the ranges are corrected', async () => {
+  it('shows duplicate minima validation instead of silently doing nothing', async () => {
     const user = await fillTwoTiers();
-    await user.type(screen.getAllByLabelText('Max qty')[0], '5');
-
+    await user.clear(screen.getAllByLabelText('Min qty')[1]);
+    await user.type(screen.getAllByLabelText('Min qty')[1], '3');
     await user.click(screen.getByRole('button', { name: 'Add combo rule' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Tiers must not have overlapping quantity ranges');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Each band must have a different minimum quantity');
     expect(mock.createComboRule).not.toHaveBeenCalled();
-    expect(push).not.toHaveBeenCalled();
-
-    await user.clear(screen.getAllByLabelText('Max qty')[0]);
-    await user.type(screen.getAllByLabelText('Max qty')[0], '4');
+  });
+  it('shows boundary totals and preserves server rejection visibly', async () => {
+    const user = await fillTwoTiers();
+    await user.clear(screen.getAllByLabelText('Price per unit ($)')[1]);
+    await user.type(screen.getAllByLabelText('Price per unit ($)')[1], '8');
+    expect(screen.getByText(/4 .*40.00; 5 .*40.00/)).toHaveTextContent('Total must strictly increase.');
+    mock.createComboRule.mockRejectedValue(new Error('4 x $10.00 = $40.00; 5 x $8.00 = $40.00. Total must strictly increase.'));
     await user.click(screen.getByRole('button', { name: 'Add combo rule' }));
-
-    await waitFor(() => expect(mock.createComboRule).toHaveBeenCalledTimes(1));
-    expect(mock.createComboRule).toHaveBeenCalledWith(expect.objectContaining({
-      nameEn: 'Combo',
-      nameAr: 'عرض',
-      productIds: ['p1'],
-      tiers: [
-        { minQty: 3, maxQty: 4, price: 5 },
-        { minQty: 5, maxQty: null, price: 7 },
-      ],
-    }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/en/admin/combos'));
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('4 x $10.00 = $40.00; 5 x $8.00 = $40.00');
+    expect(push).not.toHaveBeenCalled();
   });
 });

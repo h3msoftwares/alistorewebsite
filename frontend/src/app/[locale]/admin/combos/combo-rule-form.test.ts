@@ -1,63 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { blankComboRuleValues, comboRuleBodyFromValues, comboRuleSchema } from './combo-rule-form';
-
-const values = {
-  ...blankComboRuleValues,
-  nameEn: 'Combo',
-  nameAr: 'عرض',
-  appliesToAll: true,
-};
-
-describe('automatic combo tier bounds', () => {
-  it('uses quantity order even when rows are entered out of order', () => {
-    const form = {
-      ...values,
-      tiers: [
-        { minQty: 8, maxQty: '', price: 10 },
-        { minQty: 3, maxQty: '', price: 5 },
-        { minQty: 5, maxQty: '', price: 7 },
-      ],
-    };
+const values = { ...blankComboRuleValues, nameEn: 'Volume', nameAr: 'Volume', productIds: ['p1'] };
+describe('volume band form', () => {
+  it('sorts minima and sends no independently editable maximum', () => {
+    const form = { ...values, tiers: [{ minQty: 5, price: 8.1 }, { minQty: 3, price: 10 }] };
     expect(comboRuleSchema.safeParse(form).success).toBe(true);
-    expect(comboRuleBodyFromValues(form).tiers).toEqual([
-      { minQty: 8, maxQty: null, price: 10 },
-      { minQty: 3, maxQty: 4, price: 5 },
-      { minQty: 5, maxQty: 7, price: 7 },
-    ]);
-    expect(form.tiers.every((tier) => tier.maxQty === '')).toBe(true);
+    expect(comboRuleBodyFromValues(form)).toMatchObject({ appliesToAll: false, categoryTargets: [], collectionIds: [],
+      tiers: [{ minQty: 3, price: 10 }, { minQty: 5, price: 8.1 }] });
+    expect(comboRuleBodyFromValues(form).tiers.every((tier) => !('maxQty' in tier))).toBe(true);
   });
-
-  it('preserves explicit bounds, including gaps and a finite last maximum', () => {
-    const form = {
-      ...values,
-      tiers: [
-        { minQty: 3, maxQty: '3', price: 5 },
-        { minQty: 5, maxQty: '9', price: 7 },
-      ],
-    };
-    expect(comboRuleSchema.safeParse(form).success).toBe(true);
-    expect(comboRuleBodyFromValues(form).tiers.map((tier) => tier.maxQty)).toEqual([3, 9]);
-  });
-
-  it('rejects duplicate minimums even when both maximums are automatic', () => {
-    const result = comboRuleSchema.safeParse({
-      ...values,
-      tiers: [
-        { minQty: 3, maxQty: '', price: 5 },
-        { minQty: 3, maxQty: '', price: 7 },
-      ],
-    });
+  it('rejects duplicate minima', () => {
+    const result = comboRuleSchema.safeParse({ ...values, tiers: [{ minQty: 3, price: 10 }, { minQty: 3, price: 8 }] });
     expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues).toContainEqual(expect.objectContaining({
-        path: ['tiers'], message: 'Tiers must not have overlapping quantity ranges',
-      }));
-    }
+    if (!result.success) expect(result.error.issues).toContainEqual(expect.objectContaining({ path: ['tiers'], message: 'Each band must have a different minimum quantity' }));
   });
-
-  it('keeps a single automatic tier open-ended', () => {
-    expect(comboRuleBodyFromValues({
-      ...values, tiers: [{ minQty: 3, maxQty: '', price: 5 }],
-    }).tiers).toEqual([{ minQty: 3, maxQty: null, price: 5 }]);
+  it.each([[], ['p1', 'p2']])('requires one product: %j', (...productIds) => {
+    expect(comboRuleSchema.safeParse({ ...values, productIds, tiers: [{ minQty: 3, price: 10 }] }).success).toBe(false);
   });
 });

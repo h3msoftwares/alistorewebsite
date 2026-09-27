@@ -729,23 +729,17 @@ model PromotionCollection {
   @@map("promotioncollection")
 }
 
-// A cart-level "buy N, pay $X total" tiered/combo rule — distinct from
-// Promotion (which prices ONE product in isolation): a ComboRule prices a
-// GROUP of units pooled across every cart line it covers, which is why its
-// evaluation lives in lib/combo-pricing.ts as a separate cart-level pass
-// rather than inside lib/pricing.ts's per-line pickPromotion/pricedWithPromotion.
-// Targeting shape (products/categories/collections/appliesToAll) is a
-// deliberate 1:1 mirror of Promotion's — see ComboRuleProduct/Category/
-// Collection below — reusing catalog/category-tree.ts's generic
-// assertTargetsExist()/previewTargetCoverage() rather than reinventing
-// targeting. Same single-winner-by-`priority` rule as Promotion: a product
-// covered by more than one active ComboRule is attributed to exactly one
-// (see lib/combo-pricing.ts pickComboRule()), so a cart line's eligible
-// units are never pooled into two different rules' groupings at once.
+// Volume pricing selects a per-unit rate for the entire variant line quantity.
+// Only a single direct product is supported by UNIT_RATE_BANDS. Category and
+// collection relations remain available for a future bundle feature.
+// Highest priority wins when multiple rules cover a product; its band rate
+// is compared against the existing sale/promotion price, never stacked.
 model ComboRule {
   id           String          @id @default(uuid()) @db.Uuid
   nameEn       String
   nameAr       String
+  // Legacy rows remain intact and cannot enter the volume-pricing engine.
+  pricingModel String          @default("LEGACY_GROUP_TOTAL")
   // Reuses PromotionStatus (same DRAFT/ACTIVE/PAUSED/ENDED meaning) rather
   // than a parallel ComboRuleStatus enum — same precedent as DiscountType
   // being shared across Product/Promotion/Coupon/LoyaltyRule.
@@ -767,15 +761,9 @@ model ComboRule {
   @@map("comborule")
 }
 
-// One quantity bracket of a ComboRule's price schedule: buying a group whose
-// size falls anywhere in [minQty, maxQty] (maxQty null = open-ended) costs
-// `price` FLAT for the whole group — not a per-unit price. A rule typically
-// carries several of these (e.g. "1 piece = $2", "2-3 pieces = $5"). See
-// lib/combo-pricing.ts for how eligible units are partitioned across a
-// rule's tiers to find the minimum-cost grouping (falling back to each
-// unit's own individual price — its product sale/promotion price — for
-// whatever doesn't fit a tier; "best price wins" against that individual
-// price is built into the algorithm, not a separate check).
+// UNIT_RATE_BANDS: price is a per-unit rate for the entire variant line.
+// maxQty is a derived display bound (next minQty - 1), not admin input.
+// LEGACY_GROUP_TOTAL rows retain their original flat prices, untouched.
 model ComboTier {
   id          String  @id @default(uuid()) @db.Uuid
   comboRuleID String  @db.Uuid

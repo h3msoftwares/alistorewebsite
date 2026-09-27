@@ -336,22 +336,17 @@ export interface PromotionBody {
   collectionIds?: UUID[];
 }
 
-/** One quantity bracket of a ComboRule's price schedule — a FLAT total price
- *  for a group whose size falls in [minQty, maxQty] (maxQty null =
- *  open-ended), not a per-unit price. See ComboTier's doc comment in
- *  backend/prisma/schema.prisma. */
+/* Per-unit band; maxQty is derived. Preserved legacy rules use flat totals. */
 export interface ComboTier {
   minQty: number;
   maxQty: number | null;
   price: Decimalish;
 }
 
-/** Admin-managed cart-level "buy N, pay $X total" combo/tiered pricing rule
- *  (`GET /api/combo-rules`) — reuses Promotion's own product/category/
- *  collection targeting shape and PromotionStatus, but is priced by a
- *  cart-level pass (lib/combo-pricing.ts), not per-product like Promotion. */
+/* Single-product volume rule or a preserved, inactive legacy flat-price rule. */
 export interface ComboRule {
   id: UUID;
+  pricingModel: 'LEGACY_GROUP_TOTAL' | 'UNIT_RATE_BANDS';
   nameEn: string;
   nameAr: string;
   status: PromotionStatus;
@@ -381,7 +376,7 @@ export interface ComboRuleBody {
   productIds?: UUID[];
   categoryTargets?: PromotionCategoryTarget[];
   collectionIds?: UUID[];
-  tiers: { minQty: number; maxQty: number | null; price: number }[];
+  tiers: { minQty: number; price: number }[];
 }
 
 /** `POST /api/combo-rules/preview-coverage` — same shape/purpose as

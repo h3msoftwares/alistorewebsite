@@ -12,7 +12,7 @@ const delivery = {
   deliveryAddress: 'Test Street', deliveryCity: 'Beirut', deliveryRegion: 'BEIRUT',
 };
 
-async function checkoutCombo(quantity: number, groupSize: number, couponValue = 0) {
+async function checkoutVolume(quantity: number, couponValue = 0) {
   const admin = await createAdmin();
   const customer = await createCustomer();
   const category = await makeCategory();
@@ -21,7 +21,7 @@ async function checkoutCombo(quantity: number, groupSize: number, couponValue = 
   });
   await request(app).post('/api/combo-rules').set(bearer(admin.token)).send({
     nameEn: 'Exact prices', nameAr: 'Exact prices', status: 'ACTIVE', productIds: [product.id],
-    tiers: [{ minQty: groupSize, maxQty: groupSize, price: 5 }],
+    tiers: [{ minQty: 3, price: 10 }],
   }).expect(201);
   if (couponValue) {
     await request(app).post('/api/coupons').set(bearer(admin.token))
@@ -39,15 +39,15 @@ async function checkoutCombo(quantity: number, groupSize: number, couponValue = 
 
 describe('checkout persists exact per-unit prices', () => {
   it('stores the coupon-adjusted combo line and keeps order totals and legacy analytics reconciled', async () => {
-    const { order, admin, product } = await checkoutCombo(3, 2, 1.7);
+    const { order, admin, product } = await checkoutVolume(3, 3);
     expect(order.items).toHaveLength(1);
     const item = order.items[0];
-    expect(Number(order.subtotal)).toBe(17);
-    expect(Number(order.discountAmount)).toBe(1.7);
-    expect(Number(item.unitPrice)).toBe(5.1);
-    expect(Number(item.lineTotal)).toBe(15.3);
+    expect(Number(order.subtotal)).toBe(30);
+    expect(Number(order.discountAmount)).toBe(3);
+    expect(Number(item.unitPrice)).toBe(9);
+    expect(Number(item.lineTotal)).toBe(27);
     expect(item.priceBreakdown).toEqual({
-      version: 1, beforeCouponLineTotalCents: 1700, unitPricesCents: [225, 225, 1080],
+      version: 1, beforeCouponLineTotalCents: 3000, unitPricesCents: [900, 900, 900],
     });
     expect(Number(order.total)).toBeCloseTo(Number(item.lineTotal) + Number(order.deliveryFee), 2);
 
@@ -61,23 +61,23 @@ describe('checkout persists exact per-unit prices', () => {
       } },
     } });
     const overview = await request(app).get('/api/admin/analytics/overview').set(bearer(admin.token)).expect(200);
-    expect(overview.body.kpis.revenue).toBe(29);
+    expect(overview.body.kpis.revenue).toBe(42);
     const sales = await request(app).get('/api/admin/analytics/sales').set(bearer(admin.token)).expect(200);
     for (const key of ['byProduct', 'byCategory', 'bySize', 'byColour']) {
-      expect(sales.body[key].reduce((sum: number, row: { revenue: number }) => sum + row.revenue, 0)).toBe(29);
+      expect(sales.body[key].reduce((sum: number, row: { revenue: number }) => sum + row.revenue, 0)).toBe(42);
     }
-    expect(sales.body.revenueSeries.reduce((sum: number, row: { revenue: number }) => sum + row.revenue, 0)).toBe(29);
+    expect(sales.body.revenueSeries.reduce((sum: number, row: { revenue: number }) => sum + row.revenue, 0)).toBe(42);
     const products = await request(app).get('/api/admin/analytics/products').set(bearer(admin.token)).expect(200);
-    expect(products.body.products[0].revenue).toBe(29);
+    expect(products.body.products[0].revenue).toBe(42);
   });
 
-  it('persists all three exact rounding shares of a 3-for-$5 line', async () => {
-    const { order } = await checkoutCombo(3, 3);
+  it('persists the exact cent remainder after a coupon on three volume-priced units', async () => {
+    const { order } = await checkoutVolume(3, 0.01);
     expect(order.items).toHaveLength(1);
     const breakdown = order.items[0].priceBreakdown as OrderItemPriceBreakdown;
-    expect(breakdown.unitPricesCents).toEqual([167, 167, 166]);
-    expect(breakdown.unitPricesCents.reduce((sum, cents) => sum + cents, 0)).toBe(500);
-    expect(Number(order.items[0].lineTotal)).toBe(5);
-    expect(Number(order.subtotal)).toBe(5);
+    expect(breakdown.unitPricesCents).toEqual([999, 1000, 1000]);
+    expect(breakdown.unitPricesCents.reduce((sum, cents) => sum + cents, 0)).toBe(2999);
+    expect(Number(order.items[0].lineTotal)).toBe(29.99);
+    expect(Number(order.subtotal)).toBe(30);
   });
 });

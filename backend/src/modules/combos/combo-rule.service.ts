@@ -3,9 +3,11 @@ import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { toNumber } from '../../lib/money';
 import { recordAudit } from '../../lib/audit';
-import type { ComboRuleCandidate } from '../../lib/combo-pricing';
-import { collectionMembershipFilter } from '../catalog/collection-rules';
-import { assertHasTargetOrAppliesToAll, assertTargetsExist, previewTargetCoverage, type CategoryTarget } from '../catalog/targeting';
+import { deriveComboTiers, volumeBandBoundaries, type ComboRuleCandidate, type ComboTierCandidate } from '../../lib/combo-pricing';
+import { lineUnitPrice } from '../../lib/line-pricing';
+import { activePromotions } from '../discounts/promotion.service';
+import { PROMOTION_PRODUCT_INCLUDE } from '../catalog/category-tree';
+import { assertTargetsExist, previewTargetCoverage, type CategoryTarget } from '../catalog/targeting';
 import type { CreateComboRuleInput, UpdateComboRuleInput } from './combo-rule.schema';
 
 // Shared client or an interactive-transaction client — see the note in
@@ -48,15 +50,32 @@ function validateShape(input: {
   if (input.startsAt && input.endsAt && new Date(input.endsAt) <= new Date(input.startsAt)) {
     throw new AppError('VALIDATION_ERROR', 'endsAt must be after startsAt');
   }
-  assertHasTargetOrAppliesToAll(
-    {
-      appliesToAll: input.appliesToAll ?? false,
-      productIds: input.productIds ?? [],
-      categoryTargets: input.categoryTargets ?? [],
-      collectionIds: input.collectionIds ?? [],
-    },
-    'combo rule'
-  );
+  if (input.appliesToAll || input.productIds?.length !== 1 || input.categoryTargets?.length || input.collectionIds?.length) {
+    throw new AppError('VALIDATION_ERROR', 'Volume pricing requires exactly one product and no category or collection targets');
+  }
+}
+
+async function validateRates(productId: string, tiers: ComboTierCandidate[]) {
+  const [product, promotions] = await Promise.all([
+    prisma.product.findUnique({ where: { id: productId }, include: { variants: true, ...PROMOTION_PRODUCT_INCLUDE } }),
+    activePromotions(),
+  ]);
+  if (!product) throw new AppError('NOT_FOUND', 'Product not found');
+  const variants = product.variants.length ? product.variants : [{ sku: product.sku, price: null }];
+  const boundaries = variants.flatMap((variant) => {
+    // Check regular prices too: a temporary sale must not hide a bad band
+    // configuration which would become unsafe when the sale ends.
+    const bases = [...new Set([Number(variant.price ?? product.price), lineUnitPrice({ ...variant, product }, promotions)])];
+    return bases.flatMap((base) => volumeBandBoundaries(tiers, base).map((boundary) => ({ sku: variant.sku, ...boundary })));
+  });
+  const invalid = boundaries.filter((boundary) => !boundary.valid);
+  if (invalid.length) {
+    const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+    throw new AppError('VALIDATION_ERROR', invalid.map((b) =>
+      `${b.sku}: ${b.beforeQuantity} × ${money(b.beforeRateCents)} = ${money(b.beforeTotalCents)}; `
+      + `${b.afterQuantity} × ${money(b.afterRateCents)} = ${money(b.afterTotalCents)}. Total must strictly increase.`
+    ).join(' '), { boundaries });
+  }
 }
 
 function tierSnapshot(tiers: { minQty: number; maxQty: number | null; price: Prisma.Decimal | number }[]) {
@@ -66,17 +85,19 @@ function tierSnapshot(tiers: { minQty: number; maxQty: number | null; price: Pri
 export async function createComboRule(input: CreateComboRuleInput, actorID: string | null) {
   validateShape(input);
   await assertTargetsExist(input.productIds, input.categoryTargets, input.collectionIds);
+  await validateRates(input.productIds[0], input.tiers);
 
   const created = await prisma.comboRule.create({
     data: {
       nameEn: input.nameEn,
       nameAr: input.nameAr,
+      pricingModel: 'UNIT_RATE_BANDS',
       status: input.status,
       priority: input.priority,
       appliesToAll: input.appliesToAll,
       startsAt: input.startsAt ? new Date(input.startsAt) : null,
       endsAt: input.endsAt ? new Date(input.endsAt) : null,
-      tiers: { create: input.tiers.map((t, i) => ({ minQty: t.minQty, maxQty: t.maxQty, price: t.price, sortOrder: i })) },
+      tiers: { create: deriveComboTiers(input.tiers).map((t, i) => ({ ...t, sortOrder: i })) },
       products: { create: input.productIds.map((productID) => ({ productID })) },
       categories: {
         create: input.categoryTargets.map((t) => ({ categoryID: t.categoryId, includeDescendants: t.includeDescendants })),
@@ -113,6 +134,10 @@ export async function updateComboRule(id: string, input: UpdateComboRuleInput, a
   });
   if (!existing) throw new AppError('NOT_FOUND', 'Combo rule not found');
 
+  if (existing.pricingModel !== 'UNIT_RATE_BANDS') {
+    throw new AppError('VALIDATION_ERROR', 'This legacy flat-price rule is preserved unchanged. Create a new volume pricing rule.');
+  }
+
   // Merge partial input onto the existing row so cross-field validation sees
   // the shape as it will be AFTER this patch — same pattern as
   // promotion.service.ts before it.
@@ -127,6 +152,7 @@ export async function updateComboRule(id: string, input: UpdateComboRuleInput, a
     collectionIds: input.collectionIds ?? existing.collections.map((c) => c.collectionID),
   };
   validateShape(merged);
+  await validateRates(merged.productIds[0], input.tiers ?? existing.tiers.map((tier) => ({ ...tier, price: Number(tier.price) })));
   if (input.productIds !== undefined || input.categoryTargets !== undefined || input.collectionIds !== undefined) {
     await assertTargetsExist(merged.productIds, merged.categoryTargets, merged.collectionIds, {
       productIds: existing.products.map((p) => p.productID),
@@ -181,7 +207,7 @@ export async function updateComboRule(id: string, input: UpdateComboRuleInput, a
       if (input.tiers !== undefined) {
         await tx.comboTier.deleteMany({ where: { comboRuleID: id } });
         await tx.comboTier.createMany({
-          data: input.tiers.map((t, i) => ({ comboRuleID: id, minQty: t.minQty, maxQty: t.maxQty, price: t.price, sortOrder: i })),
+          data: deriveComboTiers(input.tiers).map((t, i) => ({ comboRuleID: id, ...t, sortOrder: i })),
         });
       }
       if (input.productIds !== undefined) {
@@ -251,101 +277,27 @@ export async function deleteComboRule(id: string, actorID: string | null) {
 
 // ---- Read-side: the combo rules in force right now ----
 
-/** Every ComboRule that is ACTIVE and within its time window at `at`.
- *  Mirrors promotion.service.ts's activePromotions() structure, including
- *  its AUTOMATED/HYBRID collection-membership resolution — kept as its own
- *  implementation rather than sharing code with activePromotions() beyond
- *  that mirrored structure, since the two return shapes genuinely differ
- *  (tiers vs. type/value/stackable) — see the design plan.
- *
- *  `db` defaults to the plain client for read-only callers (cart, product
- *  listings); checkout() passes its `tx` explicitly (same extra-pool-
- *  pressure reason as activePromotions()). */
+// Query fresh for existing carts and checkout, excluding preserved legacy rules.
 export async function activeComboRules(at: Date = new Date(), db: Db = prisma): Promise<ComboRuleCandidate[]> {
   const rows = await db.comboRule.findMany({
     where: {
-      status: 'ACTIVE',
+      pricingModel: 'UNIT_RATE_BANDS', status: 'ACTIVE', appliesToAll: false,
+      categories: { none: {} }, collections: { none: {} },
       AND: [
         { OR: [{ startsAt: null }, { startsAt: { lte: at } }] },
         { OR: [{ endsAt: null }, { endsAt: { gte: at } }] },
       ],
     },
-    include: {
-      tiers: { orderBy: { minQty: 'asc' } },
-      products: { select: { productID: true } },
-      categories: {
-        select: { includeDescendants: true, category: { select: { path: true, nameEn: true, nameAr: true } } },
-      },
-      collections: {
-        select: { collection: { select: { id: true, type: true, nameEn: true, nameAr: true } } },
-      },
-    },
+    include: { tiers: { orderBy: { minQty: 'asc' } }, products: true },
   });
-
-  // See activePromotions()'s identical comment: an AUTOMATED/HYBRID
-  // collection target has no real ComboRuleCollection-membership join row to
-  // match a product against directly, so its current membership is resolved
-  // here and folded into `productIds`.
-  const ruleBasedCollectionIds = [
-    ...new Set(
-      rows.flatMap((r) => r.collections.filter((c) => c.collection.type !== 'MANUAL').map((c) => c.collection.id))
-    ),
-  ];
-  const resolvedMembers = new Map<string, string[]>();
-  if (ruleBasedCollectionIds.length) {
-    const collections = await db.collection.findMany({
-      where: { id: { in: ruleBasedCollectionIds } },
-      select: { id: true, type: true },
-    });
-    for (const collection of collections) {
-      const where = await collectionMembershipFilter(collection);
-      const matches = await db.product.findMany({ where, select: { id: true } });
-      resolvedMembers.set(
-        collection.id,
-        matches.map((m) => m.id)
-      );
-    }
-  }
-
-  return rows.map((r) => {
-    const ruleBasedCollections = r.collections.filter((c) => c.collection.type !== 'MANUAL');
-    const ruleBasedProductIds = ruleBasedCollections.flatMap((c) => resolvedMembers.get(c.collection.id) ?? []);
-    const directProductIds = r.products.map((x) => x.productID);
-
-    const ruleBasedProductCollections: Record<string, { id: string; nameEn: string; nameAr: string }> = {};
-    for (const c of ruleBasedCollections) {
-      for (const productId of resolvedMembers.get(c.collection.id) ?? []) {
-        ruleBasedProductCollections[productId] ??= {
-          id: c.collection.id,
-          nameEn: c.collection.nameEn,
-          nameAr: c.collection.nameAr,
-        };
-      }
-    }
-
-    return {
-      id: r.id,
-      nameEn: r.nameEn,
-      nameAr: r.nameAr,
-      priority: r.priority,
-      appliesToAll: r.appliesToAll,
-      productIds: [...new Set([...directProductIds, ...ruleBasedProductIds])],
-      directProductIds,
-      categoryTargets: r.categories.map((c) => ({
-        path: c.category.path,
-        includeDescendants: c.includeDescendants,
-        nameEn: c.category.nameEn,
-        nameAr: c.category.nameAr,
-      })),
-      collections: r.collections.map((c) => ({
-        id: c.collection.id,
-        nameEn: c.collection.nameEn,
-        nameAr: c.collection.nameAr,
-      })),
-      ruleBasedProductCollections,
-      tiers: r.tiers.map((t) => ({ minQty: t.minQty, maxQty: t.maxQty, price: toNumber(t.price) })),
-    };
-  });
+  return rows.filter((r) => r.products.length === 1).map((r) => ({
+    id: r.id, nameEn: r.nameEn, nameAr: r.nameAr, priority: r.priority,
+    appliesToAll: false,
+    productIds: r.products.map((p) => p.productID),
+    directProductIds: r.products.map((p) => p.productID),
+    categoryTargets: [], collections: [], ruleBasedProductCollections: {},
+    tiers: deriveComboTiers(r.tiers.map((t) => ({ minQty: t.minQty, price: toNumber(t.price) }))),
+  }));
 }
 
 /** "Which live products would this combo rule actually cover" — thin

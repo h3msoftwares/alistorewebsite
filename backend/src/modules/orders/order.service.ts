@@ -430,7 +430,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
 
     // Effective price per line = variant override → product sale → best
     // (single, priority-picked) active promotion → best (single,
-    // priority-picked) active ComboRule grouping, whichever of the combo
+    // priority-picked) active ComboRule quantity band, whichever of the combo
     // and individual paths is cheaper (see lib/combo-pricing.ts). Snapshotted
     // onto each OrderItem below so the order stays correct even if a
     // promotion or combo rule later changes. `tx` — same pool reason as the

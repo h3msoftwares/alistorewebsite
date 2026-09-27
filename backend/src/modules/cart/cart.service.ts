@@ -73,9 +73,7 @@ export async function getCart(owner: CartOwner) {
     activeComboRules(),
   ]);
 
-  // Per-line price before any combo grouping (variant override → product
-  // sale → best active Promotion) — what lib/combo-pricing.ts's Q1 pipeline
-  // placement calls the individual price a combo has to beat.
+  // Existing variant/sale/promotion price, which the volume band must beat.
   const comboLines: ComboPricingLine[] = rows.map((i) => ({
     lineId: i.id,
     productId: i.variant.product.id,
@@ -86,12 +84,8 @@ export async function getCart(owner: CartOwner) {
   }));
   const priced = applyComboPricing(comboLines, comboRules);
 
-  // `effectivePrice` is the per-unit price this shopper actually pays RIGHT
-  // NOW for this line — blended back from the line's combo-adjusted total
-  // when a ComboRule grouped (some of) it, same as an un-grouped line's own
-  // individual price otherwise. A cart with no active combo rules produces
-  // the exact same effectivePrice/subtotal as before this feature existed —
-  // see applyComboPricing()'s own regression guarantee.
+  // Every unit in the variant line now has the same effective band or
+  // individual price. Coupon allocation happens later at checkout.
   const items = rows.map((i) => ({
     ...i,
     effectivePrice: round2(priced.lineTotals.get(i.id)! / i.quantity),

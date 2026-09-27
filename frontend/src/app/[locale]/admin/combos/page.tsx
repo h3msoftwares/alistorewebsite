@@ -41,12 +41,12 @@ function EffectiveStatusPill({ rule, isAr }: { rule: ComboRule; isAr: boolean })
 }
 
 function tiersLabel(rule: ComboRule, t: (en: string, ar: string) => string) {
-  return rule.tiers
-    .map((tier) => {
-      const range = tier.maxQty == null ? `${tier.minQty}+` : tier.minQty === tier.maxQty ? `${tier.minQty}` : `${tier.minQty}-${tier.maxQty}`;
-      return `${range} ${t('for', 'مقابل')} $${Number(tier.price).toFixed(2)}`;
-    })
-    .join(', ');
+  const sorted = [...rule.tiers].sort((a, b) => a.minQty - b.minQty);
+  return sorted.map((tier, index) => {
+    const max = rule.pricingModel === 'UNIT_RATE_BANDS' ? (sorted[index + 1]?.minQty ? sorted[index + 1].minQty - 1 : null) : tier.maxQty;
+    const range = max == null ? `${tier.minQty}+` : tier.minQty === max ? `${tier.minQty}` : `${tier.minQty}–${max}`;
+    return `${range}: $${Number(tier.price).toFixed(2)} ${rule.pricingModel === 'UNIT_RATE_BANDS' ? t('per unit', 'للوحدة') : t('flat total (legacy)', 'إجمالي ثابت (قديم)')}`;
+  }).join(', ');
 }
 
 export default function AdminCombosPage() {
@@ -76,14 +76,14 @@ export default function AdminCombosPage() {
         nameEn: t(`${r.nameEn} (copy)`, `${r.nameEn} (نسخة)`),
         nameAr: t(`${r.nameAr} (copy)`, `${r.nameAr} (نسخة)`),
         priority: r.priority,
-        appliesToAll: r.appliesToAll,
+        appliesToAll: false,
         productIds: r.products.map((x) => x.productID),
-        categoryTargets: r.categories.map((c) => ({ categoryId: c.categoryID, includeDescendants: c.includeDescendants })),
-        collectionIds: r.collections.map((c) => c.collectionID),
+        categoryTargets: [],
+        collectionIds: [],
         status: 'DRAFT',
         startsAt: r.startsAt,
         endsAt: r.endsAt,
-        tiers: r.tiers.map((tier) => ({ minQty: tier.minQty, maxQty: tier.maxQty, price: Number(tier.price) })),
+        tiers: r.tiers.map((tier) => ({ minQty: tier.minQty, price: Number(tier.price) })),
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Duplicate failed', 'فشل النسخ'));
@@ -127,8 +127,8 @@ export default function AdminCombosPage() {
       </div>
       <p className="admin-form__hint">
         {t(
-          'Cart-level "buy N, pay $X total" pricing across one product or a set of products/categories. A shopper always pays whichever is cheaper: this tier pricing, or each item priced individually.',
-          'تسعير على مستوى السلة بنمط "اشترِ N وادفع X$ إجمالاً" لمنتج واحد أو مجموعة منتجات/فئات. يدفع المتسوق دائمًا السعر الأقل بين هذا التسعير أو تسعير كل قطعة على حدة.'
+          'Volume pricing for one product, counted separately per variant. Quantity selects the price per unit; a cheaper sale or promotion still wins.',
+          'تسعير الكميات لمنتج واحد، مع حساب كل صنف على حدة. تحدد الكمية سعر الوحدة، ويُطبق سعر التخفيض أو العرض إذا كان أقل.'
         )}
       </p>
 
@@ -241,7 +241,7 @@ export default function AdminCombosPage() {
                         <RowActionsMenu
                           label={t('More actions', 'المزيد من الإجراءات')}
                           actions={[
-                            ...(r.status === 'ACTIVE' || r.status === 'PAUSED'
+                            ...(r.pricingModel === 'UNIT_RATE_BANDS' && (r.status === 'ACTIVE' || r.status === 'PAUSED')
                               ? [
                                   {
                                     label: r.status === 'ACTIVE' ? t('Pause', 'إيقاف مؤقت') : t('Resume', 'استئناف'),
@@ -252,7 +252,7 @@ export default function AdminCombosPage() {
                                   },
                                 ]
                               : []),
-                            { label: t('Duplicate', 'نسخ'), icon: Copy, onClick: () => void duplicateComboRule(r), disabled: busy },
+                            { label: t('Duplicate', 'نسخ'), icon: Copy, onClick: () => void duplicateComboRule(r), disabled: busy || r.pricingModel !== 'UNIT_RATE_BANDS' },
                             { label: t('Delete', 'حذف'), icon: Trash2, tone: 'danger', onClick: () => setConfirmDelete([r]) },
                           ]}
                         />
