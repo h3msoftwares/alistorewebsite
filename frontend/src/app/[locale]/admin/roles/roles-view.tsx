@@ -24,6 +24,7 @@ import {
   useCreateRole,
   useCreateTeamMember,
   useDeleteRole,
+  useDeleteTeamMember,
   usePermissionCatalog,
   useRoles,
   useSetRevoked,
@@ -647,13 +648,19 @@ function TeamPanel({ locale }: { locale: 'en' | 'ar' }) {
   const revoke = useSetRevoked();
   const createMember = useCreateTeamMember();
   const updateMember = useUpdateTeamMember();
+  const deleteMember = useDeleteTeamMember();
   const { data: roles } = useRoles();
   const busy =
-    assign.isPending || revoke.isPending || createMember.isPending || updateMember.isPending;
+    assign.isPending ||
+    revoke.isPending ||
+    createMember.isPending ||
+    updateMember.isPending ||
+    deleteMember.isPending;
 
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<TeamMember | null>(null);
 
   const run = async (p: Promise<unknown>) => {
     setError(null);
@@ -662,6 +669,13 @@ function TeamPanel({ locale }: { locale: 'en' | 'ar' }) {
     } catch (e) {
       setError(e instanceof Error ? e.message : t('Update failed', 'فشل التحديث'));
     }
+  };
+
+  const doDelete = async () => {
+    if (!confirmDelete) return;
+    const m = confirmDelete;
+    setConfirmDelete(null);
+    await run(deleteMember.mutateAsync(m.id));
   };
 
   if (isPending) return <ProductGridSkeleton count={3} />;
@@ -806,6 +820,16 @@ function TeamPanel({ locale }: { locale: 'en' | 'ar' }) {
                           {m.isActive ? t('Deactivate', 'تعطيل') : t('Activate', 'تفعيل')}
                         </Button>
                       )}
+                      {canManage && !isSelf && (m.role !== 'ADMIN' || isFullAdmin) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => setConfirmDelete(m)}
+                        >
+                          {t('Delete', 'حذف')}
+                        </Button>
+                      )}
                     </span>
                   </td>
                 </tr>
@@ -835,6 +859,21 @@ function TeamPanel({ locale }: { locale: 'en' | 'ar' }) {
       {(team ?? []).length === 0 && (
         <EmptyState title={t('No staff accounts', 'لا توجد حسابات موظفين')} />
       )}
+
+      <ConfirmModal
+        open={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => void doDelete()}
+        title={t(`Delete ${confirmDelete?.name ?? ''}'s account?`, `حذف حساب ${confirmDelete?.name ?? ''}؟`)}
+        body={t(
+          'They lose admin access immediately and can no longer sign in. Their order/activity history is kept.',
+          'سيفقدون الوصول للإدارة فورًا ولن يتمكنوا من تسجيل الدخول بعد الآن. يُحتفظ بسجل طلباتهم ونشاطهم.'
+        )}
+        confirmLabel={t('Delete', 'حذف')}
+        cancelLabel={t('Cancel', 'إلغاء')}
+        tone="danger"
+        loading={deleteMember.isPending}
+      />
     </div>
   );
 }

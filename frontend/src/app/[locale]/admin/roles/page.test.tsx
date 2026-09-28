@@ -42,6 +42,7 @@ const updateRole = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: fals
 const deleteRole = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false };
 const createMember = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false };
 const updateMember = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false };
+const deleteMember = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false };
 const assignRole = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false };
 const setRevoked = { mutateAsync: vi.fn().mockResolvedValue({}), isPending: false };
 
@@ -54,6 +55,7 @@ vi.mock('@/hooks/use-rbac', () => ({
   useDeleteRole: () => deleteRole,
   useCreateTeamMember: () => createMember,
   useUpdateTeamMember: () => updateMember,
+  useDeleteTeamMember: () => deleteMember,
   useAssignRole: () => assignRole,
   useSetRevoked: () => setRevoked,
 }));
@@ -159,5 +161,19 @@ describe('AdminRolesPage — Team tab', () => {
     expect(createMember.mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'New Hire', email: 'new@test.dev' })
     );
+  });
+
+  it('deletes a team member after confirming, and not before', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByRole('button', { name: 'Team' }));
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(deleteMember.mutateAsync).not.toHaveBeenCalled();
+
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    expect(deleteMember.mutateAsync).toHaveBeenCalledWith('user1');
   });
 });
