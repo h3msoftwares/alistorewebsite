@@ -549,6 +549,22 @@ export interface Return {
     status: OrderStatus;
   };
   requester?: { name: string; email?: string | null } | null;
+  refundEligibility?: { amountCents: number; remainingRefundableCents: number; collectionCount: number; blockReason: RefundBlockReason | null };
+}
+
+export type RefundBlockReason = 'NO_COLLECTION_RECORDED' | 'EXCEEDS_REMAINING_REFUNDABLE';
+export type CollectionInput =
+  | { collected: true; amount: number; currency: string; collectedAt: string; collectorName: string; reference?: string | null; note?: string }
+  | { collected: false; collectionID: UUID; reason: string };
+export interface CollectionRecord {
+  id: UUID; orderID: UUID; actorID: UUID; actorName: string;
+  amount: Decimalish; currency: string; collectedAt: IsoDateTime; collectorName: string;
+  reference: string | null; note?: string | null; reason?: string | null; reversalOfID: UUID | null; createdAt: IsoDateTime;
+}
+export interface CollectionSummary {
+  currency: string; expectedTotalCents: number; deliveryFeeCents: number; collectedCents: number;
+  markedRefundedCents: number; collectionCount: number; remainingRefundableCents: number;
+  records: CollectionRecord[];
 }
 
 export interface CreateReturnBody {

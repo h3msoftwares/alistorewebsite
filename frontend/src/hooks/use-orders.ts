@@ -6,7 +6,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { trackPurchase } from '@/lib/analytics/ga';
 import { useAppDispatch } from '@/store/hooks';
 import { resetItemCount } from '@/store/slices/cartSlice';
-import type { CheckoutBody, OrderStatus, OrderReturnFilter, UUID } from '@/lib/types';
+import type { CheckoutBody, CollectionInput, OrderStatus, OrderReturnFilter, UUID } from '@/lib/types';
 
 // ---------------------------------------------------------------- queries ----
 
@@ -24,6 +24,10 @@ export function useOrder(id: UUID | undefined) {
     queryFn: () => ordersApi.getOrder(id as UUID),
     enabled: Boolean(id),
   });
+}
+
+export function useCollectionSummary(id: UUID, enabled = true) {
+  return useQuery({ queryKey: queryKeys.orders.collections(id), queryFn: () => ordersApi.adminCollectionSummary(id), enabled });
 }
 
 export function useOrderByToken(token: string | undefined) {
@@ -149,14 +153,15 @@ export function useUpdateOrderStatus() {
 export function useMarkOrderCollected() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, collected }: { id: UUID; collected: boolean }) =>
-      ordersApi.adminMarkCollected(id, collected),
+    mutationFn: ({ id, body }: { id: UUID; body: CollectionInput }) =>
+      ordersApi.adminMarkCollected(id, body),
     onSuccess: () => {
       // This mutation returns scalar fields only. Keep the complete cached
       // order visible until the detail query reloads its items and returns.
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
       // dashboard "Awaiting COD" tile
       qc.invalidateQueries({ queryKey: queryKeys.orders.dashboard() });
+      qc.invalidateQueries({ queryKey: queryKeys.returns.all() });
     },
   });
 }

@@ -1,6 +1,8 @@
 import { api } from './client';
 import type {
   AdminDashboard,
+  CollectionInput,
+  CollectionSummary,
   CheckoutBody,
   DeliveryQuote,
   Order,
@@ -82,10 +84,14 @@ export function adminUpdateOrderStatus(
     .then((r) => r.order);
 }
 
-export function adminMarkCollected(id: UUID, collected: boolean) {
+export function adminMarkCollected(id: UUID, body: CollectionInput) {
   return api
-    .patch<{ order: OrderFields }>(`/api/admin/orders/${id}/collected`, { collected })
+    .patch<{ order: OrderFields }>(`/api/admin/orders/${id}/collected`, body)
     .then((r) => r.order);
+}
+
+export function adminCollectionSummary(id: UUID) {
+  return api.get<CollectionSummary>(`/api/admin/orders/${id}/collections`);
 }
 
 export function adminCorrectOrderStatus(id: UUID, body: { status: OrderStatus; expectedStatus: OrderStatus; reason: string }) {

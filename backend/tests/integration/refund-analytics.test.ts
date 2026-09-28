@@ -1,3 +1,4 @@
+import { collectTestOrder } from '../helpers/collection';
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
@@ -36,6 +37,7 @@ async function purchase(volume = false) {
   const status = (next: string) => request(app).patch(`/api/admin/orders/${order.id}/status`)
     .set(bearer(admin.token)).send({ status: next });
   for (const next of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) await status(next).expect(200);
+  await collectTestOrder(order.id, admin.user.id);
   const report = async (name = 'overview', query = '') => (await request(app)
     .get(`/api/admin/analytics/${name}${query}`).set(bearer(admin.token)).expect(200)).body;
   const advance = async (id: string, statuses: string[]) => {

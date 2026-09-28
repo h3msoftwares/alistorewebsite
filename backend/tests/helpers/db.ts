@@ -33,6 +33,7 @@ const TABLES = [
   'notification',
   'pushsubscription',
   'stockmovement',
+  'codcollection',
   'returnitem',
   'return',
   'orderaccesstoken',

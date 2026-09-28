@@ -1,3 +1,4 @@
+import { collectTestOrder } from '../helpers/collection';
 import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
@@ -23,6 +24,7 @@ async function setup() {
     deliveryName: 'Buyer', deliveryPhone: '0791234567', deliveryAddress: 'Street', deliveryCity: 'Beirut', deliveryRegion: 'BEIRUT',
   }).expect(201);
   const order = checkout.body.order;
+  await collectTestOrder(order.id, admin.user.id);
   const status = (next: string) => request(app).patch(`/api/admin/orders/${order.id}/status`).set(bearer(admin.token)).send({ status: next });
   const correction = (next: string, expectedStatus: string, reason = 'Wrong status selected by staff', token = admin.token) =>
     request(app).patch(`/api/admin/orders/${order.id}/correction`).set(bearer(token)).send({ status: next, expectedStatus, reason });

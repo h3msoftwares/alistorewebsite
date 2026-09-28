@@ -1,3 +1,4 @@
+import { collectTestOrder } from '../helpers/collection';
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { Prisma } from '@prisma/client';
@@ -27,6 +28,7 @@ async function purchase(quantity = 7, coupon = 0, sale: boolean | number = false
     .send({ ...delivery, ...(coupon ? { couponCode: 'REFUND' } : {}) }).expect(201);
   const order = checkout.body.order;
   for (const status of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) await request(app).patch(`/api/admin/orders/${order.id}/status`).set(bearer(admin.token)).send({ status }).expect(200);
+  await collectTestOrder(order.id, admin.user.id);
   return { buyer, admin, product, rule, order, line: order.items[0] };
 }
 type Purchase = Awaited<ReturnType<typeof purchase>>;

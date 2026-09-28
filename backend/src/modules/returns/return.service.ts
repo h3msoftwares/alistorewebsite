@@ -3,6 +3,7 @@ import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { recordAudit } from '../../lib/audit';
 import { calculateKeptRefund, moneyCents, readPurchasePricing, type RefundCalculation } from '../../lib/return-pricing';
+import { collectionTotals, refundBlockReason, returnRefundEligibility } from '../payments/collection.service';
 import {
   sendReturnRequestedNotification,
   sendReturnStatusChangedNotification,
@@ -294,6 +295,17 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
       throw new AppError('CONFLICT', `Cannot move a return from ${existing.status} to ${next}`);
     }
 
+    // Use saved incremental item amounts. This does not change refund pricing.
+    const refundCents = existing.items.reduce((sum, i) => sum + moneyCents(i.refundAmount), 0);
+    const collection = next === 'REFUNDED' ? await collectionTotals(tx, existing.orderID) : null;
+    if (collection) {
+      const reason = refundBlockReason(refundCents, collection);
+      if (reason) throw new AppError('CONFLICT', reason === 'NO_COLLECTION_RECORDED'
+        ? 'No COD collection recorded. Record collection evidence before marking this amount refunded.'
+        : `Amount exceeds remaining refundable: ${(refundCents / 100).toFixed(2)} requested; ${(collection.remainingRefundableCents / 100).toFixed(2)} available.`,
+        { reason, refundCents, remainingRefundableCents: collection.remainingRefundableCents });
+    }
+
     const claim = await tx.return.updateMany({
       where: { id: returnId, status: existing.status },
       data: { status: next },
@@ -333,11 +345,19 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
       }
     }
 
+    if (collection) {
+      await tx.auditLog.create({ data: { entityType: 'return', entityID: returnId, action: 'return.status_changed', actorID: actorId ?? null,
+        metadata: { orderID: existing.orderID, orderNumber: existing.order.orderNumber, from: existing.status, to: next,
+          refundCents, currency: collection.currency, collectedCents: collection.collectedCents,
+          previouslyMarkedRefundedCents: collection.markedRefundedCents,
+          remainingRefundableBeforeCents: collection.remainingRefundableCents,
+          remainingRefundableAfterCents: collection.remainingRefundableCents - refundCents } } });
+    }
     const updated = await tx.return.findUniqueOrThrow({ where: { id: returnId }, include: RETURN_INCLUDE });
     return { updated, previousStatus: existing.status, orderNumber: existing.order.orderNumber };
   });
 
-  await recordAudit({
+  if (next !== 'REFUNDED') await recordAudit({
     entityType: 'return',
     entityID: returnId,
     action: 'return.status_changed',
@@ -352,9 +372,10 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
 }
 
 export async function listAdminReturns(statuses?: ReturnStatus[]) {
-  return prisma.return.findMany({
+  const returns = await prisma.return.findMany({
     where: statuses?.length ? { status: { in: statuses } } : {},
     orderBy: { dateCreated: 'desc' },
     include: ADMIN_RETURN_INCLUDE,
   });
+  return returnRefundEligibility(returns);
 }

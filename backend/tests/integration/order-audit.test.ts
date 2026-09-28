@@ -56,21 +56,21 @@ describe('order admin mutations write an AuditLog row', () => {
     expect(rows[0].metadata).toMatchObject({ from: 'PENDING', to: 'CONFIRMED' });
   });
 
-  it('records collected / uncollected toggles distinctly', async () => {
+  it('records evidence and reversal distinctly', async () => {
+    const evidence = await request(app)
+      .patch(`/api/admin/orders/${orderId}/collected`)
+      .set(bearer(adminToken))
+      .send({ collected: true, amount: 20, currency: 'USD', collectedAt: new Date().toISOString(), collectorName: 'Courier', reference: 'Receipt 001' }).expect(200);
     await request(app)
       .patch(`/api/admin/orders/${orderId}/collected`)
       .set(bearer(adminToken))
-      .send({ collected: true });
-    await request(app)
-      .patch(`/api/admin/orders/${orderId}/collected`)
-      .set(bearer(adminToken))
-      .send({ collected: false });
+      .send({ collected: false, collectionID: evidence.body.record.id, reason: 'Duplicate receipt' }).expect(200);
 
-    expect(await auditRows('order.payment_collected')).toHaveLength(1);
-    const off = await auditRows('order.payment_uncollected');
+    expect(await auditRows('collection.recorded')).toHaveLength(1);
+    const off = await auditRows('collection.corrected');
     expect(off).toHaveLength(1);
     expect(off[0]).toMatchObject({ actorID: adminId });
-    expect(off[0].metadata).toMatchObject({ from: 'COLLECTED', to: 'PENDING' });
+    expect(off[0].metadata).toMatchObject({ amountCents: -2000, reason: 'Duplicate receipt', reference: 'Receipt 001' });
   });
 
   it('does not write a row for a 404 (missing order)', async () => {

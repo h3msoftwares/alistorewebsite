@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createWrapper } from '@/test/utils';
+import { createWrapper, makeAuthedStore } from '@/test/utils';
 
 vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en' }) }));
 
@@ -44,8 +44,8 @@ const ret = {
   ],
 };
 
-function renderPage() {
-  const { Wrapper } = createWrapper();
+function renderPage(permissions = ['orders:view', 'orders:manage']) {
+  const { Wrapper } = createWrapper(makeAuthedStore({ role: 'STAFF', permissions }));
   return render(<AdminReturnsPage />, { wrapper: Wrapper });
 }
 
@@ -56,6 +56,20 @@ beforeEach(() => {
 });
 
 describe('AdminReturnsPage', () => {
+  it('hides return actions from orders:view-only staff', async () => {
+    renderPage(['orders:view']); await screen.findByText('AS-20260901-AAA111');
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
+  });
+  it('shows the collection block reason alongside a disabled marking action', async () => {
+    mock.adminListReturns.mockResolvedValue([{ ...ret, status: 'RECEIVED', refundEligibility: {
+      amountCents: 4000, remainingRefundableCents: 1000, collectionCount: 1, blockReason: 'EXCEEDS_REMAINING_REFUNDABLE',
+    } }] as never);
+    const user = userEvent.setup(); renderPage();
+    await screen.findByText(/Amount exceeds remaining refundable/);
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(screen.getByRole('menuitem', { name: 'Mark refunded' })).toBeDisabled();
+    expect(mock.adminUpdateReturnStatus).not.toHaveBeenCalled();
+  });
   it('lists a return with its order, refund amount, and status', async () => {
     renderPage();
     expect(await screen.findByText('AS-20260901-AAA111')).toBeInTheDocument();

@@ -21,6 +21,8 @@ import {
 import { useAdminReturns, useUpdateReturnStatus } from '@/hooks/use-returns';
 import { useStepUp } from '@/hooks/use-auth';
 import { isApiError } from '@/lib/api';
+import { usePermissions } from '@/lib/rbac';
+import { collectionErrorMessage, refundBlockMessage } from '@/lib/refund-eligibility';
 import { colorLabel } from '@/lib/product-variants';
 import type { Return, ReturnStatus } from '@/lib/types';
 
@@ -73,6 +75,7 @@ const RETURN_ACTIONS: Record<
 export default function AdminReturnsPage() {
   const params = useParams();
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
+  const canManage = usePermissions().has('orders:manage');
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
@@ -123,7 +126,8 @@ export default function AdminReturnsPage() {
       if (isApiError(e) && e.code === 'STEP_UP_REQUIRED') {
         setStepUpPrompt({ id, fn, failMsg });
       } else {
-        setActionError(e instanceof Error ? e.message : failMsg);
+        setActionError(collectionErrorMessage(e, locale, failMsg));
+        void refetch();
       }
     } finally {
       setBusyId(null);
@@ -222,11 +226,12 @@ export default function AdminReturnsPage() {
               const busy = busyId === r.id;
               const open = expandedIds.has(r.id);
               const itemCount = r.items.reduce((n, ri) => n + ri.quantity, 0);
-              const actions = RETURN_ACTIONS[r.status].map((a) => ({
+              const block = r.status === 'RECEIVED' ? r.refundEligibility?.blockReason : null;
+              const actions = (canManage ? RETURN_ACTIONS[r.status] : []).map((a) => ({
                 label: t(a.en, a.ar),
                 icon: a.icon,
                 tone: a.tone,
-                disabled: busy,
+                disabled: busy || (a.next === 'REFUNDED' && !!block),
                 onClick: () => setPending({ ret: r, next: a.next }),
               }));
               return (
@@ -264,7 +269,9 @@ export default function AdminReturnsPage() {
                       </span>
                     </td>
                     <td data-label={t('Requested', 'تاريخ الطلب')}>{date(r.dateCreated)}</td>
-                    <td>{actions.length > 0 && <RowActionsMenu label={t('More actions', 'المزيد من الإجراءات')} actions={actions} />}</td>
+                    <td>
+                      {block && <p className="admin-form__hint">{refundBlockMessage(block, locale)} {t('Remaining refundable', 'المبلغ المتبقي القابل للاسترداد')}: {money((r.refundEligibility?.remainingRefundableCents ?? 0) / 100)}</p>}
+                      {actions.length > 0 && <RowActionsMenu label={t('More actions', 'المزيد من الإجراءات')} actions={actions} />}</td>
                   </tr>
                   {open && (
                     <tr>

@@ -1,3 +1,4 @@
+import { collectTestOrder } from '../helpers/collection';
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../../src/app';
@@ -44,6 +45,7 @@ async function deliveredOrder(quantity = 4) {
     .set(bearer(admin.token))
     .send({ status }).expect(200);
   }
+  await collectTestOrder(orderId, admin.user.id);
   return { buyer, admin, orderId, orderItemId, orderNumber };
 }
 
@@ -198,7 +200,7 @@ describe('Per-item returns', () => {
     // Bookkeeping only — the order's own paymentStatus is untouched, and
     // stock doesn't move again on REFUNDED.
     const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
-    expect(order.paymentStatus).toBe('PENDING');
+    expect(order.paymentStatus).toBe('COLLECTED'); // explicit evidence in the purchase fixture
     const afterRefunded = await prisma.productVariant.findUniqueOrThrow({ where: { id: orderItem.variantID } });
     expect(afterRefunded.stockQuantity).toBe(afterReceived.stockQuantity);
   });

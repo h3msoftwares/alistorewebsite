@@ -183,7 +183,7 @@ describe('E2E — admin fulfilment journey', () => {
     const collected = await request(app)
       .patch(`/api/admin/orders/${orderId}/collected`)
       .set(bearer(adminToken))
-      .send({ collected: true });
+      .send({ collected: true, amount: Number(placed.body.order.total), currency: placed.body.order.currency, collectedAt: new Date().toISOString(), collectorName: 'Courier', reference: 'Receipt 001' });
     expect(collected.body.order.paymentStatus).toBe('COLLECTED');
 
     const dash = await request(app).get('/api/admin/dashboard').set(bearer(adminToken));

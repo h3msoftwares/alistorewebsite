@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { validate } from '../../middleware/validate.middleware';
 import { requireAuth } from '../../middleware/auth.middleware';
-import { requireRole, requirePermission } from '../../middleware/rbac.middleware';
+import { requireRole, requirePermission, requireAnyPermission } from '../../middleware/rbac.middleware';
 import { requireFreshAuth } from '../../middleware/step-up.middleware';
 import {
   orderIdParamSchema,
@@ -17,6 +17,7 @@ import {
   updateOrderStatusHandler,
   correctOrderStatusHandler,
   markCodCollectedHandler,
+  collectionSummaryHandler,
   reviewOrderHandler,
   salesDashboardHandler,
   returnWorkSummaryHandler,
@@ -71,10 +72,13 @@ router.patch(
 );
 router.patch(
   '/orders/:id/collected',
-  requirePermission('orders:manage'),
+  requirePermission('payments:manage'),
+  requireFreshAuth(),
   validate({ params: orderIdParamSchema, body: markCollectedSchema }),
   asyncHandler(markCodCollectedHandler)
 );
+router.get('/orders/:id/collections', requireAnyPermission('payments:view', 'orders:view'),
+  validate({ params: orderIdParamSchema }), asyncHandler(collectionSummaryHandler));
 router.patch(
   '/orders/:id/review',
   requirePermission('orders:manage'),

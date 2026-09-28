@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createWrapper } from '@/test/utils';
+import { createWrapper, makeAuthedStore } from '@/test/utils';
 
+const mockPush = vi.fn();
 const mockSearchParams = vi.fn(() => new URLSearchParams());
 vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
   useParams: () => ({ locale: 'en' }),
   useSearchParams: () => mockSearchParams(),
 }));
@@ -41,7 +43,7 @@ const order = {
 };
 
 function renderPage() {
-  const { Wrapper } = createWrapper();
+  const { Wrapper } = createWrapper(makeAuthedStore({ role: 'STAFF', permissions: ['orders:manage', 'payments:manage'] }));
   return render(<AdminOrdersPage />, { wrapper: Wrapper });
 }
 
@@ -167,15 +169,15 @@ describe('AdminOrdersPage', () => {
     expect(mock.adminUpdateOrderStatus).not.toHaveBeenCalled();
   });
 
-  it('"Mark collected" (in the row\'s More actions menu) toggles COD payment status', async () => {
+  it('"Collection records" opens the order evidence section', async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText('AS-20260906-ABC123');
 
     await user.click(screen.getByRole('button', { name: /more actions for AS-20260906-ABC123/i }));
-    await user.click(screen.getByRole('menuitem', { name: 'Mark collected' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Collection records' }));
     await waitFor(() =>
-      expect(mock.adminMarkCollected).toHaveBeenCalledWith('o1', true)
+      expect(mockPush).toHaveBeenCalledWith('/en/admin/orders/o1#collection')
     );
   });
 

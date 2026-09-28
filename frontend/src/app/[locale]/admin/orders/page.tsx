@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { Banknote, CheckCheck, ChevronDown, Printer, Settings2 } from 'lucide-react';
 import {
   Alert,
@@ -56,6 +56,8 @@ export default function AdminOrdersPage() {
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
+  const router = useRouter();
+  const canManagePayments = usePermissions().has('payments:manage');
   const canManageBlacklist = usePermissions().has('orders:manage');
   const { data: settings } = useSettings();
   const brandName = settings ? (isAr ? settings.brandNameAr : settings.brandNameEn) : isAr ? DEFAULT_BRAND_NAME_AR : DEFAULT_BRAND_NAME_EN;
@@ -346,13 +348,13 @@ export default function AdminOrdersPage() {
                       <RowActionsMenu
                         label={t(`More actions for ${o.orderNumber}`, `المزيد من الإجراءات لـ ${o.orderNumber}`)}
                         actions={[
-                          ...(o.paymentMethod === 'COD' && o.paymentStatus !== 'REFUNDED'
+                          ...(o.paymentMethod === 'COD' && canManagePayments
                             ? [
                                 {
-                                  label: collected ? t('Mark unpaid', 'إلغاء التحصيل') : t('Mark collected', 'تم التحصيل'),
+                                  label: t('Collection records', 'سجلات التحصيل'),
                                   icon: Banknote,
                                   disabled: busy,
-                                  onClick: () => oa.toggleCollected(o, !collected),
+                                  onClick: () => router.push(`/${locale}/admin/orders/${o.id}#collection`),
                                 },
                               ]
                             : []),

@@ -367,7 +367,7 @@ describe('Orders API', () => {
         .send(delivery);
       const orderId = checkout.body.order.id;
       // Fulfilment work (status change, mark COD collected) is STAFF-reachable…
-      const { token } = await createStaffWith(['orders:manage']);
+      const { token } = await createStaffWith(['orders:manage', 'payments:manage']);
 
       for (const next of ['CONFIRMED', 'SHIPPED']) await request(app).patch(`/api/admin/orders/${orderId}/status`).set(bearer(token)).send({ status: next }).expect(200);
 
@@ -381,7 +381,7 @@ describe('Orders API', () => {
       const collected = await request(app)
         .patch(`/api/admin/orders/${orderId}/collected`)
         .set(bearer(token))
-        .send({ collected: true });
+        .send({ collected: true, amount: Number(checkout.body.order.total), currency: checkout.body.order.currency, collectedAt: new Date().toISOString(), collectorName: 'Courier', reference: 'Receipt 001' });
       expect(collected.body.order.paymentStatus).toBe('COLLECTED');
 
       // …but the revenue dashboard is ADMIN-only since S4.

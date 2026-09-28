@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createWrapper } from '@/test/utils';
 
@@ -13,6 +13,7 @@ vi.mock('@/lib/api', () => ({
     getOrder: vi.fn(),
     adminUpdateOrderStatus: vi.fn(),
     adminMarkCollected: vi.fn(),
+    adminCollectionSummary: vi.fn(),
     adminReviewOrder: vi.fn(),
     adminCorrectOrderStatus: vi.fn(),
   },
@@ -37,6 +38,7 @@ const order = {
   deliveryPhone: '0791111111',
   deliveryAddress: '123 Main St',
   deliveryCity: 'Amman',
+  currency: 'USD',
   subtotal: 40,
   deliveryFee: 3,
   discountAmount: 0,
@@ -62,6 +64,7 @@ beforeEach(() => {
   mock.getOrder.mockResolvedValue(order as never);
   mock.adminUpdateOrderStatus.mockResolvedValue({ ...order, status: 'CONFIRMED' } as never);
   mock.adminMarkCollected.mockResolvedValue({ ...order, paymentStatus: 'COLLECTED' } as never);
+  mock.adminCollectionSummary.mockResolvedValue({ expectedTotalCents: 4300, collectedCents: 0, remainingRefundableCents: 0, markedRefundedCents: 0, collectionCount: 0, deliveryFeeCents: 300, currency: 'USD', records: [] });
   mock.adminReviewOrder.mockResolvedValue({ ...order, flaggedForReview: false } as never);
   mock.adminCorrectOrderStatus.mockResolvedValue(order as never);
   returnsMock.adminPreviewReturn.mockResolvedValue({ refundCents: 4000, items: [{ orderItemID: 'i1', productName: 'Cotton Tee', quantity: 2, refundCents: 4000 }] });
@@ -69,6 +72,22 @@ beforeEach(() => {
 });
 
 describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
+  it('keeps items visible after recording collection while the full order reloads', async () => {
+    permissions.correct = true;
+    const fields = Object.fromEntries(Object.entries(order).filter(([key]) => key !== 'items'));
+    mock.adminMarkCollected.mockResolvedValue({ ...fields, paymentStatus: 'COLLECTED' } as never);
+    mock.getOrder.mockResolvedValueOnce(order as never).mockImplementation(() => new Promise(() => {}));
+    const user = userEvent.setup(); renderPage();
+    await screen.findByRole('button', { name: 'Record collection' });
+    await user.type(screen.getByLabelText('Amount (USD)'), '43');
+    fireEvent.change(screen.getByLabelText('Collection date'), { target: { value: '2026-09-28T12:00' } });
+    await user.type(screen.getByLabelText('Collector / courier name'), 'Courier');
+    await user.type(screen.getByLabelText('Receipt / reference (optional)'), 'Receipt 1');
+    await user.click(screen.getByRole('button', { name: 'Record collection' }));
+    await waitFor(() => expect(mock.getOrder).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(/Cotton Tee/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: order.orderNumber })).toBeInTheDocument();
+  });
   it('offers only the next normal fulfillment step and hides correction without permission', async () => {
     mock.getOrder.mockResolvedValue({ ...order, status: 'SHIPPED' } as never);
     renderPage();
@@ -97,7 +116,6 @@ describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
   });
 
   it.each([
-    ['Mark collected', 'adminMarkCollected', { paymentStatus: 'COLLECTED' }],
     ['Mark reviewed', 'adminReviewOrder', { flaggedForReview: false }],
   ] as const)('keeps order items visible after %s while the full order reloads', async (label, endpoint, changes) => {
     const loadedOrder = { ...order, flaggedForReview: true };
@@ -171,13 +189,11 @@ describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
     await waitFor(() => expect(mock.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'CANCELLED', undefined));
   });
 
-  it('"Mark collected" toggles COD payment status', async () => {
-    const user = userEvent.setup();
+  it('hides collection controls without payments permission', async () => {
     renderPage();
-    await screen.findByRole('heading', { level: 1, name: 'AS-20260906-ABC123' });
-
-    await user.click(screen.getByRole('button', { name: 'Mark collected' }));
-    await waitFor(() => expect(mock.adminMarkCollected).toHaveBeenCalledWith('o1', true));
+    await screen.findByRole('heading', { level: 1, name: order.orderNumber });
+    expect(screen.queryByRole('button', { name: 'Mark collected' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Record collection' })).not.toBeInTheDocument();
   });
 
   it('shows a "Mark reviewed" action for a flagged order, which clears the flag', async () => {

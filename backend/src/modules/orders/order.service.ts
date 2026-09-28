@@ -1189,24 +1189,6 @@ export async function updateOrderStatus(
   return updated;
 }
 
-export async function markCodCollected(id: string, collected: boolean, actorId?: string) {
-  const order = await prisma.order.findUnique({ where: { id } });
-  if (!order) throw new AppError('NOT_FOUND', 'Order not found');
-  const nextPaymentStatus = collected ? 'COLLECTED' : 'PENDING';
-  const updated = await prisma.order.update({
-    where: { id },
-    data: { paymentStatus: nextPaymentStatus },
-  });
-  await recordAudit({
-    entityType: 'order',
-    entityID: id,
-    action: collected ? 'order.payment_collected' : 'order.payment_uncollected',
-    actorID: actorId,
-    metadata: { orderNumber: order.orderNumber, from: order.paymentStatus, to: nextPaymentStatus },
-  });
-  return updated;
-}
-
 // A variant with 1..LOW_STOCK_THRESHOLD units left counts as "low stock" on the
 // dashboard tile; matches the analytics module's default lowStockThreshold.
 const LOW_STOCK_THRESHOLD = 5;

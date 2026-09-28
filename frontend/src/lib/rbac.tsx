@@ -34,6 +34,7 @@ import type { PermissionArea } from '@/lib/types';
 export const PERMISSION_AREAS: PermissionArea[] = [
   { area: 'dashboard', label: 'Dashboard', levels: ['view'] },
   { area: 'orders', label: 'Orders', levels: ['view', 'manage'] },
+  { area: 'payments', label: 'COD collections', levels: ['view', 'manage'] },
   { area: 'order_corrections', label: 'Order status corrections', levels: ['view', 'manage'] },
   { area: 'customers', label: 'Customers', levels: ['view', 'manage'] },
   { area: 'products', label: 'Products', levels: ['view', 'manage'] },
@@ -50,6 +51,7 @@ export const PERMISSION_AREAS: PermissionArea[] = [
 ];
 
 const AREA_LABEL_AR: Record<string, string> = {
+  payments: 'تحصيل الدفع عند الاستلام',
   order_corrections: 'تصحيح حالة الطلبات',
   dashboard: 'لوحة التحكم',
   orders: 'الطلبات',

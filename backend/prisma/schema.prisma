@@ -135,6 +135,7 @@ model User {
   loyaltyAwards           LoyaltyAward[] // loyalty-program milestones this customer has earned
   returnsRequested        Return[] // return requests this user submitted (null on the Return itself = a guest requested it)
   notificationReads       NotificationRead[] // which admin-panel notifications this user has seen
+  collectionsRecorded     CodCollection[]
 
   @@index([role])
   @@index([customRoleID])
@@ -1117,12 +1118,39 @@ model Order {
   accessTokens     OrderAccessToken[]
   couponRedemption CouponRedemption?
   returns          Return[]
+  codCollections   CodCollection[]
 
   @@index([userID])
   @@index([status])
   @@index([dateCreated])
   @@index([flaggedForReview])
   @@map("order")
+}
+
+// Evidence only, not settlement. Corrections append a full reversing record;
+// replacement evidence is recorded separately. SQL forbids UPDATE/DELETE.
+model CodCollection {
+  id            String   @id @default(uuid()) @db.Uuid
+  orderID       String   @db.Uuid
+  actorID       String   @db.Uuid
+  actorName     String
+  amount        Decimal  @db.Decimal(12, 2) // positive collection; negative reversal
+  currency      String
+  collectedAt   DateTime
+  collectorName String
+  reference     String?
+  note          String?
+  reason        String? // required on a reversal
+  reversalOfID  String?  @unique @db.Uuid
+  createdAt     DateTime @default(now())
+
+  order      Order          @relation(fields: [orderID], references: [id], onDelete: Restrict)
+  actor      User           @relation(fields: [actorID], references: [id], onDelete: Restrict)
+  reversalOf CodCollection? @relation("CollectionReversal", fields: [reversalOfID], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  reversal   CodCollection? @relation("CollectionReversal")
+
+  @@index([orderID, createdAt])
+  @@map("codcollection")
 }
 
 // Short-lived, single-use email OTP challenge for checkout — same

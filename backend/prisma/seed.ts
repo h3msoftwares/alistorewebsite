@@ -116,6 +116,7 @@ async function main() {
   const allPermissions = [
     'dashboard:view',
     'orders:view', 'orders:manage',
+    'payments:view', 'payments:manage',
     'products:view', 'products:manage',
     'collections:view', 'collections:manage',
     'categories:view', 'categories:manage',

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useUpdateOrderStatus, useMarkOrderCollected, useReviewOrder, useCorrectOrderStatus } from '@/hooks/use-orders';
+import { useUpdateOrderStatus, useReviewOrder, useCorrectOrderStatus } from '@/hooks/use-orders';
 import { usePermissions } from '@/lib/rbac';
 import { useStepUp } from '@/hooks/use-auth';
 import { isApiError } from '@/lib/api';
@@ -50,7 +50,6 @@ export function useOrderActions(messages: OrderActionMessages) {
   const [correctionStatus, setCorrectionStatus] = useState<OrderStatus>('PENDING');
   const [correctionReason, setCorrectionReason] = useState('');
   const updateStatus = useUpdateOrderStatus();
-  const markCollected = useMarkOrderCollected();
   const reviewOrder = useReviewOrder();
   const stepUp = useStepUp();
 
@@ -152,9 +151,6 @@ export function useOrderActions(messages: OrderActionMessages) {
     await run(order.id, () => updateStatus.mutateAsync({ id: order.id, status: next, estimatedDeliveryDays }), messages.updateFailed);
   };
 
-  const toggleCollected = (o: Order, collected: boolean) =>
-    run(o.id, () => markCollected.mutateAsync({ id: o.id, collected }), messages.updateFailed);
-
   const markReviewed = (o: Order) => run(o.id, () => reviewOrder.mutateAsync(o.id), messages.updateFailed);
 
   const openCorrection = (order: Order) => {
@@ -192,7 +188,6 @@ export function useOrderActions(messages: OrderActionMessages) {
     submitDays,
     closeStepUp,
     submitStepUp,
-    toggleCollected,
     markReviewed,
   };
 }

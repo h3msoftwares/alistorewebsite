@@ -5,6 +5,7 @@ import { paramString } from '../../lib/params';
 import { AppError } from '../../lib/AppError';
 import { GUEST_CART_COOKIE } from '../cart/guest-cart-cookie';
 import { returnWorkSummary, type OrderReturnFilter } from '../../lib/order-return-indicators';
+import { recordCollection, getCollectionSummary } from '../payments/collection.service';
 
 export async function checkoutHandler(req: Request, res: Response) {
   const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.[GUEST_CART_COOKIE] };
@@ -81,12 +82,11 @@ export async function updateOrderStatusHandler(req: Request, res: Response) {
 }
 
 export async function markCodCollectedHandler(req: Request, res: Response) {
-  const order = await orderService.markCodCollected(
-    paramString(req.params.id),
-    req.body.collected,
-    req.user!.id
-  );
-  res.json({ order });
+  res.json(await recordCollection(paramString(req.params.id), req.body, req.user!.id));
+}
+
+export async function collectionSummaryHandler(req: Request, res: Response) {
+  res.json(await getCollectionSummary(paramString(req.params.id)));
 }
 
 export async function returnWorkSummaryHandler(_req: Request, res: Response) {

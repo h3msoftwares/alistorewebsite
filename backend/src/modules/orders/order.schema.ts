@@ -98,9 +98,7 @@ export const adminListOrdersQuerySchema = z.object({
   returnFilter: z.enum(['HAS_RETURN', 'IN_PROGRESS', 'AWAITING_REFUND_MARKING', 'MARKED_REFUNDED', 'AWAITING_APPROVAL', 'IN_TRANSIT']).optional(),
 });
 
-export const markCollectedSchema = z.object({
-  collected: z.boolean(),
-});
+export { markCollectedSchema } from '../payments/collection.schema';
 
 export const orderIdParamSchema = z.object({
   id: z.string().uuid(),

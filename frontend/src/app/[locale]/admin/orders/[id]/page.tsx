@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { Printer } from 'lucide-react';
 import { Alert, Badge, Button, EmptyState, Icon, ProductGridSkeleton, Select } from '@/components/ui';
 import { OrderActionModals } from '@/components/orders/order-action-modals';
+import { CollectionSection } from '@/components/orders/collection-section';
 import { OrderDetailCard } from '@/components/orders/order-detail-card';
 import { useOrder } from '@/hooks/use-orders';
 import { normalOrderStatuses, useOrderActions } from '@/hooks/use-order-actions';
@@ -27,7 +28,7 @@ import type { CreateReturnBody, OrderStatus } from '@/lib/types';
  * purpose — never passes it an `onCancel`. That component's cancel button is
  * gated by `CANCELLABLE_STATUSES` (the customer/guest rule: only before
  * SHIPPED), which is the wrong rule for staff. Instead, this page has its
- * own Actions panel (status <Select>, mark collected/unpaid, mark reviewed,
+ * own Actions panel (status <Select>, collection evidence, mark reviewed,
  * print receipt) built on the same `useOrderActions`/`useOrderReceiptPrint`
  * hooks the Orders list uses, so an admin can cancel from any status — or
  * take any other action — without leaving this page. It does pass
@@ -140,16 +141,6 @@ export default function AdminOrderDetailPage() {
                 {t(`~${order.estimatedDeliveryDays}d`, `~${order.estimatedDeliveryDays} يوم`)}
               </button>
             )}
-            {order.paymentMethod === 'COD' && order.paymentStatus !== 'REFUNDED' && (
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={oa.busyId === order.id}
-                onClick={() => oa.toggleCollected(order, order.paymentStatus !== 'COLLECTED')}
-              >
-                {order.paymentStatus === 'COLLECTED' ? t('Mark unpaid', 'إلغاء التحصيل') : t('Mark collected', 'تم التحصيل')}
-              </Button>
-            )}
             {order.paymentMethod === 'COD' && (
               <Button
                 variant="outline"
@@ -173,6 +164,8 @@ export default function AdminOrderDetailPage() {
           </div>
         </div>
       </div>
+
+      <CollectionSection order={order} locale={locale} oa={oa} />
 
       <OrderActionModals locale={locale} oa={oa} />
       {receiptNode}
