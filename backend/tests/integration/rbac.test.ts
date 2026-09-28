@@ -293,6 +293,67 @@ describe('Team member updates (PATCH /api/admin/team/:id)', () => {
   });
 });
 
+describe('Team member deletion (DELETE /api/admin/team/:id)', () => {
+  it('soft-deletes a STAFF account: gone from the list, and can no longer sign in', async () => {
+    const { user } = await createUser({ role: 'STAFF', password: 'longenough' });
+
+    const del = await request(app).delete(`/api/admin/team/${user.id}`).set(bearer(adminToken));
+    expect(del.status).toBe(204);
+
+    const list = await request(app).get('/api/admin/team').set(bearer(adminToken));
+    expect(list.body.team.some((m: { id: string }) => m.id === user.id)).toBe(false);
+
+    const login = await request(app)
+      .post('/api/auth/ali-admin-login')
+      .send({ identifier: user.email, password: 'longenough' });
+    expect(login.status).toBe(401);
+
+    const row = await prisma.user.findUnique({ where: { id: user.id } });
+    expect(row?.deletedAt).not.toBeNull();
+    expect(row?.isActive).toBe(false);
+  });
+
+  it('revokes any live refresh token immediately, and blocks a subsequent refresh', async () => {
+    const { user } = await createUser({ role: 'STAFF', password: 'longenough' });
+    const login = await request(app)
+      .post('/api/auth/ali-admin-login')
+      .send({ identifier: user.email, password: 'longenough' });
+    expect(login.status).toBe(200);
+
+    await request(app).delete(`/api/admin/team/${user.id}`).set(bearer(adminToken));
+
+    const tokens = await prisma.refreshToken.findMany({ where: { userID: user.id } });
+    expect(tokens.length).toBeGreaterThan(0);
+    expect(tokens.every((t) => t.revokedAt !== null)).toBe(true);
+
+    const refreshCookie = login.headers['set-cookie'];
+    const refresh = await request(app).post('/api/admin/auth/refresh').set('Cookie', refreshCookie);
+    expect(refresh.status).toBe(401);
+  });
+
+  it('will not let an admin delete their own account', async () => {
+    const admin = await createUser({ role: 'ADMIN' });
+    const res = await request(app)
+      .delete(`/api/admin/team/${admin.user.id}`)
+      .set(bearer(admin.token));
+    expect(res.status).toBe(400);
+  });
+
+  it('a delegated roles:manage staffer cannot delete an existing admin', async () => {
+    const { token } = await staffWithRole(['roles:manage', 'roles:view'], 'Deleter ' + Math.random());
+    const { user: someAdmin } = await createUser({ role: 'ADMIN' });
+    const res = await request(app).delete(`/api/admin/team/${someAdmin.id}`).set(bearer(token));
+    expect(res.status).toBe(403);
+  });
+
+  it('needs roles:manage — roles:view alone cannot delete', async () => {
+    const { token } = await staffWithRole(['roles:view'], 'ViewerC');
+    const { user: victim } = await createUser({ role: 'STAFF' });
+    const res = await request(app).delete(`/api/admin/team/${victim.id}`).set(bearer(token));
+    expect(res.status).toBe(403);
+  });
+});
+
 // A STAFF who has been delegated `roles:manage` must NOT be able to use it to
 // escalate past their own level. Regression cover for the privilege-escalation
 // finding: self-promote to ADMIN, mint an ADMIN, author an over-powered role

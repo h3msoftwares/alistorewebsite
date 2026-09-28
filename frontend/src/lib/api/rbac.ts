@@ -64,3 +64,9 @@ export function assignRole(userId: UUID, roleId: UUID | null) {
 export function setRevoked(userId: UUID, revoked: string[]) {
   return api.post<{ user: TeamMember }>('/api/admin/team/revoke', { userId, revoked }).then((r) => r.user);
 }
+
+/** Soft-deletes a STAFF/ADMIN account — blocks both login doors immediately
+ *  and revokes any live session, but keeps their order/audit-log history intact. */
+export function deleteTeamMember(id: UUID) {
+  return api.del(`/api/admin/team/${id}`);
+}

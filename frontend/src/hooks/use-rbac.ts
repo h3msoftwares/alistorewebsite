@@ -105,6 +105,14 @@ export function useAssignRole() {
   });
 }
 
+export function useDeleteTeamMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: UUID) => rbacApi.deleteTeamMember(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: TEAM_KEY }),
+  });
+}
+
 export function useSetRevoked() {
   const qc = useQueryClient();
   const refreshProfile = useRefreshProfile();

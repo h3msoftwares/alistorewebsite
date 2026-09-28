@@ -58,3 +58,8 @@ export async function updateTeamMemberHandler(req: Request, res: Response) {
     user: await roles.updateTeamMember(paramString(req.params.id), req.body, await actorOf(req)),
   });
 }
+
+export async function deleteTeamMemberHandler(req: Request, res: Response) {
+  await roles.deleteTeamMember(await actorOf(req), paramString(req.params.id));
+  res.status(204).end();
+}

@@ -24,6 +24,7 @@ import {
   setRevokedHandler,
   createTeamMemberHandler,
   updateTeamMemberHandler,
+  deleteTeamMemberHandler,
 } from './role.controller';
 
 const router = Router();
@@ -64,5 +65,11 @@ router.patch(
 );
 router.post('/team/assign-role', canManage, validate({ body: assignRoleSchema }), asyncHandler(assignRoleHandler));
 router.post('/team/revoke', canManage, validate({ body: setRevokedSchema }), asyncHandler(setRevokedHandler));
+router.delete(
+  '/team/:id',
+  canManage,
+  validate({ params: teamMemberIdParamSchema }),
+  asyncHandler(deleteTeamMemberHandler)
+);
 
 export default router;

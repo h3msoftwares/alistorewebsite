@@ -351,6 +351,44 @@ export async function updateTeamMember(
   return withEffective(updated);
 }
 
+/**
+ * Soft-delete a STAFF/ADMIN account — same convention as
+ * `product.service.ts`'s `deleteProduct`: `isActive: false` +
+ * `deletedAt: new Date()`, never a hard row delete. A hard delete would
+ * either orphan or cascade-fail on this user's real history (orders,
+ * audit-log rows, stock movements, blacklist entries they created), none of
+ * which should vanish just because the staff account did.
+ *
+ * Both login doors already filter `deletedAt: null` (auth.service.ts,
+ * admin-auth.service.ts) and refresh() already rejects a deleted user, so
+ * this alone blocks every future sign-in. We also revoke any refresh tokens
+ * still outstanding right now, so a session that's mid-life can't silently
+ * refresh its way to a new access token before those checks would otherwise
+ * catch it on their own next use.
+ */
+export async function deleteTeamMember(actor: RbacActor, userId: string) {
+  const target = await loadStaffUser(userId);
+  assertMayTarget(actor, target);
+  if (userId === actor.id) {
+    throw new AppError('VALIDATION_ERROR', 'You can’t delete your own account here.');
+  }
+  await prisma.user.update({
+    where: { id: userId },
+    data: { isActive: false, deletedAt: new Date(), customRoleID: null },
+  });
+  await prisma.refreshToken.updateMany({
+    where: { userID: userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  await recordAudit({
+    entityType: 'user',
+    entityID: userId,
+    action: 'team.member_deleted',
+    actorID: actor.id,
+    metadata: { email: target.email, role: target.role },
+  });
+}
+
 function mapPrismaError(e: unknown) {
   if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
     return new AppError('CONFLICT', 'A role with this name already exists.');
