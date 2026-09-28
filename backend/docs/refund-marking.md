@@ -69,9 +69,12 @@ and merchandise/delivery/total availability before and after. A merchandise
 adjustment also writes `return.refund_adjusted` atomically. Failure of either
 audit insert rolls back the marking and allocations.
 
-REFUNDED requires `orders:manage`, `payments:manage`, and fresh authentication.
-Other return transitions retain their existing permission checks. Both admin
-pages hide marking controls unless both manage permissions are held.
+REFUNDED requires `refunds:manage` and fresh authentication. Physical handling
+requires `returns:manage`; whole-order returns also retain `orders:manage`.
+Both admin pages use the shared return-permission hook to hide unauthorized
+controls. COD collection still requires `payments:manage`. See
+[the permission rollout report](return-permissions.md) for every route and the
+manual staff-role grants.
 
 Customer and guest APIs remove the internal reasons and adjustment actor/time.
 Their UI shows final amounts and “Adjusted by the store” when applicable.
@@ -85,8 +88,7 @@ continues to use those unchanged amounts.
 Merchandise marked refunded and net merchandise use effective line amounts.
 Delivery revenue is delivery fees charged minus delivery marked refunded,
 aggregated once per return regardless of its number of lines. Labels retain
-“Marked refunded”. Settlement, credit, exchanges, and a permission split are
-outside this change.
+“Marked refunded”. Settlement, credit, and exchanges are outside this change.
 
 Tests cover lower/higher/zero choices, required reasons, invalid amounts,
 cumulative caps, delivery-first partial collection, the exact reversal

@@ -164,12 +164,12 @@ describe('effective merchandise and explicit delivery refund marking', () => {
     const saved = await prisma.returnItem.findMany({ where: { returnID: ret.id }, orderBy: { quantity: 'asc' } });
     expect(saved.map(item => Number(item.refundedAmount))).toEqual([0.33, 0.67]);
   });
-  it('requires both permissions and fresh authentication', async () => {
+  it('requires refund marking permission and fresh authentication', async () => {
     const p = await purchase(); await p.collect(110).expect(200); const ret = await p.received();
-    for (const permissions of [['orders:manage'], ['payments:manage']]) {
+    for (const permissions of [['orders:manage'], ['payments:manage'], ['returns:manage'], ['orders:manage', 'payments:manage']]) {
       const staff = await createStaffWith(permissions); await p.mark(ret.id, {}, staff.token).expect(403);
     }
-    const both = await createStaffWith(['orders:manage', 'payments:manage']);
+    const both = await createStaffWith(['refunds:manage']);
     const stale = signAccessToken(both.user.id, 'STAFF', Math.floor(Date.now() / 1000) - 3600);
     const blocked = await p.mark(ret.id, {}, stale).expect(403); expect(blocked.body.error.code).toBe('STEP_UP_REQUIRED');
     await p.mark(ret.id, {}, both.token).expect(200);

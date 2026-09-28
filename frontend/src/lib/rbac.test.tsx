@@ -20,6 +20,7 @@ describe('permission catalog parity', () => {
     expect(keys(PERMISSION_AREAS)).toEqual(keys(BACKEND_PERMISSION_AREAS));
     expect(ALL_PERMISSION_KEYS).toContain('payments:manage');
     expect(ALL_PERMISSION_KEYS).toContain('payments:view');
+    expect(ALL_PERMISSION_KEYS).toEqual(expect.arrayContaining(['returns:view', 'returns:manage', 'refunds:view', 'refunds:manage']));
   });
 });
 
@@ -51,6 +52,9 @@ describe('requiredPermissionForPath', () => {
     expect(requiredPermissionForPath('/en/admin')).toBe('dashboard:view');
     expect(requiredPermissionForPath('/admin')).toBe('dashboard:view');
     expect(requiredPermissionForPath('/ar/admin/orders')).toBe('orders:view');
+    expect(requiredPermissionForPath('/en/admin/orders/returns')).toBe('returns:view');
+    expect(requiredPermissionForPath('/ar/admin/orders/returns/123')).toBe('returns:view');
+    expect(requiredPermissionForPath('/en/admin/orders/123')).toBe('orders:view');
     expect(requiredPermissionForPath('/en/admin/products/new')).toBe('products:view');
     expect(requiredPermissionForPath('/en/admin/roles')).toBe('roles:view');
   });
@@ -83,9 +87,9 @@ describe('ADMIN_SECTIONS', () => {
 });
 
 describe('usePermissions', () => {
-  it('expands manage⇒view and answers has / hasAny', () => {
+  it('uses server-expanded permissions and answers has / hasAny', () => {
     const { result } = renderHook(() => usePermissions(), {
-      wrapper: signedIn({ role: 'STAFF', permissions: ['orders:manage'] }),
+      wrapper: signedIn({ role: 'STAFF', permissions: ['orders:manage', 'orders:view'] }),
     });
     expect(result.current.has('orders:view')).toBe(true);
     expect(result.current.has('orders:manage')).toBe(true);
@@ -100,6 +104,15 @@ describe('usePermissions', () => {
     });
     expect(result.current.isFullAdmin).toBe(true);
     expect(result.current.has('settings:manage')).toBe(true);
+  });
+
+  it('does not restore a view permission revoked by the server', () => {
+    const { result } = renderHook(() => usePermissions(), {
+      wrapper: signedIn({ permissions: ['returns:manage', 'refunds:manage'] }),
+    });
+    expect(result.current.has('returns:view')).toBe(false);
+    expect(result.current.has('refunds:view')).toBe(false);
+    expect(result.current.has('returns:manage')).toBe(true);
   });
 });
 

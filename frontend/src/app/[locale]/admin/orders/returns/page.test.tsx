@@ -44,7 +44,7 @@ const ret = {
   ],
 };
 
-function renderPage(permissions = ['orders:view', 'orders:manage', 'payments:manage']) {
+function renderPage(permissions = ['returns:view', 'returns:manage', 'refunds:view', 'refunds:manage']) {
   const { Wrapper } = createWrapper(makeAuthedStore({ role: 'STAFF', permissions }));
   return render(<AdminReturnsPage />, { wrapper: Wrapper });
 }
@@ -56,7 +56,7 @@ beforeEach(() => {
 });
 
 describe('AdminReturnsPage', () => {
-  it.each([{ permissions: ['orders:view', 'orders:manage'] }, { permissions: ['orders:view', 'payments:manage'] }])('hides marking without both manage permissions (%j)', async ({ permissions }) => {
+  it.each([{ permissions: ['returns:view', 'orders:manage'] }, { permissions: ['returns:view', 'payments:manage'] }, { permissions: ['returns:view', 'returns:manage'] }])('hides marking without refunds:manage (%j)', async ({ permissions }) => {
     mock.adminListReturns.mockResolvedValue([{ ...ret, status: 'RECEIVED' }] as never);
     renderPage(permissions); await screen.findByText('AS-20260901-AAA111');
     expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
@@ -66,7 +66,7 @@ describe('AdminReturnsPage', () => {
       amountCents: 4000, remainingRefundableCents: 5000, remainingDeliveryRefundableCents: 1000,
       remainingTotalRefundableCents: 6000, collectionCount: 1, blockReason: null,
     } }] as never);
-    const user = userEvent.setup(); renderPage(); await screen.findByText('AS-20260901-AAA111');
+    const user = userEvent.setup(); renderPage(['returns:view', 'refunds:manage', 'refunds:view']); await screen.findByText('AS-20260901-AAA111');
     await user.click(screen.getByRole('button', { name: 'More actions' }));
     await user.click(screen.getByRole('menuitem', { name: 'Mark refunded' }));
     await user.clear(screen.getByLabelText('Merchandise amount marked refunded (USD)'));
@@ -77,8 +77,8 @@ describe('AdminReturnsPage', () => {
       merchandiseRefundCents: 3000, refundAdjustmentReason: 'Restocking fee', deliveryRefundCents: 0, deliveryRefundReason: undefined,
     });
   });
-  it('hides return actions from orders:view-only staff', async () => {
-    renderPage(['orders:view']); await screen.findByText('AS-20260901-AAA111');
+  it('hides return actions from returns:view-only staff', async () => {
+    renderPage(['returns:view']); await screen.findByText('AS-20260901-AAA111');
     expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
   });
   it('shows the collection block reason but allows opening the amount dialog', async () => {
@@ -118,5 +118,25 @@ describe('AdminReturnsPage', () => {
     renderPage();
     await screen.findByText('AS-20260901-AAA111');
     expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
+  });
+
+  it.each(['REQUESTED', 'APPROVED', 'IN_TRANSIT'])('hides physical handling of %s from a refund manager', async status => {
+    mock.adminListReturns.mockResolvedValue([{ ...ret, status }] as never);
+    renderPage(['returns:view', 'refunds:manage', 'refunds:view']);
+    await screen.findByText('AS-20260901-AAA111');
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['REQUESTED', ['Approve', 'Reject', 'Cancel request']],
+    ['APPROVED', ['Mark in transit', 'Cancel request']],
+    ['IN_TRANSIT', ['Mark received', 'Cancel request']],
+  ])('shows physical handling of %s with returns:manage alone', async (status, labels) => {
+    mock.adminListReturns.mockResolvedValue([{ ...ret, status }] as never);
+    renderPage(['returns:manage', 'returns:view']);
+    const user = userEvent.setup(); await screen.findByText('AS-20260901-AAA111');
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    for (const label of labels) expect(screen.getByRole('menuitem', { name: label })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Mark refunded' })).not.toBeInTheDocument();
   });
 });

@@ -58,6 +58,7 @@ router.get(
 router.patch(
   '/orders/:id/status',
   requirePermission('orders:manage'),
+  (req, res, next) => req.body?.status === 'RETURNED' ? requirePermission('returns:manage')(req, res, next) : next(),
   requireFreshAuth(),
   validate({ params: orderIdParamSchema, body: updateOrderStatusSchema }),
   asyncHandler(updateOrderStatusHandler)
@@ -66,6 +67,7 @@ router.patch(
   '/orders/:id/correction',
   requirePermission('orders:manage'),
   requirePermission('order_corrections:manage'),
+  (req, res, next) => req.body?.status === 'RETURNED' ? requirePermission('returns:manage')(req, res, next) : next(),
   requireFreshAuth(),
   validate({ params: orderIdParamSchema, body: correctOrderStatusSchema }),
   asyncHandler(correctOrderStatusHandler)
@@ -92,12 +94,12 @@ router.patch(
 // order-status change.
 router.post(
   '/orders/:id/returns',
-  requirePermission('orders:manage'),
+  requirePermission('returns:manage'),
   requireFreshAuth(),
   validate({ params: orderIdParamSchema, body: createReturnSchema }),
   asyncHandler(adminRequestReturnHandler)
 );
-router.post('/orders/:id/returns/preview', requirePermission('orders:manage'),
+router.post('/orders/:id/returns/preview', requirePermission('returns:manage'),
   validate({ params: orderIdParamSchema, body: createReturnSchema }), asyncHandler(adminPreviewReturnHandler));
 
 // Step-up protected (S2): a direct stock write bypasses the ordinary

@@ -22,7 +22,7 @@ import { useAdminReturns, useUpdateReturnStatus } from '@/hooks/use-returns';
 import { useStepUp } from '@/hooks/use-auth';
 import { RefundMarkingDialog } from '@/components/orders/refund-marking-dialog';
 import { isApiError } from '@/lib/api';
-import { usePermissions } from '@/lib/rbac';
+import { useReturnPermissions } from '@/hooks/use-return-permissions';
 import { collectionErrorMessage, refundBlockMessage } from '@/lib/refund-eligibility';
 import { calculatedMerchandiseCents, effectiveMerchandiseCents } from '@/lib/refund-amounts';
 import { colorLabel } from '@/lib/product-variants';
@@ -77,9 +77,7 @@ const RETURN_ACTIONS: Record<
 export default function AdminReturnsPage() {
   const params = useParams();
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
-  const { has } = usePermissions();
-  const canManage = has('orders:manage');
-  const canMark = canManage && has('payments:manage');
+  const { canMarkRefunds: canMark, canTransitionReturn } = useReturnPermissions();
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
@@ -161,7 +159,7 @@ export default function AdminReturnsPage() {
   const closeConfirm = () => setPending(null);
 
   const confirmTransition = async () => {
-    if (!pending) return;
+    if (!pending || !canTransitionReturn(pending.next)) return;
     const { ret, next } = pending;
     closeConfirm();
     await run(
@@ -231,7 +229,7 @@ export default function AdminReturnsPage() {
               const open = expandedIds.has(r.id);
               const itemCount = r.items.reduce((n, ri) => n + ri.quantity, 0);
               const block = r.status === 'RECEIVED' ? r.refundEligibility?.blockReason : null;
-              const actions = (canManage ? RETURN_ACTIONS[r.status] : []).filter(a => a.next !== 'REFUNDED' || canMark).map((a) => ({
+              const actions = RETURN_ACTIONS[r.status].filter(a => canTransitionReturn(a.next)).map((a) => ({
                 label: t(a.en, a.ar),
                 icon: a.icon,
                 tone: a.tone,
@@ -318,7 +316,7 @@ export default function AdminReturnsPage() {
       )}
 
       <ConfirmModal
-        open={pending !== null && pending.next !== 'REFUNDED'}
+        open={pending !== null && pending.next !== 'REFUNDED' && canTransitionReturn(pending.next)}
         onClose={closeConfirm}
         onConfirm={() => void confirmTransition()}
         title={

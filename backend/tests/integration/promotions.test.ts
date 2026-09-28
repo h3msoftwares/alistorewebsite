@@ -416,7 +416,15 @@ describe('Checkout with a coupon', () => {
     expect(order.couponCode).toBe('TAKE10');
     expect(Number(order.discountAmount)).toBe(10);
     expect(Number(order.total)).toBe(80 + Number(order.deliveryFee));
-    expect(Number(order.items[0].unitPrice)).toBe(45);
+    // Item snapshots include the coupon: $90 - $10 = $80, or $40 per unit.
+    expect(Number(order.items[0].unitPrice)).toBe(40);
+    expect(Number(order.items[0].lineTotal)).toBe(80);
+    expect(order.items[0].priceBreakdown).toMatchObject({
+      beforeCouponLineTotalCents: 9000,
+      couponDiscountCents: 1000,
+      netLineTotalCents: 8000,
+      unitPricesCents: [4000, 4000],
+    });
   });
 
   it('rejects a checkout that names an unknown coupon', async () => {

@@ -5,8 +5,8 @@ import { createWrapper } from '@/test/utils';
 
 vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en', id: 'o1' }) }));
 vi.mock('@/hooks/use-settings', () => ({ useSettings: () => ({ data: null }) }));
-const permissions = vi.hoisted(() => ({ correct: false }));
-vi.mock('@/lib/rbac', () => ({ usePermissions: () => ({ has: () => permissions.correct }) }));
+const permissions = vi.hoisted(() => ({ correct: false, keys: [] as string[] }));
+vi.mock('@/lib/rbac', () => ({ usePermissions: () => ({ has: (key: string) => permissions.correct || permissions.keys.includes(key) }) }));
 
 vi.mock('@/lib/api', () => ({
   ordersApi: {
@@ -60,6 +60,7 @@ function renderPage() {
 
 beforeEach(() => {
   permissions.correct = false;
+  permissions.keys = [];
   vi.clearAllMocks();
   mock.getOrder.mockResolvedValue(order as never);
   mock.adminUpdateOrderStatus.mockResolvedValue({ ...order, status: 'CONFIRMED' } as never);
@@ -207,6 +208,7 @@ describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
   });
 
   it('lets staff request a per-item return for a delivered order (e.g. a phone order)', async () => {
+    permissions.keys = ['returns:manage', 'returns:view'];
     mock.getOrder.mockResolvedValue({ ...order, status: 'DELIVERED' } as never);
     const user = userEvent.setup();
     renderPage();
@@ -225,5 +227,20 @@ describe('AdminOrderDetailPage (fix-list.md #4, resolves 2.2)', () => {
         expectedRefundCents: 4000,
       })
     );
+  });
+
+  it.each([['orders:view', 'orders:manage'], ['orders:view', 'refunds:manage'], ['orders:view', 'returns:view']])('hides create return and whole-order return without handling permission (%j)', async (...keys) => {
+    permissions.keys = keys;
+    mock.getOrder.mockResolvedValue({ ...order, status: 'DELIVERED' } as never);
+    renderPage(); await screen.findByRole('heading', { level: 1, name: order.orderNumber });
+    expect(screen.queryByRole('button', { name: 'Request a return' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'RETURNED' })).not.toBeInTheDocument();
+  });
+
+  it('hides RETURNED in correction options without returns:manage', async () => {
+    permissions.keys = ['orders:view', 'orders:manage', 'order_corrections:manage'];
+    renderPage(); const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Correct status' }));
+    expect(within(screen.getByRole('combobox', { name: 'Corrected status' })).queryByRole('option', { name: 'RETURNED' })).not.toBeInTheDocument();
   });
 });

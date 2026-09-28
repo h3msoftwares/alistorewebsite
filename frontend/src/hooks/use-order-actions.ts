@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useUpdateOrderStatus, useReviewOrder, useCorrectOrderStatus } from '@/hooks/use-orders';
 import { usePermissions } from '@/lib/rbac';
+import { useReturnPermissions } from '@/hooks/use-return-permissions';
 import { useStepUp } from '@/hooks/use-auth';
 import { isApiError } from '@/lib/api';
 import type { Order, OrderStatus } from '@/lib/types';
@@ -46,6 +47,11 @@ export interface OrderActionMessages {
 export function useOrderActions(messages: OrderActionMessages) {
   const { has } = usePermissions();
   const canCorrect = has('orders:manage') && has('order_corrections:manage');
+  const returnPermissions = useReturnPermissions();
+  const { canReturnWholeOrder } = returnPermissions;
+  const availableOrderStatuses = (current: OrderStatus) => normalOrderStatuses(current)
+    .filter(status => status !== 'RETURNED' || status === current || canReturnWholeOrder);
+  const correctionStatuses = ORDER_STATUSES.filter(status => status !== 'RETURNED' || canReturnWholeOrder);
   const correctStatus = useCorrectOrderStatus();
   const [correctionStatus, setCorrectionStatus] = useState<OrderStatus>('PENDING');
   const [correctionReason, setCorrectionReason] = useState('');
@@ -108,7 +114,7 @@ export function useOrderActions(messages: OrderActionMessages) {
   // to SHIPPED open a modal; everything else applies immediately.
   const changeStatus = (o: Order, next: OrderStatus) => {
     if (next === o.status) return;
-    if (!normalOrderStatuses(o.status).includes(next)) {
+    if (!availableOrderStatuses(o.status).includes(next)) {
       setActionError(messages.statusChangeFailed);
       return;
     }
@@ -128,6 +134,7 @@ export function useOrderActions(messages: OrderActionMessages) {
   const confirmStatusChange = async () => {
     if (pending?.kind !== 'confirm') return;
     const { order, status: next } = pending;
+    if (next === 'RETURNED' && !canReturnWholeOrder) return;
     closeModal();
     await run(order.id, () => updateStatus.mutateAsync({ id: order.id, status: next }), messages.statusChangeFailed);
   };
@@ -161,6 +168,7 @@ export function useOrderActions(messages: OrderActionMessages) {
   };
   const submitCorrection = async () => {
     if (!canCorrect || pending?.kind !== 'correction' || !correctionReason.trim() || correctionStatus === pending.order.status) return;
+    if (correctionStatus === 'RETURNED' && !canReturnWholeOrder) return;
     const { order } = pending;
     const body = { id: order.id, status: correctionStatus, expectedStatus: order.status, reason: correctionReason.trim() };
     closeModal();
@@ -168,6 +176,7 @@ export function useOrderActions(messages: OrderActionMessages) {
   };
 
   return {
+    ...returnPermissions, availableOrderStatuses, correctionStatuses,
     canCorrect, openCorrection, submitCorrection, correctionStatus, setCorrectionStatus, correctionReason, setCorrectionReason,
     actionError,
     busyId,

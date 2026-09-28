@@ -1,7 +1,6 @@
 'use client';
 
 import { Alert, Button, ConfirmModal, Field, Input, Modal, Select, Textarea } from '@/components/ui';
-import { ORDER_STATUSES } from '@/hooks/use-order-actions';
 import type { OrderStatus } from '@/lib/types';
 import type { OrderActionsApi } from '@/hooks/use-order-actions';
 
@@ -25,7 +24,7 @@ export function OrderActionModals({ locale, oa }: { locale: 'en' | 'ar'; oa: Ord
             <p>{t(`Correct an incorrectly recorded status for ${pending.order.orderNumber}. This is recorded separately with your reason. No customer email is sent.`, `صحح حالة مسجلة بالخطأ للطلب ${pending.order.orderNumber}. يسجل التصحيح منفصلاً مع السبب، دون إرسال بريد للزبون.`)}</p>
             <Field label={t('Corrected status', 'الحالة الصحيحة')}>
               {(p) => <Select {...p} value={oa.correctionStatus} onChange={(e) => oa.setCorrectionStatus(e.target.value as OrderStatus)}>
-                {ORDER_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                {oa.correctionStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
               </Select>}
             </Field>
             <Field label={t('Reason for correction', 'سبب التصحيح')}>
@@ -41,7 +40,7 @@ export function OrderActionModals({ locale, oa }: { locale: 'en' | 'ar'; oa: Ord
         </Modal>
       )}
       <ConfirmModal
-        open={pending?.kind === 'confirm'}
+        open={pending?.kind === 'confirm' && (pending.status !== 'RETURNED' || oa.canReturnWholeOrder)}
         onClose={oa.closeModal}
         onConfirm={() => void oa.confirmStatusChange()}
         title={

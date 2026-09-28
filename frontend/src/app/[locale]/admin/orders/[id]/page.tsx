@@ -9,7 +9,7 @@ import { OrderActionModals } from '@/components/orders/order-action-modals';
 import { CollectionSection } from '@/components/orders/collection-section';
 import { OrderDetailCard } from '@/components/orders/order-detail-card';
 import { useOrder } from '@/hooks/use-orders';
-import { normalOrderStatuses, useOrderActions } from '@/hooks/use-order-actions';
+import { useOrderActions } from '@/hooks/use-order-actions';
 import { useOrderReceiptPrint } from '@/hooks/use-order-receipt-print';
 import { usePrintPreferences } from '@/hooks/use-print-preferences';
 import { useSettings } from '@/hooks/use-settings';
@@ -118,7 +118,7 @@ export default function AdminOrderDetailPage() {
                 disabled={oa.busyId === order.id}
                 onChange={(e) => oa.changeStatus(order, e.target.value as OrderStatus)}
               >
-                {normalOrderStatuses(order.status).map((s) => (
+                {oa.availableOrderStatuses(order.status).map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
@@ -175,14 +175,14 @@ export default function AdminOrderDetailPage() {
           audience="admin"
           locale={locale}
           order={order}
-          onPreviewReturn={(body) => returnsApi.adminPreviewReturn(order.id, body)}
-          onRequestReturn={(body: CreateReturnBody) =>
+          onPreviewReturn={oa.canHandleReturns ? (body) => returnsApi.adminPreviewReturn(order.id, body) : undefined}
+          onRequestReturn={oa.canHandleReturns ? (body: CreateReturnBody) =>
             oa.run(
               order.id,
               () => adminRequestReturn.mutateAsync({ orderId: order.id, body }),
               t('Could not submit the return request. Try again.', 'تعذّر إرسال طلب الإرجاع. حاول مرة أخرى.')
             )
-          }
+          : undefined}
           requestingReturn={oa.busyId === order.id}
           requestReturnError={oa.actionError}
         />

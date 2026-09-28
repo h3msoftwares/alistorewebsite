@@ -227,9 +227,9 @@ describe('Per-item returns', () => {
     expect(again.status).toBe(201);
   });
 
-  it('gates the admin list/status routes on orders:view / orders:manage', async () => {
+  it('gates the admin list/status routes on returns:view / returns:manage', async () => {
     await deliveredOrder(1);
-    const viewOnly = await createStaffWith(['orders:view']);
+    const viewOnly = await createStaffWith(['returns:view']);
     const noPerms = await createStaffWith([]);
 
     expect((await request(app).get('/api/admin/returns').set(bearer(noPerms.token))).status).toBe(403);
@@ -259,7 +259,7 @@ describe('Per-item returns', () => {
     expect(order.body.order.returns).toHaveLength(1);
   });
 
-  it('requires orders:manage (not just orders:view) to create an admin-initiated return', async () => {
+  it('requires returns:manage to create an admin-initiated return', async () => {
     const { orderId, orderItemId } = await deliveredOrder(1);
     const viewOnly = await createStaffWith(['orders:view']);
 

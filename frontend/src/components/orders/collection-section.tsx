@@ -7,6 +7,7 @@ import { useCollectionSummary, useMarkOrderCollected } from '@/hooks/use-orders'
 import { useUpdateReturnStatus } from '@/hooks/use-returns';
 import type { OrderActionsApi } from '@/hooks/use-order-actions';
 import { usePermissions } from '@/lib/rbac';
+import { useReturnPermissions } from '@/hooks/use-return-permissions';
 import { isApiError } from '@/lib/api';
 import { collectionErrorMessage, refundBlockMessage, refundBlockReason } from '@/lib/refund-eligibility';
 import type { CollectionInput, CollectionRecord, Order, Return } from '@/lib/types';
@@ -14,7 +15,7 @@ import type { CollectionInput, CollectionRecord, Order, Return } from '@/lib/typ
 export function CollectionSection({ order, locale, oa }: { order: Order; locale: 'en' | 'ar'; oa: OrderActionsApi }) {
   const { has } = usePermissions();
   const canManage = has('payments:manage');
-  const canMark = has('orders:manage') && has('payments:manage');
+  const { canMarkRefunds: canMark } = useReturnPermissions();
   const canRead = has('payments:view') || has('orders:view');
   const { data, isPending, isError, refetch } = useCollectionSummary(order.id, canRead);
   const recordCollection = useMarkOrderCollected();

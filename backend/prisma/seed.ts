@@ -116,6 +116,8 @@ async function main() {
   const allPermissions = [
     'dashboard:view',
     'orders:view', 'orders:manage',
+    'returns:view', 'returns:manage',
+    'refunds:view', 'refunds:manage',
     'payments:view', 'payments:manage',
     'products:view', 'products:manage',
     'collections:view', 'collections:manage',
@@ -127,7 +129,8 @@ async function main() {
   ];
   await prisma.role.upsert({
     where: { name: 'Full access' },
-    update: { permissions: allPermissions, isSystem: true },
+    // Existing staff roles must receive new permissions only through an explicit grant.
+    update: { isSystem: true },
     create: { name: 'Full access', description: 'Every admin permission.', permissions: allPermissions, isSystem: true },
   });
   await prisma.role.upsert({

@@ -10,14 +10,12 @@ import { listAdminReturnsHandler, updateReturnStatusHandler } from './return.con
 const router = Router();
 
 // Coarse gate for the whole subtree; per-route permission checks below.
-// Same convention as rbac/role.routes.ts — this module reuses the orders
-// permission area rather than adding its own (a Return is fundamentally an
-// order sub-resource, same precedent as the Blacklist module).
+// Physical handling and refund marking have independent permission areas.
 router.use(requireAuth, requireRole('STAFF', 'ADMIN'));
 
 router.get(
   '/',
-  requirePermission('orders:view'),
+  requirePermission('returns:view'),
   validate({ query: adminListReturnsQuerySchema }),
   asyncHandler(listAdminReturnsHandler)
 );
@@ -27,8 +25,7 @@ router.get(
 // just reversible by the customer.
 router.patch(
   '/:id/status',
-  requirePermission('orders:manage'),
-  (req, res, next) => req.body?.status === 'REFUNDED' ? requirePermission('payments:manage')(req, res, next) : next(),
+  (req, res, next) => requirePermission(req.body?.status === 'REFUNDED' ? 'refunds:manage' : 'returns:manage')(req, res, next),
   requireFreshAuth(),
   validate({ params: returnIdParamSchema, body: updateReturnStatusSchema }),
   asyncHandler(updateReturnStatusHandler)

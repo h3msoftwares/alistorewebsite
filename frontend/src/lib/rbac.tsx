@@ -34,6 +34,8 @@ import type { PermissionArea } from '@/lib/types';
 export const PERMISSION_AREAS: PermissionArea[] = [
   { area: 'dashboard', label: 'Dashboard', levels: ['view'] },
   { area: 'orders', label: 'Orders', levels: ['view', 'manage'] },
+  { area: 'returns', label: 'Returns', levels: ['view', 'manage'] },
+  { area: 'refunds', label: 'Refund marking', levels: ['view', 'manage'] },
   { area: 'payments', label: 'COD collections', levels: ['view', 'manage'] },
   { area: 'order_corrections', label: 'Order status corrections', levels: ['view', 'manage'] },
   { area: 'customers', label: 'Customers', levels: ['view', 'manage'] },
@@ -51,6 +53,8 @@ export const PERMISSION_AREAS: PermissionArea[] = [
 ];
 
 const AREA_LABEL_AR: Record<string, string> = {
+  returns: 'المرتجعات',
+  refunds: 'تسجيل استرداد الأموال',
   payments: 'تحصيل الدفع عند الاستلام',
   order_corrections: 'تصحيح حالة الطلبات',
   dashboard: 'لوحة التحكم',
@@ -111,7 +115,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { href: '/discounts', labelEn: 'Discounts', labelAr: 'الخصومات', permission: 'discounts:view', icon: Percent, group: 'sales' },
   { href: '/combos', labelEn: 'Combo pricing', labelAr: 'التسعير التجميعي', permission: 'combos:view', icon: Combine, group: 'sales' },
   { href: '/orders', labelEn: 'Orders', labelAr: 'الطلبات', permission: 'orders:view', icon: ShoppingBag, group: 'sales' },
-  { href: '/orders/returns', labelEn: 'Returns', labelAr: 'المرتجعات', permission: 'orders:view', icon: RotateCcw, group: 'sales' },
+  { href: '/orders/returns', labelEn: 'Returns', labelAr: 'المرتجعات', permission: 'returns:view', icon: RotateCcw, group: 'sales' },
   { href: '/customers', labelEn: 'Customers', labelAr: 'الزبائن', permission: 'customers:view', icon: Users, group: 'sales' },
   { href: '/analytics', labelEn: 'Analytics', labelAr: 'التحليلات', permission: 'analytics:view', icon: BarChart2, group: 'insights' },
   { href: '/roles', labelEn: 'Roles', labelAr: 'الأدوار', permission: 'roles:view', icon: Shield, group: 'system' },
@@ -152,7 +156,7 @@ export function requiredPermissionForPath(pathname: string): string | null {
 // ---------------------------------------------------------------- hooks ----
 
 export interface PermissionApi {
-  /** Holds this exact key (after expanding `manage ⇒ view`). */
+  /** Holds this exact key in the server's effective permission set. */
   has: (key: string) => boolean;
   /** Holds at least one of these keys. */
   hasAny: (...keys: string[]) => boolean;
@@ -165,7 +169,9 @@ export interface PermissionApi {
 export function usePermissions(): PermissionApi {
   const { user } = useAuth();
   return useMemo(() => {
-    const all = expandImplied(user?.permissions ?? []);
+    // The server already expands manage into view, then applies revocations.
+    // Expanding again here would restore an explicitly revoked view permission.
+    const all = new Set(user?.permissions ?? []);
     return {
       all,
       has: (key: string) => all.has(key),

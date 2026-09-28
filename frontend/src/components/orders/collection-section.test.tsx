@@ -23,7 +23,7 @@ const summary: CollectionSummary = { currency: 'USD', expectedTotalCents: 11000,
   markedDeliveryRefundedCents: 0, remainingDeliveryRefundableCents: 1000, remainingTotalRefundableCents: 8000 };
 const run = vi.fn(async (_id, fn) => fn());
 const oa = { run, busyId: null } as unknown as OrderActionsApi;
-function show(permissions = ['orders:view', 'orders:manage', 'payments:manage'], locale: 'en' | 'ar' = 'en') {
+function show(permissions = ['orders:view', 'payments:view', 'payments:manage', 'refunds:view', 'refunds:manage'], locale: 'en' | 'ar' = 'en') {
   const { Wrapper } = createWrapper(makeAuthedStore({ role: 'STAFF', permissions }));
   return render(<CollectionSection order={order} locale={locale} oa={oa} />, { wrapper: Wrapper });
 }
@@ -34,6 +34,18 @@ beforeEach(() => {
 });
 
 describe('COD Collection section', () => {
+  it('a refund manager with order read access may mark but cannot record or correct collection', async () => {
+    show(['orders:view', 'refunds:manage', 'refunds:view']);
+    expect(await screen.findByRole('button', { name: 'Mark refunded' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Record collection' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Correct collection' })).not.toBeInTheDocument();
+  });
+  it('a collection manager may record and correct but cannot mark refunds', async () => {
+    show(['payments:manage', 'payments:view']);
+    expect(await screen.findByRole('button', { name: 'Record collection' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Correct collection' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark refunded' })).not.toBeInTheDocument();
+  });
   it('shows evidence and merchandise cap with delivery-first explanation', async () => {
     show(); await screen.findByText('Receipt / reference: Receipt 1');
     expect(screen.getByText('$70.00')).toBeInTheDocument();

@@ -24,7 +24,7 @@ import { AdminPager } from '@/components/admin/admin-pager';
 import { OrderActionModals } from '@/components/orders/order-action-modals';
 import { OrderReturnIndicators } from '@/components/orders/order-return-indicators';
 import { useAdminOrders } from '@/hooks/use-orders';
-import { normalOrderStatuses, useOrderActions } from '@/hooks/use-order-actions';
+import { useOrderActions } from '@/hooks/use-order-actions';
 import { useOrderReceiptPrint } from '@/hooks/use-order-receipt-print';
 import { usePrintPreferences } from '@/hooks/use-print-preferences';
 import { useSettings } from '@/hooks/use-settings';
@@ -331,7 +331,7 @@ export default function AdminOrdersPage() {
                           disabled={busy}
                           onChange={(e) => oa.changeStatus(o, e.target.value as OrderStatus)}
                         >
-                          {normalOrderStatuses(o.status).map((s) => (
+                          {oa.availableOrderStatuses(o.status).map((s) => (
                             <option key={s} value={s}>
                               {s}
                             </option>

@@ -42,8 +42,8 @@ const order = {
   items: [{ id: 'i1', quantity: 2 }],
 };
 
-function renderPage() {
-  const { Wrapper } = createWrapper(makeAuthedStore({ role: 'STAFF', permissions: ['orders:manage', 'payments:manage'] }));
+function renderPage(permissions = ['orders:view', 'orders:manage', 'payments:view', 'payments:manage', 'returns:view', 'returns:manage']) {
+  const { Wrapper } = createWrapper(makeAuthedStore({ role: 'STAFF', permissions }));
   return render(<AdminOrdersPage />, { wrapper: Wrapper });
 }
 
@@ -56,6 +56,11 @@ beforeEach(() => {
 });
 
 describe('AdminOrdersPage', () => {
+  it.each([['orders:view', 'orders:manage'], ['orders:view', 'returns:manage']])('hides whole-order return without both permissions (%j)', async (...permissions) => {
+    renderPage(permissions);
+    const select = await screen.findByRole('combobox', { name: /change status/i });
+    expect(within(select).queryByRole('option', { name: 'RETURNED' })).not.toBeInTheDocument();
+  });
   it('passes the independent return filter to the list API', async () => {
     const user = userEvent.setup();
     renderPage();

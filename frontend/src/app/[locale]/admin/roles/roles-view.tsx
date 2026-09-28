@@ -82,14 +82,18 @@ function PermissionGrid({
             <tr key={a.area}>
               <td data-label={isAr ? 'المجال' : 'Area'}>{areaLabel(a.area, locale)}</td>
               <td data-label={isAr ? 'عرض' : 'View'}>
-                <Choice
+                {a.area === 'refunds' ? (
+                  <span className="muted" title={isAr ? 'لا يوجد وصول مستقل للعرض حاليًا.' : 'No separate read-only access exists yet.'}>
+                    {isAr ? 'محجوزة' : 'Reserved'}
+                  </span>
+                ) : <Choice
                   type="checkbox"
                   label=""
                   aria-label={`${areaLabel(a.area, locale)} — ${isAr ? 'عرض' : 'view'}`}
                   checked={held.has(`${a.area}:view`)}
                   disabled={disabled}
                   onChange={(e) => onChange(toggleKey(held, `${a.area}:view`, e.target.checked))}
-                />
+                />}
               </td>
               <td data-label={isAr ? 'إدارة' : 'Manage'}>
                 {canManage ? (

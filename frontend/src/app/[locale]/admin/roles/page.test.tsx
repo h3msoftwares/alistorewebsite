@@ -4,9 +4,13 @@ import userEvent from '@testing-library/user-event';
 import { createWrapper } from '@/test/utils';
 import type { AuthUser, PermissionArea, Role, TeamMember } from '@/lib/types';
 
-vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en' }) }));
+const navigation = vi.hoisted(() => ({ locale: 'en' }));
+vi.mock('next/navigation', () => ({ useParams: () => ({ locale: navigation.locale }) }));
 
-const catalog: PermissionArea[] = [{ area: 'orders', label: 'Orders', levels: ['view', 'manage'] }];
+const catalog: PermissionArea[] = [
+  { area: 'orders', label: 'Orders', levels: ['view', 'manage'] },
+  { area: 'refunds', label: 'Refund marking', levels: ['view', 'manage'] },
+];
 
 const role: Role = {
   id: 'role1',
@@ -73,12 +77,34 @@ function renderPage() {
 }
 
 beforeEach(() => {
+  navigation.locale = 'en';
   vi.clearAllMocks();
   Object.assign(rolesQuery, { data: [role], isPending: false, isError: false });
   Object.assign(teamQuery, { data: [member], isPending: false, isError: false });
 });
 
 describe('AdminRolesPage — Roles tab', () => {
+  it.each(['en', 'ar'])('marks refunds:view reserved without a selectable checkbox in %s', async locale => {
+    navigation.locale = locale;
+    const user = userEvent.setup(); renderPage();
+    await user.click(screen.getByRole('button', { name: locale === 'en' ? 'New role' : 'دور جديد' }));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.queryByRole('checkbox', { name: locale === 'en' ? 'Refund marking — view' : 'تسجيل استرداد الأموال — عرض' })).not.toBeInTheDocument();
+    expect(dialog.getByText(locale === 'en' ? 'Reserved' : 'محجوزة')).toHaveAttribute('title',
+      locale === 'en' ? 'No separate read-only access exists yet.' : 'لا يوجد وصول مستقل للعرض حاليًا.');
+    expect(dialog.getByRole('checkbox', { name: locale === 'en' ? 'Refund marking — manage' : 'تسجيل استرداد الأموال — إدارة' })).toBeEnabled();
+  });
+
+  it('preserves an existing reserved key when editing a role', async () => {
+    rolesQuery.data = [{ ...role, permissions: ['orders:view', 'refunds:view'] }];
+    const user = userEvent.setup(); renderPage();
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save changes' }));
+    expect(updateRole.mutateAsync).toHaveBeenCalledWith(expect.objectContaining({
+      body: expect.objectContaining({ permissions: ['orders:view', 'refunds:view'] }),
+    }));
+  });
+
   it('lists roles without a permanently open form', () => {
     renderPage();
     expect(screen.getByText('Support')).toBeInTheDocument();
