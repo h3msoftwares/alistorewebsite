@@ -1347,6 +1347,12 @@ model Return {
   reason       String?
   requestedBy  String?      @db.Uuid // null = a guest order; set for a signed-in customer or an admin acting on their behalf
   refundAmount Decimal?     @db.Decimal(12, 2) // sum of this return's ReturnItem.refundAmount, snapshotted at request time
+  refundedAmount Decimal? @db.Decimal(12, 2) // effective merchandise marked refunded; null for legacy rows
+  refundAdjustmentReason String?
+  refundAdjustedBy String? @db.Uuid // retained actor snapshot, even after user deletion
+  refundAdjustedAt DateTime?
+  deliveryRefundAmount Decimal @default(0) @db.Decimal(12, 2)
+  deliveryRefundReason String?
   dateCreated  DateTime     @default(now())
   lastEdit     DateTime     @default(now()) @updatedAt
 
@@ -1367,6 +1373,7 @@ model ReturnItem {
   orderItemID  String  @db.Uuid
   quantity     Int
   refundAmount Decimal @db.Decimal(12, 2) // exact refund calculation, snapshotted at request time
+  refundedAmount Decimal? @db.Decimal(12, 2) // effective cent allocation, saved at marking
   refundBreakdown Json? // immutable explanation of kept-quantity repricing; null on historical returns
 
   return    Return    @relation(fields: [returnID], references: [id], onDelete: Cascade)

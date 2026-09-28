@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { returnsApi } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
-import type { CreateReturnBody, ReturnStatus, UUID } from '@/lib/types';
+import type { CreateReturnBody, ReturnStatus, RefundMarkingInput, UUID } from '@/lib/types';
 
 // ---- Storefront ----
 
@@ -60,8 +60,8 @@ export function useAdminReturns(statuses?: ReturnStatus[]) {
 export function useUpdateReturnStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, status }: { id: UUID; status: ReturnStatus }) =>
-      returnsApi.adminUpdateReturnStatus(id, status),
+    mutationFn: ({ id, status, amounts }: { id: UUID; status: ReturnStatus; amounts?: RefundMarkingInput }) =>
+      amounts ? returnsApi.adminUpdateReturnStatus(id, status, amounts) : returnsApi.adminUpdateReturnStatus(id, status),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.returns.all() });
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });

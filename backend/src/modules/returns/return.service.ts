@@ -10,6 +10,8 @@ import {
 } from '../../lib/notifications/notification.service';
 import { createReturnRecords } from './return-records';
 import { findValidAccessToken } from '../orders/order.service';
+import { allocateRefundCents } from '../../lib/refund-allocation';
+import { updateReturnStatusSchema, type RefundMarkingInput } from './return.schema';
 
 export interface ReturnRequestItem {
   orderItemID: string;
@@ -278,7 +280,10 @@ const LEGAL_TRANSITIONS: Record<ReturnStatus, ReturnStatus[]> = {
  * statement" idiom used throughout order.service.ts — so two admins racing
  * different next-transitions on the same Return can't both succeed.
  */
-export async function updateReturnStatus(returnId: string, next: ReturnStatus, actorId?: string) {
+export async function updateReturnStatus(returnId: string, next: ReturnStatus, actorId?: string, input: RefundMarkingInput = {}) {
+  const parsed = updateReturnStatusSchema.safeParse({ ...input, status: next });
+  if (!parsed.success) throw new AppError('VALIDATION_ERROR', 'Invalid refund amounts or reasons');
+  const choices = parsed.data;
   const { updated, previousStatus, orderNumber } = await prisma.$transaction(async (tx) => {
     const existing = await tx.return.findUnique({
       where: { id: returnId },
@@ -296,19 +301,39 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
     }
 
     // Use saved incremental item amounts. This does not change refund pricing.
-    const refundCents = existing.items.reduce((sum, i) => sum + moneyCents(i.refundAmount), 0);
+    const calculatedRefundCents = existing.items.reduce((sum, i) => sum + moneyCents(i.refundAmount), 0);
+    const refundCents = choices.merchandiseRefundCents ?? calculatedRefundCents;
+    const deliveryRefundCents = choices.deliveryRefundCents ?? 0;
+    const adjusted = refundCents !== calculatedRefundCents;
     const collection = next === 'REFUNDED' ? await collectionTotals(tx, existing.orderID) : null;
     if (collection) {
+      if (adjusted && !choices.refundAdjustmentReason) throw new AppError('VALIDATION_ERROR', 'A reason is required when the merchandise amount differs from the calculated amount');
       const reason = refundBlockReason(refundCents, collection);
       if (reason) throw new AppError('CONFLICT', reason === 'NO_COLLECTION_RECORDED'
         ? 'No COD collection recorded. Record collection evidence before marking this amount refunded.'
         : `Amount exceeds remaining refundable: ${(refundCents / 100).toFixed(2)} requested; ${(collection.remainingRefundableCents / 100).toFixed(2)} available.`,
         { reason, refundCents, remainingRefundableCents: collection.remainingRefundableCents });
+      if (deliveryRefundCents > collection.remainingDeliveryRefundableCents) throw new AppError('CONFLICT', 'Delivery amount exceeds remaining delivery refundable',
+        { reason: 'EXCEEDS_DELIVERY_REFUNDABLE', remainingDeliveryRefundableCents: collection.remainingDeliveryRefundableCents });
+      // Invariant: total marked refunded never exceeds net collected, checked
+      // on both refund marking and collection reversal under the order lock.
+      // Independent category caps alone are insufficient after a reversal.
+      if (collection.markedRefundedCents + collection.markedDeliveryRefundedCents + refundCents + deliveryRefundCents > collection.collectedCents) {
+        throw new AppError('CONFLICT', 'Total marked refunded would exceed net collected',
+          { reason: 'EXCEEDS_NET_COLLECTED', remainingTotalRefundableCents: collection.remainingTotalRefundableCents });
+      }
     }
 
     const claim = await tx.return.updateMany({
       where: { id: returnId, status: existing.status },
-      data: { status: next },
+      data: { status: next, ...(collection ? {
+        refundedAmount: (refundCents / 100).toFixed(2),
+        refundAdjustmentReason: choices.refundAdjustmentReason ?? null,
+        refundAdjustedBy: adjusted ? actorId ?? null : null,
+        refundAdjustedAt: adjusted ? new Date() : null,
+        deliveryRefundAmount: (deliveryRefundCents / 100).toFixed(2),
+        deliveryRefundReason: choices.deliveryRefundReason ?? null,
+      } : {}) },
     });
     if (claim.count === 0) {
       throw new AppError('CONFLICT', 'This return was already updated by someone else');
@@ -346,12 +371,29 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
     }
 
     if (collection) {
+      for (const part of allocateRefundCents(refundCents, existing.items.map(item => ({
+        id: item.id, calculatedCents: moneyCents(item.refundAmount), quantity: item.quantity,
+      })))) {
+        await tx.returnItem.update({ where: { id: part.id }, data: { refundedAmount: (part.cents / 100).toFixed(2) } });
+      }
+      const amounts = { calculatedRefundCents, effectiveRefundCents: refundCents,
+        differenceCents: refundCents - calculatedRefundCents, reason: choices.refundAdjustmentReason ?? null,
+        deliveryRefundCents, deliveryRefundReason: choices.deliveryRefundReason ?? null,
+        remainingDeliveryRefundableBeforeCents: collection.remainingDeliveryRefundableCents,
+        remainingDeliveryRefundableAfterCents: collection.remainingDeliveryRefundableCents - deliveryRefundCents,
+        remainingTotalRefundableBeforeCents: collection.remainingTotalRefundableCents,
+        remainingTotalRefundableAfterCents: collection.remainingTotalRefundableCents - refundCents - deliveryRefundCents,
+        remainingRefundableBeforeCents: collection.remainingRefundableCents,
+        remainingRefundableAfterCents: collection.remainingRefundableCents - refundCents };
       await tx.auditLog.create({ data: { entityType: 'return', entityID: returnId, action: 'return.status_changed', actorID: actorId ?? null,
         metadata: { orderID: existing.orderID, orderNumber: existing.order.orderNumber, from: existing.status, to: next,
+          ...amounts,
           refundCents, currency: collection.currency, collectedCents: collection.collectedCents,
           previouslyMarkedRefundedCents: collection.markedRefundedCents,
-          remainingRefundableBeforeCents: collection.remainingRefundableCents,
-          remainingRefundableAfterCents: collection.remainingRefundableCents - refundCents } } });
+          previouslyMarkedDeliveryRefundedCents: collection.markedDeliveryRefundedCents } } });
+      if (adjusted) await tx.auditLog.create({ data: { entityType: 'return', entityID: returnId,
+        action: 'return.refund_adjusted', actorID: actorId ?? null,
+        metadata: { orderID: existing.orderID, currency: collection.currency, ...amounts } } });
     }
     const updated = await tx.return.findUniqueOrThrow({ where: { id: returnId }, include: RETURN_INCLUDE });
     return { updated, previousStatus: existing.status, orderNumber: existing.order.orderNumber };

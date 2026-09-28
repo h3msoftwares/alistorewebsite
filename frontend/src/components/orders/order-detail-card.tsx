@@ -6,6 +6,7 @@ import { formatCurrency } from '@/lib/format';
 import { colorLabel } from '@/lib/product-variants';
 import { regionLabel } from '@/lib/regions';
 import { OrderReturnIndicators } from './order-return-indicators';
+import { calculatedMerchandiseCents, effectiveMerchandiseCents, wasRefundAdjusted } from '@/lib/refund-amounts';
 import type { CreateReturnBody, Order, ReturnStatus, ReturnPreview, RefundCalculation } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
@@ -52,7 +53,7 @@ function RefundExplanation({ calculation: c, locale }: { calculation: RefundCalc
     [t('Kept amount after preserved coupon', 'المبلغ المحتفظ به بعد القسيمة الأصلية'), c.keptNetCents],
     [t('Proportional value of all returned units', 'القيمة النسبية لجميع الوحدات المرتجعة'), c.proportionalRefundCents],
     [t('Quantity-discount adjustment (deducted)', 'تعديل خصم الكمية (يُخصم)'), c.quantityDiscountAdjustmentCents],
-    [t('Previously marked refunded', 'المبالغ المعلّمة كمستردة سابقاً'), c.previousRefundCents],
+    [t('Previously calculated refund amounts', 'مبالغ الاسترداد المحسوبة سابقاً'), c.previousRefundCents],
     ...(c.reservedRefundCents > 0 ? [[t('Other pending refunds (reserved)', 'مبالغ طلبات إرجاع أخرى معلّقة'), c.reservedRefundCents] as const] : []),
     [t('Refund for this request', 'المبلغ المسترد لهذا الطلب'), c.refundCents],
   ] as const;
@@ -251,8 +252,17 @@ export function OrderDetailCard({
                 <span className={`status ${RETURN_STATUS_CLASS[r.status]}`}>
                   {isAr ? RETURN_STATUS_LABEL[r.status].ar : RETURN_STATUS_LABEL[r.status].en}
                 </span>
-                {r.refundAmount != null && <span className="is-numeric">{money(Number(r.refundAmount))}</span>}
+                <span className="is-numeric">{money(effectiveMerchandiseCents(r) / 100)}</span>
               </div>
+              {r.status === 'REFUNDED' && audience === 'admin' && <>
+                <p>{t('Calculated merchandise amount', 'مبلغ البضائع المحسوب')}: {money(calculatedMerchandiseCents(r) / 100)}</p>
+                <p>{t('Effective merchandise marked refunded', 'مبلغ البضائع الفعلي المعلّم كمسترد')}: {money(effectiveMerchandiseCents(r) / 100)}</p>
+                {r.refundAdjustmentReason && <p>{t('Adjustment reason', 'سبب التعديل')}: {r.refundAdjustmentReason}</p>}
+              </>}
+              {audience === 'customer' && wasRefundAdjusted(r) && <p>{t('Adjusted by the store', 'عُدّل بواسطة المتجر')}</p>}
+              {Number(r.deliveryRefundAmount ?? 0) > 0 && <p>{t('Delivery marked refunded', 'التوصيل المعلّم كمسترد')}: {money(Number(r.deliveryRefundAmount))}
+                {audience === 'admin' && r.deliveryRefundReason && <> — {r.deliveryRefundReason}</>}
+              </p>}
               <ul className="checkout__lines">
                 {r.items.map((ri) => {
                   const orderLine = order.items.find((i) => i.id === ri.orderItemID);
@@ -260,9 +270,9 @@ export function OrderDetailCard({
                     <li key={ri.id} style={{ display: 'block' }}>
                       <div className="checkout__row">
                       <span>{orderLine?.productName ?? ri.orderItem?.productName} × {ri.quantity}</span>
-                      <span className="is-numeric">{money(Number(ri.refundAmount))}</span>
+                      <span className="is-numeric">{money(Number(r.status === 'REFUNDED' ? ri.refundedAmount ?? ri.refundAmount : ri.refundAmount))}</span>
                       </div>
-                      {ri.refundBreakdown && <RefundExplanation calculation={ri.refundBreakdown} locale={locale} />}
+                      {ri.refundBreakdown && !wasRefundAdjusted(r) && <RefundExplanation calculation={ri.refundBreakdown} locale={locale} />}
                     </li>
                   );
                 })}

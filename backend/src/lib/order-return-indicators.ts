@@ -39,7 +39,7 @@ export function deriveReturnIndicators(t: ReturnIndicatorTotals) {
 export function indicatorsFromRecords(order: {
   subtotal: Prisma.Decimal | string | number; discountAmount?: Prisma.Decimal | string | number;
   items: { quantity: number }[];
-  returns: { status: string; items: { quantity: number; refundAmount: Prisma.Decimal | string | number }[] }[];
+  returns: { status: string; items: { quantity: number; refundAmount: Prisma.Decimal | string | number; refundedAmount?: Prisma.Decimal | string | number | null }[] }[];
 }) {
   const t: ReturnIndicatorTotals = { orderedUnits: order.items.reduce((sum, i) => sum + i.quantity, 0),
     originalMerchandiseCents: moneyCents(order.subtotal) - moneyCents(order.discountAmount ?? 0),
@@ -50,7 +50,7 @@ export function indicatorsFromRecords(order: {
     if (['REJECTED', 'CANCELLED'].includes(r.status)) continue;
     t.activeReturns++;
     const units = r.items.reduce((sum, i) => sum + i.quantity, 0);
-    const cents = r.items.reduce((sum, i) => sum + moneyCents(i.refundAmount), 0);
+    const cents = r.items.reduce((sum, i) => sum + moneyCents(r.status === 'REFUNDED' ? i.refundedAmount ?? i.refundAmount : i.refundAmount), 0);
     if (['REQUESTED', 'APPROVED', 'IN_TRANSIT'].includes(r.status)) {
       t.inProgressReturns++; t.inProgressUnits += units; t.pendingRefundCents += cents;
     } else {
@@ -75,7 +75,7 @@ const indicatorsJoin = Prisma.sql`LEFT JOIN (
     COALESCE(SUM(ri."refundAmount") FILTER (WHERE r."status" = 'RECEIVED'),0) * 100 AS "awaitingMarkingCents",
     COUNT(DISTINCT r."id") FILTER (WHERE r."status" = 'REFUNDED')::int AS "markedReturns",
     COALESCE(SUM(ri."quantity") FILTER (WHERE r."status" = 'REFUNDED'),0)::int AS "markedUnits",
-    COALESCE(SUM(ri."refundAmount") FILTER (WHERE r."status" = 'REFUNDED'),0) * 100 AS "markedRefundCents",
+    COALESCE(SUM(COALESCE(ri."refundedAmount", ri."refundAmount")) FILTER (WHERE r."status" = 'REFUNDED'),0) * 100 AS "markedRefundCents",
     COUNT(DISTINCT r."id") FILTER (WHERE r."status" = 'REQUESTED')::int AS requested,
     COUNT(DISTINCT r."id") FILTER (WHERE r."status" = 'IN_TRANSIT')::int AS transit
   FROM "return" r LEFT JOIN "returnitem" ri ON ri."returnID" = r."id"

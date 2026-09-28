@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { CreateReturnBody, Return, ReturnStatus, ReturnPreview, UUID } from '../types';
+import type { CreateReturnBody, Return, ReturnStatus, ReturnPreview, RefundMarkingInput, UUID } from '../types';
 
 export function previewReturn(orderId: UUID, body: CreateReturnBody) {
   return api.post<ReturnPreview>(`/api/orders/${orderId}/returns/preview`, body);
@@ -46,8 +46,8 @@ export function adminListReturns(statuses?: ReturnStatus[]) {
     .then((r) => r.returns);
 }
 
-export function adminUpdateReturnStatus(id: UUID, status: ReturnStatus) {
-  return api.patch<{ return: Return }>(`/api/admin/returns/${id}/status`, { status }).then((r) => r.return);
+export function adminUpdateReturnStatus(id: UUID, status: ReturnStatus, amounts?: RefundMarkingInput) {
+  return api.patch<{ return: Return }>(`/api/admin/returns/${id}/status`, { status, ...amounts }).then((r) => r.return);
 }
 
 // Staff-initiated return (e.g. a phone order) — same body shape as the

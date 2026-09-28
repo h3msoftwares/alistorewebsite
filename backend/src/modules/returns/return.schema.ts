@@ -30,7 +30,21 @@ export const createReturnSchema = z.object({
 
 export const updateReturnStatusSchema = z.object({
   status: returnStatus,
+  merchandiseRefundCents: z.number().int().nonnegative().max(999999999999).optional(),
+  refundAdjustmentReason: z.string().trim().min(1).max(1000).optional(),
+  deliveryRefundCents: z.number().int().nonnegative().max(999999999999).optional(),
+  deliveryRefundReason: z.string().trim().min(1).max(1000).optional(),
+}).superRefine((body, ctx) => {
+  if (body.status !== 'REFUNDED' && Object.keys(body).some(key => key !== 'status')) {
+    ctx.addIssue({ code: 'custom', message: 'Refund choices are only allowed when marking refunded' });
+  }
+  if ((body.deliveryRefundCents ?? 0) > 0 && !body.deliveryRefundReason) {
+    ctx.addIssue({ code: 'custom', path: ['deliveryRefundReason'], message: 'Delivery refund reason is required' });
+  }
 });
+
+export type RefundMarkingInput = Pick<z.infer<typeof updateReturnStatusSchema>,
+  'merchandiseRefundCents' | 'refundAdjustmentReason' | 'deliveryRefundCents' | 'deliveryRefundReason'>;
 
 // Same comma-separated-list pattern as order.schema.ts's statusListQuery.
 const returnStatusListQuery = z

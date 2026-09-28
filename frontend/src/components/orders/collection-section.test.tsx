@@ -19,7 +19,8 @@ const order = { id: 'o1', currency: 'USD', paymentMethod: 'COD', returns: [
 const record = { id: 'c1', orderID: 'o1', actorID: 'a1', actorName: 'Admin', amount: 110, currency: 'USD',
   collectedAt: '2026-09-28T12:00:00Z', createdAt: '2026-09-28T12:05:00Z', collectorName: 'Alice', reference: 'Receipt 1', reversalOfID: null };
 const summary: CollectionSummary = { currency: 'USD', expectedTotalCents: 11000, deliveryFeeCents: 1000,
-  collectedCents: 11000, markedRefundedCents: 3000, remainingRefundableCents: 7000, collectionCount: 1, records: [record] };
+  collectedCents: 11000, markedRefundedCents: 3000, remainingRefundableCents: 7000, collectionCount: 1, records: [record],
+  markedDeliveryRefundedCents: 0, remainingDeliveryRefundableCents: 1000, remainingTotalRefundableCents: 8000 };
 const run = vi.fn(async (_id, fn) => fn());
 const oa = { run, busyId: null } as unknown as OrderActionsApi;
 function show(permissions = ['orders:view', 'orders:manage', 'payments:manage'], locale: 'en' | 'ar' = 'en') {
@@ -40,11 +41,11 @@ describe('COD Collection section', () => {
     expect(screen.getByText(/Recorded by: Admin/)).toBeInTheDocument();
     expect(screen.getByText(/Delivery fees are treated as collected first/)).toBeInTheDocument();
   });
-  it('orders:manage alone may read and mark, but cannot record or correct a collection', async () => {
+  it('orders:manage alone may read but cannot mark, record or correct', async () => {
     show(['orders:manage', 'orders:view']); await screen.findByText('Receipt / reference: Receipt 1');
     expect(screen.queryByRole('button', { name: 'Record collection' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Correct collection' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Mark refunded' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Mark refunded' })).not.toBeInTheDocument();
   });
   it('payments:view alone reads history and hides all write controls', async () => {
     show(['payments:view']); await screen.findByText('Receipt / reference: Receipt 1');
@@ -93,23 +94,25 @@ describe('COD Collection section', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Record correction' }));
     await waitFor(() => expect(mock.adminMarkCollected).toHaveBeenCalledWith('o1', { collected: false, collectionID: 'c1', reason: 'Duplicate receipt' }));
   });
-  it.each(['en', 'ar'] as const)('shows the missing evidence reason and disables marking in %s', async (locale) => {
+  it.each(['en', 'ar'] as const)('shows missing evidence and permits opening to adjust to zero in %s', async (locale) => {
     mock.adminCollectionSummary.mockResolvedValue({ ...summary, records: [], collectionCount: 0, collectedCents: 0, remainingRefundableCents: 0 });
     show(undefined, locale);
     const button = await screen.findByRole('button', { name: locale === 'en' ? 'Mark refunded' : 'وضع علامة استرداد' });
-    expect(button).toBeDisabled();
+    expect(button).toBeEnabled();
     expect(screen.getByText(locale === 'en' ? /No COD collection recorded/ : /لم يُسجّل تحصيل الدفع/)).toBeInTheDocument();
   });
   it('shows an over-cap reason and requires confirmation for an allowed marking', async () => {
     mock.adminCollectionSummary.mockResolvedValue({ ...summary, remainingRefundableCents: 2000 });
     const view = show();
-    expect(await screen.findByRole('button', { name: 'Mark refunded' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Mark refunded' })).toBeEnabled();
     expect(screen.getByText(/Amount exceeds remaining refundable/)).toBeInTheDocument();
     view.unmount(); mock.adminCollectionSummary.mockResolvedValue(summary);
     const user = userEvent.setup(); show();
     await user.click(await screen.findByRole('button', { name: 'Mark refunded' }));
     expect(returnsApi.adminUpdateReturnStatus).not.toHaveBeenCalled();
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Mark refunded' }));
-    await waitFor(() => expect(returnsApi.adminUpdateReturnStatus).toHaveBeenCalledWith('r1', 'REFUNDED'));
+    await waitFor(() => expect(returnsApi.adminUpdateReturnStatus).toHaveBeenCalledWith('r1', 'REFUNDED', {
+      merchandiseRefundCents: 3000, refundAdjustmentReason: undefined, deliveryRefundCents: 0, deliveryRefundReason: undefined,
+    }));
   });
 });

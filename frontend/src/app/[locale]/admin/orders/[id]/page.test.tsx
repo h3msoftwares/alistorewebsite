@@ -64,7 +64,7 @@ beforeEach(() => {
   mock.getOrder.mockResolvedValue(order as never);
   mock.adminUpdateOrderStatus.mockResolvedValue({ ...order, status: 'CONFIRMED' } as never);
   mock.adminMarkCollected.mockResolvedValue({ ...order, paymentStatus: 'COLLECTED' } as never);
-  mock.adminCollectionSummary.mockResolvedValue({ expectedTotalCents: 4300, collectedCents: 0, remainingRefundableCents: 0, markedRefundedCents: 0, collectionCount: 0, deliveryFeeCents: 300, currency: 'USD', records: [] });
+  mock.adminCollectionSummary.mockResolvedValue({ expectedTotalCents: 4300, collectedCents: 0, remainingRefundableCents: 0, markedRefundedCents: 0, collectionCount: 0, deliveryFeeCents: 300, currency: 'USD', records: [], markedDeliveryRefundedCents: 0, remainingDeliveryRefundableCents: 0, remainingTotalRefundableCents: 0 });
   mock.adminReviewOrder.mockResolvedValue({ ...order, flaggedForReview: false } as never);
   mock.adminCorrectOrderStatus.mockResolvedValue(order as never);
   returnsMock.adminPreviewReturn.mockResolvedValue({ refundCents: 4000, items: [{ orderItemID: 'i1', productName: 'Cotton Tee', quantity: 2, refundCents: 4000 }] });

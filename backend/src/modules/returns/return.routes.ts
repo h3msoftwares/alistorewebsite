@@ -28,6 +28,7 @@ router.get(
 router.patch(
   '/:id/status',
   requirePermission('orders:manage'),
+  (req, res, next) => req.body?.status === 'REFUNDED' ? requirePermission('payments:manage')(req, res, next) : next(),
   requireFreshAuth(),
   validate({ params: returnIdParamSchema, body: updateReturnStatusSchema }),
   asyncHandler(updateReturnStatusHandler)

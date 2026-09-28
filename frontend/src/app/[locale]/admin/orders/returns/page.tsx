@@ -20,9 +20,11 @@ import {
 } from '@/components/ui';
 import { useAdminReturns, useUpdateReturnStatus } from '@/hooks/use-returns';
 import { useStepUp } from '@/hooks/use-auth';
+import { RefundMarkingDialog } from '@/components/orders/refund-marking-dialog';
 import { isApiError } from '@/lib/api';
 import { usePermissions } from '@/lib/rbac';
 import { collectionErrorMessage, refundBlockMessage } from '@/lib/refund-eligibility';
+import { calculatedMerchandiseCents, effectiveMerchandiseCents } from '@/lib/refund-amounts';
 import { colorLabel } from '@/lib/product-variants';
 import type { Return, ReturnStatus } from '@/lib/types';
 
@@ -75,7 +77,9 @@ const RETURN_ACTIONS: Record<
 export default function AdminReturnsPage() {
   const params = useParams();
   const locale = ((typeof params?.locale === 'string' ? params.locale : 'en') || 'en') as 'en' | 'ar';
-  const canManage = usePermissions().has('orders:manage');
+  const { has } = usePermissions();
+  const canManage = has('orders:manage');
+  const canMark = canManage && has('payments:manage');
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
@@ -215,7 +219,7 @@ export default function AdminReturnsPage() {
               <th>{t('Order', 'الطلب')}</th>
               <th>{t('Customer', 'الزبون')}</th>
               <th className="is-numeric">{t('Items', 'القطع')}</th>
-              <th className="is-numeric">{t('Refund', 'الاسترداد')}</th>
+              <th className="is-numeric">{t('Calculated merchandise amount', 'مبلغ البضائع المحسوب')}</th>
               <th>{t('Status', 'الحالة')}</th>
               <th>{t('Requested', 'تاريخ الطلب')}</th>
               <th />
@@ -227,11 +231,11 @@ export default function AdminReturnsPage() {
               const open = expandedIds.has(r.id);
               const itemCount = r.items.reduce((n, ri) => n + ri.quantity, 0);
               const block = r.status === 'RECEIVED' ? r.refundEligibility?.blockReason : null;
-              const actions = (canManage ? RETURN_ACTIONS[r.status] : []).map((a) => ({
+              const actions = (canManage ? RETURN_ACTIONS[r.status] : []).filter(a => a.next !== 'REFUNDED' || canMark).map((a) => ({
                 label: t(a.en, a.ar),
                 icon: a.icon,
                 tone: a.tone,
-                disabled: busy || (a.next === 'REFUNDED' && !!block),
+                disabled: busy || (a.next === 'REFUNDED' && !r.refundEligibility),
                 onClick: () => setPending({ ret: r, next: a.next }),
               }));
               return (
@@ -258,7 +262,8 @@ export default function AdminReturnsPage() {
                       </button>
                     </td>
                     <td className="is-numeric" data-label={t('Refund', 'الاسترداد')}>
-                      {r.refundAmount != null ? money(Number(r.refundAmount)) : '—'}
+                      {money(calculatedMerchandiseCents(r) / 100)}
+                      {r.status === 'REFUNDED' && <p>{t('Marked refunded', 'معلّم كمسترد')}: {money(effectiveMerchandiseCents(r) / 100)}</p>}
                     </td>
                     <td data-label={t('Status', 'الحالة')}>
                       <span className={`status ${RETURN_STATUS_CLASS[r.status]}`}>
@@ -295,6 +300,8 @@ export default function AdminReturnsPage() {
                             );
                           })}
                         </ul>
+                        {r.refundAdjustmentReason && <p>{t('Adjustment reason', 'سبب التعديل')}: {r.refundAdjustmentReason}</p>}
+                        {Number(r.deliveryRefundAmount ?? 0) > 0 && <p>{t('Delivery marked refunded', 'التوصيل المعلّم كمسترد')}: {money(Number(r.deliveryRefundAmount))} — {r.deliveryRefundReason}</p>}
                         {r.reason && (
                           <p className="admin-form__hint" style={{ margin: 0 }}>
                             {t('Reason', 'السبب')}: {r.reason}
@@ -311,7 +318,7 @@ export default function AdminReturnsPage() {
       )}
 
       <ConfirmModal
-        open={pending !== null}
+        open={pending !== null && pending.next !== 'REFUNDED'}
         onClose={closeConfirm}
         onConfirm={() => void confirmTransition()}
         title={
@@ -333,6 +340,18 @@ export default function AdminReturnsPage() {
         cancelLabel={t('Keep as is', 'الإبقاء كما هو')}
         tone={pending?.next === 'REJECTED' || pending?.next === 'CANCELLED' ? 'danger' : 'default'}
       />
+
+      {pending?.next === 'REFUNDED' && pending.ret.refundEligibility && canMark && <RefundMarkingDialog
+        key={pending.ret.id} locale={locale}
+        calculatedCents={pending.ret.refundEligibility.amountCents}
+        remainingRefundableCents={pending.ret.refundEligibility.remainingRefundableCents}
+        remainingDeliveryRefundableCents={pending.ret.refundEligibility.remainingDeliveryRefundableCents}
+        remainingTotalRefundableCents={pending.ret.refundEligibility.remainingTotalRefundableCents}
+        collectionCount={pending.ret.refundEligibility.collectionCount}
+        busy={busyId === pending.ret.id} onClose={closeConfirm} onConfirm={amounts => {
+          const id = pending.ret.id; closeConfirm();
+          void run(id, () => updateStatus.mutateAsync({ id, status: 'REFUNDED', amounts }), t('Update failed', 'فشل التحديث'));
+        }} />}
 
       {stepUpPrompt && (
         <Modal open onClose={closeStepUp} title={t('Re-enter your password', 'أعد إدخال كلمة المرور')} closeLabel={t('Close', 'إغلاق')}>

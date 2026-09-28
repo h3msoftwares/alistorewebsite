@@ -524,6 +524,7 @@ export interface ReturnItem {
   orderItemID: UUID;
   quantity: number;
   refundAmount: Decimalish;
+  refundedAmount?: Decimalish | null;
   refundBreakdown?: RefundCalculation | null;
   /** Present on the admin list response (joined) — enough to render a row
    *  without a second fetch. Absent on the customer-embedded shape, where
@@ -538,6 +539,13 @@ export interface Return {
   reason?: string | null;
   requestedBy?: UUID | null;
   refundAmount?: Decimalish | null;
+  refundedAmount?: Decimalish | null;
+  refundAdjustmentReason?: string | null;
+  refundAdjustedBy?: UUID | null;
+  refundAdjustedAt?: IsoDateTime | null;
+  refundWasAdjusted?: boolean;
+  deliveryRefundAmount?: Decimalish;
+  deliveryRefundReason?: string | null;
   dateCreated: IsoDateTime;
   items: ReturnItem[];
   /** Present on the admin list response only. */
@@ -549,10 +557,17 @@ export interface Return {
     status: OrderStatus;
   };
   requester?: { name: string; email?: string | null } | null;
-  refundEligibility?: { amountCents: number; remainingRefundableCents: number; collectionCount: number; blockReason: RefundBlockReason | null };
+  refundEligibility?: { amountCents: number; remainingRefundableCents: number; remainingDeliveryRefundableCents: number; remainingTotalRefundableCents: number; collectionCount: number; blockReason: RefundBlockReason | null };
 }
 
-export type RefundBlockReason = 'NO_COLLECTION_RECORDED' | 'EXCEEDS_REMAINING_REFUNDABLE';
+export interface RefundMarkingInput {
+  merchandiseRefundCents: number;
+  refundAdjustmentReason?: string;
+  deliveryRefundCents: number;
+  deliveryRefundReason?: string;
+}
+
+export type RefundBlockReason = 'NO_COLLECTION_RECORDED' | 'EXCEEDS_REMAINING_REFUNDABLE' | 'EXCEEDS_DELIVERY_REFUNDABLE' | 'EXCEEDS_NET_COLLECTED';
 export type CollectionInput =
   | { collected: true; amount: number; currency: string; collectedAt: string; collectorName: string; reference?: string | null; note?: string }
   | { collected: false; collectionID: UUID; reason: string };
@@ -564,6 +579,7 @@ export interface CollectionRecord {
 export interface CollectionSummary {
   currency: string; expectedTotalCents: number; deliveryFeeCents: number; collectedCents: number;
   markedRefundedCents: number; collectionCount: number; remainingRefundableCents: number;
+  markedDeliveryRefundedCents: number; remainingDeliveryRefundableCents: number; remainingTotalRefundableCents: number;
   records: CollectionRecord[];
 }
 

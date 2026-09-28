@@ -40,6 +40,17 @@ async function advance(p: Purchase, id: string, statuses = ['APPROVED', 'IN_TRAN
 }
 
 describe('purchase-time kept-quantity refunds', () => {
+  it('preserves calculated refund history when an earlier effective amount was adjusted', async () => {
+    const p = await purchase(); const first = (await submit(p, 3).expect(201)).body.return;
+    await advance(p, first.id, ['APPROVED', 'IN_TRANSIT', 'RECEIVED']);
+    await request(app).patch(`/api/admin/returns/${first.id}/status`).set(bearer(p.admin.token))
+      .send({ status: 'REFUNDED', merchandiseRefundCents: 1000, refundAdjustmentReason: 'Restocking fee' }).expect(200);
+    const second = (await submit(p, 2).expect(201)).body.return;
+    expect(Number(first.refundAmount)).toBe(16);
+    expect(Number(second.refundAmount)).toBe(16);
+    expect(second.items[0].refundBreakdown.previousRefundCents).toBe(1600);
+    expect((await prisma.return.findUniqueOrThrow({ where: { id: first.id } })).refundAmount!.toString()).toBe('16');
+  });
   it.each([[3, 16, 4, 4000], [5, 32, 2, 2400]])('previews and approves returning %i of seven', async (qty, refund, kept, keptCents) => {
     const p = await purchase();
     expect(p.line.priceBreakdown).toMatchObject({ version: 2, pricingModel: 'UNIT_RATE_BANDS', rule: { id: p.rule.id }, individualUnitPriceCents: 1200 });

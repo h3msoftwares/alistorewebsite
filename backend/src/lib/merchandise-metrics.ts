@@ -2,10 +2,11 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../config/prisma';
 
 /** Exactly one row per order line, regardless of the number of return requests.
- * Only the incremental saved refundAmount is summed, never JSON breakdowns. */
+ * Effective allocations are immutable; legacy markings use calculated amounts.
+ * Never sum cumulative JSON breakdowns. */
 export const lineReturnsJoin = Prisma.sql`LEFT JOIN (
   SELECT ri."orderItemID",
-    COALESCE(SUM(ri."refundAmount") FILTER (WHERE r."status" = 'REFUNDED'), 0) AS refunded,
+    COALESCE(SUM(COALESCE(ri."refundedAmount", ri."refundAmount")) FILTER (WHERE r."status" = 'REFUNDED'), 0) AS refunded,
     COALESCE(SUM(ri."refundAmount") FILTER (WHERE r."status" = 'RECEIVED'), 0) AS awaiting,
     COALESCE(SUM(ri."quantity") FILTER (WHERE r."status" IN ('RECEIVED', 'REFUNDED')), 0) AS returned
   FROM "returnitem" ri JOIN "return" r ON r."id" = ri."returnID"
@@ -24,6 +25,12 @@ export const orderMetricsJoin = Prisma.sql`LEFT JOIN (
 ) om ON om."orderID" = o."id"`;
 export const orderMerchandise = Prisma.sql`(o."subtotal" - o."discountAmount")`;
 export const orderNet = Prisma.sql`(${orderMerchandise} - COALESCE(om.refunded, 0))`;
+
+// Aggregate delivery once per return, independently of its line count.
+export const deliveryRefundsJoin = Prisma.sql`LEFT JOIN (
+  SELECT "orderID", SUM("deliveryRefundAmount") AS amount FROM "return"
+  WHERE status = 'REFUNDED' GROUP BY "orderID"
+) dr ON dr."orderID" = o.id`;
 
 export interface MerchandiseMetrics {
   merchandiseValue: number;
@@ -45,10 +52,10 @@ export async function merchandiseSummary(where: Prisma.Sql) {
       COALESCE(SUM(om.ordered), 0)::int AS "orderedUnits",
       COALESCE(SUM(om.returned), 0)::int AS "physicallyReturnedUnits",
       COALESCE(SUM(om.ordered - om.returned), 0)::int AS "retainedUnits",
-      COALESCE(SUM(o."deliveryFee"), 0)::float8 AS "deliveryRevenue"
-    FROM "order" o ${orderMetricsJoin} WHERE ${where}
+      COALESCE(SUM(o."deliveryFee" - COALESCE(dr.amount, 0)), 0)::float8 AS "deliveryRevenue"
+    FROM "order" o ${orderMetricsJoin} ${deliveryRefundsJoin} WHERE ${where}
   `);
   return row;
 }
 
-export const MERCHANDISE_NOTE = 'Orders placed in the selected period, adjusted through today. Merchandise is after coupons and amounts marked refunded; excludes CANCELLED orders. Refund marking is an administrative record, not proof of payment. Delivery fees are separate and unchanged.';
+export const MERCHANDISE_NOTE = 'Orders placed in the selected period, adjusted through today. Merchandise is after coupons and amounts marked refunded; excludes CANCELLED orders. Refund marking is an administrative record, not proof of payment. Delivery revenue is delivery fees charged minus delivery marked refunded.';

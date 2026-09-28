@@ -38,6 +38,30 @@ const baseOrder: Order = {
 };
 
 describe('<OrderDetailCard> — totals', () => {
+  it.each(['en', 'ar'] as const)('shows final amounts and a neutral adjustment note, hides internal reasons in %s', locale => {
+    const order: Order = { ...baseOrder, returns: [{ id: 'r', orderID: 'o1', status: 'REFUNDED', dateCreated: '',
+      refundAmount: 20, refundedAmount: 10, refundAdjustmentReason: 'Internal restocking assessment',
+      deliveryRefundAmount: 3, deliveryRefundReason: 'Internal courier dispute',
+      items: [{ id: 'ri', returnID: 'r', orderItemID: 'oi1', quantity: 1, refundAmount: 20, refundedAmount: 10,
+        refundBreakdown: { quantityDiscountAdjustmentCents: 500, refundCents: 2000 } as RefundCalculation }],
+    }] };
+    render(<OrderDetailCard locale={locale} order={order} />);
+    expect(screen.getByText(locale === 'en' ? 'Adjusted by the store' : 'عُدّل بواسطة المتجر')).toBeInTheDocument();
+    expect(screen.queryByText(/Internal restocking assessment/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Internal courier dispute/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Quantity-discount adjustment/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/تعديل خصم الكمية/)).not.toBeInTheDocument();
+  });
+  it('shows calculated and effective amounts and reasons to the admin', () => {
+    const order: Order = { ...baseOrder, returns: [{ id: 'r', orderID: 'o1', status: 'REFUNDED', dateCreated: '',
+      refundAmount: 20, refundedAmount: 10, refundAdjustmentReason: 'Restocking fee',
+      items: [{ id: 'ri', returnID: 'r', orderItemID: 'oi1', quantity: 1, refundAmount: 20, refundedAmount: 10 }],
+    }] };
+    render(<OrderDetailCard locale="en" order={order} audience="admin" />);
+    expect(screen.getByText('Calculated merchandise amount: $20.00')).toBeInTheDocument();
+    expect(screen.getByText('Effective merchandise marked refunded: $10.00')).toBeInTheDocument();
+    expect(screen.getByText('Adjustment reason: Restocking fee')).toBeInTheDocument();
+  });
   it.each(['SHIPPED', 'DELIVERED'] as const)('does not offer customer/guest cancellation for %s orders', (status) => {
     render(<OrderDetailCard locale="en" order={{ ...baseOrder, status }} onCancel={vi.fn()} />);
     expect(screen.queryByRole('button', { name: /cancel order/i })).not.toBeInTheDocument();

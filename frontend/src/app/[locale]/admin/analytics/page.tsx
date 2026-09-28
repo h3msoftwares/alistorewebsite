@@ -36,7 +36,7 @@ export default function AnalyticsOverviewPage() {
           <div className="analytics-page">
             <MerchandiseSummary metrics={k} isAr={isAr} />
             <StatGrid>
-              <StatTile label={t('Delivery fees', 'رسوم التوصيل')} value={money2(k.deliveryRevenue)} />
+              <StatTile label={t('Delivery revenue', 'إيرادات التوصيل')} value={money2(k.deliveryRevenue)} />
               <StatTile label={t('Orders', 'الطلبات')} value={num(k.orders)} hint={t(`${k.itemsPerOrder.toFixed(1)} items / order`, `${k.itemsPerOrder.toFixed(1)} عنصر / طلب`)} />
               <StatTile label={t('Avg order value', 'متوسط قيمة الطلب')} value={money2(k.averageOrderValue)} />
               <StatTile label={t('New customers', 'عملاء جدد')} value={num(k.newCustomers)} />

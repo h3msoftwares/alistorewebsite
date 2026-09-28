@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Alert, Button, ConfirmModal, Field, Input, Modal } from '@/components/ui';
+import { Alert, Button, Field, Input, Modal } from '@/components/ui';
+import { RefundMarkingDialog } from './refund-marking-dialog';
 import { useCollectionSummary, useMarkOrderCollected } from '@/hooks/use-orders';
 import { useUpdateReturnStatus } from '@/hooks/use-returns';
 import type { OrderActionsApi } from '@/hooks/use-order-actions';
@@ -13,7 +14,7 @@ import type { CollectionInput, CollectionRecord, Order, Return } from '@/lib/typ
 export function CollectionSection({ order, locale, oa }: { order: Order; locale: 'en' | 'ar'; oa: OrderActionsApi }) {
   const { has } = usePermissions();
   const canManage = has('payments:manage');
-  const canMark = has('orders:manage');
+  const canMark = has('orders:manage') && has('payments:manage');
   const canRead = has('payments:view') || has('orders:view');
   const { data, isPending, isError, refetch } = useCollectionSummary(order.id, canRead);
   const recordCollection = useMarkOrderCollected();
@@ -61,8 +62,11 @@ export function CollectionSection({ order, locale, oa }: { order: Order; locale:
         <div><dt>{t('Collected so far', 'المبلغ المحصل حتى الآن')}</dt><dd>{money(data.collectedCents)}</dd></div>
         <div><dt>{t('Merchandise marked refunded', 'قيمة البضائع المعلّمة كمستردة')}</dt><dd>{money(data.markedRefundedCents)}</dd></div>
         <div><dt>{t('Remaining refundable', 'المبلغ المتبقي القابل للاسترداد')}</dt><dd>{money(data.remainingRefundableCents)}</dd></div>
+        <div><dt>{t('Delivery marked refunded', 'التوصيل المعلّم كمسترد')}</dt><dd>{money(data.markedDeliveryRefundedCents)}</dd></div>
+        <div><dt>{t('Remaining delivery refundable', 'المبلغ المتبقي القابل للاسترداد للتوصيل')}</dt><dd>{money(data.remainingDeliveryRefundableCents)}</dd></div>
+        <div><dt>{t('Remaining total refundable from net collected', 'إجمالي المبلغ المتبقي القابل للاسترداد من صافي التحصيل')}</dt><dd>{money(data.remainingTotalRefundableCents)}</dd></div>
       </dl>
-      <p className="admin-form__hint">{t('Delivery fees are treated as collected first. Remaining refundable excludes delivery fees and amounts already marked refunded.', 'تُعتبر رسوم التوصيل محصلة أولاً. يستثني المبلغ المتبقي القابل للاسترداد رسوم التوصيل والمبالغ المعلّمة كمستردة سابقاً.')}</p>
+      <p className="admin-form__hint">{t('Delivery fees are treated as collected first. Merchandise and delivery have separate caps; their combined amount marked refunded can never exceed net collected.', 'تُعتبر رسوم التوصيل محصّلة أولاً. للبضائع والتوصيل حدّان منفصلان؛ لا يمكن أن يتجاوز إجمالي المبالغ المعلّمة كمستردة صافي المبلغ المحصّل.')}</p>
       <h3>{t('Collection history', 'سجل التحصيل')}</h3>
       {!data.records.length && <p>{t('No collection recorded.', 'لم يُسجّل أي تحصيل.')}</p>}
       <ul className="stack" style={{ paddingInlineStart: 'var(--space-4)' }}>
@@ -96,7 +100,7 @@ export function CollectionSection({ order, locale, oa }: { order: Order; locale:
         return <div key={ret.id} className="stack">
           <p>{t('Received return awaiting refund marking', 'مرتجع مستلم بانتظار تعليم الاسترداد')}: {money(refundCents)}</p>
           {block && <Alert tone="warning">{refundBlockMessage(block, locale)} {t('Remaining refundable', 'المبلغ المتبقي القابل للاسترداد')}: {money(data.remainingRefundableCents)}</Alert>}
-          {canMark && <Button variant="outline" disabled={busy || !!block} onClick={() => setPendingReturn(ret)}>{t('Mark refunded', 'وضع علامة استرداد')}</Button>}
+          {canMark && <Button variant="outline" disabled={busy} onClick={() => setPendingReturn(ret)}>{t('Mark refunded', 'وضع علامة استرداد')}</Button>}
         </div>;
       })}
     </>}
@@ -113,12 +117,14 @@ export function CollectionSection({ order, locale, oa }: { order: Order; locale:
         <Button type="submit" variant="primary" disabled={!reason.trim() || busy}>{t('Record correction', 'تسجيل التصحيح')}</Button>
       </form>
     </Modal>}
-    <ConfirmModal open={!!pendingReturn} onClose={() => setPendingReturn(null)} onConfirm={() => {
-      if (!pendingReturn) return;
-      const id = pendingReturn.id; setPendingReturn(null);
-      void run(() => markReturn.mutateAsync({ id, status: 'REFUNDED' }));
-    }} title={t('Mark this return refunded?', 'وضع علامة استرداد لهذا المرتجع؟')}
-      body={t('This is an administrative marking, not proof of settlement.', 'هذه علامة إدارية وليست دليلاً على تسوية الأموال.')}
-      confirmLabel={t('Mark refunded', 'وضع علامة استرداد')} cancelLabel={t('Cancel', 'إلغاء')} />
+    {pendingReturn && data && canMark && <RefundMarkingDialog key={pendingReturn.id} locale={locale} currency={order.currency}
+      calculatedCents={pendingReturn.items.reduce((sum, item) => sum + Math.round(Number(item.refundAmount) * 100), 0)}
+      remainingRefundableCents={data.remainingRefundableCents}
+      remainingDeliveryRefundableCents={data.remainingDeliveryRefundableCents}
+      remainingTotalRefundableCents={data.remainingTotalRefundableCents}
+      collectionCount={data.collectionCount} busy={busy} onClose={() => setPendingReturn(null)} onConfirm={amounts => {
+        const id = pendingReturn.id; setPendingReturn(null);
+        void run(() => markReturn.mutateAsync({ id, status: 'REFUNDED', amounts }));
+      }} />}
   </section>;
 }

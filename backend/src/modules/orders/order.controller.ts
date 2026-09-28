@@ -6,6 +6,7 @@ import { AppError } from '../../lib/AppError';
 import { GUEST_CART_COOKIE } from '../cart/guest-cart-cookie';
 import { returnWorkSummary, type OrderReturnFilter } from '../../lib/order-return-indicators';
 import { recordCollection, getCollectionSummary } from '../payments/collection.service';
+import { publicOrder } from '../../lib/public-return';
 
 export async function checkoutHandler(req: Request, res: Response) {
   const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.[GUEST_CART_COOKIE] };
@@ -26,22 +27,22 @@ export async function listMyOrdersHandler(req: Request, res: Response) {
 
 export async function getOrderHandler(req: Request, res: Response) {
   const order = await orderService.getOrderById(paramString(req.params.id), req.user?.role === 'CUSTOMER' ? req.user.id : undefined);
-  res.json({ order });
+  res.json({ order: req.user?.role === 'CUSTOMER' ? publicOrder(order) : order });
 }
 
 export async function cancelOrderHandler(req: Request, res: Response) {
   const order = await orderService.cancelOrder(paramString(req.params.id), req.user!.id);
-  res.json({ order });
+  res.json({ order: publicOrder(order) });
 }
 
 export async function getOrderByTokenHandler(req: Request, res: Response) {
   const order = await orderService.getOrderByToken(paramString(req.params.token));
-  res.json({ order });
+  res.json({ order: publicOrder(order) });
 }
 
 export async function cancelOrderByTokenHandler(req: Request, res: Response) {
   const order = await orderService.cancelOrderByToken(paramString(req.params.token));
-  res.json({ order });
+  res.json({ order: publicOrder(order) });
 }
 
 export async function lookupOrderHandler(req: Request, res: Response) {

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import type { ReturnStatus } from '@prisma/client';
 import * as returnService from './return.service';
 import { paramString } from '../../lib/params';
+import { publicReturn } from '../../lib/public-return';
 
 // ---- Customer / guest ----
 
@@ -25,7 +26,7 @@ export async function requestReturnHandler(req: Request, res: Response) {
     req.body.reason,
     req.body.expectedRefundCents
   );
-  res.status(201).json({ return: ret });
+  res.status(201).json({ return: publicReturn(ret) });
 }
 
 export async function requestReturnByTokenHandler(req: Request, res: Response) {
@@ -35,7 +36,7 @@ export async function requestReturnByTokenHandler(req: Request, res: Response) {
     req.body.reason,
     req.body.expectedRefundCents
   );
-  res.status(201).json({ return: ret });
+  res.status(201).json({ return: publicReturn(ret) });
 }
 
 export async function cancelReturnHandler(req: Request, res: Response) {
@@ -44,7 +45,7 @@ export async function cancelReturnHandler(req: Request, res: Response) {
     req.user!.id,
     paramString(req.params.returnId)
   );
-  res.json({ return: ret });
+  res.json({ return: publicReturn(ret) });
 }
 
 export async function cancelReturnByTokenHandler(req: Request, res: Response) {
@@ -52,7 +53,7 @@ export async function cancelReturnByTokenHandler(req: Request, res: Response) {
     paramString(req.params.token),
     paramString(req.params.returnId)
   );
-  res.json({ return: ret });
+  res.json({ return: publicReturn(ret) });
 }
 
 // ---- Admin ----
@@ -78,7 +79,8 @@ export async function updateReturnStatusHandler(req: Request, res: Response) {
   const ret = await returnService.updateReturnStatus(
     paramString(req.params.id),
     req.body.status,
-    req.user!.id
+    req.user!.id,
+    req.body
   );
   res.json({ return: ret });
 }

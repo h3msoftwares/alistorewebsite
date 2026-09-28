@@ -44,7 +44,7 @@ const ret = {
   ],
 };
 
-function renderPage(permissions = ['orders:view', 'orders:manage']) {
+function renderPage(permissions = ['orders:view', 'orders:manage', 'payments:manage']) {
   const { Wrapper } = createWrapper(makeAuthedStore({ role: 'STAFF', permissions }));
   return render(<AdminReturnsPage />, { wrapper: Wrapper });
 }
@@ -56,18 +56,39 @@ beforeEach(() => {
 });
 
 describe('AdminReturnsPage', () => {
+  it.each([{ permissions: ['orders:view', 'orders:manage'] }, { permissions: ['orders:view', 'payments:manage'] }])('hides marking without both manage permissions (%j)', async ({ permissions }) => {
+    mock.adminListReturns.mockResolvedValue([{ ...ret, status: 'RECEIVED' }] as never);
+    renderPage(permissions); await screen.findByText('AS-20260901-AAA111');
+    expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
+  });
+  it('opens the shared dialog and sends the adjusted amounts from the Returns page', async () => {
+    mock.adminListReturns.mockResolvedValue([{ ...ret, status: 'RECEIVED', refundEligibility: {
+      amountCents: 4000, remainingRefundableCents: 5000, remainingDeliveryRefundableCents: 1000,
+      remainingTotalRefundableCents: 6000, collectionCount: 1, blockReason: null,
+    } }] as never);
+    const user = userEvent.setup(); renderPage(); await screen.findByText('AS-20260901-AAA111');
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Mark refunded' }));
+    await user.clear(screen.getByLabelText('Merchandise amount marked refunded (USD)'));
+    await user.type(screen.getByLabelText('Merchandise amount marked refunded (USD)'), '30');
+    await user.type(screen.getByLabelText('Adjustment reason'), 'Restocking fee');
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Mark refunded' }));
+    expect(mock.adminUpdateReturnStatus).toHaveBeenCalledWith('r1', 'REFUNDED', {
+      merchandiseRefundCents: 3000, refundAdjustmentReason: 'Restocking fee', deliveryRefundCents: 0, deliveryRefundReason: undefined,
+    });
+  });
   it('hides return actions from orders:view-only staff', async () => {
     renderPage(['orders:view']); await screen.findByText('AS-20260901-AAA111');
     expect(screen.queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument();
   });
-  it('shows the collection block reason alongside a disabled marking action', async () => {
+  it('shows the collection block reason but allows opening the amount dialog', async () => {
     mock.adminListReturns.mockResolvedValue([{ ...ret, status: 'RECEIVED', refundEligibility: {
-      amountCents: 4000, remainingRefundableCents: 1000, collectionCount: 1, blockReason: 'EXCEEDS_REMAINING_REFUNDABLE',
+      amountCents: 4000, remainingRefundableCents: 1000, remainingDeliveryRefundableCents: 0, remainingTotalRefundableCents: 1000, collectionCount: 1, blockReason: 'EXCEEDS_REMAINING_REFUNDABLE',
     } }] as never);
     const user = userEvent.setup(); renderPage();
     await screen.findByText(/Amount exceeds remaining refundable/);
     await user.click(screen.getByRole('button', { name: 'More actions' }));
-    expect(screen.getByRole('menuitem', { name: 'Mark refunded' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Mark refunded' })).toBeEnabled();
     expect(mock.adminUpdateReturnStatus).not.toHaveBeenCalled();
   });
   it('lists a return with its order, refund amount, and status', async () => {
