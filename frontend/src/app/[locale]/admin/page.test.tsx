@@ -33,6 +33,7 @@ const overview = {
 };
 
 const dashboard = {
+  merchandise: { merchandiseValue: 940, merchandiseMarkedRefunded: 100, netMerchandiseValue: 840, receivedReturnsAwaitingRefundMarking: 25, orderedUnits: 30, physicallyReturnedUnits: 6, retainedUnits: 24 },
   totalOrders: 12,
   pendingOrders: 3,
   totalRevenue: 840,
@@ -89,8 +90,8 @@ describe('AdminDashboardPage', () => {
 
   it('renders the 30-day revenue & orders trend chart', async () => {
     renderPage();
-    expect(await screen.findByText('Revenue & orders')).toBeInTheDocument();
-    expect(screen.getByText(/Last 30 days/)).toBeInTheDocument();
+    expect(await screen.findByText('Net merchandise value & orders')).toBeInTheDocument();
+    expect(screen.getByText(/last 30 days/)).toBeInTheDocument();
   });
 
   it('marks a recent order that used a coupon', async () => {

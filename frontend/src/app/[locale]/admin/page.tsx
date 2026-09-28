@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { MerchandiseSummary } from '@/components/admin/analytics/merchandise-summary';
 import { useParams } from 'next/navigation';
 import { Button, DataTable, EmptyState, ProductGridSkeleton, StatusPill } from '@/components/ui';
 import { ChartCard, StatGrid, TrendLine } from '@/components/admin/analytics';
@@ -63,6 +64,8 @@ export default function AdminDashboardPage() {
         />
       ) : (
         <div className="admin-dashboard">
+          <p className="analytics-note">{t('Delivered and whole-order returned orders, all time. Marked refunds are administrative records, not proof of payment.', 'الطلبات المسلّمة والمرتجعة بالكامل، طوال الفترة. الاستردادات المعلّمة سجلات إدارية وليست إثبات دفع.')}</p>
+          <MerchandiseSummary metrics={data.merchandise} isAr={isAr} />
           <StatGrid>
             <Link className="stat-tile stat-tile--link" href={`${base}/orders?status=PENDING`}>
               <span className="stat-tile__label">{t('Pending orders', 'طلبات قيد الانتظار')}</span>
@@ -101,13 +104,13 @@ export default function AdminDashboardPage() {
 
           {trendSeries.length > 0 && (
             <ChartCard
-              title={t('Revenue & orders', 'الإيرادات والطلبات')}
-              subtitle={t('Last 30 days · gross, excludes cancelled', 'آخر 30 يومًا · إجمالي، باستثناء الملغاة')}
+              title={t('Net merchandise value & orders', 'صافي قيمة البضائع والطلبات')}
+              subtitle={t('Orders placed in the last 30 days, adjusted through today; excludes cancelled', 'طلبات آخر 30 يومًا مع التعديلات حتى اليوم؛ باستثناء الملغاة')}
             >
               <TrendLine
                 data={trendSeries}
                 series={[
-                  { key: 'revenue', label: t('Revenue', 'الإيرادات') },
+                  { key: 'revenue', label: t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة') },
                   { key: 'orders', label: t('Orders', 'الطلبات') },
                 ]}
                 formatY={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}

@@ -1253,6 +1253,7 @@ export interface AdminDashboardOutOfStockItem {
 }
 
 export interface AdminDashboard {
+  merchandise: MerchandiseMetrics;
   totalOrders: number;
   pendingOrders: number;
   totalRevenue: number;
@@ -1286,13 +1287,23 @@ export interface AnalyticsRangeParams {
 
 export type GaMaybe<T> = (T & { configured: true }) | { configured: false };
 
+export interface MerchandiseMetrics {
+  merchandiseValue: number;
+  merchandiseMarkedRefunded: number;
+  netMerchandiseValue: number;
+  receivedReturnsAwaitingRefundMarking: number;
+  orderedUnits: number;
+  physicallyReturnedUnits: number;
+  retainedUnits: number;
+}
+
 export interface RevenuePoint {
   bucket: string;
   revenue: number;
   orders: number;
 }
 
-export interface Breakdown {
+export interface Breakdown extends MerchandiseMetrics {
   label: string;
   revenue: number;
   units: number;
@@ -1307,7 +1318,7 @@ export interface FunnelStep {
 
 export interface AnalyticsOverview {
   range: { from: string; to: string };
-  kpis: {
+  kpis: MerchandiseMetrics & {
     revenue: number;
     deliveryRevenue: number;
     deliveredRevenue: number;
@@ -1325,6 +1336,7 @@ export interface AnalyticsOverview {
 }
 
 export interface AnalyticsSales {
+  summary: MerchandiseMetrics;
   range: { from: string; to: string };
   revenueSeries: RevenuePoint[];
   byCategory: Breakdown[];
@@ -1381,6 +1393,9 @@ export interface AnalyticsInventory {
     stockUnits: number;
     stockValue: number;
     unitsSold: number;
+    orderedUnits: number;
+    physicallyReturnedUnits: number;
+    retainedUnits: number;
     sellThroughRate: number;
     lowStockCount: number;
     outOfStockCount: number;
@@ -1394,7 +1409,7 @@ export interface AnalyticsInventory {
   note: string;
 }
 
-export interface ProductPerfRow {
+export interface ProductPerfRow extends MerchandiseMetrics {
   name: string;
   sku: string;
   productId: UUID;

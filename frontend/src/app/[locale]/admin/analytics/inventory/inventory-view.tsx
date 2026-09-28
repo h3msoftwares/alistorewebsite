@@ -45,7 +45,9 @@ export function AnalyticsInventoryPage() {
           <div className="analytics-page">
             <StatGrid>
               <StatTile label={t('Stock on hand', 'المخزون المتوفر')} value={num(k.stockUnits)} hint={t(`${money(k.stockValue)} at cost price`, `${money(k.stockValue)} بسعر التكلفة`)} />
-              <StatTile label={t('Units sold (in range)', 'الوحدات المباعة (خلال الفترة)')} value={num(k.unitsSold)} />
+              <StatTile label={t('Ordered units', 'الوحدات المطلوبة')} value={num(k.orderedUnits)} />
+              <StatTile label={t('Physically returned units', 'الوحدات المرتجعة والمستلمة')} value={num(k.physicallyReturnedUnits)} />
+              <StatTile label={t('Retained units', 'الوحدات المحتفظ بها')} value={num(k.retainedUnits)} />
               <StatTile label={t('Sell-through', 'معدل البيع')} value={pct(k.sellThroughRate)} />
               <StatTile label={t('Low-stock variants', 'خيارات منخفضة المخزون')} value={num(k.lowStockCount)} />
               <StatTile label={t('Out of stock', 'نفدت الكمية')} value={num(k.outOfStockCount)} />

@@ -1,6 +1,8 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import { MerchandiseSummary } from '@/components/admin/analytics/merchandise-summary';
+import { MerchandiseBreakdown } from '@/components/admin/analytics/merchandise-breakdown';
 import {
   BreakdownBars,
   ChartCard,
@@ -8,7 +10,7 @@ import {
   SplitDonut,
   TrendLine,
 } from '@/components/admin/analytics';
-import { bucketLabel, money } from '@/components/admin/analytics/format';
+import { bucketLabel, money2 } from '@/components/admin/analytics/format';
 import { useAnalyticsSales } from '@/hooks/use-analytics';
 import type { Breakdown } from '@/lib/types';
 import { useAnalyticsRange } from '../range-context';
@@ -32,15 +34,16 @@ export default function AnalyticsSalesPage() {
         const series = data.revenueSeries.map((p) => ({
           x: bucketLabel(p.bucket),
           revenue: p.revenue,
-          aov: p.orders ? Math.round(p.revenue / p.orders) : 0,
+          aov: p.orders ? p.revenue / p.orders : 0,
         }));
         return (
           <div className="analytics-page">
-            <ChartCard title={t('Revenue & average order value', 'الإيرادات ومتوسط قيمة الطلب')}>
+            <MerchandiseSummary metrics={data.summary} isAr={isAr} />
+            <ChartCard title={t('Net merchandise value & average order value', 'صافي قيمة البضائع ومتوسط قيمة الطلب')}>
               <TrendLine
                 data={series}
                 series={[
-                  { key: 'revenue', label: t('Revenue', 'الإيرادات') },
+                  { key: 'revenue', label: t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة') },
                   { key: 'aov', label: t('AOV', 'متوسط قيمة الطلب') },
                 ]}
                 formatY={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
@@ -48,23 +51,31 @@ export default function AnalyticsSalesPage() {
             </ChartCard>
 
             <div className="analytics-page__row">
-              <ChartCard title={t('Revenue by category', 'الإيرادات حسب الفئة')}>
-                <BreakdownBars data={toBars(data.byCategory)} formatValue={money} isAr={isAr} />
+              <ChartCard title={t('Net merchandise value by category', 'صافي قيمة البضائع حسب الفئة')}>
+                <BreakdownBars data={toBars(data.byCategory)} formatValue={money2} isAr={isAr} />
               </ChartCard>
-              <ChartCard title={t('Revenue by product', 'الإيرادات حسب المنتج')}>
-                <BreakdownBars data={toBars(data.byProduct)} formatValue={money} isAr={isAr} />
+              <ChartCard title={t('Net merchandise value by product', 'صافي قيمة البضائع حسب المنتج')}>
+                <BreakdownBars data={toBars(data.byProduct)} formatValue={money2} isAr={isAr} />
               </ChartCard>
             </div>
 
             <div className="analytics-page__row">
-              <ChartCard title={t('Units by size', 'الوحدات حسب المقاس')}>
+              <ChartCard title={t('Retained units by size', 'الوحدات المحتفظ بها حسب المقاس')}>
                 <SplitDonut data={toSplit(data.bySize)} isAr={isAr} />
               </ChartCard>
-              <ChartCard title={t('Units by colour', 'الوحدات حسب اللون')}>
+              <ChartCard title={t('Retained units by colour', 'الوحدات المحتفظ بها حسب اللون')}>
                 <SplitDonut data={toSplit(data.byColour)} isAr={isAr} />
               </ChartCard>
             </div>
 
+            {([
+              [t('By category', 'حسب الفئة'), data.byCategory],
+              [t('By product', 'حسب المنتج'), data.byProduct],
+              [t('By size', 'حسب المقاس'), data.bySize],
+              [t('By colour', 'حسب اللون'), data.byColour],
+            ] as const).map(([title, rows]) => <ChartCard key={title} title={title} height="auto">
+              <MerchandiseBreakdown rows={rows} isAr={isAr} />
+            </ChartCard>)}
             <p className="analytics-note">{data.note}</p>
           </div>
         );

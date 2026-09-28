@@ -30,6 +30,8 @@ beforeEach(() => vi.clearAllMocks());
 const overview = {
   range: { from: '2026-01-01', to: '2026-01-31' },
   kpis: {
+    merchandiseValue: 1500, merchandiseMarkedRefunded: 266, netMerchandiseValue: 1234,
+    receivedReturnsAwaitingRefundMarking: 75, orderedUnits: 60, physicallyReturnedUnits: 10, retainedUnits: 50, deliveryRevenue: 30,
     revenue: 1234,
     deliveredRevenue: 1000,
     orders: 20,
@@ -58,8 +60,12 @@ describe('Analytics Overview page', () => {
       </Wrapper>
     );
 
-    expect(await screen.findByText('$1,234')).toBeInTheDocument(); // revenue
-    expect(screen.getByText('Units sold')).toBeInTheDocument();
+    expect(await screen.findByText('$1,234.00')).toBeInTheDocument(); // revenue
+    expect(screen.getByText('Retained units')).toBeInTheDocument();
+    expect(screen.getByText('Merchandise marked refunded')).toBeInTheDocument();
+    expect(screen.getByText('$266.00')).toBeInTheDocument();
+    expect(screen.getByText('Received returns awaiting refund marking')).toBeInTheDocument();
+    expect(screen.getByText('$75.00')).toBeInTheDocument();
     expect(screen.getByText('50')).toBeInTheDocument();
     expect(screen.getByText(/needs Google Analytics 4/i)).toBeInTheDocument();
   });

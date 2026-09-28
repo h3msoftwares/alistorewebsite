@@ -55,7 +55,7 @@ export function AnalyticsCustomersPage() {
               />
             </ChartCard>
 
-            <ChartCard title={t('Top customers by revenue (in range)', 'أفضل العملاء حسب الإيرادات (خلال الفترة)')} height="auto">
+            <ChartCard title={t('Top customers by net merchandise value (in range)', 'أفضل العملاء حسب صافي قيمة البضائع (خلال الفترة)')} height="auto">
               {data.topCustomers.length === 0 ? (
                 <p className="chart-card__empty">{t('No customer orders in this range.', 'لا طلبات عملاء في هذه الفترة.')}</p>
               ) : (
@@ -65,7 +65,7 @@ export function AnalyticsCustomersPage() {
                       <th>{t('Customer', 'العميل')}</th>
                       <th>{t('Email', 'البريد الإلكتروني')}</th>
                       <th className="is-numeric">{t('Orders', 'الطلبات')}</th>
-                      <th className="is-numeric">{t('Revenue', 'الإيرادات')}</th>
+                      <th className="is-numeric">{t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -74,7 +74,7 @@ export function AnalyticsCustomersPage() {
                         <td data-label={t('Customer', 'العميل')}>{c.name}</td>
                         <td data-label={t('Email', 'البريد الإلكتروني')}>{c.email}</td>
                         <td data-label={t('Orders', 'الطلبات')} className="is-numeric">{c.orders}</td>
-                        <td data-label={t('Revenue', 'الإيرادات')} className="is-numeric">{money2(c.revenue)}</td>
+                        <td data-label={t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة')} className="is-numeric">{money2(c.revenue)}</td>
                       </tr>
                     ))}
                   </tbody>

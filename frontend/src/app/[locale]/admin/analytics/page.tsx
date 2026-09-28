@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import { MerchandiseSummary } from '@/components/admin/analytics/merchandise-summary';
 import {
   ChartCard,
   DashboardState,
@@ -10,7 +11,7 @@ import {
   StatTile,
   TrendLine,
 } from '@/components/admin/analytics';
-import { bucketLabel, money, money2, num } from '@/components/admin/analytics/format';
+import { bucketLabel, money2, num } from '@/components/admin/analytics/format';
 import { useAnalyticsOverview } from '@/hooks/use-analytics';
 import { useAnalyticsRange } from './range-context';
 
@@ -33,21 +34,21 @@ export default function AnalyticsOverviewPage() {
         }));
         return (
           <div className="analytics-page">
+            <MerchandiseSummary metrics={k} isAr={isAr} />
             <StatGrid>
-              <StatTile label={t('Revenue', 'الإيرادات')} value={money(k.revenue)} hint={t(`${money2(k.deliveredRevenue)} delivered`, `${money2(k.deliveredRevenue)} تم التسليم`)} />
+              <StatTile label={t('Delivery fees', 'رسوم التوصيل')} value={money2(k.deliveryRevenue)} />
               <StatTile label={t('Orders', 'الطلبات')} value={num(k.orders)} hint={t(`${k.itemsPerOrder.toFixed(1)} items / order`, `${k.itemsPerOrder.toFixed(1)} عنصر / طلب`)} />
               <StatTile label={t('Avg order value', 'متوسط قيمة الطلب')} value={money2(k.averageOrderValue)} />
-              <StatTile label={t('Units sold', 'الوحدات المباعة')} value={num(k.unitsSold)} />
               <StatTile label={t('New customers', 'عملاء جدد')} value={num(k.newCustomers)} />
               <StatTile label={t('Returning customers', 'عملاء عائدون')} value={num(k.returningCustomers)} />
               <StatTile label={t('Low-stock variants', 'خيارات منخفضة المخزون')} value={num(k.lowStockVariants)} />
             </StatGrid>
 
-            <ChartCard title={t('Revenue & orders', 'الإيرادات والطلبات')} subtitle={t('Gross, excludes cancelled', 'إجمالي، باستثناء الملغاة')}>
+            <ChartCard title={t('Net merchandise value & orders', 'صافي قيمة البضائع والطلبات')} subtitle={t('After coupons and marked refunds; excludes cancelled orders', 'بعد القسائم والاستردادات المعلّمة؛ باستثناء الطلبات الملغاة')}>
               <TrendLine
                 data={series}
                 series={[
-                  { key: 'revenue', label: t('Revenue', 'الإيرادات') },
+                  { key: 'revenue', label: t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة') },
                   { key: 'orders', label: t('Orders', 'الطلبات') },
                 ]}
                 formatY={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
@@ -63,12 +64,6 @@ export default function AnalyticsOverviewPage() {
             </ChartCard>
 
             <p className="analytics-note">{data.note}</p>
-            <p className="analytics-note">
-              {t(
-                "Promotions, returns/refunds, shipping revenue and non-COD payment analytics are omitted — those features don't exist yet.",
-                'تحليلات العروض والإرجاع/الاسترداد وإيرادات الشحن والدفع غير النقدي غير متوفرة — هذه الميزات غير موجودة بعد.'
-              )}
-            </p>
           </div>
         );
       }}

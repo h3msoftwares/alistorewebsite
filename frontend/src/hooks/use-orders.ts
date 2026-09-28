@@ -136,6 +136,8 @@ export function useUpdateOrderStatus() {
       qc.setQueryData(queryKeys.orders.detail(order.id), order);
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
       qc.invalidateQueries({ queryKey: queryKeys.orders.dashboard() });
+      qc.invalidateQueries({ queryKey: queryKeys.returns.all() });
+      qc.invalidateQueries({ queryKey: queryKeys.analytics.all() });
     },
   });
 }
@@ -160,7 +162,11 @@ export function useCorrectOrderStatus() {
   return useMutation({
     mutationFn: ({ id, ...body }: { id: UUID; status: OrderStatus; expectedStatus: OrderStatus; reason: string }) =>
       ordersApi.adminCorrectOrderStatus(id, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.orders.all() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
+      qc.invalidateQueries({ queryKey: queryKeys.returns.all() });
+      qc.invalidateQueries({ queryKey: queryKeys.analytics.all() });
+    },
   });
 }
 

@@ -165,5 +165,7 @@ describe('useUpdateOrderStatus (admin)', () => {
     expect(mockOrders.adminUpdateOrderStatus).toHaveBeenCalledWith('o1', 'DELIVERED', undefined);
     const keys = spy.mock.calls.map((c) => c[0]?.queryKey);
     expect(keys).toContainEqual(queryKeys.orders.dashboard());
+    expect(keys).toContainEqual(queryKeys.returns.all());
+    expect(keys).toContainEqual(queryKeys.analytics.all());
   });
 });

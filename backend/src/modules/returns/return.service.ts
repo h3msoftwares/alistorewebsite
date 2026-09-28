@@ -7,6 +7,7 @@ import {
   sendReturnRequestedNotification,
   sendReturnStatusChangedNotification,
 } from '../../lib/notifications/notification.service';
+import { createReturnRecords } from './return-records';
 import { findValidAccessToken } from '../orders/order.service';
 
 export interface ReturnRequestItem {
@@ -118,40 +119,8 @@ async function performReturnRequest(
     if (expectedRefundCents !== undefined && expectedRefundCents !== preview.refundCents) {
       throw new AppError('CONFLICT', 'The refund changed. Preview it again before submitting.', { refundCents: preview.refundCents });
     }
-    for (const item of preview.items) {
-      await tx.orderItem.update({ where: { id: item.orderItemID }, data: { returnedQuantity: { increment: item.quantity } } });
-    }
-    const returnItemsData = preview.items.map(({ orderItemID, quantity, refundCents, refundBreakdown }) => ({
-      orderItemID, quantity, refundAmount: refundCents / 100,
-      ...(refundBreakdown ? { refundBreakdown } : {}),
-    }));
-
-    const created = await tx.return.create({
-      data: {
-        orderID: orderId,
-        reason,
-        requestedBy: requestedBy ?? null,
-        refundAmount: preview.refundCents / 100,
-        items: { create: returnItemsData },
-      },
-      include: RETURN_INCLUDE,
-    });
-    const calculatedItems = preview.items.filter((item) => item.refundBreakdown).map((item) => ({
-      orderItemID: item.orderItemID, quantity: item.quantity, ...item.refundBreakdown,
-    }));
-    if (calculatedItems.length) {
-      // Persist the accepted calculation atomically with its Return, rather
-      // than relying on the UI or the best-effort request/status audit events.
-      // Read-only previews do not issue refunds or create audit events.
-      await tx.auditLog.create({
-        data: {
-          entityType: 'return', entityID: created.id, action: 'return.refund_calculated',
-          actorID: requestedBy ?? null,
-          metadata: { orderID: orderId, refundCents: preview.refundCents, items: calculatedItems },
-        },
-      });
-    }
-    return created;
+    const created = await createReturnRecords(tx, orderId, preview.items, requestedBy, reason);
+    return tx.return.findUniqueOrThrow({ where: { id: created.id }, include: RETURN_INCLUDE });
   });
 }
 

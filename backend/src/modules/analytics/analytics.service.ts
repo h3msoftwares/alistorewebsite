@@ -1,24 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
+import { lineReturnsJoin, lineNet, lineRetained, orderMetricsJoin, orderMerchandise, orderNet, merchandiseSummary, MERCHANDISE_NOTE } from '../../lib/merchandise-metrics';
 import * as ga from './ga.service';
 import type { AnalyticsRangeQuery } from './analytics.schema';
 
-/**
- * First-party analytics — everything here is read-only aggregation over the
- * existing Order / OrderItem / User / ProductVariant / StockMovement tables.
- *
- * Money notes that hold across every endpoint:
- *  - "Revenue" means merchandise = `SUM(Order.subtotal)`; the admin-set delivery
- *    fee is reported separately as `deliveryRevenue`. This existing metric
- *    is BEFORE coupons and refunds, not cash collected. Item breakdowns use
- *    the pre-coupon snapshot (legacy lineTotal was already pre-coupon).
- *  - "Sales" figures exclude CANCELLED orders; a few also expose a DELIVERED-only
- *    ("collected") number.
- *  - Guest orders (`userID IS NULL`) are excluded from customer analytics and
- *    bucketed as "Guest" in sales breakdowns.
- *  - `dateCreated` is a naive timestamp; buckets are computed in the DB's time
- *    zone (the store is single-region).
- */
+/** Read-only order-date cohort reports. All merchandise values are post-coupon;
+ * saved incremental refunds are deducted only when marked REFUNDED. Delivery
+ * fees stay separate. Physical return quantities are recognized at RECEIVED. */
 
 type Granularity = AnalyticsRangeQuery['granularity'];
 
@@ -42,33 +30,23 @@ const bucket = (g: Granularity, col: Prisma.Sql) => Prisma.sql`date_trunc(${g}::
 
 const num = (v: unknown) => (v == null ? 0 : Number(v));
 
-// New lineTotal is post-coupon. Keep line reports on the same pre-coupon
-// basis as SUM(Order.subtotal), including ranges spanning legacy orders.
-const merchandiseLineRevenue = Prisma.sql`COALESCE(
-  (oi."priceBreakdown"->>'beforeCouponLineTotalCents')::numeric / 100,
-  oi."lineTotal"
-)`;
+const lineMetricColumns = Prisma.sql`
+  SUM(oi."lineTotal")::float8 AS "merchandiseValue",
+  SUM(COALESCE(lr.refunded, 0))::float8 AS "merchandiseMarkedRefunded",
+  SUM(${lineNet})::float8 AS "netMerchandiseValue",
+  SUM(COALESCE(lr.awaiting, 0))::float8 AS "receivedReturnsAwaitingRefundMarking",
+  SUM(oi."quantity")::int AS "orderedUnits",
+  SUM(COALESCE(lr.returned, 0))::int AS "physicallyReturnedUnits",
+  SUM(${lineRetained})::int AS "retainedUnits"`;
 
 // --------------------------------------------------------------- overview ----
 
 export async function overview(q: AnalyticsRangeQuery) {
   const { from, to } = resolveRange(q);
-  const orderWhere = {
-    dateCreated: { gte: from, lte: to },
-    status: { not: 'CANCELLED' as const },
-  };
-
-  const [agg, unitsAgg, newCustomers, lowStock, series, returning, delivered, funnel] =
+  const where = Prisma.sql`o."dateCreated" BETWEEN ${from} AND ${to} AND o."status" <> ${CANCELLED}`;
+  const [agg, newCustomers, lowStock, series, returning, delivered, funnel] =
     await Promise.all([
-      prisma.order.aggregate({
-        where: orderWhere,
-        _sum: { subtotal: true, deliveryFee: true },
-        _count: true,
-      }),
-      prisma.orderItem.aggregate({
-        where: { order: orderWhere },
-        _sum: { quantity: true },
-      }),
+      merchandiseSummary(where),
       prisma.user.count({
         where: { role: 'CUSTOMER', dateCreated: { gte: from, lte: to } },
       }),
@@ -80,34 +58,31 @@ export async function overview(q: AnalyticsRangeQuery) {
       }),
       revenueSeries(from, to, q.granularity),
       returningCustomerCount(from, to),
-      prisma.order.aggregate({
-        where: { dateCreated: { gte: from, lte: to }, status: 'DELIVERED' },
-        _sum: { subtotal: true },
-      }),
+      merchandiseSummary(Prisma.sql`${where} AND o."status" IN ('DELIVERED', 'RETURNED')`),
       ga.funnel({ from, to }),
     ]);
 
-  const orders = agg._count;
-  const revenue = num(agg._sum.subtotal);
-  const units = num(unitsAgg._sum.quantity);
+  const orders = agg.orders;
+  const revenue = agg.netMerchandiseValue;
+  const units = agg.orderedUnits;
 
   return {
     range: { from, to },
     kpis: {
+      ...agg,
       revenue,
-      deliveryRevenue: num(agg._sum.deliveryFee),
-      deliveredRevenue: num(delivered._sum.subtotal),
+      deliveredRevenue: delivered.netMerchandiseValue,
       orders,
       averageOrderValue: orders ? revenue / orders : 0,
       itemsPerOrder: orders ? units / orders : 0,
-      unitsSold: units,
+      unitsSold: agg.retainedUnits,
       newCustomers,
       returningCustomers: returning,
       lowStockVariants: lowStock,
     },
     revenueSeries: series,
     funnel,
-    note: 'Revenue is merchandise (SUM subtotal); delivery fee is `deliveryRevenue`, not sales. Excludes CANCELLED orders. `funnel` is GA4-sourced.',
+    note: MERCHANDISE_NOTE,
   };
 }
 
@@ -116,7 +91,8 @@ export async function overview(q: AnalyticsRangeQuery) {
 export async function sales(q: AnalyticsRangeQuery) {
   const { from, to } = resolveRange(q);
 
-  const [series, byCategory, byProduct, bySize, byColour] = await Promise.all([
+  const [summary, series, byCategory, byProduct, bySize, byColour] = await Promise.all([
+    merchandiseSummary(Prisma.sql`o."dateCreated" BETWEEN ${from} AND ${to} AND o."status" <> ${CANCELLED}`),
     revenueSeries(from, to, q.granularity),
     // Attributed to the product's PRIMARY category only — reporting is one of
     // the stated reasons a primary category exists (see the Product model's
@@ -133,12 +109,13 @@ export async function sales(q: AnalyticsRangeQuery) {
 
   return {
     range: { from, to },
+    summary,
     revenueSeries: series,
     byCategory,
     byProduct,
     bySize,
     byColour,
-    note: 'Line revenue is merchandise before coupons, matching Order.subtotal. Excludes CANCELLED orders.',
+    note: MERCHANDISE_NOTE,
   };
 }
 
@@ -154,8 +131,8 @@ export async function customers(q: AnalyticsRangeQuery) {
         COUNT(*) FILTER (WHERE cnt >= 2)::int AS repeat_customers,
         COALESCE(AVG(spend), 0)::float8       AS avg_ltv
       FROM (
-        SELECT o."userID", COUNT(*)::int AS cnt, SUM(o."subtotal")::float8 AS spend
-        FROM "order" o
+        SELECT o."userID", COUNT(*)::int AS cnt, SUM(${orderNet})::float8 AS spend
+        FROM "order" o ${orderMetricsJoin}
         WHERE o."userID" IS NOT NULL AND o."status" <> ${CANCELLED}
         GROUP BY o."userID"
       ) per_customer
@@ -213,8 +190,8 @@ export async function customers(q: AnalyticsRangeQuery) {
     >(Prisma.sql`
       SELECT u."id", u."name", u."email",
         COUNT(o.*)::int AS orders,
-        SUM(o."subtotal")::float8 AS revenue
-      FROM "order" o JOIN "user" u ON u."id" = o."userID"
+        SUM(${orderNet})::float8 AS revenue
+      FROM "order" o JOIN "user" u ON u."id" = o."userID" ${orderMetricsJoin}
       WHERE o."status" <> ${CANCELLED}
         AND o."dateCreated" BETWEEN ${from} AND ${to}
       GROUP BY u."id", u."name", u."email"
@@ -241,7 +218,7 @@ export async function customers(q: AnalyticsRangeQuery) {
     },
     newVsReturningSeries: series,
     topCustomers: top,
-    note: 'Guest orders (no account) are excluded. LTV / repeat rate are all-time; the series and top customers are range-scoped.',
+    note: MERCHANDISE_NOTE + ' Guest orders (no account) are excluded. LTV / repeat rate are all-time; the series and top customers are range-scoped.',
   };
 }
 
@@ -259,12 +236,7 @@ export async function inventory(q: AnalyticsRangeQuery) {
         FROM "productvariant" v JOIN "product" p ON p."id" = v."productID"
         WHERE p."deletedAt" IS NULL
       `),
-      prisma.orderItem.aggregate({
-        where: {
-          order: { dateCreated: { gte: from, lte: to }, status: { not: 'CANCELLED' } },
-        },
-        _sum: { quantity: true },
-      }),
+      merchandiseSummary(Prisma.sql`o."dateCreated" BETWEEN ${from} AND ${to} AND o."status" <> ${CANCELLED}`),
       prisma.$queryRaw<
         { sku: string; product: string; size: string | null; color: string | null; stock: number }[]
       >(Prisma.sql`
@@ -316,7 +288,7 @@ export async function inventory(q: AnalyticsRangeQuery) {
     ]);
 
   const currentStock = stock[0]?.units ?? 0;
-  const unitsSold = num(sold._sum.quantity);
+  const unitsSold = sold.retainedUnits;
 
   return {
     range: { from, to },
@@ -324,6 +296,9 @@ export async function inventory(q: AnalyticsRangeQuery) {
       stockUnits: currentStock,
       stockValue: num(stock[0]?.value),
       unitsSold,
+      orderedUnits: sold.orderedUnits,
+      physicallyReturnedUnits: sold.physicallyReturnedUnits,
+      retainedUnits: sold.retainedUnits,
       sellThroughRate: unitsSold + currentStock ? unitsSold / (unitsSold + currentStock) : 0,
       lowStockCount: lowStock.length,
       outOfStockCount: outOfStock.length,
@@ -345,14 +320,15 @@ export async function products(q: AnalyticsRangeQuery) {
 
   const [rows, views] = await Promise.all([
     prisma.$queryRaw<
-      { name: string; sku: string; productId: string; units: number; revenue: number; orders: number; buyers: number }[]
+      { name: string; sku: string; productId: string; units: number; orderedUnits: number; revenue: number; orders: number; buyers: number }[]
     >(Prisma.sql`
       SELECT oi."productName" AS name, oi."productSKU" AS sku, pv."productID" AS "productId",
-        SUM(oi."quantity")::int          AS units,
-        SUM(${merchandiseLineRevenue})::float8 AS revenue,
+        SUM(${lineRetained})::int AS units,
+        ${lineMetricColumns},
+        SUM(${lineNet})::float8 AS revenue,
         COUNT(DISTINCT oi."orderID")::int AS orders,
         COUNT(DISTINCT o."userID")::int   AS buyers
-      FROM "orderitem" oi
+      FROM "orderitem" oi ${lineReturnsJoin}
       JOIN "order" o ON o."id" = oi."orderID"
       JOIN "productvariant" pv ON pv."id" = oi."variantID"
       WHERE o."dateCreated" BETWEEN ${from} AND ${to} AND o."status" <> ${CANCELLED}
@@ -375,7 +351,7 @@ export async function products(q: AnalyticsRangeQuery) {
     return {
       ...r,
       views: gaViews,
-      viewToPurchaseRate: gaViews ? r.units / gaViews : null,
+      viewToPurchaseRate: gaViews ? r.orderedUnits / gaViews : null,
       viewToCartRate: null as number | null, // needs per-SKU add_to_cart — see /products GA rows
     };
   });
@@ -384,7 +360,7 @@ export async function products(q: AnalyticsRangeQuery) {
     range: { from, to },
     products: merged,
     ga: views.configured ? { configured: true as const, rows: views.rows } : { configured: false as const },
-    note: 'Purchase side is first-party; `views` / rates come from GA4 (null when GA4 is not configured).',
+    note: MERCHANDISE_NOTE + ' Purchase side is first-party; `views` / rates come from GA4 (null when GA4 is not configured).',
   };
 }
 
@@ -402,29 +378,28 @@ export function funnelReport(q: AnalyticsRangeQuery) {
 
 function revenueSeries(from: Date, to: Date, g: Granularity) {
   return prisma.$queryRaw<{ bucket: Date; revenue: number; orders: number }[]>(Prisma.sql`
-    SELECT ${bucket(g, Prisma.sql`"dateCreated"`)} AS bucket,
-           SUM("subtotal")::float8 AS revenue,
-           COUNT(*)::int           AS orders
-    FROM "order"
-    WHERE "dateCreated" BETWEEN ${from} AND ${to} AND "status" <> ${CANCELLED}
+    SELECT ${bucket(g, Prisma.sql`o."dateCreated"`)} AS bucket,
+      SUM(${orderNet})::float8 AS revenue,
+      SUM(${orderMerchandise})::float8 AS "merchandiseValue",
+      SUM(COALESCE(om.refunded, 0))::float8 AS "merchandiseMarkedRefunded",
+      SUM(${orderNet})::float8 AS "netMerchandiseValue",
+      COUNT(*)::int AS orders
+    FROM "order" o ${orderMetricsJoin}
+    WHERE o."dateCreated" BETWEEN ${from} AND ${to} AND o."status" <> ${CANCELLED}
     GROUP BY 1 ORDER BY 1
   `);
 }
 
-/** Pre-coupon merchandise revenue / quantity grouped by a label expression over
- *  OrderItem, optionally with extra JOINs (for category). */
 function itemBreakdown(from: Date, to: Date, label: Prisma.Sql, joins: Prisma.Sql) {
   return prisma.$queryRaw<{ label: string; revenue: number; units: number }[]>(Prisma.sql`
     SELECT ${label} AS label,
-           SUM(${merchandiseLineRevenue})::float8 AS revenue,
-           SUM(oi."quantity")::int     AS units
-    FROM "orderitem" oi
+      SUM(${lineNet})::float8 AS revenue, SUM(${lineRetained})::int AS units,
+      ${lineMetricColumns}
+    FROM "orderitem" oi ${lineReturnsJoin}
     JOIN "order" o ON o."id" = oi."orderID"
     ${joins}
     WHERE o."dateCreated" BETWEEN ${from} AND ${to} AND o."status" <> ${CANCELLED}
-    GROUP BY 1
-    ORDER BY revenue DESC NULLS LAST
-    LIMIT 50
+    GROUP BY 1 ORDER BY revenue DESC NULLS LAST LIMIT 50
   `);
 }
 

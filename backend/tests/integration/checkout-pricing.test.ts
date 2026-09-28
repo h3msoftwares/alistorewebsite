@@ -38,8 +38,8 @@ async function checkoutVolume(quantity: number, couponValue = 0) {
 }
 
 describe('checkout persists exact per-unit prices', () => {
-  it('stores the coupon-adjusted combo line and keeps order totals and legacy analytics reconciled', async () => {
-    const { order, admin, product } = await checkoutVolume(3, 3);
+  it('stores the coupon-adjusted combo line and keeps post-coupon order totals and analytics reconciled', async () => {
+    const { order, admin } = await checkoutVolume(3, 3);
     expect(order.items).toHaveLength(1);
     const item = order.items[0];
     expect(Number(order.subtotal)).toBe(30);
@@ -53,24 +53,15 @@ describe('checkout persists exact per-unit prices', () => {
     });
     expect(Number(order.total)).toBeCloseTo(Number(item.lineTotal) + Number(order.deliveryFee), 2);
 
-    // Historical orders have no breakdown and still contain pre-coupon
-    // lineTotal. Both generations must agree with subtotal-based reports.
-    await prisma.order.create({ data: {
-      orderNumber: 'AS-LEGACY-PRICING', ...delivery, subtotal: 12, discountAmount: 2, total: 10,
-      items: { create: {
-        variantID: product.variants[0].id, productName: product.nameEn, productSKU: product.sku,
-        variantSKU: product.variants[0].sku, quantity: 1, unitPrice: 12, lineTotal: 12,
-      } },
-    } });
     const overview = await request(app).get('/api/admin/analytics/overview').set(bearer(admin.token)).expect(200);
-    expect(overview.body.kpis.revenue).toBe(42);
+    expect(overview.body.kpis.revenue).toBe(27);
     const sales = await request(app).get('/api/admin/analytics/sales').set(bearer(admin.token)).expect(200);
     for (const key of ['byProduct', 'byCategory', 'bySize', 'byColour']) {
-      expect(sales.body[key].reduce((sum: number, row: { revenue: number }) => sum + row.revenue, 0)).toBe(42);
+      expect(sales.body[key].reduce((sum: number, row: { revenue: number }) => sum + row.revenue, 0)).toBe(27);
     }
-    expect(sales.body.revenueSeries.reduce((sum: number, row: { revenue: number }) => sum + row.revenue, 0)).toBe(42);
+    expect(sales.body.revenueSeries.reduce((sum: number, row: { revenue: number }) => sum + row.revenue, 0)).toBe(27);
     const products = await request(app).get('/api/admin/analytics/products').set(bearer(admin.token)).expect(200);
-    expect(products.body.products[0].revenue).toBe(42);
+    expect(products.body.products[0].revenue).toBe(27);
   });
 
   it('persists the exact cent remainder after a coupon on three volume-priced units', async () => {

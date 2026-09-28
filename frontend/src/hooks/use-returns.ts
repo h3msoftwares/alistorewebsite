@@ -62,7 +62,12 @@ export function useUpdateReturnStatus() {
   return useMutation({
     mutationFn: ({ id, status }: { id: UUID; status: ReturnStatus }) =>
       returnsApi.adminUpdateReturnStatus(id, status),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.returns.all() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.returns.all() });
+      qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
+      qc.invalidateQueries({ queryKey: queryKeys.analytics.all() });
+      qc.invalidateQueries({ queryKey: queryKeys.products.all() });
+    },
   });
 }
 

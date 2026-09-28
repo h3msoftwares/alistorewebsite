@@ -31,7 +31,7 @@ export default function AnalyticsProductsPage() {
           <div className="analytics-page">
             {!data.ga.configured && <GaNotConnected what={t('Product view counts', 'عدد مشاهدات المنتج')} isAr={isAr} />}
 
-            <ChartCard title={t('Product performance', 'أداء المنتجات')} subtitle={t('Ranked by revenue — click a product to open it', 'مرتّبة حسب الإيرادات — اضغط على منتج لفتحه')} height="auto">
+            <ChartCard title={t('Product performance', 'أداء المنتجات')} subtitle={t('Ranked by net merchandise value — click a product to open it', 'مرتّبة حسب صافي قيمة البضائع — اضغط على منتج لفتحه')} height="auto">
               {data.products.length === 0 ? (
                 <p className="chart-card__empty">{t('No sales in this range.', 'لا مبيعات في هذه الفترة.')}</p>
               ) : (
@@ -41,8 +41,8 @@ export default function AnalyticsProductsPage() {
                       <tr>
                         <th>{t('Product', 'المنتج')}</th>
                         <th>{t('SKU', 'رمز المنتج')}</th>
-                        <th className="is-numeric">{t('Units', 'الوحدات')}</th>
-                        <th className="is-numeric">{t('Revenue', 'الإيرادات')}</th>
+                        <th className="is-numeric">{t('Retained units', 'الوحدات المحتفظ بها')}</th>
+                        <th className="is-numeric">{t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة')}</th>
                         <th className="is-numeric">{t('Orders', 'الطلبات')}</th>
                         <th className="is-numeric">{t('Buyers', 'المشترون')}</th>
                         <th className="is-numeric">{t('Views', 'المشاهدات')}</th>
@@ -56,8 +56,8 @@ export default function AnalyticsProductsPage() {
                             <Link href={`/${locale}/admin/products/${p.productId}`}>{p.name}</Link>
                           </td>
                           <td data-label={t('SKU', 'رمز المنتج')}>{p.sku}</td>
-                          <td data-label={t('Units', 'الوحدات')} className="is-numeric">{num(p.units)}</td>
-                          <td data-label={t('Revenue', 'الإيرادات')} className="is-numeric">{money2(p.revenue)}</td>
+                          <td data-label={t('Retained units', 'الوحدات المحتفظ بها')} className="is-numeric">{num(p.units)}</td>
+                          <td data-label={t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة')} className="is-numeric">{money2(p.revenue)}</td>
                           <td data-label={t('Orders', 'الطلبات')} className="is-numeric">{num(p.orders)}</td>
                           <td data-label={t('Buyers', 'المشترون')} className="is-numeric">{num(p.buyers)}</td>
                           <td data-label={t('Views', 'المشاهدات')} className="is-numeric">{p.views == null ? '—' : num(p.views)}</td>

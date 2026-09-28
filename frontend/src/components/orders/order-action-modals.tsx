@@ -32,6 +32,7 @@ export function OrderActionModals({ locale, oa }: { locale: 'en' | 'ar'; oa: Ord
               {(p) => <Textarea {...p} required maxLength={1000} value={oa.correctionReason} onChange={(e) => oa.setCorrectionReason(e.target.value)} />}
             </Field>
             {['CANCELLED', 'RETURNED'].includes(oa.correctionStatus) && <Alert tone="warning">{t('This restores stock. Only proceed if every item is back in the store or was never dispatched. Orders with active or completed returns cannot be corrected.', 'سيعاد المخزون. تابع فقط إذا عادت كل القطع أو لم تشحن. لا يمكن تصحيح طلب له مرتجع نشط أو مكتمل.')}</Alert>}
+            {oa.correctionStatus === 'RETURNED' && <p>{t('Creates a full-order received return with its calculated merchandise refund awaiting refund marking.', 'ينشئ مرتجعًا كاملاً مستلمًا مع مبلغ استرداد البضائع المحسوب بانتظار تعليم الاسترداد.')}</p>}
             <div className="admin-modal__actions">
               <Button type="button" variant="ghost" onClick={oa.closeModal}>{t('Cancel', 'إلغاء')}</Button>
               <Button type="submit" variant="primary" disabled={!oa.correctionReason.trim() || oa.correctionStatus === pending.order.status}>{t('Apply correction', 'تطبيق التصحيح')}</Button>
@@ -58,8 +59,8 @@ export function OrderActionModals({ locale, oa }: { locale: 'en' | 'ar'; oa: Ord
                   `سيُلغى الطلب ${pending.order.orderNumber} — تُعاد قطعه إلى المخزون ويُرسَل بريد إلى الزبون.`
                 )
               : t(
-                  `Order ${pending.order.orderNumber} will be marked as returned.`,
-                  `سيوضع على الطلب ${pending.order.orderNumber} علامة "مُرتجَع".`
+                  `Order ${pending.order.orderNumber} will be marked as returned, its items restocked, and a full-order return recorded as received with its calculated merchandise refund awaiting marking.`,
+                  `سيُعلّم الطلب ${pending.order.orderNumber} كمرتجع، ويعاد المخزون، ويسجل مرتجع كامل مستلم بانتظار تعليم الاسترداد.`
                 )
             : ''
         }

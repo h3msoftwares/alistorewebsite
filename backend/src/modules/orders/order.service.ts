@@ -1,3 +1,5 @@
+import { createWholeOrderReturn } from '../returns/return-records';
+import { merchandiseSummary } from '../../lib/merchandise-metrics';
 import { createHash, randomBytes } from 'crypto';
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
@@ -990,6 +992,7 @@ export async function correctOrderStatus(
     if (await hasPerItemReturn(tx, id)) {
       throw new AppError('CONFLICT', 'This order has a per-item return. Resolve it through the Returns page instead of correcting its status.');
     }
+    if (input.status === 'RETURNED') await createWholeOrderReturn(tx, id, existing.items, actorID, reason);
     if (input.status === 'CANCELLED' || input.status === 'RETURNED') {
       await restoreStock(tx, existing.items, existing.orderNumber, 'status correction');
     }
@@ -1042,12 +1045,9 @@ export async function updateOrderStatus(
       if (existing.status === 'CANCELLED') {
         throw new AppError('CONFLICT', 'This order was cancelled and cannot be marked returned');
       }
-      // This whole-order path predates per-item returns (see the Return
-      // model) and knows nothing about them — an admin force-restocking
-      // every line here after a Return already reached RECEIVED for one of
-      // them would restore those units a second time. Refuse and point at
-      // the Returns page instead, which already has an active claim on
-      // whichever quantities are in flight or were already restocked.
+      // A whole-order receipt claims every line. Existing per-item returns
+      // must continue through the Returns page to avoid overlapping claims
+      // or restoring stock twice.
       // REFUNDED still represents stock restored at RECEIVED.
       if (await hasPerItemReturn(tx, id)) {
         throw new AppError(
@@ -1069,9 +1069,10 @@ export async function updateOrderStatus(
         throw new AppError('CONFLICT', 'This order has already been marked returned or cancelled');
       }
 
+      await createWholeOrderReturn(tx, id, existing.items, actorId);
       await restoreStock(tx, existing.items, existing.orderNumber, 'returned');
 
-      const updated = await tx.order.findUniqueOrThrow({ where: { id }, include: { items: true } });
+      const updated = await tx.order.findUniqueOrThrow({ where: { id }, include: { items: true, returns: { include: { items: true } } } });
       return { order: updated, previousStatus: existing.status };
     });
     await recordAudit({
@@ -1221,7 +1222,7 @@ export async function salesDashboard() {
     prisma.order.count(),
     prisma.order.count({ where: { status: 'PENDING' } }),
     // Merchandise revenue — excludes the delivery fee (tracked separately).
-    prisma.order.aggregate({ where: { status: 'DELIVERED' }, _sum: { subtotal: true } }),
+    merchandiseSummary(Prisma.sql`o."status" IN ('DELIVERED', 'RETURNED')`),
     // Orders an anti-abuse velocity check flagged and no admin has cleared yet.
     prisma.order.count({ where: { flaggedForReview: true } }),
     // Delivered COD orders where the cash hasn't been marked collected.
@@ -1270,7 +1271,8 @@ export async function salesDashboard() {
   return {
     totalOrders,
     pendingOrders,
-    totalRevenue: Number(deliveredRevenue._sum.subtotal ?? 0),
+    totalRevenue: deliveredRevenue.netMerchandiseValue,
+    merchandise: deliveredRevenue,
     flaggedOrders,
     awaitingCodCollection,
     confirmedNotDelivered,
