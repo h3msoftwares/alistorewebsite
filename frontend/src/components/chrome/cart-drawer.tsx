@@ -115,6 +115,12 @@ export function CartDrawer({
               <span>{t('Subtotal', 'المجموع الفرعي')}</span>
               <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(data.subtotal)}</span>
             </div>
+            {Boolean(data.bundles?.length) && <div className="stack">
+              <p>{t('Bundle pricing', 'تسعير الباقة')}: {money(data.subtotal)}</p>
+              <p>{t('Ordinary pricing', 'التسعير العادي')}: {money(data.ordinarySubtotal ?? data.subtotal)}</p>
+              <p>{t('Coupons use ordinary pricing. Bundle returns are not available yet.', 'تُستخدم القسائم مع التسعير العادي. إرجاع الباقات غير متاح حالياً.')}</p>
+              <Link className="btn btn--ghost btn--block" href={`/${locale}/checkout?pricingMode=COUPON`} onClick={onClose}>{t('Choose ordinary pricing / coupon', 'اختيار التسعير العادي / القسيمة')}</Link>
+            </div>}
             <Link className="btn btn--primary btn--block" href={`/${locale}/checkout`} onClick={onClose}>
               {t('Checkout', 'الدفع')}
             </Link>
@@ -182,12 +188,12 @@ function CartDrawerRow({
           {name}
         </Link>
         <CartVariantPicker item={item} locale={locale as 'en' | 'ar'} disabled={busy} />
-        <PriceTag
+        {item.bundleID ? <span>{t('Bundle pricing — line total', 'تسعير الباقة — إجمالي السطر')}: {formatCurrency(item.lineTotal ?? unitPrice * item.quantity, locale as 'en' | 'ar')}</span> : <PriceTag
           price={unitPrice}
           compareAtPrice={wasReduced ? product.price : product.compareAtPrice}
           locale={locale as 'en' | 'ar'}
           showBadge={false}
-        />
+        />}
 
         <div
           style={{

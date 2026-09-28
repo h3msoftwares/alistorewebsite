@@ -48,7 +48,7 @@ export default function NewComboRulePage() {
   return (
     <div className="section--tight">
       <div className="admin-page__head">
-        <h1>{t('New combo rule', 'قاعدة تجميع جديدة')}</h1>
+        <h1>{t('New volume pricing rule', 'قاعدة تسعير حسب الكمية جديدة')}</h1>
         <Link href={`/${locale}/admin/combos`} className="btn btn--ghost">
           {t('Cancel', 'إلغاء')}
         </Link>
@@ -66,7 +66,7 @@ export default function NewComboRulePage() {
 
         <div className="admin-form__actions">
           <Button type="submit" loading={busy}>
-            {t('Add combo rule', 'إضافة قاعدة التجميع')}
+            {t('Add volume pricing rule', 'إضافة قاعدة تسعير حسب الكمية')}
           </Button>
         </div>
       </form>

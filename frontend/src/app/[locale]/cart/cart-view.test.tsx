@@ -88,6 +88,16 @@ const renderCart = (locale: 'en' | 'ar' = 'en') => {
 
 beforeEach(() => vi.clearAllMocks());
 
+it('shows exact bundle line cents and both pricing choices', async () => {
+  mock.getCart.mockResolvedValue({ ...cart([makeItem({ quantity: 3, effectivePrice: 26, lineTotal: 78.01, bundleID: 'b1' })], 110.01), ordinarySubtotal: 130,
+    bundles: [{ id: 'b1', nameEn: 'Starter', nameAr: 'باقة', instanceCount: 1 }] } as never);
+  renderCart();
+  expect(await screen.findByRole('cell', { name: '$78.01' })).toBeInTheDocument();
+  expect(screen.queryByText('$26.00')).not.toBeInTheDocument();
+  expect(screen.getByText(/Ordinary pricing.*130\.00/)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Choose ordinary pricing / coupon' })).toHaveAttribute('href', '/en/checkout?pricingMode=COUPON');
+});
+
 describe('<CartView>', () => {
   it('renders a line item from cart data: image, name, variant, unit price, line total', async () => {
     mock.getCart.mockResolvedValue(cart([makeItem()], 999) as never);

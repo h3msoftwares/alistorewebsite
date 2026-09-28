@@ -67,7 +67,7 @@ export default function AdminCombosPage() {
   const selection = useRowSelection((comboRules ?? []).map((r) => r.id));
 
   // Same "a copy starts as DRAFT" rationale as discounts/page.tsx's
-  // duplicatePromotion — two identical live combo rules briefly competing on
+  // duplicatePromotion — two identical live volume pricing rules briefly competing on
   // the same products would be a real pricing bug, not just a UX surprise.
   const duplicateComboRule = async (r: ComboRule) => {
     setError(null);
@@ -117,11 +117,11 @@ export default function AdminCombosPage() {
   return (
     <div className="section--tight">
       <div className="admin-page__head">
-        <h1>{t('Combo pricing', 'التسعير التجميعي')}</h1>
+        <h1>{t('Volume pricing', 'التسعير حسب الكمية')}</h1>
         {canManage && (
           <Link href={`/${locale}/admin/combos/new`} className="btn btn--primary">
             <Icon as={Plus} size={16} style={{ marginInlineEnd: 'var(--space-2)' }} />
-            {t('New combo rule', 'قاعدة تجميع جديدة')}
+            {t('New volume pricing rule', 'قاعدة تسعير حسب الكمية جديدة')}
           </Link>
         )}
       </div>
@@ -143,7 +143,7 @@ export default function AdminCombosPage() {
       ) : isError ? (
         <EmptyState
           tone="alert"
-          title={t("Couldn't load combo rules", 'تعذّر تحميل قواعد التجميع')}
+          title={t("Couldn't load volume pricing rules", 'تعذّر تحميل قواعد التسعير حسب الكمية')}
           action={
             <Button variant="primary" onClick={() => refetch()}>
               {t('Retry', 'إعادة المحاولة')}
@@ -152,11 +152,11 @@ export default function AdminCombosPage() {
         />
       ) : (comboRules ?? []).length === 0 ? (
         <EmptyState
-          title={t('No combo rules yet', 'لا توجد قواعد تجميع بعد')}
+          title={t('No volume pricing rules yet', 'لا توجد قواعد تسعير حسب الكمية بعد')}
           action={
             canManage ? (
               <Link href={`/${locale}/admin/combos/new`} className="btn btn--primary">
-                {t('New combo rule', 'قاعدة تجميع جديدة')}
+                {t('New volume pricing rule', 'قاعدة تسعير حسب الكمية جديدة')}
               </Link>
             ) : undefined
           }
@@ -272,8 +272,8 @@ export default function AdminCombosPage() {
         onConfirm={() => void runDelete()}
         title={
           confirmDelete?.length === 1
-            ? t('Delete this combo rule?', 'حذف قاعدة التجميع هذه؟')
-            : t(`Delete ${confirmDelete?.length ?? 0} combo rules?`, `حذف ${confirmDelete?.length ?? 0} قواعد تجميع؟`)
+            ? t('Delete this volume pricing rule?', 'حذف قاعدة التسعير حسب الكمية هذه؟')
+            : t(`Delete ${confirmDelete?.length ?? 0} volume pricing rules?`, `حذف ${confirmDelete?.length ?? 0} قواعد تسعير حسب الكمية؟`)
         }
         body={t('This cannot be undone.', 'لا يمكن التراجع عن هذا.')}
         confirmLabel={t('Delete', 'حذف')}

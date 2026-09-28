@@ -1,6 +1,7 @@
 import { Prisma, type OrderItem } from '@prisma/client';
 import { AppError } from '../../lib/AppError';
 import { calculateKeptRefund, moneyCents, readPurchasePricing, type RefundCalculation } from '../../lib/return-pricing';
+import { assertBundleReturnsAvailable } from '../bundles/bundle-return-guard';
 
 export interface CalculatedReturnItem {
   orderItemID: string;
@@ -19,6 +20,7 @@ export async function createReturnRecords(
   reason: string | undefined,
   status: 'REQUESTED' | 'RECEIVED' = 'REQUESTED'
 ) {
+  await assertBundleReturnsAvailable(tx, orderID);
   for (const item of items) {
     await tx.orderItem.update({ where: { id: item.orderItemID }, data: { returnedQuantity: { increment: item.quantity } } });
   }
@@ -49,6 +51,7 @@ export async function createReturnRecords(
 export async function createWholeOrderReturn(
   tx: Prisma.TransactionClient, orderID: string, lines: OrderItem[], actorID?: string, reason = 'Whole-order return received'
 ) {
+  await assertBundleReturnsAvailable(tx, orderID);
   const items = lines.map((line) => {
     const snapshot = readPurchasePricing(line.priceBreakdown);
     if (line.returnedQuantity !== 0 || (snapshot && (snapshot.quantity !== line.quantity || snapshot.netLineTotalCents !== moneyCents(line.lineTotal)))) {

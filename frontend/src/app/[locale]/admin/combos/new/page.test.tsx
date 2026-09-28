@@ -66,7 +66,7 @@ describe('NewComboRulePage', () => {
     expect(screen.getByText('Range: 5+')).toBeInTheDocument();
     expect(screen.queryByLabelText('Max qty')).not.toBeInTheDocument();
     expect(screen.queryByText('Applies to all')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Add combo rule' }));
+    await user.click(screen.getByRole('button', { name: 'Add volume pricing rule' }));
     await waitFor(() => expect(mock.createComboRule).toHaveBeenCalledTimes(1));
     expect(mock.createComboRule).toHaveBeenCalledWith(expect.objectContaining({ productIds: ['p1'], appliesToAll: false,
       categoryTargets: [], collectionIds: [], tiers: [{ minQty: 3, price: 10 }, { minQty: 5, price: 8.1 }] }));
@@ -84,7 +84,7 @@ describe('NewComboRulePage', () => {
     const user = await fillTwoTiers();
     await user.clear(screen.getAllByLabelText('Min qty')[1]);
     await user.type(screen.getAllByLabelText('Min qty')[1], '3');
-    await user.click(screen.getByRole('button', { name: 'Add combo rule' }));
+    await user.click(screen.getByRole('button', { name: 'Add volume pricing rule' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Each band must have a different minimum quantity');
     expect(mock.createComboRule).not.toHaveBeenCalled();
   });
@@ -94,7 +94,7 @@ describe('NewComboRulePage', () => {
     await user.type(screen.getAllByLabelText('Price per unit ($)')[1], '8');
     expect(screen.getByText(/4 .*40.00; 5 .*40.00/)).toHaveTextContent('Total must strictly increase.');
     mock.createComboRule.mockRejectedValue(new Error('4 x $10.00 = $40.00; 5 x $8.00 = $40.00. Total must strictly increase.'));
-    await user.click(screen.getByRole('button', { name: 'Add combo rule' }));
+    await user.click(screen.getByRole('button', { name: 'Add volume pricing rule' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('4 x $10.00 = $40.00; 5 x $8.00 = $40.00');
     expect(push).not.toHaveBeenCalled();
   });

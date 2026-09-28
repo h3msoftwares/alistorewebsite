@@ -133,6 +133,13 @@ export function CartView({ locale }: { locale: Locale }) {
             </>
           )}
         </p>
+        {Boolean(data.bundles?.length) && <div className="stack">
+          {data.bundles?.map((bundle) => <p key={bundle.id}>{t('Bundle', 'باقة')}: {locale === 'ar' ? bundle.nameAr : bundle.nameEn} × {bundle.instanceCount}</p>)}
+          <p>{t('Bundle pricing', 'تسعير الباقة')}: {money(data.subtotal, locale)}</p>
+          <p>{t('Ordinary pricing', 'التسعير العادي')}: {money(data.ordinarySubtotal ?? data.subtotal, locale)}</p>
+          <p className="admin-form__hint">{t('Coupons use ordinary pricing. Bundle returns are not available yet.', 'تُستخدم القسائم مع التسعير العادي. إرجاع الباقات غير متاح حالياً.')}</p>
+          <Link className="btn btn--ghost btn--block" href={`/${locale}/checkout?pricingMode=COUPON`}>{t('Choose ordinary pricing / coupon', 'اختيار التسعير العادي / القسيمة')}</Link>
+        </div>}
         <Link className="btn btn--primary btn--block btn--lg" href={`/${locale}/checkout`}>
           {t('Proceed to checkout', 'متابعة الدفع')}
         </Link>
@@ -163,7 +170,7 @@ function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
   // discount); falls back to the base price for older payloads.
   const unitPrice = item.effectivePrice ?? Number(item.variant.price ?? product.price);
   const wasReduced = unitPrice < Number(product.price);
-  const lineTotal = unitPrice * item.quantity;
+  const lineTotal = item.lineTotal ?? unitPrice * item.quantity;
   const busy = quantityUpdate.isPending || remove.isPending;
 
   return (
@@ -203,12 +210,12 @@ function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
 
             <CartVariantPicker item={item} locale={locale} disabled={busy} />
 
-            <PriceTag
+            {item.bundleID ? <span>{t('Bundle pricing', 'تسعير الباقة')}</span> : <PriceTag
               price={unitPrice}
               compareAtPrice={wasReduced ? product.price : product.compareAtPrice}
               locale={locale}
               showBadge={false}
-            />
+            />}
           </span>
         </div>
       </td>

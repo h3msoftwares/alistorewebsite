@@ -31,6 +31,7 @@ import { mailRoutes } from './modules/mail/mail.routes';
 import { backupRoutes } from './modules/backup/backup.routes';
 import { promotionRoutes } from './modules/discounts/promotion.routes';
 import { comboRuleRoutes } from './modules/combos/combo-rule.routes';
+import { bundleRoutes } from './modules/bundles/bundle.routes';
 import { loyaltyRoutes } from './modules/loyalty/loyalty.routes';
 import emailTemplateRoutes from './modules/email-templates/email-templates.routes';
 
@@ -280,6 +281,7 @@ export function buildApp(
     promotionRoutes({ validateCouponRateLimit: opts.validateCouponRateLimit ?? env.NODE_ENV !== 'test' })
   );
   app.use('/api', comboRuleRoutes());
+  app.use('/api', bundleRoutes());
   app.use('/api', loyaltyRoutes());
 
   // 404 fallback

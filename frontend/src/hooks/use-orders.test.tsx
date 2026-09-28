@@ -149,7 +149,7 @@ describe('useDeliveryQuote', () => {
 
     rerender({ region: 'BEIRUT' });
     await waitFor(() => expect(result.current.data?.total).toBe(43));
-    expect(mockOrders.getDeliveryQuote).toHaveBeenCalledWith('BEIRUT');
+    expect(mockOrders.getDeliveryQuote).toHaveBeenCalledWith('BEIRUT', undefined, undefined);
   });
 });
 

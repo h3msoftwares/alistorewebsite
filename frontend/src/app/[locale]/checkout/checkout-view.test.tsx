@@ -33,6 +33,7 @@ vi.mock('@/lib/api', async (importActual) => {
     ...actual,
     cartApi: { getCart: vi.fn() },
     ordersApi: { getDeliveryQuote: vi.fn(), checkout: vi.fn() },
+    discountsApi: { ...actual.discountsApi, validateCoupon: vi.fn() },
     accountApi: { listAddresses: vi.fn(), getProfile: vi.fn() },
     checkoutOtpApi: { requestOtp: vi.fn(), verifyOtp: vi.fn() },
   };
@@ -48,7 +49,7 @@ vi.mock('@/lib/use-delivery-region-options', async () => {
   };
 });
 
-import { cartApi, ordersApi, accountApi, checkoutOtpApi } from '@/lib/api';
+import { cartApi, ordersApi, accountApi, checkoutOtpApi, discountsApi } from '@/lib/api';
 const mockCart = vi.mocked(cartApi, true);
 const mockOrders = vi.mocked(ordersApi, true);
 const mockAccount = vi.mocked(accountApi, true);
@@ -132,7 +133,7 @@ describe('CheckoutView', () => {
 
     const governorate = await screen.findByRole('combobox', { name: /governorate/i });
     await user.selectOptions(governorate, 'MOUNT_LEBANON');
-    await waitFor(() => expect(mockOrders.getDeliveryQuote).toHaveBeenCalledWith('MOUNT_LEBANON'));
+    await waitFor(() => expect(mockOrders.getDeliveryQuote).toHaveBeenCalledWith('MOUNT_LEBANON', undefined, 'BUNDLE'));
     expect(await screen.findByText('$43.00')).toBeInTheDocument(); // total
     expect(screen.getByText('$3.00')).toBeInTheDocument(); // delivery line
   });
@@ -226,7 +227,7 @@ describe('CheckoutView', () => {
     // completed off-screen.
     expect(screen.queryByRole('button', { name: /send verification code/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Solve captcha' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Place order' })).not.toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Place order' })).not.toBeDisabled());
 
     await user.click(screen.getByRole('button', { name: 'Place order' }));
 
@@ -287,5 +288,32 @@ describe('CheckoutView', () => {
     expect(await screen.findByRole('textbox', { name: /street address/i })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /use a saved address/i }));
     await screen.findByText(/12 Rainbow St, Jounieh/);
+  });
+
+  it.each(['BUNDLE', 'COUPON'] as const)('shows both totals and submits only the selected %s plan', async (mode) => {
+    mockAccount.listAddresses.mockResolvedValue([savedAddress] as never);
+    mockCart.getCart.mockResolvedValue({ ...cart, subtotal: 80, ordinarySubtotal: 100, bundles: [{ id: 'b1', nameEn: 'Bundle', nameAr: 'باقة', instanceCount: 1 }] } as never);
+    vi.mocked(discountsApi.validateCoupon).mockResolvedValue({ code: 'SAVE10', type: 'AMOUNT', value: 10 } as never);
+    mockOrders.getDeliveryQuote.mockImplementation(async (_region, code, selected) => {
+      const bundle = { subtotal: 80, discountAmount: 0, deliveryFee: 3, total: 83, freeReason: null, items: [{ id: 'ci1', lineTotal: 80 }] };
+      const coupon = { subtotal: 100, discountAmount: code ? 10 : 0, deliveryFee: 3, total: code ? 93 : 103, freeReason: null, items: [{ id: 'ci1', lineTotal: 100 }] };
+      return { ...(selected === 'COUPON' ? coupon : bundle), pricingMode: selected, hasBundles: true, options: { bundle, coupon } } as never;
+    });
+    const user = userEvent.setup();
+    renderAuthed();
+    await screen.findByRole('radio', { name: /Bundle pricing.*83/ });
+    await user.type(screen.getByRole('textbox', { name: 'Coupon code' }), 'SAVE10');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    const couponChoice = await screen.findByRole('radio', { name: /Ordinary pricing \+ coupon.*93/ });
+    expect(couponChoice).toBeChecked();
+    expect(screen.getByRole('radio', { name: /Bundle pricing.*83/ })).toBeInTheDocument();
+    if (mode === 'BUNDLE') await user.click(screen.getByRole('radio', { name: /Bundle pricing/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Place order' })).not.toBeDisabled());
+    await user.click(screen.getByRole('button', { name: 'Place order' }));
+    await waitFor(() => expect(mockOrders.checkout).toHaveBeenCalled());
+    expect(mockOrders.checkout.mock.calls[0][0]).toMatchObject({
+      pricingMode: mode, expectedSubtotal: mode === 'BUNDLE' ? 80 : 100,
+      expectedTotal: mode === 'BUNDLE' ? 83 : 93, couponCode: mode === 'COUPON' ? 'SAVE10' : undefined,
+    });
   });
 });

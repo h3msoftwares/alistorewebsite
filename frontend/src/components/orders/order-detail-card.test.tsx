@@ -81,6 +81,12 @@ describe('<OrderDetailCard> — totals', () => {
 });
 
 describe('<OrderDetailCard> — returns', () => {
+  it.each(['en', 'ar'] as const)('blocks the request UI and explains unavailable Bundle returns in %s', (locale) => {
+    const order = { ...baseOrder, items: baseOrder.items.map((item) => ({ ...item, priceBreakdown: { version: 3 } })) };
+    render(<OrderDetailCard locale={locale} order={order} onRequestReturn={vi.fn()} />);
+    expect(screen.getByText(locale === 'ar' ? 'إرجاع الباقات غير متاح حالياً. يرجى التواصل مع المتجر للمساعدة.' : "Bundle returns aren't available yet. Please contact the store for assistance.")).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: locale === 'ar' ? 'طلب إرجاع' : 'Request a return' })).not.toBeInTheDocument();
+  });
   it.each(['en', 'ar'] as const)('shows only paid goodwill with neutral wording and amount in %s', locale => {
     render(<OrderDetailCard locale={locale} order={{ ...baseOrder, goodwillRefunds: [
       { id: 'g1', amount: 10, status: 'PAID', reason: 'Private service dispute', payout: { payerName: 'Private cashier' } as never },

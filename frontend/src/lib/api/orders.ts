@@ -23,8 +23,8 @@ export function checkout(body: CheckoutBody) {
 }
 
 /** Live delivery-fee estimate for the caller's cart + chosen governorate. */
-export function getDeliveryQuote(region: string) {
-  return api.get<DeliveryQuote>('/api/orders/delivery-quote', { query: { region } });
+export function getDeliveryQuote(region: string, couponCode?: string, pricingMode?: 'BUNDLE' | 'COUPON') {
+  return api.get<DeliveryQuote>('/api/orders/delivery-quote', { query: { region, couponCode, pricingMode } });
 }
 
 export function listMyOrders() {

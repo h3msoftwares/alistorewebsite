@@ -16,8 +16,8 @@ export async function checkoutHandler(req: Request, res: Response) {
 
 export async function deliveryQuoteHandler(req: Request, res: Response) {
   const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.[GUEST_CART_COOKIE] };
-  const { region } = (req.validatedQuery ?? {}) as { region: string };
-  res.json(await orderService.getDeliveryQuote(owner, region));
+  const { region, couponCode, pricingMode } = (req.validatedQuery ?? {}) as { region: string; couponCode?: string; pricingMode?: 'BUNDLE' | 'COUPON' };
+  res.json(await orderService.getDeliveryQuote(owner, region, { couponCode, pricingMode }));
 }
 
 export async function listMyOrdersHandler(req: Request, res: Response) {

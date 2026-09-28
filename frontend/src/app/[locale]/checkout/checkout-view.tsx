@@ -162,7 +162,7 @@ interface FormValues {
   deliveryNotes?: string;
 }
 
-export function CheckoutView({ locale }: { locale: Locale }) {
+export function CheckoutView({ locale, initialPricingMode = 'BUNDLE' }: { locale: Locale; initialPricingMode?: 'BUNDLE' | 'COUPON' }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const money = (n: number) => formatCurrency(n, locale);
@@ -214,6 +214,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
   // server re-validates and computes the authoritative discount.
   const [couponInput, setCouponInput] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<ResolvedCoupon | null>(null);
+  const [pricingMode, setPricingMode] = useState<'BUNDLE' | 'COUPON'>(initialPricingMode);
   const [couponError, setCouponError] = useState<string | null>(null);
   const [couponBusy, setCouponBusy] = useState(false);
   const applyCoupon = async () => {
@@ -223,6 +224,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
     setCouponError(null);
     try {
       setAppliedCoupon(await discountsApi.validateCoupon(code));
+      setPricingMode('COUPON');
     } catch {
       setAppliedCoupon(null);
       setCouponError(t('That code is not valid.', 'هذا الرمز غير صالح.'));
@@ -232,6 +234,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
   };
   const clearCoupon = () => {
     setAppliedCoupon(null);
+    setPricingMode('BUNDLE');
     setCouponInput('');
     setCouponError(null);
   };
@@ -269,23 +272,24 @@ export function CheckoutView({ locale }: { locale: Locale }) {
     ? selectedAddress?.region || pickRegion || null
     : formRegion ?? null;
 
-  const quote = useDeliveryQuote(region);
-  const subtotal = cart.data?.subtotal ?? 0;
+  const cartSignature = JSON.stringify([cart.data?.subtotal, cart.data?.items.map((i) => [i.variantID, i.quantity])]);
+  const quote = useDeliveryQuote(region, appliedCoupon?.code, pricingMode, cartSignature);
+  const subtotal = quote.data?.subtotal ?? (pricingMode === 'COUPON' ? cart.data?.ordinarySubtotal ?? cart.data?.subtotal : cart.data?.subtotal) ?? 0;
   const deliveryFee = quote.data?.deliveryFee ?? null;
-  const couponDiscount = appliedCoupon ? couponAmountOff(appliedCoupon, subtotal) : 0;
-  const total = Math.round(((quote.data?.total ?? subtotal) - couponDiscount) * 100) / 100;
+  const couponDiscount = quote.data?.discountAmount ?? (pricingMode === 'COUPON' && appliedCoupon ? couponAmountOff(appliedCoupon, subtotal) : 0);
+  const total = quote.data?.options ? quote.data.total : Math.round(((quote.data?.total ?? subtotal) - couponDiscount) * 100) / 100;
   const busy = checkout.isPending;
 
   const guestEmailWatched = useWatch({ control, name: 'guestEmail' });
   const otpEmail = (guest ? guestEmailWatched : profile.data?.email) ?? '';
   const otpRequired = guest || !profile.data?.emailVerified;
   const otpVerified = !otpRequired || (Boolean(emailVerifyToken) && verifiedEmail === otpEmail);
-  const canPlaceOrder = !busy && otpVerified;
+  const canPlaceOrder = !busy && otpVerified && !quote.isFetching && !quote.isError;
 
   const place = async (body: CheckoutBody) => {
     setError(null);
     try {
-      setPlaced(await checkout.mutateAsync({ ...body, expectedSubtotal: subtotal }));
+      setPlaced(await checkout.mutateAsync({ ...body, pricingMode, expectedSubtotal: subtotal, ...(quote.data?.options ? { expectedTotal: total } : {}) }));
     } catch (e) {
       if (isApiError(e)) {
         if (e.code === 'CONFLICT' && (e.meta as { reason?: string } | undefined)?.reason === 'PRICE_CHANGED') {
@@ -293,6 +297,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
           // summary (and the expectedSubtotal on the next attempt) reflects
           // reality, rather than repeating the same rejected request.
           await cart.refetch();
+          await quote.refetch();
           setError(
             t(
               'Prices changed since you added these items. Review your order below and place it again.',
@@ -322,7 +327,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
         ? { guestEmail: v.guestEmail || undefined }
         : { saveAddress: true, guestEmail: profile.data?.email || undefined }),
       emailVerifyToken,
-      couponCode: appliedCoupon?.code,
+      couponCode: pricingMode === 'COUPON' ? appliedCoupon?.code : undefined,
     })
   );
 
@@ -342,7 +347,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
       deliveryNotes: pickNotes.trim() || a.notes || undefined,
       guestEmail: profile.data?.email || undefined,
       emailVerifyToken,
-      couponCode: appliedCoupon?.code,
+      couponCode: pricingMode === 'COUPON' ? appliedCoupon?.code : undefined,
     });
   };
 
@@ -613,7 +618,7 @@ export function CheckoutView({ locale }: { locale: Locale }) {
                     <span>
                       {(isAr ? p.nameAr : p.nameEn)} × {i.quantity}
                     </span>
-                    <span className="is-numeric" lang="en">{money(unit * i.quantity)}</span>
+                    <span className="is-numeric" lang="en">{money((pricingMode === 'COUPON' ? quote.data?.options?.coupon : quote.data?.options?.bundle)?.items?.find((line) => line.id === i.id)?.lineTotal ?? i.lineTotal ?? unit * i.quantity)}</span>
                   </li>
                 );
               })}
@@ -648,6 +653,13 @@ export function CheckoutView({ locale }: { locale: Locale }) {
               )}
             </div>
             {couponError && <p className="admin-form__hint" role="alert">{couponError}</p>}
+            {quote.isError && <Alert tone="danger">{t('Could not update pricing. Retry before placing your order.', 'تعذّر تحديث الأسعار. أعد المحاولة قبل تأكيد الطلب.')} <Button type="button" variant="ghost" onClick={() => void quote.refetch()}>{t('Retry', 'إعادة المحاولة')}</Button></Alert>}
+            {quote.data?.hasBundles && quote.data.options && <fieldset className="stack">
+              <legend>{t('Choose pricing', 'اختر طريقة التسعير')}</legend>
+              <label><input type="radio" name="pricing-mode" checked={pricingMode === 'BUNDLE'} onChange={() => setPricingMode('BUNDLE')} /> {t('Bundle pricing', 'تسعير الباقة')} — {money(quote.data.options.bundle.total)}</label>
+              <label><input type="radio" name="pricing-mode" checked={pricingMode === 'COUPON'} onChange={() => setPricingMode('COUPON')} /> {appliedCoupon ? t('Ordinary pricing + coupon', 'التسعير العادي مع القسيمة') : t('Ordinary pricing', 'التسعير العادي')} — {money(quote.data.options.coupon.total)}</label>
+              <p className="admin-form__hint">{t('Bundles and coupons cannot be combined. Bundle returns are not available yet.', 'لا يمكن الجمع بين الباقات والقسائم. إرجاع الباقات غير متاح حالياً.')}</p>
+            </fieldset>}
 
             <div className="checkout__row">
               <span>{t('Subtotal', 'المجموع الفرعي')}</span>

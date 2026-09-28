@@ -37,6 +37,8 @@ export const checkoutSchema = z.object({
   // Optional coupon code. If present it must resolve to an active, in-window
   // coupon (checked in order.service.ts) or the checkout is rejected.
   couponCode: z.string().trim().min(1).max(40).optional(),
+  pricingMode: z.enum(['BUNDLE', 'COUPON']).optional(),
+  expectedTotal: z.number().nonnegative().optional(),
   // The merchandise subtotal the client's cart view last showed the shopper
   // (GET /api/cart's own `subtotal`, same lineUnitPrice computation as here).
   // Optional — omitted by direct API callers — but when present,
@@ -51,6 +53,8 @@ export const checkoutSchema = z.object({
 // caller's current cart.
 export const deliveryQuoteQuerySchema = z.object({
   region: regionName,
+  couponCode: z.string().trim().min(1).max(40).optional(),
+  pricingMode: z.enum(['BUNDLE', 'COUPON']).optional(),
 });
 
 const orderStatus = z.enum([

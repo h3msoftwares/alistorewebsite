@@ -64,7 +64,7 @@ export default function EditComboRulePage() {
   if (!comboRule) {
     return (
       <div className="section--tight">
-        <EmptyState tone="alert" title={t("Couldn't find this combo rule", 'تعذّر إيجاد قاعدة التجميع هذه')} />
+        <EmptyState tone="alert" title={t("Couldn't find this volume pricing rule", 'تعذّر إيجاد قاعدة التسعير حسب الكمية هذه')} />
       </div>
     );
   }
@@ -72,8 +72,8 @@ export default function EditComboRulePage() {
   if (comboRule.pricingModel === 'LEGACY_GROUP_TOTAL') {
     return <div className="section--tight stack">
       <h1>{isAr ? comboRule.nameAr : comboRule.nameEn}</h1>
-      <Alert>{t('This legacy flat-price draft is preserved unchanged and does not apply to carts. Create a new volume pricing rule with reviewed per-unit rates.', 'هذه المسودة القديمة محفوظة دون تعديل ولا تُطبق على السلة. أنشئ قاعدة جديدة بأسعار مدروسة لكل وحدة.')}</Alert>
-      <Link href={`/${locale}/admin/combos/new`} className="btn btn--primary">{t('New combo rule', 'قاعدة جديدة')}</Link>
+      <Alert>{t('This legacy flat-price draft is preserved unchanged and does not apply to carts. Create a new volume pricing rule with reviewed per-unit rates.', 'هذه المسودة القديمة محفوظة دون تعديل ولا تُطبق على السلة. أنشئ قاعدة تسعير حسب الكمية جديدة بأسعار مدروسة لكل وحدة.')}</Alert>
+      <Link href={`/${locale}/admin/combos/new`} className="btn btn--primary">{t('New volume pricing rule', 'قاعدة تسعير حسب الكمية جديدة')}</Link>
       <Link href={`/${locale}/admin/combos`} className="btn btn--ghost">{t('Back to list', 'العودة للقائمة')}</Link>
     </div>;
   }

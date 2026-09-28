@@ -663,6 +663,9 @@ export async function hardDeleteProduct(id: string) {
   if (!existing.deletedAt) {
     throw new AppError('CONFLICT', 'Archive the product before deleting it permanently.');
   }
+  if (await prisma.bundleComponent.count({ where: { variant: { productID: id } } })) {
+    throw new AppError('CONFLICT', 'Remove this product from its Bundle recipes before deleting it permanently.');
+  }
   const inOrder = await prisma.orderItem.count({ where: { variant: { productID: id } } });
   if (inOrder > 0) {
     throw new AppError('CONFLICT', 'Cannot delete a product that appears in past orders. Keep it archived.');
@@ -789,6 +792,9 @@ export async function updateVariant(
 
 export async function deleteVariant(productId: string, variantId: string) {
   await getVariantOrThrow(productId, variantId);
+  if (await prisma.bundleComponent.count({ where: { variantID: variantId } })) {
+    throw new AppError('CONFLICT', 'Cannot delete a SKU used by a Bundle recipe. Remove it from the recipe first.');
+  }
   const inOrder = await prisma.orderItem.count({ where: { variantID: variantId } });
   if (inOrder > 0) {
     throw new AppError('CONFLICT', 'Cannot delete a variant that appears in past orders');
@@ -835,6 +841,9 @@ export async function setVariants(productId: string, input: BulkSetVariantsInput
   const incomingIds = new Set(input.filter((v) => v.id).map((v) => v.id as string));
   const toDelete = existing.filter((v) => !incomingIds.has(v.id));
   if (toDelete.length) {
+    if (await prisma.bundleComponent.count({ where: { variantID: { in: toDelete.map((v) => v.id) } } })) {
+      throw new AppError('CONFLICT', 'Cannot remove a SKU used by a Bundle recipe. Remove it from the recipe first.');
+    }
     const stillOrdered = await prisma.orderItem.count({
       where: { variantID: { in: toDelete.map((v) => v.id) } },
     });

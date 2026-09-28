@@ -61,7 +61,7 @@ beforeEach(() => {
 });
 
 describe('AdminCombosPage (list)', () => {
-  it('lists combo rules, showing their tier schedule, each linking to its own edit page', async () => {
+  it('lists volume pricing rules, showing their tier schedule, each linking to its own edit page', async () => {
     renderPage();
     expect(await screen.findByText('Volume')).toBeInTheDocument();
     expect(screen.getByRole('cell', { name: '1 product(s)' })).toBeInTheDocument();
@@ -69,14 +69,14 @@ describe('AdminCombosPage (list)', () => {
     expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/en/admin/combos/r1');
   });
 
-  it('links "New combo rule" to the create page only when the user can manage combos', async () => {
+  it('links "New volume pricing rule" to the create page only when the user can manage combos', async () => {
     renderPage({ permissions: ['combos:view'] });
     await screen.findByText('Volume');
-    expect(screen.queryByRole('link', { name: /New combo rule/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /New volume pricing rule/ })).not.toBeInTheDocument();
 
     renderPage({ permissions: ['combos:view', 'combos:manage'] });
     await screen.findAllByText('Volume');
-    expect(screen.getAllByRole('link', { name: /New combo rule/ })[0]).toHaveAttribute(
+    expect(screen.getAllByRole('link', { name: /New volume pricing rule/ })[0]).toHaveAttribute(
       'href',
       '/en/admin/combos/new'
     );

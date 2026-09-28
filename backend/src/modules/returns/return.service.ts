@@ -13,6 +13,7 @@ import { findValidAccessToken } from '../orders/order.service';
 import { allocateRefundCents } from '../../lib/refund-allocation';
 import { updateReturnStatusSchema, type RefundMarkingInput } from './return.schema';
 import { recordCashPayout } from '../refunds/refund.service';
+import { assertBundleReturnsAvailable } from '../bundles/bundle-return-guard';
 
 export interface ReturnRequestItem {
   orderItemID: string;
@@ -45,6 +46,7 @@ async function prepareReturn(tx: Prisma.TransactionClient, orderId: string, item
   await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${orderId}::uuid FOR UPDATE`;
   const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
+  await assertBundleReturnsAvailable(tx, orderId);
   if (order.status !== 'DELIVERED') throw new AppError('CONFLICT', 'Only delivered orders can have a return requested');
   if (!items.length || new Set(items.map((i) => i.orderItemID)).size !== items.length) {
     throw new AppError('VALIDATION_ERROR', 'Select each order line once');

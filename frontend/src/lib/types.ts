@@ -459,6 +459,8 @@ export interface CartItem {
   /** Effective unit price the API computed for this line — variant override →
    *  product sale → catalog discount. Falls back to product pricing if absent. */
   effectivePrice?: number;
+  lineTotal?: number;
+  bundleID?: UUID | null;
   variant: ProductVariant & { product: Product };
 }
 
@@ -467,6 +469,9 @@ export interface CartItem {
 export interface CartView {
   items: CartItem[];
   subtotal: number;
+  ordinarySubtotal?: number;
+  bundleSavings?: number;
+  bundles?: { id: UUID; nameEn: string; nameAr: string; instanceCount: number; price: number }[];
 }
 
 // ---- Favourites ----
@@ -700,6 +705,8 @@ export interface CheckoutBody {
   emailVerifyToken?: string;
   /** Optional coupon code; rejected at checkout if not currently valid. */
   couponCode?: string;
+  pricingMode?: 'BUNDLE' | 'COUPON';
+  expectedTotal?: number;
   /** The cart's own `subtotal` as last fetched — lets the server detect a
    *  price change (e.g. an admin edit) since this was shown and reject
    *  instead of silently charging the new number. */
@@ -713,6 +720,23 @@ export interface DeliveryQuote {
   deliveryFee: number;
   total: number;
   freeReason: 'disabled' | 'threshold' | 'region' | null;
+  discountAmount?: number;
+  pricingMode?: 'BUNDLE' | 'COUPON';
+  hasBundles?: boolean;
+  options?: { bundle: PricingOption; coupon: PricingOption };
+  bundles?: { id: UUID; nameEn: string; nameAr: string; instanceCount: number }[];
+}
+
+export type PricingOption = Pick<DeliveryQuote, 'subtotal' | 'deliveryFee' | 'total' | 'freeReason'> & { discountAmount: number; items?: { id: UUID; lineTotal: number }[] };
+
+export interface BundleBody {
+  nameEn: string; nameAr: string; price: number; status: PromotionStatus;
+  startsAt: string | null; endsAt: string | null;
+  components: { variantID: UUID; quantity: number }[];
+}
+export interface Bundle extends Omit<BundleBody, 'price' | 'components'> {
+  id: UUID; price: Decimalish; dateCreated: string;
+  components: { variantID: UUID; quantity: number; variant: ProductVariant & { product: Pick<Product, 'id' | 'nameEn' | 'nameAr' | 'price' | 'isActive' | 'deletedAt'> } }[];
 }
 
 // ---- Auth / account ----

@@ -2,7 +2,7 @@ import { createWholeOrderReturn } from '../returns/return-records';
 import { merchandiseSummary } from '../../lib/merchandise-metrics';
 import { publicOrder } from '../../lib/public-return';
 import { indicatorsFromRecords, readReturnIndicators, withReturnIndicators, type OrderReturnFilter } from '../../lib/order-return-indicators';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
 import { AppError } from '../../lib/AppError';
@@ -20,7 +20,8 @@ import { activePromotions } from '../discounts/promotion.service';
 import { activeComboRules } from '../combos/combo-rule.service';
 import { resolveCoupon, couponAmountOff } from '../discounts/coupon.service';
 import { lineUnitPrice } from '../../lib/line-pricing';
-import { applyComboPricing, type ComboPricingLine } from '../../lib/combo-pricing';
+import { priceMerchandise, type BundlePricingLine } from '../../lib/bundle-pricing';
+import { activeBundles } from '../bundles/bundle.service';
 import { checkoutItemPrices } from '../../lib/checkout-pricing';
 import { PROMOTION_PRODUCT_INCLUDE, productCategoryPaths, productCollectionIds } from '../catalog/category-tree';
 import { round2 } from '../../lib/money';
@@ -67,6 +68,8 @@ interface CheckoutInput {
   emailVerifyToken?: string;
   /** Optional coupon code; must resolve to an active, in-window coupon. */
   couponCode?: string;
+  pricingMode?: 'BUNDLE' | 'COUPON';
+  expectedTotal?: number;
   /** The merchandise subtotal the client's cart view last showed the
    *  shopper. When present, checked against the freshly-computed subtotal
    *  below and the checkout rejected on mismatch — see the comment at that
@@ -197,14 +200,15 @@ async function loadDeliveryConfig(db: DbClient): Promise<DeliveryConfig> {
   return setting ? toDeliveryConfig(setting) : DISABLED_CONFIG;
 }
 
-async function loadCartSubtotal(db: DbClient, owner: CheckoutOwner): Promise<number> {
+async function loadCartPricing(db: DbClient, owner: CheckoutOwner) {
   const cart = await db.cart.findUnique({
     where: owner.userID ? { userID: owner.userID } : { sessionID: owner.sessionID! },
   });
-  if (!cart) return 0;
-  const [items, promotions, comboRules] = await Promise.all([
+  if (!cart) return priceMerchandise([], [], []);
+  const [items, promotions, comboRules, bundles] = await Promise.all([
     db.cartItem.findMany({
       where: { cartID: cart.id },
+      orderBy: { id: 'asc' },
       include: {
         variant: {
           select: {
@@ -224,39 +228,48 @@ async function loadCartSubtotal(db: DbClient, owner: CheckoutOwner): Promise<num
     }),
     activePromotions(undefined, db),
     activeComboRules(undefined, db),
+    activeBundles(undefined, db),
   ]);
-  // Same applyComboPricing() pass checkout() itself runs below, on the same
-  // activePromotions()/activeComboRules() fetch shape — this is what keeps
+  // Same priceMerchandise() pass checkout() itself runs below, on the same
+  // promotion, volume-pricing and Bundle inputs — this is what keeps
   // the GET /api/orders/delivery-quote estimate and checkout()'s own
   // recomputed subtotal from ever drifting apart (see the design plan's Q3).
-  const comboLines: ComboPricingLine[] = items.map((i) => ({
+  const comboLines: BundlePricingLine[] = items.map((i) => ({
     lineId: i.id,
+    variantID: i.variantID,
     productId: i.variant.product.id,
     categoryPaths: productCategoryPaths(i.variant.product),
     collectionIds: productCollectionIds(i.variant.product),
     quantity: i.quantity,
     individualUnitPrice: lineUnitPrice(i.variant, promotions),
   }));
-  return applyComboPricing(comboLines, comboRules).subtotal;
+  return priceMerchandise(comboLines, comboRules, bundles);
 }
 
 /** Live delivery-fee estimate for the caller's current cart + a chosen
  *  governorate. Powers the checkout form's order summary. */
-export async function getDeliveryQuote(owner: CheckoutOwner, region: string) {
+export async function getDeliveryQuote(owner: CheckoutOwner, region: string, choices: { couponCode?: string; pricingMode?: 'BUNDLE' | 'COUPON' } = {}) {
   if (!owner.userID && !owner.sessionID) {
     return { subtotal: 0, deliveryFee: 0, total: 0, freeReason: 'disabled' as const };
   }
-  const [subtotal, cfg] = await Promise.all([
-    loadCartSubtotal(prisma, owner),
+  const [pricing, cfg] = await Promise.all([
+    loadCartPricing(prisma, owner),
     loadDeliveryConfig(prisma),
   ]);
-  const { fee, freeReason } = resolveDeliveryFee(cfg, subtotal, region);
-  return {
-    subtotal,
-    deliveryFee: fee,
-    total: Math.round((subtotal + fee) * 100) / 100,
-    freeReason,
+  const quote = (subtotal: number, discountAmount: number, units: Map<string, number[]>) => {
+    const { fee, freeReason } = resolveDeliveryFee(cfg, subtotal, region);
+    const lines = [...units].map(([id, cents]) => ({ id, cents: cents.reduce((sum, unit) => sum + unit, 0) }));
+    return { subtotal, discountAmount, deliveryFee: fee, total: round2(subtotal - discountAmount + fee), freeReason,
+      items: lines.map((line) => ({ id: line.id, lineTotal: line.cents / 100 })) };
   };
+  const bundle = quote(pricing.subtotal, 0, pricing.lineUnitPricesCents);
+  const coupon = choices.couponCode ? await resolveCoupon(choices.couponCode) : null;
+  if (choices.couponCode && !coupon) throw new AppError('VALIDATION_ERROR', 'That coupon code is not valid.');
+  const ordinary = quote(pricing.ordinarySubtotal, coupon ? couponAmountOff(coupon, pricing.ordinarySubtotal) : 0, pricing.ordinaryLineUnitPricesCents);
+  const mode = choices.pricingMode ?? (choices.couponCode ? 'COUPON' : 'BUNDLE');
+  return { ...(mode === 'COUPON' ? ordinary : bundle), pricingMode: mode,
+    options: { bundle, coupon: ordinary }, hasBundles: pricing.appliedBundles.length > 0,
+    bundles: pricing.appliedBundles.map(({ id, nameEn, nameAr, instanceCount }) => ({ id, nameEn, nameAr, instanceCount })) };
 }
 
 /** Creates a COD order from whatever is currently in the cart, snapshotting
@@ -439,19 +452,23 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     // onto each OrderItem below so the order stays correct even if a
     // promotion or combo rule later changes. `tx` — same pool reason as the
     // blacklist check above.
-    const [promotions, comboRules] = await Promise.all([
+    const [promotions, comboRules, bundles] = await Promise.all([
       activePromotions(new Date(), tx),
       activeComboRules(new Date(), tx),
+      activeBundles(new Date(), tx),
     ]);
-    const comboLines: ComboPricingLine[] = cartItems.map((i) => ({
+    const comboLines: BundlePricingLine[] = cartItems.map((i) => ({
       lineId: i.id,
+      variantID: i.variantID,
       productId: i.variant.product.id,
       categoryPaths: productCategoryPaths(i.variant.product),
       collectionIds: productCollectionIds(i.variant.product),
       quantity: i.quantity,
       individualUnitPrice: lineUnitPrice(i.variant, promotions),
     }));
-    const priced = applyComboPricing(comboLines, comboRules);
+    const mode = input.pricingMode ?? (input.couponCode ? 'COUPON' : 'BUNDLE');
+    if (mode === 'BUNDLE' && input.couponCode) throw new AppError('VALIDATION_ERROR', 'Bundle pricing and coupons cannot be combined', { reason: 'BUNDLE_COUPON_EXCLUSIVE' });
+    const priced = priceMerchandise(comboLines, comboRules, bundles, mode !== 'COUPON');
     const subtotal = priced.subtotal;
 
     // If the client told us what subtotal its cart view last showed the
@@ -526,6 +543,10 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
     }
     const { fee: deliveryFee } = resolveDeliveryFee(cfg, subtotal, input.deliveryRegion);
     const total = round2(subtotal - discountAmount + deliveryFee);
+    if (input.expectedTotal != null && round2(input.expectedTotal) !== total) {
+      throw new AppError('CONFLICT', 'Prices in your cart changed since you last viewed it. Please review your order and try again.',
+        { reason: 'PRICE_CHANGED', expectedTotal: input.expectedTotal, actualTotal: total });
+    }
 
     // Automatic order-velocity soft-flag: counts every existing order in the
     // trailing window for this phone/email/IP (regardless of status — a
@@ -568,6 +589,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       );
     }
 
+    const orderItemIDs = new Map(cartItems.map((item) => [item.id, randomUUID()]));
     const order = await tx.order.create({
       data: {
         orderNumber: await generateUniqueOrderNumber(tx),
@@ -594,6 +616,7 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
         items: {
           create: cartItems.map((i) => {
             return {
+              id: orderItemIDs.get(i.id)!,
               variantID: i.variantID,
               productName: i.variant.product.nameEn,
               productSKU: i.variant.product.sku,
@@ -609,6 +632,18 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
       },
       include: { items: true },
     });
+
+    for (const bundle of priced.appliedBundles) {
+      await tx.orderBundle.create({ data: {
+        orderID: order.id, bundleID: bundle.id, nameEn: bundle.nameEn, nameAr: bundle.nameAr,
+        flatPrice: (bundle.priceCents / 100).toFixed(2), instanceCount: bundle.instanceCount,
+        components: { create: bundle.components.map((c) => ({
+          orderItemID: orderItemIDs.get(c.lineId)!, variantID: c.variantID,
+          requiredQuantity: c.quantity, bundledQuantity: c.unitIndices.length,
+          individualPrice: (c.individualPriceCents / 100).toFixed(2), unitIndices: c.unitIndices,
+        })) },
+      } });
+    }
 
     // Coupon redemption (V2b). The global cap is claimed with an atomic
     // guarded increment — same shape as the stock claim: the predicate and

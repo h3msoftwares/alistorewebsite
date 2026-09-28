@@ -118,7 +118,8 @@ export function OrderDetailCard({
     .flatMap((r) => r.items.map((i) => i.orderItemID)));
 
   const returnableItems = order.items.filter((i) => i.quantity - i.returnedQuantity > 0 && !(affected(i) && unresolved.has(i.id)));
-  const canRequestReturn = Boolean(onRequestReturn) && order.status === 'DELIVERED' && returnableItems.length > 0;
+  const bundleReturnBlocked = order.items.some((item) => item.priceBreakdown?.version === 3);
+  const canRequestReturn = !bundleReturnBlocked && Boolean(onRequestReturn) && order.status === 'DELIVERED' && returnableItems.length > 0;
   const selectedItems = returnableItems.filter((i) => selectedQty[i.id] > 0)
     .map((i) => ({ orderItemID: i.id, quantity: Math.min(selectedQty[i.id], i.quantity - i.returnedQuantity) }));
 
@@ -296,6 +297,7 @@ export function OrderDetailCard({
         </div>
       )}
 
+      {bundleReturnBlocked && order.status === 'DELIVERED' && <Alert>{t("Bundle returns aren't available yet. Please contact the store for assistance.", 'إرجاع الباقات غير متاح حالياً. يرجى التواصل مع المتجر للمساعدة.')}</Alert>}
       {canRequestReturn && (
         <div className="stack" style={{ marginBlockStart: 'var(--space-4)' }}>
           {!showReturnForm ? (

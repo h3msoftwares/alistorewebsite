@@ -59,10 +59,10 @@ export function useReturnWorkSummary(enabled = true) {
 
 /** Live delivery-fee estimate for the current cart + a chosen governorate;
  *  idle until a region is picked. */
-export function useDeliveryQuote(region: string | null) {
+export function useDeliveryQuote(region: string | null, couponCode?: string, pricingMode?: 'BUNDLE' | 'COUPON', cartSignature?: string) {
   return useQuery({
-    queryKey: ['orders', 'delivery-quote', region],
-    queryFn: () => ordersApi.getDeliveryQuote(region!),
+    queryKey: ['orders', 'delivery-quote', region, couponCode ?? null, pricingMode ?? null, cartSignature ?? null],
+    queryFn: () => ordersApi.getDeliveryQuote(region!, couponCode, pricingMode),
     enabled: Boolean(region),
     staleTime: 60_000,
   });

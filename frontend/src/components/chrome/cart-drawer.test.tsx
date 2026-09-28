@@ -85,6 +85,16 @@ const renderDrawer = (props: Partial<{ open: boolean; onClose: () => void; local
 
 beforeEach(() => vi.clearAllMocks());
 
+it('shows exact bundle line cents and both pricing choices in the drawer', async () => {
+  mock.getCart.mockResolvedValue({ ...cart([makeItem({ quantity: 3, effectivePrice: 26, lineTotal: 78.01, bundleID: 'b1' })], 110.01), ordinarySubtotal: 130,
+    bundles: [{ id: 'b1', nameEn: 'Starter', nameAr: 'باقة', instanceCount: 1 }] } as never);
+  renderDrawer();
+  expect(await screen.findByText(/Bundle pricing — line total:.*78\.01/)).toBeInTheDocument();
+  expect(screen.queryByText('$26.00')).not.toBeInTheDocument();
+  expect(screen.getByText(/Ordinary pricing.*130\.00/)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Choose ordinary pricing / coupon' })).toHaveAttribute('href', '/en/checkout?pricingMode=COUPON');
+});
+
 describe('<CartDrawer>', () => {
   it('reflects the open/closed prop via the shared Drawer\'s aria-hidden', async () => {
     mock.getCart.mockResolvedValue(cart([], 0) as never);

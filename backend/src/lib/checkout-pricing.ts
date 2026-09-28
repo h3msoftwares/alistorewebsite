@@ -2,10 +2,16 @@ import type { ComboPricingResult } from './combo-pricing';
 import { allocateCents } from './allocate-cents';
 import { round2 } from './money';
 import type { PurchasePricingSnapshot } from './return-pricing';
+import type { BundlePricingResult, BundleUnit } from './bundle-pricing';
 
 /** Versioned checkout snapshot. Unit array indexes are stable allocation
  * positions, not physical item identifiers. Null on legacy OrderItems. */
-export type OrderItemPriceBreakdown = PurchasePricingSnapshot;
+export type BundlePurchasePricingSnapshot = {
+  version: 3; pricingModel: 'BUNDLE'; bundleID: string; quantity: number;
+  individualUnitPriceCents: number; beforeCouponLineTotalCents: number;
+  couponDiscountCents: 0; netLineTotalCents: number; unitPricesCents: number[]; units: BundleUnit[];
+};
+export type OrderItemPriceBreakdown = PurchasePricingSnapshot | BundlePurchasePricingSnapshot;
 
 type ItemPrices = {
   unitPrice: number;
@@ -26,6 +32,8 @@ export function checkoutItemPrices(priced: ComboPricingResult, discountAmount: n
   }
   const discountCents = Math.round(round2(discountAmount) * 100);
   if (discountCents < 0 || discountCents > subtotalCents) throw new Error('Coupon exceeds merchandise amount');
+  const bundlePricing = 'appliedBundles' in priced ? priced as BundlePricingResult : null;
+  if (bundlePricing?.appliedBundles.length && discountCents) throw new Error('Bundles and coupons are mutually exclusive');
   const discounts = allocateCents(discountCents, lineCents);
   return new Map(lines.map(([lineId, units], index) => {
     const unitDiscounts = allocateCents(discounts[index], units);
@@ -36,7 +44,12 @@ export function checkoutItemPrices(priced: ComboPricingResult, discountAmount: n
       // value to reconstruct a partial or full line's exact paid amount.
       unitPrice: round2(lineTotal / units.length),
       lineTotal,
-      priceBreakdown: {
+      priceBreakdown: bundlePricing?.bundleUnits.has(lineId) ? {
+        version: 3, pricingModel: 'BUNDLE', bundleID: bundlePricing.bundleUnits.get(lineId)![0].bundleID,
+        quantity: units.length, individualUnitPriceCents: priced.linePricingBasis.get(lineId)!.individualUnitPriceCents,
+        beforeCouponLineTotalCents: lineCents[index], couponDiscountCents: 0,
+        netLineTotalCents: lineCents[index], unitPricesCents, units: bundlePricing.bundleUnits.get(lineId)!,
+      } : {
         ...priced.linePricingBasis.get(lineId)!, version: 2,
         beforeCouponLineTotalCents: lineCents[index], couponDiscountCents: discounts[index],
         netLineTotalCents: lineCents[index] - discounts[index], unitPricesCents,

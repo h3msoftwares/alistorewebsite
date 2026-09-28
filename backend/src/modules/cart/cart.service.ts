@@ -3,7 +3,8 @@ import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { round2 } from '../../lib/money';
 import { lineUnitPrice } from '../../lib/line-pricing';
-import { applyComboPricing, type ComboPricingLine } from '../../lib/combo-pricing';
+import { priceMerchandise, type BundlePricingLine } from '../../lib/bundle-pricing';
+import { activeBundles } from '../bundles/bundle.service';
 import { activePromotions } from '../discounts/promotion.service';
 import { activeComboRules } from '../combos/combo-rule.service';
 import { PROMOTION_PRODUCT_INCLUDE, productCategoryPaths, productCollectionIds } from '../catalog/category-tree';
@@ -51,7 +52,7 @@ async function getOrCreateCart(owner: CartOwner) {
 
 export async function getCart(owner: CartOwner) {
   const cart = await getOrCreateCart(owner);
-  const [rows, promotions, comboRules] = await Promise.all([
+  const [rows, promotions, comboRules, bundles] = await Promise.all([
     prisma.cartItem.findMany({
       where: { cartID: cart.id },
       // `variants: true` lets the cart page/drawer build a size/color picker
@@ -71,27 +72,33 @@ export async function getCart(owner: CartOwner) {
     }),
     activePromotions(),
     activeComboRules(),
+    activeBundles(),
   ]);
 
   // Existing variant/sale/promotion price, which the volume band must beat.
-  const comboLines: ComboPricingLine[] = rows.map((i) => ({
+  const comboLines: BundlePricingLine[] = rows.map((i) => ({
     lineId: i.id,
+    variantID: i.variantID,
     productId: i.variant.product.id,
     categoryPaths: productCategoryPaths(i.variant.product),
     collectionIds: productCollectionIds(i.variant.product),
     quantity: i.quantity,
     individualUnitPrice: lineUnitPrice(i.variant, promotions),
   }));
-  const priced = applyComboPricing(comboLines, comboRules);
+  const priced = priceMerchandise(comboLines, comboRules, bundles);
 
-  // Every unit in the variant line now has the same effective band or
-  // individual price. Coupon allocation happens later at checkout.
+  // Compatibility average only: bundle and surplus units can have different
+  // cent allocations. Displays must use lineTotal, never average * quantity.
   const items = rows.map((i) => ({
     ...i,
     effectivePrice: round2(priced.lineTotals.get(i.id)! / i.quantity),
+    lineTotal: priced.lineTotals.get(i.id)!,
+    bundleID: priced.bundleUnits.get(i.id)?.[0]?.bundleID ?? null,
     comboRuleId: priced.lineComboRuleIds.get(i.id) ?? null,
   }));
-  return { items, subtotal: priced.subtotal, comboSavings: priced.comboSavings };
+  return { items, subtotal: priced.subtotal, comboSavings: priced.comboSavings,
+    ordinarySubtotal: priced.ordinarySubtotal, bundleSavings: priced.bundleSavings,
+    bundles: priced.appliedBundles.map(({ id, nameEn, nameAr, instanceCount, priceCents }) => ({ id, nameEn, nameAr, instanceCount, price: priceCents / 100 })) };
 }
 
 export async function addItem(owner: CartOwner, variantId: string, quantity: number) {

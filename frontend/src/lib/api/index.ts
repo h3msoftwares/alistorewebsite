@@ -11,6 +11,7 @@ export * as settingsApi from './settings';
 export * as pushApi from './push';
 export * as discountsApi from './discounts';
 export * as combosApi from './combos';
+export * as bundlesApi from './bundles';
 export * as loyaltyApi from './loyalty';
 export * as rbacApi from './rbac';
 export * as customersApi from './customers';
