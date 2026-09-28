@@ -43,7 +43,7 @@ async function deliveredOrder(quantity = 4) {
     await request(app)
     .patch(`/api/admin/orders/${orderId}/status`)
     .set(bearer(admin.token))
-    .send({ status }).expect(200);
+    .send({ status, ...(status === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}) }).expect(200);
   }
   await collectTestOrder(orderId, admin.user.id);
   return { buyer, admin, orderId, orderItemId, orderNumber };
@@ -63,7 +63,7 @@ async function advanceReturn(returnId: string, adminToken: string, statuses: str
     const res = await request(app)
       .patch(`/api/admin/returns/${returnId}/status`)
       .set(bearer(adminToken))
-      .send({ status });
+      .send({ status, ...(status === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}) });
     expect(res.status).toBe(200);
   }
 }
@@ -180,7 +180,7 @@ describe('Per-item returns', () => {
       const res = await request(app)
         .patch(`/api/admin/returns/${returnId}/status`)
         .set(bearer(admin.token))
-        .send({ status });
+        .send({ status, ...(status === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}) });
       expect(res.status).toBe(200);
       expect(res.body.return.status).toBe(status);
     }
@@ -194,7 +194,7 @@ describe('Per-item returns', () => {
     const refunded = await request(app)
       .patch(`/api/admin/returns/${returnId}/status`)
       .set(bearer(admin.token))
-      .send({ status: 'REFUNDED' });
+      .send({ payout: { payerName: 'Test cashier' }, status: 'REFUNDED' });
     expect(refunded.status).toBe(200);
 
     // Bookkeeping only — the order's own paymentStatus is untouched, and

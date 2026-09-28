@@ -32,6 +32,9 @@ import returnRoutes from '../returns/return.routes';
 import { createReturnSchema } from '../returns/return.schema';
 import { adminRequestReturnHandler, adminPreviewReturnHandler } from '../returns/return.controller';
 import notificationRoutes from '../notifications/notification.routes';
+import { cashPayoutSchema, createGoodwillSchema, cancelGoodwillSchema, goodwillParamSchema } from '../refunds/refund.schema';
+import { createGoodwill, payGoodwill, cancelGoodwill, getRefundSummary } from '../refunds/refund.service';
+import { paramString } from '../../lib/params';
 
 const router = Router();
 
@@ -81,6 +84,20 @@ router.patch(
 );
 router.get('/orders/:id/collections', requireAnyPermission('payments:view', 'orders:view'),
   validate({ params: orderIdParamSchema }), asyncHandler(collectionSummaryHandler));
+router.get('/orders/:id/refunds', requirePermission('orders:view'),
+  validate({ params: orderIdParamSchema }), asyncHandler(async (req, res) => { res.json(await getRefundSummary(paramString(req.params.id))); }));
+router.post('/orders/:id/goodwill-refunds', requirePermission('refunds:manage'), requireFreshAuth(),
+  validate({ params: orderIdParamSchema, body: createGoodwillSchema }), asyncHandler(async (req, res) => {
+    res.status(201).json({ refund: await createGoodwill(paramString(req.params.id), req.body, req.user!.id) });
+  }));
+router.post('/orders/:id/goodwill-refunds/:goodwillId/pay', requirePermission('refunds:manage'), requireFreshAuth(),
+  validate({ params: goodwillParamSchema, body: cashPayoutSchema }), asyncHandler(async (req, res) => {
+    res.json({ refund: await payGoodwill(paramString(req.params.id), paramString(req.params.goodwillId), req.body, req.user!.id) });
+  }));
+router.post('/orders/:id/goodwill-refunds/:goodwillId/cancel', requirePermission('refunds:manage'), requireFreshAuth(),
+  validate({ params: goodwillParamSchema, body: cancelGoodwillSchema }), asyncHandler(async (req, res) => {
+    res.json({ refund: await cancelGoodwill(paramString(req.params.id), paramString(req.params.goodwillId), req.body, req.user!.id) });
+  }));
 router.patch(
   '/orders/:id/review',
   requirePermission('orders:manage'),

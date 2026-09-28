@@ -122,9 +122,11 @@ describe('COD Collection section', () => {
     const user = userEvent.setup(); show();
     await user.click(await screen.findByRole('button', { name: 'Mark refunded' }));
     expect(returnsApi.adminUpdateReturnStatus).not.toHaveBeenCalled();
+    await user.type(screen.getByLabelText('Paid by'), 'Cashier');
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Mark refunded' }));
     await waitFor(() => expect(returnsApi.adminUpdateReturnStatus).toHaveBeenCalledWith('r1', 'REFUNDED', {
       merchandiseRefundCents: 3000, refundAdjustmentReason: undefined, deliveryRefundCents: 0, deliveryRefundReason: undefined,
+      payout: { payerName: 'Cashier', paidOn: expect.any(String), reference: null, note: null },
     }));
   });
 });

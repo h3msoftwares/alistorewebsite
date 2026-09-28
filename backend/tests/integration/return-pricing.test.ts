@@ -27,7 +27,7 @@ async function purchase(quantity = 7, coupon = 0, sale: boolean | number = false
   const checkout = await request(app).post('/api/orders/checkout').set(bearer(buyer.token))
     .send({ ...delivery, ...(coupon ? { couponCode: 'REFUND' } : {}) }).expect(201);
   const order = checkout.body.order;
-  for (const status of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) await request(app).patch(`/api/admin/orders/${order.id}/status`).set(bearer(admin.token)).send({ status }).expect(200);
+  for (const status of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) await request(app).patch(`/api/admin/orders/${order.id}/status`).set(bearer(admin.token)).send({ status, ...(status === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}) }).expect(200);
   await collectTestOrder(order.id, admin.user.id);
   return { buyer, admin, product, rule, order, line: order.items[0] };
 }
@@ -36,7 +36,7 @@ const body = (p: Purchase, quantity: number) => ({ items: [{ orderItemID: p.line
 const submit = (p: Purchase, quantity: number) => request(app).post(`/api/orders/${p.order.id}/returns`).set(bearer(p.buyer.token)).send(body(p, quantity));
 const preview = (p: Purchase, quantity: number) => request(app).post(`/api/orders/${p.order.id}/returns/preview`).set(bearer(p.buyer.token)).send(body(p, quantity));
 async function advance(p: Purchase, id: string, statuses = ['APPROVED', 'IN_TRANSIT', 'RECEIVED', 'REFUNDED']) {
-  for (const status of statuses) await request(app).patch(`/api/admin/returns/${id}/status`).set(bearer(p.admin.token)).send({ status }).expect(200);
+  for (const status of statuses) await request(app).patch(`/api/admin/returns/${id}/status`).set(bearer(p.admin.token)).send({ status, ...(status === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}) }).expect(200);
 }
 
 describe('purchase-time kept-quantity refunds', () => {
@@ -44,7 +44,7 @@ describe('purchase-time kept-quantity refunds', () => {
     const p = await purchase(); const first = (await submit(p, 3).expect(201)).body.return;
     await advance(p, first.id, ['APPROVED', 'IN_TRANSIT', 'RECEIVED']);
     await request(app).patch(`/api/admin/returns/${first.id}/status`).set(bearer(p.admin.token))
-      .send({ status: 'REFUNDED', merchandiseRefundCents: 1000, refundAdjustmentReason: 'Restocking fee' }).expect(200);
+      .send({ payout: { payerName: 'Test cashier' }, status: 'REFUNDED', merchandiseRefundCents: 1000, refundAdjustmentReason: 'Restocking fee' }).expect(200);
     const second = (await submit(p, 2).expect(201)).body.return;
     expect(Number(first.refundAmount)).toBe(16);
     expect(Number(second.refundAmount)).toBe(16);

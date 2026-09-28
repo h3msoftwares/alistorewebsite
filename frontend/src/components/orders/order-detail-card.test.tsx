@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { OrderDetailCard } from './order-detail-card';
 import type { Order, RefundCalculation, ReturnPreview } from '@/lib/types';
+import { formatCurrency } from '@/lib/format';
 
 const baseOrder: Order = {
   id: 'o1',
@@ -59,7 +60,7 @@ describe('<OrderDetailCard> — totals', () => {
     }] };
     render(<OrderDetailCard locale="en" order={order} audience="admin" />);
     expect(screen.getByText('Calculated merchandise amount: $20.00')).toBeInTheDocument();
-    expect(screen.getByText('Effective merchandise marked refunded: $10.00')).toBeInTheDocument();
+    expect(screen.getByText('Effective merchandise refunded: $10.00')).toBeInTheDocument();
     expect(screen.getByText('Adjustment reason: Restocking fee')).toBeInTheDocument();
   });
   it.each(['SHIPPED', 'DELIVERED'] as const)('does not offer customer/guest cancellation for %s orders', (status) => {
@@ -80,6 +81,17 @@ describe('<OrderDetailCard> — totals', () => {
 });
 
 describe('<OrderDetailCard> — returns', () => {
+  it.each(['en', 'ar'] as const)('shows only paid goodwill with neutral wording and amount in %s', locale => {
+    render(<OrderDetailCard locale={locale} order={{ ...baseOrder, goodwillRefunds: [
+      { id: 'g1', amount: 10, status: 'PAID', reason: 'Private service dispute', payout: { payerName: 'Private cashier' } as never },
+      { id: 'g2', amount: 5, status: 'OWED', reason: 'Owed private reason' },
+      { id: 'g3', amount: 3, status: 'CANCELLED', reason: 'Cancelled private reason' },
+    ] }} />);
+    const visible = screen.getByText(locale === 'en' ? /Refund from the store:/ : /استرداد من المتجر:/);
+    expect(visible.textContent).toBe(`${locale === 'en' ? 'Refund from the store' : 'استرداد من المتجر'}: ${formatCurrency(10, locale)}`);
+    expect(screen.queryByText(/Private|private/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/\$5.00|\$3.00/)).not.toBeInTheDocument();
+  });
   it('displays return and marking indicators independently of delivery status', () => {
     render(<OrderDetailCard locale="en" order={{ ...baseOrder, returnIndicators: {
       returnStatus: 'PARTIALLY_RETURNED', refundStatus: 'PARTIALLY_MARKED', hasReturn: true,
@@ -88,7 +100,7 @@ describe('<OrderDetailCard> — returns', () => {
       awaitingMarkingReturns: 0, awaitingMarkingCents: 0, markedReturns: 1, markedUnits: 1, markedRefundCents: 2000,
     } }} />);
     expect(screen.getByText('Partially returned · 1 of 4 units')).toBeInTheDocument();
-    expect(screen.getByText('Marked refunded: $20.00 of $80.00')).toBeInTheDocument();
+    expect(screen.getByText('Refunded: $20.00 of $80.00')).toBeInTheDocument();
     expect(screen.getByText('Return in progress: 1 units · pending amount $20.00')).toBeInTheDocument();
   });
   it('shows "Request a return" only when delivered and a callback is passed', () => {

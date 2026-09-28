@@ -61,13 +61,13 @@ export function CollectionSection({ order, locale, oa }: { order: Order; locale:
       <dl className="stack">
         <div><dt>{t('Expected total', 'المبلغ الإجمالي المتوقع')}</dt><dd>{money(data.expectedTotalCents)}</dd></div>
         <div><dt>{t('Collected so far', 'المبلغ المحصل حتى الآن')}</dt><dd>{money(data.collectedCents)}</dd></div>
-        <div><dt>{t('Merchandise marked refunded', 'قيمة البضائع المعلّمة كمستردة')}</dt><dd>{money(data.markedRefundedCents)}</dd></div>
+        <div><dt>{t('Merchandise refunded', 'قيمة البضائع المستردة')}</dt><dd>{money(data.markedRefundedCents)}</dd></div>
         <div><dt>{t('Remaining refundable', 'المبلغ المتبقي القابل للاسترداد')}</dt><dd>{money(data.remainingRefundableCents)}</dd></div>
-        <div><dt>{t('Delivery marked refunded', 'التوصيل المعلّم كمسترد')}</dt><dd>{money(data.markedDeliveryRefundedCents)}</dd></div>
+        <div><dt>{t('Delivery refunded', 'التوصيل المسترد')}</dt><dd>{money(data.markedDeliveryRefundedCents)}</dd></div>
         <div><dt>{t('Remaining delivery refundable', 'المبلغ المتبقي القابل للاسترداد للتوصيل')}</dt><dd>{money(data.remainingDeliveryRefundableCents)}</dd></div>
         <div><dt>{t('Remaining total refundable from net collected', 'إجمالي المبلغ المتبقي القابل للاسترداد من صافي التحصيل')}</dt><dd>{money(data.remainingTotalRefundableCents)}</dd></div>
       </dl>
-      <p className="admin-form__hint">{t('Delivery fees are treated as collected first. Merchandise and delivery have separate caps; their combined amount marked refunded can never exceed net collected.', 'تُعتبر رسوم التوصيل محصّلة أولاً. للبضائع والتوصيل حدّان منفصلان؛ لا يمكن أن يتجاوز إجمالي المبالغ المعلّمة كمستردة صافي المبلغ المحصّل.')}</p>
+      <p className="admin-form__hint">{t('Delivery fees are treated as collected first. Merchandise and delivery have separate caps; their combined amount refunded can never exceed net collected.', 'تُعتبر رسوم التوصيل محصّلة أولاً. للبضائع والتوصيل حدّان منفصلان؛ لا يمكن أن يتجاوز إجمالي المبالغ المستردة صافي المبلغ المحصّل.')}</p>
       <h3>{t('Collection history', 'سجل التحصيل')}</h3>
       {!data.records.length && <p>{t('No collection recorded.', 'لم يُسجّل أي تحصيل.')}</p>}
       <ul className="stack" style={{ paddingInlineStart: 'var(--space-4)' }}>
@@ -99,7 +99,7 @@ export function CollectionSection({ order, locale, oa }: { order: Order; locale:
         const refundCents = ret.items.reduce((sum, i) => sum + Math.round(Number(i.refundAmount) * 100), 0);
         const block = refundBlockReason(refundCents, data);
         return <div key={ret.id} className="stack">
-          <p>{t('Received return awaiting refund marking', 'مرتجع مستلم بانتظار تعليم الاسترداد')}: {money(refundCents)}</p>
+          <p>{t('Refund due', 'استرداد مستحق')}: {money(refundCents)}</p>
           {block && <Alert tone="warning">{refundBlockMessage(block, locale)} {t('Remaining refundable', 'المبلغ المتبقي القابل للاسترداد')}: {money(data.remainingRefundableCents)}</Alert>}
           {canMark && <Button variant="outline" disabled={busy} onClick={() => setPendingReturn(ret)}>{t('Mark refunded', 'وضع علامة استرداد')}</Button>}
         </div>;

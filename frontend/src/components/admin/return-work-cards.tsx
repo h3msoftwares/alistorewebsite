@@ -18,7 +18,7 @@ export function ReturnWorkCards({ locale }: { locale: 'en' | 'ar' }) {
   const tiles = [
     { label: t('Return requests awaiting approval', 'طلبات إرجاع بانتظار الموافقة'), filter: 'AWAITING_APPROVAL', value: d.awaitingApproval },
     { label: t('Returns in transit', 'مرتجعات في الطريق'), filter: 'IN_TRANSIT', value: d.inTransit },
-    { label: t('Received returns awaiting refund marking', 'مرتجعات مستلمة بانتظار تعليم الاسترداد'), filter: 'AWAITING_REFUND_MARKING', value: d.awaitingRefundMarking },
+    { label: t('Refund due', 'استرداد مستحق'), filter: 'REFUND_DUE', value: d.refundDue ?? d.awaitingRefundMarking },
   ];
   return <section>
     <h2 className="admin-dashboard__section-title">{t('Return and refund work', 'متابعة الإرجاع وتعليم الاسترداد')}</h2>
@@ -27,6 +27,6 @@ export function ReturnWorkCards({ locale }: { locale: 'en' | 'ar' }) {
       <span className="stat-tile__value">{tile.value.count}</span>
       <span className="stat-tile__hint">{formatCurrency(tile.value.amountCents / 100, locale)}</span>
     </Link>)}</StatGrid>
-    <p className="analytics-note">{t('Counts are return requests, not orders. Amounts are saved merchandise refund calculations, excluding delivery; they do not prove payment.', 'الأعداد لطلبات الإرجاع وليس للطلبات الشرائية. المبالغ هي حسابات استرداد البضائع المحفوظة دون التوصيل؛ لا تثبت الدفع.')}</p>
+    <p className="analytics-note">{t('Refund due counts received returns and owed goodwill. Return amounts are saved merchandise calculations; delivery is chosen when paying the return.', 'الاسترداد المستحق يشمل المرتجعات المستلمة والاستردادات الإضافية غير المدفوعة. مبالغ المرتجعات هي حسابات البضائع المحفوظة؛ يُحدّد استرداد التوصيل عند دفع المرتجع.')}</p>
   </section>;
 }

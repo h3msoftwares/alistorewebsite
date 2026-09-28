@@ -26,10 +26,20 @@ export const orderMetricsJoin = Prisma.sql`LEFT JOIN (
 export const orderMerchandise = Prisma.sql`(o."subtotal" - o."discountAmount")`;
 export const orderNet = Prisma.sql`(${orderMerchandise} - COALESCE(om.refunded, 0))`;
 
+// Goodwill is an order-level deduction only. Keep line merchandise metrics and
+// the existing revenue basis (delivery reported separately) unchanged.
+export const goodwillJoin = Prisma.sql`LEFT JOIN (
+  SELECT "orderID", COALESCE(SUM(amount) FILTER (WHERE status = 'PAID'),0) AS paid,
+    COALESCE(SUM(amount) FILTER (WHERE status = 'OWED'),0) AS owed,
+    COUNT(*) FILTER (WHERE status = 'OWED')::int AS owed_count
+  FROM goodwillrefund GROUP BY "orderID"
+) gw ON gw."orderID" = o.id`;
+export const netOrderRevenue = Prisma.sql`(${orderNet} - COALESCE(gw.paid,0))`;
+
 // Aggregate delivery once per return, independently of its line count.
 export const deliveryRefundsJoin = Prisma.sql`LEFT JOIN (
-  SELECT "orderID", SUM("deliveryRefundAmount") AS amount FROM "return"
-  WHERE status = 'REFUNDED' GROUP BY "orderID"
+  SELECT "orderID", SUM("deliveryRefundAmount") FILTER (WHERE status = 'REFUNDED') AS amount,
+    COUNT(*) FILTER (WHERE status = 'RECEIVED')::int AS received_count FROM "return" GROUP BY "orderID"
 ) dr ON dr."orderID" = o.id`;
 
 export interface MerchandiseMetrics {
@@ -40,6 +50,10 @@ export interface MerchandiseMetrics {
   orderedUnits: number;
   physicallyReturnedUnits: number;
   retainedUnits: number;
+  paidGoodwill?: number;
+  netOrderRevenue?: number;
+  refundDueAmount?: number;
+  refundDueCount?: number;
 }
 
 export async function merchandiseSummary(where: Prisma.Sql) {
@@ -48,14 +62,18 @@ export async function merchandiseSummary(where: Prisma.Sql) {
       COALESCE(SUM(${orderMerchandise}), 0)::float8 AS "merchandiseValue",
       COALESCE(SUM(om.refunded), 0)::float8 AS "merchandiseMarkedRefunded",
       COALESCE(SUM(${orderNet}), 0)::float8 AS "netMerchandiseValue",
+      COALESCE(SUM(gw.paid),0)::float8 AS "paidGoodwill",
+      COALESCE(SUM(${netOrderRevenue}),0)::float8 AS "netOrderRevenue",
+      COALESCE(SUM(COALESCE(om.awaiting,0) + COALESCE(gw.owed,0)),0)::float8 AS "refundDueAmount",
+      COALESCE(SUM(COALESCE(dr.received_count,0) + COALESCE(gw.owed_count,0)),0)::int AS "refundDueCount",
       COALESCE(SUM(om.awaiting), 0)::float8 AS "receivedReturnsAwaitingRefundMarking",
       COALESCE(SUM(om.ordered), 0)::int AS "orderedUnits",
       COALESCE(SUM(om.returned), 0)::int AS "physicallyReturnedUnits",
       COALESCE(SUM(om.ordered - om.returned), 0)::int AS "retainedUnits",
       COALESCE(SUM(o."deliveryFee" - COALESCE(dr.amount, 0)), 0)::float8 AS "deliveryRevenue"
-    FROM "order" o ${orderMetricsJoin} ${deliveryRefundsJoin} WHERE ${where}
+    FROM "order" o ${orderMetricsJoin} ${deliveryRefundsJoin} ${goodwillJoin} WHERE ${where}
   `);
   return row;
 }
 
-export const MERCHANDISE_NOTE = 'Orders placed in the selected period, adjusted through today. Merchandise is after coupons and amounts marked refunded; excludes CANCELLED orders. Refund marking is an administrative record, not proof of payment. Delivery revenue is delivery fees charged minus delivery marked refunded.';
+export const MERCHANDISE_NOTE = 'Orders placed in the selected period, adjusted through today; excludes CANCELLED orders. Net order revenue is net merchandise minus paid goodwill, with delivery revenue reported separately. Goodwill is never allocated to merchandise lines. Refund due includes received merchandise calculations and owed goodwill; delivery is chosen when paying a return. Historic refunded returns may have no payout record. Delivery revenue is delivery fees charged minus delivery refunded.';

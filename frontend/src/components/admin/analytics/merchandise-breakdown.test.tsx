@@ -10,7 +10,7 @@ it('shows separate quantities and exact marked-refund/net cents in a breakdown',
   }]} />);
   const headers = screen.getAllByRole('columnheader').map((el) => el.textContent);
   expect(headers).toEqual(['Group', 'Ordered units', 'Physically returned units', 'Retained units',
-    'Marked refunded', 'Net merchandise value after marked refunds']);
+    'Refunded', 'Net merchandise value after refunds']);
   const row = screen.getByText('Blue / M').closest('tr')!;
   expect(within(row).getAllByRole('cell').map((el) => el.textContent)).toEqual(['Blue / M', '7', '3', '4', '$14.40', '$36.00']);
 });

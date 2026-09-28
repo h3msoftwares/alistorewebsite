@@ -69,12 +69,14 @@ describe('AdminReturnsPage', () => {
     const user = userEvent.setup(); renderPage(['returns:view', 'refunds:manage', 'refunds:view']); await screen.findByText('AS-20260901-AAA111');
     await user.click(screen.getByRole('button', { name: 'More actions' }));
     await user.click(screen.getByRole('menuitem', { name: 'Mark refunded' }));
-    await user.clear(screen.getByLabelText('Merchandise amount marked refunded (USD)'));
-    await user.type(screen.getByLabelText('Merchandise amount marked refunded (USD)'), '30');
+    await user.clear(screen.getByLabelText('Merchandise amount refunded (USD)'));
+    await user.type(screen.getByLabelText('Merchandise amount refunded (USD)'), '30');
     await user.type(screen.getByLabelText('Adjustment reason'), 'Restocking fee');
+    await user.type(screen.getByLabelText('Paid by'), 'Cashier');
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Mark refunded' }));
     expect(mock.adminUpdateReturnStatus).toHaveBeenCalledWith('r1', 'REFUNDED', {
       merchandiseRefundCents: 3000, refundAdjustmentReason: 'Restocking fee', deliveryRefundCents: 0, deliveryRefundReason: undefined,
+      payout: { payerName: 'Cashier', paidOn: expect.any(String), reference: null, note: null },
     });
   });
   it('hides return actions from returns:view-only staff', async () => {

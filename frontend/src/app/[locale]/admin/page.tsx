@@ -65,7 +65,7 @@ export default function AdminDashboardPage() {
         />
       ) : (
         <div className="admin-dashboard">
-          <p className="analytics-note">{t('Delivered and whole-order returned orders, all time. Marked refunds are administrative records, not proof of payment.', 'الطلبات المسلّمة والمرتجعة بالكامل، طوال الفترة. الاستردادات المعلّمة سجلات إدارية وليست إثبات دفع.')}</p>
+          <p className="analytics-note">{t('Delivered and whole-order returned orders, all time. Historic refunded returns may have no payout record.', 'الطلبات المسلّمة والمرتجعة بالكامل، طوال الفترة. قد لا يوجد سجل دفع للمرتجعات المستردة القديمة.')}</p>
           <MerchandiseSummary metrics={data.merchandise} isAr={isAr} />
           <ReturnWorkCards locale={locale} />
           <StatGrid>
@@ -106,13 +106,13 @@ export default function AdminDashboardPage() {
 
           {trendSeries.length > 0 && (
             <ChartCard
-              title={t('Net merchandise value & orders', 'صافي قيمة البضائع والطلبات')}
+              title={t('Net order revenue & orders', 'صافي إيرادات الطلبات وعددها')}
               subtitle={t('Orders placed in the last 30 days, adjusted through today; excludes cancelled', 'طلبات آخر 30 يومًا مع التعديلات حتى اليوم؛ باستثناء الملغاة')}
             >
               <TrendLine
                 data={trendSeries}
                 series={[
-                  { key: 'revenue', label: t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة') },
+                  { key: 'revenue', label: t('Net order revenue', 'صافي إيرادات الطلبات') },
                   { key: 'orders', label: t('Orders', 'الطلبات') },
                 ]}
                 formatY={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}

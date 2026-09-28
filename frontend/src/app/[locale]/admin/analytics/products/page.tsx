@@ -1,5 +1,7 @@
 'use client';
 
+import { RefundAnalyticsNote } from '@/components/admin/analytics/refund-note';
+
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -42,7 +44,7 @@ export default function AnalyticsProductsPage() {
                         <th>{t('Product', 'المنتج')}</th>
                         <th>{t('SKU', 'رمز المنتج')}</th>
                         <th className="is-numeric">{t('Retained units', 'الوحدات المحتفظ بها')}</th>
-                        <th className="is-numeric">{t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة')}</th>
+                        <th className="is-numeric">{t('Net merchandise value after refunds', 'صافي قيمة البضائع بعد الاستردادات')}</th>
                         <th className="is-numeric">{t('Orders', 'الطلبات')}</th>
                         <th className="is-numeric">{t('Buyers', 'المشترون')}</th>
                         <th className="is-numeric">{t('Views', 'المشاهدات')}</th>
@@ -57,7 +59,7 @@ export default function AnalyticsProductsPage() {
                           </td>
                           <td data-label={t('SKU', 'رمز المنتج')}>{p.sku}</td>
                           <td data-label={t('Retained units', 'الوحدات المحتفظ بها')} className="is-numeric">{num(p.units)}</td>
-                          <td data-label={t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة')} className="is-numeric">{money2(p.revenue)}</td>
+                          <td data-label={t('Net merchandise value after refunds', 'صافي قيمة البضائع بعد الاستردادات')} className="is-numeric">{money2(p.revenue)}</td>
                           <td data-label={t('Orders', 'الطلبات')} className="is-numeric">{num(p.orders)}</td>
                           <td data-label={t('Buyers', 'المشترون')} className="is-numeric">{num(p.buyers)}</td>
                           <td data-label={t('Views', 'المشاهدات')} className="is-numeric">{p.views == null ? '—' : num(p.views)}</td>
@@ -71,7 +73,7 @@ export default function AnalyticsProductsPage() {
               )}
             </ChartCard>
 
-            <p className="analytics-note">{data.note}</p>
+            <RefundAnalyticsNote isAr={isAr} note={data.note} />
           </div>
         );
       }}

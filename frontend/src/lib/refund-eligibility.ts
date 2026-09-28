@@ -10,7 +10,7 @@ export function refundBlockMessage(reason: RefundBlockReason, locale: 'en' | 'ar
   if (reason === 'EXCEEDS_DELIVERY_REFUNDABLE') return locale === 'ar'
     ? 'مبلغ التوصيل يتجاوز المبلغ المتبقي القابل للاسترداد للتوصيل.' : 'Delivery amount exceeds remaining delivery refundable.';
   if (reason === 'EXCEEDS_NET_COLLECTED') return locale === 'ar'
-    ? 'إجمالي المبالغ المعلّمة كمستردة يتجاوز صافي المبلغ المحصّل.' : 'Total marked refunded would exceed net collected.';
+    ? 'إجمالي المبالغ المستردة يتجاوز صافي المبلغ المحصّل.' : 'Total refunded would exceed net collected.';
   if (reason === 'NO_COLLECTION_RECORDED') return locale === 'ar'
     ? 'لم يُسجّل تحصيل الدفع عند الاستلام. سجّل دليل التحصيل قبل وضع علامة استرداد هذا المبلغ.'
     : 'No COD collection recorded. Record collection evidence before marking this amount refunded.';
@@ -20,7 +20,7 @@ export function collectionErrorMessage(error: unknown, locale: 'en' | 'ar', fall
   const reason = isApiError(error) ? (error.meta as { reason?: string } | undefined)?.reason : undefined;
   if (reason === 'NO_COLLECTION_RECORDED' || reason === 'EXCEEDS_REMAINING_REFUNDABLE' || reason === 'EXCEEDS_DELIVERY_REFUNDABLE' || reason === 'EXCEEDS_NET_COLLECTED') return refundBlockMessage(reason, locale);
   if (reason === 'COLLECTION_BELOW_MARKED_REFUNDS') return locale === 'ar'
-    ? 'سيخفض التصحيح المبلغ المحصل إلى أقل من المبلغ المعلّم كمسترد.'
-    : 'Correction would reduce collected money below the amount already marked refunded.';
+    ? 'سيخفض التصحيح المبلغ المحصل إلى أقل من المبلغ المسترد.'
+    : 'Correction would reduce collected money below the amount already refunded.';
   return error instanceof Error ? error.message : fallback;
 }

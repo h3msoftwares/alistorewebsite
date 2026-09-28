@@ -33,7 +33,7 @@ const STATUS_FILTER_OPTIONS: { value: ReturnStatus; en: string; ar: string }[] =
   { value: 'APPROVED', en: 'Approved', ar: 'مقبول' },
   { value: 'IN_TRANSIT', en: 'In transit', ar: 'في الطريق' },
   { value: 'RECEIVED', en: 'Received', ar: 'تم الاستلام' },
-  { value: 'REFUNDED', en: 'Marked refunded', ar: 'معلّم كمسترد' },
+  { value: 'REFUNDED', en: 'Refunded', ar: 'مسترد' },
   { value: 'REJECTED', en: 'Rejected', ar: 'مرفوض' },
   { value: 'CANCELLED', en: 'Cancelled', ar: 'مُلغى' },
 ];
@@ -261,7 +261,10 @@ export default function AdminReturnsPage() {
                     </td>
                     <td className="is-numeric" data-label={t('Refund', 'الاسترداد')}>
                       {money(calculatedMerchandiseCents(r) / 100)}
-                      {r.status === 'REFUNDED' && <p>{t('Marked refunded', 'معلّم كمسترد')}: {money(effectiveMerchandiseCents(r) / 100)}</p>}
+                      {r.status === 'REFUNDED' && <>
+                        <p>{t('Refunded', 'مسترد')}: {money(effectiveMerchandiseCents(r) / 100)}</p>
+                        <p>{r.payout ? <>{t('Paid by', 'اسم من دفع')}: {r.payout.payerName} · {r.payout.paidOn.slice(0,10)}</> : t('No payout record', 'لا يوجد سجل دفع')}</p>
+                      </>}
                     </td>
                     <td data-label={t('Status', 'الحالة')}>
                       <span className={`status ${RETURN_STATUS_CLASS[r.status]}`}>
@@ -299,7 +302,7 @@ export default function AdminReturnsPage() {
                           })}
                         </ul>
                         {r.refundAdjustmentReason && <p>{t('Adjustment reason', 'سبب التعديل')}: {r.refundAdjustmentReason}</p>}
-                        {Number(r.deliveryRefundAmount ?? 0) > 0 && <p>{t('Delivery marked refunded', 'التوصيل المعلّم كمسترد')}: {money(Number(r.deliveryRefundAmount))} — {r.deliveryRefundReason}</p>}
+                        {Number(r.deliveryRefundAmount ?? 0) > 0 && <p>{t('Delivery refunded', 'التوصيل المسترد')}: {money(Number(r.deliveryRefundAmount))} — {r.deliveryRefundReason}</p>}
                         {r.reason && (
                           <p className="admin-form__hint" style={{ margin: 0 }}>
                             {t('Reason', 'السبب')}: {r.reason}

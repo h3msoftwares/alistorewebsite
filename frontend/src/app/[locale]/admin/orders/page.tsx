@@ -170,8 +170,8 @@ export default function AdminOrdersPage() {
               <option value="">{t('All return states', 'كل حالات الإرجاع')}</option>
               <option value="HAS_RETURN">{t('Has a return', 'لديه مرتجع')}</option>
               <option value="IN_PROGRESS">{t('Return in progress', 'إرجاع قيد التنفيذ')}</option>
-              <option value="AWAITING_REFUND_MARKING">{t('Received awaiting refund marking', 'مستلم بانتظار تعليم الاسترداد')}</option>
-              <option value="MARKED_REFUNDED">{t('Any marked refunded', 'أي مبلغ معلّم كمسترد')}</option>
+              <option value="REFUND_DUE">{t('Refund due', 'استرداد مستحق')}</option>
+              <option value="MARKED_REFUNDED">{t('Any refunded', 'أي مبلغ مسترد')}</option>
               <option value="AWAITING_APPROVAL">{t('Return requests awaiting approval', 'طلبات إرجاع بانتظار الموافقة')}</option>
               <option value="IN_TRANSIT">{t('Returns in transit', 'مرتجعات في الطريق')}</option>
             </Select>

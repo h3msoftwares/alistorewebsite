@@ -16,7 +16,7 @@ async function purchase() {
   }).expect(201);
   const order = res.body.order;
   await prisma.order.update({ where: { id: order.id }, data: { deliveryFee: 10, total: 110 } });
-  for (const status of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) await request(app).patch(`/api/admin/orders/${order.id}/status`).set(bearer(admin.token)).send({ status }).expect(200);
+  for (const status of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) await request(app).patch(`/api/admin/orders/${order.id}/status`).set(bearer(admin.token)).send({ status, ...(status === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}) }).expect(200);
   const collect = (amount = 110, token = admin.token, extra = {}) => request(app).patch(`/api/admin/orders/${order.id}/collected`).set(bearer(token)).send({
     collected: true, amount, currency: 'USD', collectedAt: '2026-09-28T11:00:00Z', collectorName: 'Courier Alice', reference: 'COD receipt 001', ...extra,
   });
@@ -24,7 +24,7 @@ async function purchase() {
   const summary = () => request(app).get(`/api/admin/orders/${order.id}/collections`).set(bearer(admin.token));
   const received = async (amount = 20) => prisma.return.create({ data: { orderID: order.id, status: 'RECEIVED', refundAmount: amount,
     items: { create: { orderItemID: order.items[0].id, quantity: 1, refundAmount: amount } } } });
-  const mark = (id: string) => request(app).patch(`/api/admin/returns/${id}/status`).set(bearer(admin.token)).send({ status: 'REFUNDED' });
+  const mark = (id: string) => request(app).patch(`/api/admin/returns/${id}/status`).set(bearer(admin.token)).send({ payout: { payerName: 'Test cashier' }, status: 'REFUNDED' });
   return { buyer, admin, product, order, collect, reverse, summary, received, mark };
 }
 
@@ -49,7 +49,7 @@ describe('append-only COD collection evidence and refund marking cap', () => {
     const p = await purchase();
     const ret = await request(app).post(`/api/orders/${p.order.id}/returns`).set(bearer(p.buyer.token))
       .send({ items: [{ orderItemID: p.order.items[0].id, quantity: 1 }] }).expect(201);
-    for (const status of ['APPROVED', 'IN_TRANSIT', 'RECEIVED']) await request(app).patch(`/api/admin/returns/${ret.body.return.id}/status`).set(bearer(p.admin.token)).send({ status }).expect(200);
+    for (const status of ['APPROVED', 'IN_TRANSIT', 'RECEIVED']) await request(app).patch(`/api/admin/returns/${ret.body.return.id}/status`).set(bearer(p.admin.token)).send({ status, ...(status === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}) }).expect(200);
     expect((await prisma.productVariant.findUniqueOrThrow({ where: { id: p.product.variants[0].id } })).stockQuantity).toBe(6);
     const blocked = await p.mark(ret.body.return.id).expect(409);
     expect(blocked.body.error.meta.reason).toBe('NO_COLLECTION_RECORDED');

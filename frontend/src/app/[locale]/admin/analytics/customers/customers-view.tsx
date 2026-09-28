@@ -1,5 +1,7 @@
 'use client';
 
+import { RefundAnalyticsNote } from '@/components/admin/analytics/refund-note';
+
 import { useParams } from 'next/navigation';
 import { DataTable } from '@/components/ui';
 import {
@@ -65,7 +67,7 @@ export function AnalyticsCustomersPage() {
                       <th>{t('Customer', 'العميل')}</th>
                       <th>{t('Email', 'البريد الإلكتروني')}</th>
                       <th className="is-numeric">{t('Orders', 'الطلبات')}</th>
-                      <th className="is-numeric">{t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة')}</th>
+                      <th className="is-numeric">{t('Net order revenue', 'صافي إيرادات الطلبات')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -74,7 +76,7 @@ export function AnalyticsCustomersPage() {
                         <td data-label={t('Customer', 'العميل')}>{c.name}</td>
                         <td data-label={t('Email', 'البريد الإلكتروني')}>{c.email}</td>
                         <td data-label={t('Orders', 'الطلبات')} className="is-numeric">{c.orders}</td>
-                        <td data-label={t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة')} className="is-numeric">{money2(c.revenue)}</td>
+                        <td data-label={t('Net order revenue', 'صافي إيرادات الطلبات')} className="is-numeric">{money2(c.revenue)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -82,7 +84,7 @@ export function AnalyticsCustomersPage() {
               )}
             </ChartCard>
 
-            <p className="analytics-note">{data.note}</p>
+            <RefundAnalyticsNote isAr={isAr} note={data.note} />
           </div>
         );
       }}

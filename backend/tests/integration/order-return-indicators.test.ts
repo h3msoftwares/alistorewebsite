@@ -96,7 +96,7 @@ describe('order return indicators and filters (reads only)', () => {
     const staff = await createStaffWith(['orders:view']);
     const report = await request(app).get('/api/admin/orders/return-work').set(bearer(staff.token)).expect(200);
     expect(report.body).toEqual({ awaitingApproval: { count: 2, amountCents: 4000 }, inTransit: { count: 1, amountCents: 2000 },
-      awaitingRefundMarking: { count: 4, amountCents: 15000 } });
+      awaitingRefundMarking: { count: 4, amountCents: 15000 }, refundDue: { count: 4, amountCents: 15000 } });
     const dashboardOnly = await createStaffWith(['dashboard:view']);
     await request(app).get('/api/admin/orders/return-work').set(bearer(dashboardOnly.token)).expect(403);
     await request(app).get('/api/admin/orders/return-work').set(bearer(f.buyer.token)).expect(403);

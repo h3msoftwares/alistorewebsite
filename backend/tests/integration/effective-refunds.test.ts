@@ -33,7 +33,7 @@ async function purchase(twoLines = false) {
       orderItemID: order.items[index].id, quantity: index + 1, refundAmount,
     })) } }, include: { items: true } });
   const mark = (id: string, body: object = {}, token = admin.token) => request(app).patch(`/api/admin/returns/${id}/status`)
-    .set(bearer(token)).send({ status: 'REFUNDED', ...body });
+    .set(bearer(token)).send({ status: 'REFUNDED', payout: { payerName: 'Test cashier' }, ...body });
   const summary = () => request(app).get(`/api/admin/orders/${order.id}/collections`).set(bearer(admin.token));
   return { buyer, admin, product, order, collect, reverse, received, mark, summary };
 }

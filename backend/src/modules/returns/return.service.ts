@@ -12,6 +12,7 @@ import { createReturnRecords } from './return-records';
 import { findValidAccessToken } from '../orders/order.service';
 import { allocateRefundCents } from '../../lib/refund-allocation';
 import { updateReturnStatusSchema, type RefundMarkingInput } from './return.schema';
+import { recordCashPayout } from '../refunds/refund.service';
 
 export interface ReturnRequestItem {
   orderItemID: string;
@@ -19,6 +20,7 @@ export interface ReturnRequestItem {
 }
 
 const RETURN_INCLUDE = {
+  payout: true,
   items: {
     include: {
       orderItem: {
@@ -315,12 +317,15 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
         { reason, refundCents, remainingRefundableCents: collection.remainingRefundableCents });
       if (deliveryRefundCents > collection.remainingDeliveryRefundableCents) throw new AppError('CONFLICT', 'Delivery amount exceeds remaining delivery refundable',
         { reason: 'EXCEEDS_DELIVERY_REFUNDABLE', remainingDeliveryRefundableCents: collection.remainingDeliveryRefundableCents });
-      // Invariant: total marked refunded never exceeds net collected, checked
-      // on both refund marking and collection reversal under the order lock.
+      // Invariant: merchandise + delivery + goodwill (OWED or PAID) never
+      // exceeds net collected. Creation, marking and reversal share the order lock.
       // Independent category caps alone are insufficient after a reversal.
-      if (collection.markedRefundedCents + collection.markedDeliveryRefundedCents + refundCents + deliveryRefundCents > collection.collectedCents) {
+      if (collection.markedRefundedCents + collection.markedDeliveryRefundedCents + collection.goodwillReservedCents + refundCents + deliveryRefundCents > collection.collectedCents) {
         throw new AppError('CONFLICT', 'Total marked refunded would exceed net collected',
           { reason: 'EXCEEDS_NET_COLLECTED', remainingTotalRefundableCents: collection.remainingTotalRefundableCents });
+      }
+      if (refundCents + deliveryRefundCents > 0 && (!choices.payout || !actorId)) {
+        throw new AppError('VALIDATION_ERROR', 'Cash payout details are required for a positive refund');
       }
     }
 
@@ -375,6 +380,10 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
         id: item.id, calculatedCents: moneyCents(item.refundAmount), quantity: item.quantity,
       })))) {
         await tx.returnItem.update({ where: { id: part.id }, data: { refundedAmount: (part.cents / 100).toFixed(2) } });
+      }
+      if (refundCents + deliveryRefundCents > 0 && choices.payout && actorId) {
+        await recordCashPayout(tx, { orderID: existing.orderID, returnID: returnId }, refundCents + deliveryRefundCents,
+          choices.payout, actorId, collection, await collectionTotals(tx, existing.orderID));
       }
       const amounts = { calculatedRefundCents, effectiveRefundCents: refundCents,
         differenceCents: refundCents - calculatedRefundCents, reason: choices.refundAdjustmentReason ?? null,

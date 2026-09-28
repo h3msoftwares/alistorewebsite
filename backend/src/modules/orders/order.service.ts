@@ -1,5 +1,6 @@
 import { createWholeOrderReturn } from '../returns/return-records';
 import { merchandiseSummary } from '../../lib/merchandise-metrics';
+import { publicOrder } from '../../lib/public-return';
 import { indicatorsFromRecords, readReturnIndicators, withReturnIndicators, type OrderReturnFilter } from '../../lib/order-return-indicators';
 import { createHash, randomBytes } from 'crypto';
 import { prisma } from '../../config/prisma';
@@ -163,7 +164,7 @@ async function mintAccessToken(db: DbClient, orderId: string): Promise<string> {
 export async function findValidAccessToken(rawToken: string) {
   return prisma.orderAccessToken.findFirst({
     where: { tokenHash: hashToken(rawToken), expiresAt: { gt: new Date() } },
-    include: { order: { include: { items: true, returns: { include: { items: true } } } } },
+    include: { order: { include: { items: true, returns: { include: { items: true, payout: true } }, goodwillRefunds: true } } },
   });
 }
 
@@ -725,13 +726,13 @@ export async function listMyOrders(userID: string) {
     orderBy: { dateCreated: 'desc' },
     include: { items: true },
   });
-  return withReturnIndicators(orders);
+  return (await withReturnIndicators(orders)).map(publicOrder);
 }
 
 export async function getOrderById(id: string, userID?: string) {
   const order = await prisma.order.findFirst({
     where: { id, ...(userID ? { userID } : {}) },
-    include: { items: true, address: true, returns: { include: { items: true } } },
+    include: { items: true, address: true, returns: { include: { items: true, payout: true } }, goodwillRefunds: true },
   });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
   return { ...order, returnIndicators: indicatorsFromRecords(order) };
@@ -1258,7 +1259,7 @@ export async function salesDashboard() {
   return {
     totalOrders,
     pendingOrders,
-    totalRevenue: deliveredRevenue.netMerchandiseValue,
+    totalRevenue: deliveredRevenue.netOrderRevenue ?? 0,
     merchandise: deliveredRevenue,
     flaggedOrders,
     awaitingCodCollection,

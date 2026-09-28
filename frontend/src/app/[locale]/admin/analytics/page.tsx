@@ -1,5 +1,7 @@
 'use client';
 
+import { RefundAnalyticsNote } from '@/components/admin/analytics/refund-note';
+
 import { useParams } from 'next/navigation';
 import { MerchandiseSummary } from '@/components/admin/analytics/merchandise-summary';
 import {
@@ -44,11 +46,11 @@ export default function AnalyticsOverviewPage() {
               <StatTile label={t('Low-stock variants', 'خيارات منخفضة المخزون')} value={num(k.lowStockVariants)} />
             </StatGrid>
 
-            <ChartCard title={t('Net merchandise value & orders', 'صافي قيمة البضائع والطلبات')} subtitle={t('After coupons and marked refunds; excludes cancelled orders', 'بعد القسائم والاستردادات المعلّمة؛ باستثناء الطلبات الملغاة')}>
+            <ChartCard title={t('Net order revenue & orders', 'صافي إيرادات الطلبات وعددها')} subtitle={t('After coupons and refunds; excludes cancelled orders', 'بعد القسائم والاستردادات؛ باستثناء الطلبات الملغاة')}>
               <TrendLine
                 data={series}
                 series={[
-                  { key: 'revenue', label: t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة') },
+                  { key: 'revenue', label: t('Net order revenue', 'صافي إيرادات الطلبات') },
                   { key: 'orders', label: t('Orders', 'الطلبات') },
                 ]}
                 formatY={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
@@ -63,7 +65,7 @@ export default function AnalyticsOverviewPage() {
               )}
             </ChartCard>
 
-            <p className="analytics-note">{data.note}</p>
+            <RefundAnalyticsNote isAr={isAr} note={data.note} />
           </div>
         );
       }}

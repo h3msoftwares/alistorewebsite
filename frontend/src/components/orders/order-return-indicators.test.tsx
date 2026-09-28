@@ -11,23 +11,29 @@ const mixed: Indicators = { returnStatus: 'PARTIALLY_RETURNED', refundStatus: 'P
 it('shows pending, received-awaiting-marking and marked amounts together', () => {
   render(<OrderReturnIndicators indicators={mixed} locale="en" customer />);
   expect(screen.getByText('Partially returned · 3 of 5 units')).toBeInTheDocument();
-  expect(screen.getByText('Partially marked refunded')).toBeInTheDocument();
+  expect(screen.getByText('Partially refunded')).toBeInTheDocument();
   expect(screen.getByText('Return in progress: 1 units · pending amount $20.00')).toBeInTheDocument();
-  expect(screen.getByText('Marked refunded: $40.00 of $100.00')).toBeInTheDocument();
+  expect(screen.getByText('Refunded: $40.00 of $100.00')).toBeInTheDocument();
   expect(screen.getByText('Received returns awaiting refund marking: $30.00')).toBeInTheDocument();
-  expect(screen.getByText(/does not confirm that you received money/)).toBeInTheDocument();
+  expect(screen.getByText(/Historic refunds may have no payout record/)).toBeInTheDocument();
 });
 
 it('uses Arabic wording and currency formatting', () => {
   render(<OrderReturnIndicators indicators={mixed} locale="ar" />);
   expect(screen.getByText('مرتجع جزئيًا · 3 من 5 وحدات')).toBeInTheDocument();
-  expect(screen.getByText('معلّم كمسترد جزئيًا')).toBeInTheDocument();
-  expect(screen.getByText(/مستلمة بانتظار تعليم الاسترداد/)).toBeInTheDocument();
-  expect(screen.getByText(/ليس إثبات دفع/)).toBeInTheDocument();
+  expect(screen.getByText('مسترد جزئيًا')).toBeInTheDocument();
+  expect(screen.getByText('استرداد مستحق')).toBeInTheDocument();
+  expect(screen.getByText(/قد لا يوجد سجل دفع/)).toBeInTheDocument();
 });
 
 it('shows the absence of both kinds of activity explicitly', () => {
   render(<OrderReturnIndicators indicators={{ ...mixed, returnStatus: 'NONE', refundStatus: 'NONE', hasReturn: false,
     inProgressReturns: 0, physicallyReturnedUnits: 0, markedReturns: 0, awaitingMarkingReturns: 0 }} locale="en" compact />);
   expect(screen.getAllByText('None')).toHaveLength(2);
+});
+
+it('shows goodwill-only refund due on the admin list without requiring a physical return', () => {
+  render(<OrderReturnIndicators indicators={{ ...mixed, returnStatus: 'NONE', refundStatus: 'NONE', hasReturn: false,
+    markedReturns: 0, awaitingMarkingReturns: 0, refundDueCount: 1, refundDueCents: 1000 }} locale="en" compact />);
+  expect(screen.getByText('Refund due')).toBeInTheDocument(); expect(screen.getByText(/\$10.00/)).toBeInTheDocument();
 });

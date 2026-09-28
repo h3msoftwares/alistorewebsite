@@ -27,19 +27,21 @@ export function refundBlockReason(amountCents: number, summary: { collectionCoun
 export async function collectionTotals(tx: Prisma.TransactionClient, orderID: string) {
   const order = await tx.order.findUnique({ where: { id: orderID }, select: { currency: true, total: true, deliveryFee: true } });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
-  const [collections, refunds, deliveryRefunds] = await Promise.all([
+  const [collections, refunds, deliveryRefunds, goodwill] = await Promise.all([
     tx.codCollection.aggregate({ where: { orderID }, _sum: { amount: true }, _count: true }),
     tx.$queryRaw<{ amount: Prisma.Decimal }[]>`SELECT COALESCE(SUM(COALESCE(i."refundedAmount", i."refundAmount")), 0) AS amount
       FROM returnitem i JOIN "return" r ON r.id = i."returnID" WHERE r."orderID" = ${orderID}::uuid AND r.status = 'REFUNDED'`,
     tx.return.aggregate({ where: { orderID, status: 'REFUNDED' }, _sum: { deliveryRefundAmount: true } }),
+    tx.goodwillRefund.aggregate({ where: { orderID, status: { in: ['OWED', 'PAID'] } }, _sum: { amount: true } }),
   ]);
   const collectedCents = signedCents(collections._sum.amount);
   const markedRefundedCents = moneyCents(refunds[0].amount);
   const markedDeliveryRefundedCents = moneyCents(deliveryRefunds._sum.deliveryRefundAmount ?? 0);
   const deliveryFeeCents = moneyCents(order.deliveryFee);
+  const goodwillReservedCents = moneyCents(goodwill._sum.amount ?? 0);
   return { currency: order.currency, expectedTotalCents: moneyCents(order.total), deliveryFeeCents,
-    collectedCents, markedRefundedCents, markedDeliveryRefundedCents, collectionCount: collections._count,
-    remainingTotalRefundableCents: Math.max(0, collectedCents - markedRefundedCents - markedDeliveryRefundedCents),
+    collectedCents, markedRefundedCents, markedDeliveryRefundedCents, goodwillReservedCents, collectionCount: collections._count,
+    remainingTotalRefundableCents: Math.max(0, collectedCents - markedRefundedCents - markedDeliveryRefundedCents - goodwillReservedCents),
     remainingDeliveryRefundableCents: remainingDeliveryRefundableCents(collectedCents, deliveryFeeCents, markedDeliveryRefundedCents),
     remainingRefundableCents: remainingRefundableCents(collectedCents, deliveryFeeCents, markedRefundedCents) };
 }
@@ -75,9 +77,9 @@ export async function recordCollection(orderID: string, input: CollectionInput, 
       const original = await tx.codCollection.findUnique({ where: { id: body.collectionID }, include: { reversal: true } });
       if (!original || original.orderID !== orderID) throw new AppError('NOT_FOUND', 'Collection record not found on this order');
       if (original.reversalOfID || original.reversal) throw new AppError('CONFLICT', 'This collection cannot be reversed again');
-      // Invariant: total marked refunded never exceeds net collected, checked
-      // on both refund marking and collection reversal under the order lock.
-      if (before.collectedCents - moneyCents(original.amount) < before.markedRefundedCents + before.markedDeliveryRefundedCents) {
+      // Invariant: merchandise + delivery + goodwill (OWED or PAID) never
+      // exceeds net collected, checked on creation, marking and reversal under the order lock.
+      if (before.collectedCents - moneyCents(original.amount) < before.markedRefundedCents + before.markedDeliveryRefundedCents + before.goodwillReservedCents) {
         throw new AppError('CONFLICT', 'Correction would reduce collected money below the amount already marked refunded', { reason: 'COLLECTION_BELOW_MARKED_REFUNDS' });
       }
       data = { orderID, actorID, actorName: actor.name, amount: original.amount.negated(), currency: original.currency,
@@ -103,16 +105,17 @@ export async function recordCollection(orderID: string, input: CollectionInput, 
 export async function returnRefundEligibility<T extends { orderID: string; items: { refundAmount: Prisma.Decimal }[] }>(returns: T[]) {
   const ids = [...new Set(returns.map((r) => r.orderID))];
   if (!ids.length) return [];
-  const rows = await prisma.$queryRaw<{ id: string; count: bigint; collected: Prisma.Decimal; deliveryFee: Prisma.Decimal; marked: Prisma.Decimal; deliveryMarked: Prisma.Decimal }[]>(Prisma.sql`
-    SELECT o.id, COALESCE(c.count, 0) AS count, COALESCE(c.amount, 0) AS collected, o."deliveryFee", COALESCE(r.amount, 0) AS marked, COALESCE(d.amount, 0) AS "deliveryMarked"
+  const rows = await prisma.$queryRaw<{ id: string; count: bigint; collected: Prisma.Decimal; deliveryFee: Prisma.Decimal; marked: Prisma.Decimal; deliveryMarked: Prisma.Decimal; goodwill: Prisma.Decimal }[]>(Prisma.sql`
+    SELECT o.id, COALESCE(c.count, 0) AS count, COALESCE(c.amount, 0) AS collected, o."deliveryFee", COALESCE(r.amount, 0) AS marked, COALESCE(d.amount, 0) AS "deliveryMarked", COALESCE(g.amount, 0) AS goodwill
     FROM "order" o
     LEFT JOIN (SELECT "orderID", COUNT(*) AS count, SUM(amount) AS amount FROM codcollection GROUP BY "orderID") c ON c."orderID" = o.id
     LEFT JOIN (SELECT r."orderID", SUM(COALESCE(i."refundedAmount", i."refundAmount")) AS amount FROM "return" r JOIN returnitem i ON i."returnID" = r.id WHERE r.status = 'REFUNDED' GROUP BY r."orderID") r ON r."orderID" = o.id
     LEFT JOIN (SELECT "orderID", SUM("deliveryRefundAmount") AS amount FROM "return" WHERE status = 'REFUNDED' GROUP BY "orderID") d ON d."orderID" = o.id
+    LEFT JOIN (SELECT "orderID", SUM(amount) AS amount FROM goodwillrefund WHERE status IN ('OWED','PAID') GROUP BY "orderID") g ON g."orderID" = o.id
     WHERE o.id IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))})
   `);
   const byID = new Map(rows.map((row) => [row.id, { collectionCount: Number(row.count),
-    remainingTotalRefundableCents: Math.max(0, signedCents(row.collected) - moneyCents(row.marked) - moneyCents(row.deliveryMarked)),
+    remainingTotalRefundableCents: Math.max(0, signedCents(row.collected) - moneyCents(row.marked) - moneyCents(row.deliveryMarked) - moneyCents(row.goodwill)),
     remainingDeliveryRefundableCents: remainingDeliveryRefundableCents(signedCents(row.collected), moneyCents(row.deliveryFee), moneyCents(row.deliveryMarked)),
     remainingRefundableCents: remainingRefundableCents(signedCents(row.collected), moneyCents(row.deliveryFee), moneyCents(row.marked)) }]));
   return returns.map((r) => {

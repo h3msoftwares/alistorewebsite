@@ -7,6 +7,7 @@ import { Printer } from 'lucide-react';
 import { Alert, Badge, Button, EmptyState, Icon, ProductGridSkeleton, Select } from '@/components/ui';
 import { OrderActionModals } from '@/components/orders/order-action-modals';
 import { CollectionSection } from '@/components/orders/collection-section';
+import { RefundsSection } from '@/components/orders/refunds-section';
 import { OrderDetailCard } from '@/components/orders/order-detail-card';
 import { useOrder } from '@/hooks/use-orders';
 import { useOrderActions } from '@/hooks/use-order-actions';
@@ -166,6 +167,7 @@ export default function AdminOrderDetailPage() {
       </div>
 
       <CollectionSection order={order} locale={locale} oa={oa} />
+      <RefundsSection order={order} locale={locale} oa={oa} />
 
       <OrderActionModals locale={locale} oa={oa} />
       {receiptNode}

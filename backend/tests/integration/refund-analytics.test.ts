@@ -35,14 +35,14 @@ async function purchase(volume = false) {
   // Separate fee fixture; merchandise reports must never multiply or refund it.
   await prisma.order.update({ where: { id: order.id }, data: { deliveryFee: 4, total: volume ? 54.4 : 14 } });
   const status = (next: string) => request(app).patch(`/api/admin/orders/${order.id}/status`)
-    .set(bearer(admin.token)).send({ status: next });
+    .set(bearer(admin.token)).send({ status: next, ...(next === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}) });
   for (const next of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) await status(next).expect(200);
   await collectTestOrder(order.id, admin.user.id);
   const report = async (name = 'overview', query = '') => (await request(app)
     .get(`/api/admin/analytics/${name}${query}`).set(bearer(admin.token)).expect(200)).body;
   const advance = async (id: string, statuses: string[]) => {
     for (const next of statuses) await request(app).patch(`/api/admin/returns/${id}/status`)
-      .set(bearer(admin.token)).send({ status: next }).expect(200);
+      .set(bearer(admin.token)).send({ status: next, ...(next === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}) }).expect(200);
   };
   const submit = async (quantity: number) => (await request(app).post(`/api/orders/${order.id}/returns`)
     .set(bearer(buyer.token)).send({ items: [{ orderItemID: order.items[0].id, quantity }] }).expect(201)).body.return;

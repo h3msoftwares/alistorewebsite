@@ -39,7 +39,7 @@ const RETURN_STATUS_LABEL: Record<ReturnStatus, { en: string; ar: string }> = {
   APPROVED: { en: 'Approved', ar: 'مقبول' },
   IN_TRANSIT: { en: 'In transit', ar: 'في الطريق' },
   RECEIVED: { en: 'Received', ar: 'تم الاستلام' },
-  REFUNDED: { en: 'Marked refunded', ar: 'معلّم كمسترد' },
+  REFUNDED: { en: 'Refunded', ar: 'مسترد' },
   REJECTED: { en: 'Rejected', ar: 'مرفوض' },
   CANCELLED: { en: 'Cancelled', ar: 'مُلغى' },
 };
@@ -243,6 +243,8 @@ export function OrderDetailCard({
       )}
 
       <OrderReturnIndicators indicators={order.returnIndicators} locale={locale} customer={audience === 'customer'} />
+      {audience === 'customer' && (order.goodwillRefunds ?? []).filter(g => g.status === 'PAID').map(g =>
+        <p key={g.id}>{t('Refund from the store', 'استرداد من المتجر')}: {money(Number(g.amount))}</p>)}
       {order.returns != null && order.returns.length > 0 && (
         <div className="stack" style={{ marginBlockStart: 'var(--space-4)' }}>
           <strong>{t('Returns', 'المرتجعات')}</strong>
@@ -256,11 +258,11 @@ export function OrderDetailCard({
               </div>
               {r.status === 'REFUNDED' && audience === 'admin' && <>
                 <p>{t('Calculated merchandise amount', 'مبلغ البضائع المحسوب')}: {money(calculatedMerchandiseCents(r) / 100)}</p>
-                <p>{t('Effective merchandise marked refunded', 'مبلغ البضائع الفعلي المعلّم كمسترد')}: {money(effectiveMerchandiseCents(r) / 100)}</p>
+                <p>{t('Effective merchandise refunded', 'مبلغ البضائع الفعلي المسترد')}: {money(effectiveMerchandiseCents(r) / 100)}</p>
                 {r.refundAdjustmentReason && <p>{t('Adjustment reason', 'سبب التعديل')}: {r.refundAdjustmentReason}</p>}
               </>}
               {audience === 'customer' && wasRefundAdjusted(r) && <p>{t('Adjusted by the store', 'عُدّل بواسطة المتجر')}</p>}
-              {Number(r.deliveryRefundAmount ?? 0) > 0 && <p>{t('Delivery marked refunded', 'التوصيل المعلّم كمسترد')}: {money(Number(r.deliveryRefundAmount))}
+              {Number(r.deliveryRefundAmount ?? 0) > 0 && <p>{t('Delivery refunded', 'التوصيل المسترد')}: {money(Number(r.deliveryRefundAmount))}
                 {audience === 'admin' && r.deliveryRefundReason && <> — {r.deliveryRefundReason}</>}
               </p>}
               <ul className="checkout__lines">

@@ -1119,6 +1119,8 @@ model Order {
   couponRedemption CouponRedemption?
   returns          Return[]
   codCollections   CodCollection[]
+  refundPayouts    RefundPayout[]
+  goodwillRefunds  GoodwillRefund[]
 
   @@index([userID])
   @@index([status])
@@ -1359,10 +1361,62 @@ model Return {
   order     Order        @relation(fields: [orderID], references: [id], onDelete: Cascade)
   requester User?        @relation(fields: [requestedBy], references: [id], onDelete: SetNull)
   items     ReturnItem[]
+  payout    RefundPayout?
 
   @@index([orderID])
   @@index([status])
   @@map("return")
+}
+
+enum GoodwillRefundStatus {
+  OWED
+  PAID
+  CANCELLED
+}
+
+enum RefundPayoutMethod {
+  CASH
+}
+
+model GoodwillRefund {
+  id              String @id @default(uuid()) @db.Uuid
+  orderID         String @db.Uuid
+  amount          Decimal @db.Decimal(12, 2)
+  reason          String
+  status          GoodwillRefundStatus @default(OWED)
+  createdBy       String @db.Uuid
+  createdAt       DateTime @default(now())
+  cancelledBy     String? @db.Uuid
+  cancelledAt     DateTime?
+  cancellationReason String?
+  order           Order @relation(fields: [orderID], references: [id], onDelete: Restrict)
+  payout          RefundPayout?
+  @@index([orderID, status])
+  @@map("goodwillrefund")
+}
+
+// One immutable cash record for either a return or a goodwill refund.
+// Source identity, amount reconciliation and append-only rules also live in SQL.
+model RefundPayout {
+  id              String @id @default(uuid()) @db.Uuid
+  orderID         String @db.Uuid
+  returnID        String? @unique @db.Uuid
+  goodwillRefundID String? @unique @db.Uuid
+  amount          Decimal @db.Decimal(12, 2)
+  currency        String
+  method          RefundPayoutMethod @default(CASH)
+  payerName       String
+  paidOn          DateTime @db.Date
+  reference       String?
+  note            String?
+  actorID         String @db.Uuid
+  actorName       String
+  createdAt       DateTime @default(now())
+  order           Order @relation(fields: [orderID], references: [id], onDelete: Restrict)
+  return          Return? @relation(fields: [returnID], references: [id], onDelete: Restrict)
+  goodwillRefund  GoodwillRefund? @relation(fields: [goodwillRefundID], references: [id], onDelete: Restrict)
+  @@index([orderID, paidOn])
+  @@map("refundpayout")
 }
 
 // One returned line within a Return — quantity may be less than the

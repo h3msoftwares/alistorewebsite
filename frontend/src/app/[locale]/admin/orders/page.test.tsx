@@ -65,8 +65,8 @@ describe('AdminOrdersPage', () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByText(order.orderNumber);
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by return or marking status' }), 'AWAITING_REFUND_MARKING');
-    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, undefined, undefined, 'AWAITING_REFUND_MARKING'));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by return or marking status' }), 'REFUND_DUE');
+    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, undefined, undefined, 'REFUND_DUE'));
   });
   it('seeds a dashboard return filter from the URL', async () => {
     mockSearchParams.mockReturnValueOnce(new URLSearchParams('returnFilter=MARKED_REFUNDED'));

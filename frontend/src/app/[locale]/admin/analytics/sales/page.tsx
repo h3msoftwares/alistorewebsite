@@ -1,5 +1,7 @@
 'use client';
 
+import { RefundAnalyticsNote } from '@/components/admin/analytics/refund-note';
+
 import { useParams } from 'next/navigation';
 import { MerchandiseSummary } from '@/components/admin/analytics/merchandise-summary';
 import { MerchandiseBreakdown } from '@/components/admin/analytics/merchandise-breakdown';
@@ -39,11 +41,11 @@ export default function AnalyticsSalesPage() {
         return (
           <div className="analytics-page">
             <MerchandiseSummary metrics={data.summary} isAr={isAr} />
-            <ChartCard title={t('Net merchandise value & average order value', 'صافي قيمة البضائع ومتوسط قيمة الطلب')}>
+            <ChartCard title={t('Net order revenue & average order value', 'صافي إيرادات الطلبات ومتوسط قيمة الطلب')}>
               <TrendLine
                 data={series}
                 series={[
-                  { key: 'revenue', label: t('Net merchandise value after marked refunds', 'صافي قيمة البضائع بعد الاستردادات المعلّمة') },
+                  { key: 'revenue', label: t('Net order revenue', 'صافي إيرادات الطلبات') },
                   { key: 'aov', label: t('AOV', 'متوسط قيمة الطلب') },
                 ]}
                 formatY={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))}
@@ -76,7 +78,7 @@ export default function AnalyticsSalesPage() {
             ] as const).map(([title, rows]) => <ChartCard key={title} title={title} height="auto">
               <MerchandiseBreakdown rows={rows} isAr={isAr} />
             </ChartCard>)}
-            <p className="analytics-note">{data.note}</p>
+            <RefundAnalyticsNote isAr={isAr} note={data.note} />
           </div>
         );
       }}

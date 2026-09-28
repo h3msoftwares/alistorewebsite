@@ -5,6 +5,8 @@ import { createWrapper } from '@/test/utils';
 
 vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en', id: 'o1' }) }));
 vi.mock('@/hooks/use-settings', () => ({ useSettings: () => ({ data: null }) }));
+vi.mock('@/lib/api/refunds', () => ({ summary: vi.fn(async () => ({ collectionCount: 0, goodwillReservedCents: 0,
+  remainingTotalRefundableCents: 0, payouts: [], goodwillRefunds: [] })) }));
 const permissions = vi.hoisted(() => ({ correct: false, keys: [] as string[] }));
 vi.mock('@/lib/rbac', () => ({ usePermissions: () => ({ has: (key: string) => permissions.correct || permissions.keys.includes(key) }) }));
 

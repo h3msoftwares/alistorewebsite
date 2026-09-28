@@ -8,16 +8,17 @@ vi.mock('@/lib/api', () => ({ ordersApi: { adminReturnWork: vi.fn() } }));
 
 it('shows request counts and amounts with links to the appropriate filters', async () => {
   vi.mocked(ordersApi.adminReturnWork).mockResolvedValue({ awaitingApproval: { count: 2, amountCents: 4000 },
-    inTransit: { count: 1, amountCents: 2000 }, awaitingRefundMarking: { count: 4, amountCents: 15000 } });
+    inTransit: { count: 1, amountCents: 2000 }, awaitingRefundMarking: { count: 4, amountCents: 15000 }, refundDue: { count: 5, amountCents: 16000 } });
   const { Wrapper } = createWrapper(makeAuthedStore({ role: 'STAFF', permissions: ['orders:view'] }));
   render(<ReturnWorkCards locale="en" />, { wrapper: Wrapper });
   const tile = await screen.findByRole('link', { name: /Return requests awaiting approval/ });
   expect(tile).toHaveAttribute('href', '/en/admin/orders?returnFilter=AWAITING_APPROVAL');
   expect(within(tile).getByText('2')).toBeInTheDocument();
   expect(within(tile).getByText('$40.00')).toBeInTheDocument();
-  const waiting = screen.getByRole('link', { name: /Received returns awaiting refund marking/ });
-  expect(within(waiting).getByText('4')).toBeInTheDocument();
-  expect(within(waiting).getByText('$150.00')).toBeInTheDocument();
+  const waiting = screen.getByRole('link', { name: /Refund due/ });
+  expect(waiting).toHaveAttribute('href', '/en/admin/orders?returnFilter=REFUND_DUE');
+  expect(within(waiting).getByText('5')).toBeInTheDocument();
+  expect(within(waiting).getByText('$160.00')).toBeInTheDocument();
 });
 
 it('does not expose return work without orders:view', () => {

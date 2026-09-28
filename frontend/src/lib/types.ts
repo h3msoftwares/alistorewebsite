@@ -533,6 +533,7 @@ export interface ReturnItem {
 }
 
 export interface Return {
+  payout?: RefundPayout | null;
   id: UUID;
   orderID: UUID;
   status: ReturnStatus;
@@ -565,7 +566,25 @@ export interface RefundMarkingInput {
   refundAdjustmentReason?: string;
   deliveryRefundCents: number;
   deliveryRefundReason?: string;
+  payout?: CashPayoutInput;
 }
+
+export interface CashPayoutInput { payerName: string; paidOn?: string; reference?: string | null; note?: string | null }
+export interface RefundPayout extends CashPayoutInput {
+  id: UUID; orderID: UUID; returnID: UUID | null; goodwillRefundID: UUID | null;
+  amount: Decimalish; currency: string; method: 'CASH'; paidOn: string;
+  actorID: UUID; actorName: string; createdAt: IsoDateTime;
+}
+export interface GoodwillRefund {
+  id: UUID; amount: Decimalish; status: 'OWED' | 'PAID' | 'CANCELLED';
+  // Internal fields are absent from customer and guest responses.
+  reason?: string; createdAt?: IsoDateTime; cancellationReason?: string | null; payout?: RefundPayout | null;
+}
+export interface RefundSummary {
+  collectionCount: number; remainingTotalRefundableCents: number; goodwillReservedCents: number;
+  payouts: RefundPayout[]; goodwillRefunds: GoodwillRefund[];
+}
+export interface CreateGoodwillInput { amountCents: number; reason: string; paidNow: boolean; payout?: CashPayoutInput }
 
 export type RefundBlockReason = 'NO_COLLECTION_RECORDED' | 'EXCEEDS_REMAINING_REFUNDABLE' | 'EXCEEDS_DELIVERY_REFUNDABLE' | 'EXCEEDS_NET_COLLECTED';
 export type CollectionInput =
@@ -614,6 +633,7 @@ export interface ReturnPreview {
 }
 
 export interface Order {
+  goodwillRefunds?: GoodwillRefund[];
   /** Read-time aggregation; absent on mutation responses. */
   returnIndicators?: OrderReturnIndicators;
   id: UUID;
@@ -1329,9 +1349,13 @@ export interface MerchandiseMetrics {
   orderedUnits: number;
   physicallyReturnedUnits: number;
   retainedUnits: number;
+  paidGoodwill?: number;
+  netOrderRevenue?: number;
+  refundDueAmount?: number;
+  refundDueCount?: number;
 }
 
-export type OrderReturnFilter = 'HAS_RETURN' | 'IN_PROGRESS' | 'AWAITING_REFUND_MARKING' | 'MARKED_REFUNDED' | 'AWAITING_APPROVAL' | 'IN_TRANSIT';
+export type OrderReturnFilter = 'HAS_RETURN' | 'IN_PROGRESS' | 'REFUND_DUE' | 'AWAITING_REFUND_MARKING' | 'MARKED_REFUNDED' | 'AWAITING_APPROVAL' | 'IN_TRANSIT';
 export interface OrderReturnIndicators {
   returnStatus: 'NONE' | 'IN_PROGRESS' | 'PARTIALLY_RETURNED' | 'FULLY_RETURNED';
   refundStatus: 'NONE' | 'AWAITING_MARKING' | 'PARTIALLY_MARKED' | 'FULLY_MARKED';
@@ -1348,8 +1372,11 @@ export interface OrderReturnIndicators {
   markedReturns: number;
   markedUnits: number;
   markedRefundCents: number;
+  refundDueCount?: number;
+  refundDueCents?: number;
 }
 export interface ReturnWorkSummary {
+  refundDue?: { count: number; amountCents: number };
   awaitingApproval: { count: number; amountCents: number };
   inTransit: { count: number; amountCents: number };
   awaitingRefundMarking: { count: number; amountCents: number };

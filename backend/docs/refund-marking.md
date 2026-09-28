@@ -1,5 +1,9 @@
 # Effective refund marking
 
+Cash payout evidence, goodwill reservations, current labels and correction
+limitations are covered in [cash-refunds.md](cash-refunds.md). Its combined
+cap extends the formulas below with OWED and PAID goodwill.
+
 Calculated refund pricing is unchanged. `Return.refundAmount` and
 `ReturnItem.refundAmount` retain their original values and continue to drive
 purchase-time pricing history. Quantities, inventory, fulfillment transitions,

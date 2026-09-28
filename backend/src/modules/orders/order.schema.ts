@@ -95,7 +95,7 @@ export const adminListOrdersQuerySchema = z.object({
   // salesDashboard()). Mutually exclusive with `status` in practice (the
   // service gives it precedence — see listAllOrders()).
   awaitingCod: z.coerce.boolean().optional(),
-  returnFilter: z.enum(['HAS_RETURN', 'IN_PROGRESS', 'AWAITING_REFUND_MARKING', 'MARKED_REFUNDED', 'AWAITING_APPROVAL', 'IN_TRANSIT']).optional(),
+  returnFilter: z.enum(['HAS_RETURN', 'IN_PROGRESS', 'REFUND_DUE', 'AWAITING_REFUND_MARKING', 'MARKED_REFUNDED', 'AWAITING_APPROVAL', 'IN_TRANSIT']).optional(),
 });
 
 export { markCollectedSchema } from '../payments/collection.schema';

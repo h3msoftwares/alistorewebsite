@@ -90,7 +90,7 @@ describe('AdminDashboardPage', () => {
 
   it('renders the 30-day revenue & orders trend chart', async () => {
     renderPage();
-    expect(await screen.findByText('Net merchandise value & orders')).toBeInTheDocument();
+    expect(await screen.findByText('Net order revenue & orders')).toBeInTheDocument();
     expect(screen.getByText(/last 30 days/)).toBeInTheDocument();
   });
 

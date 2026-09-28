@@ -183,7 +183,7 @@ export async function sendReturnStatusChangedNotification(
   ret: { id: string; status: string },
   order: { orderNumber: string }
 ): Promise<void> {
-  const statusLabel = ret.status === 'REFUNDED' ? 'marked refunded' : ret.status.toLowerCase().replace('_', ' ');
+  const statusLabel = ret.status === 'REFUNDED' ? 'refunded' : ret.status.toLowerCase().replace('_', ' ');
   const title = `Return ${statusLabel} — ${order.orderNumber}`;
   await Promise.all([
     sendPushToAllAdmins({ title, body: '', url: ADMIN_RETURNS_URL }, 'orders:view'),

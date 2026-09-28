@@ -35,7 +35,7 @@ async function purchase() {
     return prisma.return.update({ where: { id: result.body.return.id }, data: { status } });
   };
   const mark = (id: string, status: ReturnStatus, token: string, extra = {}) => request(app)
-    .patch(`/api/admin/returns/${id}/status`).set(bearer(token)).send({ status, ...extra });
+    .patch(`/api/admin/returns/${id}/status`).set(bearer(token)).send({ status, ...(status === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}), ...extra });
   return { buyer, admin, variant, order, body, create, preview, ret, mark };
 }
 

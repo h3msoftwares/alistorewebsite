@@ -25,7 +25,7 @@ async function setup() {
   }).expect(201);
   const order = checkout.body.order;
   await collectTestOrder(order.id, admin.user.id);
-  const status = (next: string) => request(app).patch(`/api/admin/orders/${order.id}/status`).set(bearer(admin.token)).send({ status: next });
+  const status = (next: string) => request(app).patch(`/api/admin/orders/${order.id}/status`).set(bearer(admin.token)).send({ status: next, ...(next === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}) });
   const correction = (next: string, expectedStatus: string, reason = 'Wrong status selected by staff', token = admin.token) =>
     request(app).patch(`/api/admin/orders/${order.id}/correction`).set(bearer(token)).send({ status: next, expectedStatus, reason });
   const stock = async () => (await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stockQuantity;
@@ -119,7 +119,7 @@ describe('Order status rules and explicit corrections', () => {
     if (returnStatus !== 'REQUESTED') {
       for (const next of ['APPROVED', 'IN_TRANSIT', 'RECEIVED', ...(returnStatus === 'REFUNDED' ? ['REFUNDED'] : [])]) {
         await request(app).patch(`/api/admin/returns/${ret.body.return.id}/status`)
-          .set(bearer(p.admin.token)).send({ status: next }).expect(200);
+          .set(bearer(p.admin.token)).send({ status: next, ...(next === 'REFUNDED' ? { payout: { payerName: 'Test cashier' } } : {}) }).expect(200);
       }
     }
     const before = await p.stock();

@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
-import { lineReturnsJoin, lineNet, lineRetained, orderMetricsJoin, orderMerchandise, orderNet, merchandiseSummary, MERCHANDISE_NOTE } from '../../lib/merchandise-metrics';
+import { lineReturnsJoin, lineNet, lineRetained, orderMetricsJoin, orderMerchandise, orderNet, goodwillJoin, netOrderRevenue, merchandiseSummary, MERCHANDISE_NOTE } from '../../lib/merchandise-metrics';
 import * as ga from './ga.service';
 import type { AnalyticsRangeQuery } from './analytics.schema';
 
@@ -63,7 +63,7 @@ export async function overview(q: AnalyticsRangeQuery) {
     ]);
 
   const orders = agg.orders;
-  const revenue = agg.netMerchandiseValue;
+  const revenue = agg.netOrderRevenue ?? 0;
   const units = agg.orderedUnits;
 
   return {
@@ -71,7 +71,7 @@ export async function overview(q: AnalyticsRangeQuery) {
     kpis: {
       ...agg,
       revenue,
-      deliveredRevenue: delivered.netMerchandiseValue,
+      deliveredRevenue: delivered.netOrderRevenue ?? 0,
       orders,
       averageOrderValue: orders ? revenue / orders : 0,
       itemsPerOrder: orders ? units / orders : 0,
@@ -131,8 +131,8 @@ export async function customers(q: AnalyticsRangeQuery) {
         COUNT(*) FILTER (WHERE cnt >= 2)::int AS repeat_customers,
         COALESCE(AVG(spend), 0)::float8       AS avg_ltv
       FROM (
-        SELECT o."userID", COUNT(*)::int AS cnt, SUM(${orderNet})::float8 AS spend
-        FROM "order" o ${orderMetricsJoin}
+        SELECT o."userID", COUNT(*)::int AS cnt, SUM(${netOrderRevenue})::float8 AS spend
+        FROM "order" o ${orderMetricsJoin} ${goodwillJoin}
         WHERE o."userID" IS NOT NULL AND o."status" <> ${CANCELLED}
         GROUP BY o."userID"
       ) per_customer
@@ -190,8 +190,8 @@ export async function customers(q: AnalyticsRangeQuery) {
     >(Prisma.sql`
       SELECT u."id", u."name", u."email",
         COUNT(o.*)::int AS orders,
-        SUM(${orderNet})::float8 AS revenue
-      FROM "order" o JOIN "user" u ON u."id" = o."userID" ${orderMetricsJoin}
+        SUM(${netOrderRevenue})::float8 AS revenue
+      FROM "order" o JOIN "user" u ON u."id" = o."userID" ${orderMetricsJoin} ${goodwillJoin}
       WHERE o."status" <> ${CANCELLED}
         AND o."dateCreated" BETWEEN ${from} AND ${to}
       GROUP BY u."id", u."name", u."email"
@@ -379,12 +379,14 @@ export function funnelReport(q: AnalyticsRangeQuery) {
 function revenueSeries(from: Date, to: Date, g: Granularity) {
   return prisma.$queryRaw<{ bucket: Date; revenue: number; orders: number }[]>(Prisma.sql`
     SELECT ${bucket(g, Prisma.sql`o."dateCreated"`)} AS bucket,
-      SUM(${orderNet})::float8 AS revenue,
+      SUM(${netOrderRevenue})::float8 AS revenue,
+      SUM(COALESCE(gw.paid,0))::float8 AS "paidGoodwill",
+      SUM(${netOrderRevenue})::float8 AS "netOrderRevenue",
       SUM(${orderMerchandise})::float8 AS "merchandiseValue",
       SUM(COALESCE(om.refunded, 0))::float8 AS "merchandiseMarkedRefunded",
       SUM(${orderNet})::float8 AS "netMerchandiseValue",
       COUNT(*)::int AS orders
-    FROM "order" o ${orderMetricsJoin}
+    FROM "order" o ${orderMetricsJoin} ${goodwillJoin}
     WHERE o."dateCreated" BETWEEN ${from} AND ${to} AND o."status" <> ${CANCELLED}
     GROUP BY 1 ORDER BY 1
   `);
