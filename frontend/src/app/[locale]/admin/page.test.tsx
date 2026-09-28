@@ -5,7 +5,7 @@ import { createWrapper } from '@/test/utils';
 vi.mock('next/navigation', () => ({ useParams: () => ({ locale: 'en' }), useRouter: () => ({ push: vi.fn() }) }));
 
 vi.mock('@/lib/api', () => ({
-  ordersApi: { adminDashboard: vi.fn() },
+  ordersApi: { adminDashboard: vi.fn(), adminReturnWork: vi.fn() },
   analyticsApi: { getOverview: vi.fn() },
   notificationsApi: {
     listNotifications: vi.fn(),

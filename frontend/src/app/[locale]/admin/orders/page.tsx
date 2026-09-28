@@ -22,6 +22,7 @@ import {
 } from '@/components/ui';
 import { AdminPager } from '@/components/admin/admin-pager';
 import { OrderActionModals } from '@/components/orders/order-action-modals';
+import { OrderReturnIndicators } from '@/components/orders/order-return-indicators';
 import { useAdminOrders } from '@/hooks/use-orders';
 import { normalOrderStatuses, useOrderActions } from '@/hooks/use-order-actions';
 import { useOrderReceiptPrint } from '@/hooks/use-order-receipt-print';
@@ -31,7 +32,7 @@ import { DELIVERY_REGIONS } from '@/lib/regions';
 import type { ReceiptFormat } from '@/lib/print-preferences';
 import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 import { usePermissions } from '@/lib/rbac';
-import type { Order, OrderStatus } from '@/lib/types';
+import type { Order, OrderStatus, OrderReturnFilter } from '@/lib/types';
 
 const PAGE_SIZE = 20;
 
@@ -88,6 +89,7 @@ export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>(() => searchParams?.get('status') ?? '');
   const [flaggedOnly, setFlaggedOnly] = useState(() => searchParams?.get('flagged') === 'true');
   const [awaitingCod, setAwaitingCod] = useState(() => searchParams?.get('awaitingCod') === 'true');
+  const [returnFilter, setReturnFilter] = useState(() => searchParams?.get('returnFilter') ?? '');
   const [page, setPage] = useState(1);
   // Which rows show their delivery-address detail (area/city/region + notes)
   // — collapsed by default so the table reads less dense; the row's other
@@ -102,7 +104,7 @@ export default function AdminOrdersPage() {
     });
 
   const statuses = statusFilter ? (statusFilter.split(',') as OrderStatus[]) : undefined;
-  const { data, isPending, isError, refetch } = useAdminOrders(statuses, flaggedOnly || undefined, awaitingCod || undefined);
+  const { data, isPending, isError, refetch } = useAdminOrders(statuses, flaggedOnly || undefined, awaitingCod || undefined, (returnFilter || undefined) as OrderReturnFilter | undefined);
 
   const total = data?.length ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -160,6 +162,18 @@ export default function AdminOrdersPage() {
               </Select>
             </label>
           </span>
+          <label>
+            <span className="visually-hidden">{t('Filter by return or marking status', 'تصفية حسب الإرجاع أو تعليم الاسترداد')}</span>
+            <Select value={returnFilter} onChange={(e) => { setReturnFilter(e.target.value); setPage(1); }}>
+              <option value="">{t('All return states', 'كل حالات الإرجاع')}</option>
+              <option value="HAS_RETURN">{t('Has a return', 'لديه مرتجع')}</option>
+              <option value="IN_PROGRESS">{t('Return in progress', 'إرجاع قيد التنفيذ')}</option>
+              <option value="AWAITING_REFUND_MARKING">{t('Received awaiting refund marking', 'مستلم بانتظار تعليم الاسترداد')}</option>
+              <option value="MARKED_REFUNDED">{t('Any marked refunded', 'أي مبلغ معلّم كمسترد')}</option>
+              <option value="AWAITING_APPROVAL">{t('Return requests awaiting approval', 'طلبات إرجاع بانتظار الموافقة')}</option>
+              <option value="IN_TRANSIT">{t('Returns in transit', 'مرتجعات في الطريق')}</option>
+            </Select>
+          </label>
           <span className="admin-page__head-group admin-page__head-group--divider">
             {canManageBlacklist && (
               <Link href={`/${locale}/admin/orders/blacklist`} className="btn btn--outline">
@@ -201,7 +215,7 @@ export default function AdminOrdersPage() {
                 ? t('No orders awaiting COD collection', 'لا طلبات بانتظار تحصيل الدفع')
                 : statusFilter
                   ? t('No orders with this status', 'لا طلبات بهذه الحالة')
-                  : t('No orders yet', 'لا توجد طلبات بعد')
+                  : returnFilter ? t('No orders match this return filter', 'لا طلبات تطابق تصفية المرتجعات') : t('No orders yet', 'لا توجد طلبات بعد')
           }
         />
       ) : (
@@ -233,6 +247,7 @@ export default function AdminOrdersPage() {
                         *count*. */}
                     <td data-label={t('Order', 'الطلب')}>
                       <Link href={`/${locale}/admin/orders/${o.id}`}>{o.orderNumber}</Link>
+                      <OrderReturnIndicators indicators={o.returnIndicators} locale={locale} compact />
                     </td>
                     <td data-label={t('Date', 'التاريخ')}>{date(o.dateCreated)}</td>
                     <td data-label={t('Customer', 'الزبون')}>

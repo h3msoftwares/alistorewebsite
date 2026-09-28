@@ -4,6 +4,7 @@ import * as orderService from './order.service';
 import { paramString } from '../../lib/params';
 import { AppError } from '../../lib/AppError';
 import { GUEST_CART_COOKIE } from '../cart/guest-cart-cookie';
+import { returnWorkSummary, type OrderReturnFilter } from '../../lib/order-return-indicators';
 
 export async function checkoutHandler(req: Request, res: Response) {
   const owner = req.user ? { userID: req.user.id } : { sessionID: req.cookies?.[GUEST_CART_COOKIE] };
@@ -54,12 +55,13 @@ export async function lookupOrderHandler(req: Request, res: Response) {
 // ---- Admin ----
 
 export async function listAllOrdersHandler(req: Request, res: Response) {
-  const { status, flagged, awaitingCod } = (req.validatedQuery ?? {}) as {
+  const { status, flagged, awaitingCod, returnFilter } = (req.validatedQuery ?? {}) as {
     status?: OrderStatus[];
     flagged?: boolean;
     awaitingCod?: boolean;
+    returnFilter?: OrderReturnFilter;
   };
-  const orders = await orderService.listAllOrders(status, flagged, awaitingCod);
+  const orders = await orderService.listAllOrders(status, flagged, awaitingCod, returnFilter);
   res.json({ orders });
 }
 
@@ -85,6 +87,10 @@ export async function markCodCollectedHandler(req: Request, res: Response) {
     req.user!.id
   );
   res.json({ order });
+}
+
+export async function returnWorkSummaryHandler(_req: Request, res: Response) {
+  res.json(await returnWorkSummary());
 }
 
 export async function correctOrderStatusHandler(req: Request, res: Response) {

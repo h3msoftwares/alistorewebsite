@@ -5,6 +5,7 @@ import { Alert, Button, Choice, QuantityStepper, StatusPill, Textarea } from '@/
 import { formatCurrency } from '@/lib/format';
 import { colorLabel } from '@/lib/product-variants';
 import { regionLabel } from '@/lib/regions';
+import { OrderReturnIndicators } from './order-return-indicators';
 import type { CreateReturnBody, Order, ReturnStatus, ReturnPreview, RefundCalculation } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
@@ -37,7 +38,7 @@ const RETURN_STATUS_LABEL: Record<ReturnStatus, { en: string; ar: string }> = {
   APPROVED: { en: 'Approved', ar: 'مقبول' },
   IN_TRANSIT: { en: 'In transit', ar: 'في الطريق' },
   RECEIVED: { en: 'Received', ar: 'تم الاستلام' },
-  REFUNDED: { en: 'Refunded', ar: 'تم الاسترداد' },
+  REFUNDED: { en: 'Marked refunded', ar: 'معلّم كمسترد' },
   REJECTED: { en: 'Rejected', ar: 'مرفوض' },
   CANCELLED: { en: 'Cancelled', ar: 'مُلغى' },
 };
@@ -51,7 +52,7 @@ function RefundExplanation({ calculation: c, locale }: { calculation: RefundCalc
     [t('Kept amount after preserved coupon', 'المبلغ المحتفظ به بعد القسيمة الأصلية'), c.keptNetCents],
     [t('Proportional value of all returned units', 'القيمة النسبية لجميع الوحدات المرتجعة'), c.proportionalRefundCents],
     [t('Quantity-discount adjustment (deducted)', 'تعديل خصم الكمية (يُخصم)'), c.quantityDiscountAdjustmentCents],
-    [t('Previously refunded', 'المبالغ المستردة سابقاً'), c.previousRefundCents],
+    [t('Previously marked refunded', 'المبالغ المعلّمة كمستردة سابقاً'), c.previousRefundCents],
     ...(c.reservedRefundCents > 0 ? [[t('Other pending refunds (reserved)', 'مبالغ طلبات إرجاع أخرى معلّقة'), c.reservedRefundCents] as const] : []),
     [t('Refund for this request', 'المبلغ المسترد لهذا الطلب'), c.refundCents],
   ] as const;
@@ -81,6 +82,7 @@ export function OrderDetailCard({
   requestReturnError,
   onCancelReturn,
   cancellingReturnId,
+  audience = 'customer',
 }: {
   locale: Locale;
   order: Order;
@@ -93,6 +95,7 @@ export function OrderDetailCard({
   requestReturnError?: string | null;
   onCancelReturn?: (returnId: string) => void;
   cancellingReturnId?: string | null;
+  audience?: 'admin' | 'customer';
 }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
@@ -238,6 +241,7 @@ export function OrderDetailCard({
         </div>
       )}
 
+      <OrderReturnIndicators indicators={order.returnIndicators} locale={locale} customer={audience === 'customer'} />
       {order.returns != null && order.returns.length > 0 && (
         <div className="stack" style={{ marginBlockStart: 'var(--space-4)' }}>
           <strong>{t('Returns', 'المرتجعات')}</strong>

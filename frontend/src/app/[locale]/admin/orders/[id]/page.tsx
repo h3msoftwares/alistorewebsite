@@ -179,6 +179,7 @@ export default function AdminOrderDetailPage() {
 
       <div className="card" style={{ padding: 'var(--space-5)', maxWidth: '40rem' }}>
         <OrderDetailCard
+          audience="admin"
           locale={locale}
           order={order}
           onPreviewReturn={(body) => returnsApi.adminPreviewReturn(order.id, body)}

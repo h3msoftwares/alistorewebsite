@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Alert, EmptyState, Skeleton, StatusPill } from '@/components/ui';
 import { useAuth } from '@/hooks/use-auth';
 import { useMyOrders } from '@/hooks/use-orders';
+import { OrderReturnIndicators } from '@/components/orders/order-return-indicators';
 import { formatCurrency } from '@/lib/format';
 
 type Locale = 'en' | 'ar';
@@ -104,6 +105,7 @@ export function OrdersView({ locale }: { locale: Locale }) {
                   <StatusPill status={o.status} locale={locale} />
                 </div>
               </div>
+              <OrderReturnIndicators indicators={o.returnIndicators} locale={locale} customer compact />
             </Link>
           </li>
         ))}

@@ -45,8 +45,9 @@ export const queryKeys = {
     mine: () => ['orders', 'mine'] as const,
     detail: (id: UUID) => ['orders', 'detail', id] as const,
     track: (token: string) => ['orders', 'track', token] as const,
-    admin: (status?: string[], flagged?: boolean, awaitingCod?: boolean) =>
-      ['orders', 'admin', status?.join(',') ?? null, flagged ?? false, awaitingCod ?? false] as const,
+    admin: (status?: string[], flagged?: boolean, awaitingCod?: boolean, returnFilter?: string) =>
+      ['orders', 'admin', status?.join(',') ?? null, flagged ?? false, awaitingCod ?? false, returnFilter ?? null] as const,
+    returnWork: () => ['orders', 'return-work'] as const,
     dashboard: () => ['orders', 'dashboard'] as const,
   },
   customers: {

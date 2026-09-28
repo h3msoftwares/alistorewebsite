@@ -5,6 +5,8 @@ import type {
   DeliveryQuote,
   Order,
   OrderStatus,
+  OrderReturnFilter,
+  ReturnWorkSummary,
   ProductVariant,
   UUID,
 } from '../types';
@@ -55,10 +57,10 @@ export function lookupOrder(orderNumber: string, contact: string) {
 
 // ---- Admin ----
 
-export function adminListOrders(status?: OrderStatus[], flagged?: boolean, awaitingCod?: boolean) {
+export function adminListOrders(status?: OrderStatus[], flagged?: boolean, awaitingCod?: boolean, returnFilter?: OrderReturnFilter) {
   return api
     .get<{ orders: Order[] }>('/api/admin/orders', {
-      query: { status: status?.length ? status.join(',') : undefined, flagged, awaitingCod },
+      query: { status: status?.length ? status.join(',') : undefined, flagged, awaitingCod, returnFilter },
     })
     .then((r) => r.orders);
 }
@@ -92,6 +94,10 @@ export function adminCorrectOrderStatus(id: UUID, body: { status: OrderStatus; e
 
 export function adminDashboard() {
   return api.get<AdminDashboard>('/api/admin/dashboard');
+}
+
+export function adminReturnWork() {
+  return api.get<ReturnWorkSummary>('/api/admin/orders/return-work');
 }
 
 export function adminUpdateVariantStock(variantId: UUID, stockQuantity: number) {

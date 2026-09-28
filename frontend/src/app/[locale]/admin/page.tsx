@@ -10,6 +10,7 @@ import { useAdminDashboard } from '@/hooks/use-orders';
 import { useAnalyticsOverview } from '@/hooks/use-analytics';
 import { colorLabel } from '@/lib/product-variants';
 import { NotificationBell } from '@/components/admin/notification-bell';
+import { ReturnWorkCards } from '@/components/admin/return-work-cards';
 
 /** Admin landing page: an at-a-glance "what needs attention" view. The
  *  date-ranged deep dives live under /admin/analytics — this page is the
@@ -66,6 +67,7 @@ export default function AdminDashboardPage() {
         <div className="admin-dashboard">
           <p className="analytics-note">{t('Delivered and whole-order returned orders, all time. Marked refunds are administrative records, not proof of payment.', 'الطلبات المسلّمة والمرتجعة بالكامل، طوال الفترة. الاستردادات المعلّمة سجلات إدارية وليست إثبات دفع.')}</p>
           <MerchandiseSummary metrics={data.merchandise} isAr={isAr} />
+          <ReturnWorkCards locale={locale} />
           <StatGrid>
             <Link className="stat-tile stat-tile--link" href={`${base}/orders?status=PENDING`}>
               <span className="stat-tile__label">{t('Pending orders', 'طلبات قيد الانتظار')}</span>

@@ -6,7 +6,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { trackPurchase } from '@/lib/analytics/ga';
 import { useAppDispatch } from '@/store/hooks';
 import { resetItemCount } from '@/store/slices/cartSlice';
-import type { CheckoutBody, OrderStatus, UUID } from '@/lib/types';
+import type { CheckoutBody, OrderStatus, OrderReturnFilter, UUID } from '@/lib/types';
 
 // ---------------------------------------------------------------- queries ----
 
@@ -35,10 +35,10 @@ export function useOrderByToken(token: string | undefined) {
   });
 }
 
-export function useAdminOrders(status?: OrderStatus[], flagged?: boolean, awaitingCod?: boolean) {
+export function useAdminOrders(status?: OrderStatus[], flagged?: boolean, awaitingCod?: boolean, returnFilter?: OrderReturnFilter) {
   return useQuery({
-    queryKey: queryKeys.orders.admin(status, flagged, awaitingCod),
-    queryFn: () => ordersApi.adminListOrders(status, flagged, awaitingCod),
+    queryKey: queryKeys.orders.admin(status, flagged, awaitingCod, returnFilter),
+    queryFn: () => ordersApi.adminListOrders(status, flagged, awaitingCod, returnFilter),
   });
 }
 
@@ -47,6 +47,10 @@ export function useAdminDashboard() {
     queryKey: queryKeys.orders.dashboard(),
     queryFn: ordersApi.adminDashboard,
   });
+}
+
+export function useReturnWorkSummary(enabled = true) {
+  return useQuery({ queryKey: queryKeys.orders.returnWork(), queryFn: ordersApi.adminReturnWork, enabled });
 }
 
 /** Live delivery-fee estimate for the current cart + a chosen governorate;
@@ -132,8 +136,8 @@ export function useUpdateOrderStatus() {
       status: OrderStatus;
       estimatedDeliveryDays?: number | null;
     }) => ordersApi.adminUpdateOrderStatus(id, status, estimatedDeliveryDays),
-    onSuccess: (order) => {
-      qc.setQueryData(queryKeys.orders.detail(order.id), order);
+    onSuccess: () => {
+      // Keep read-time indicators until the complete detail query refreshes.
       qc.invalidateQueries({ queryKey: queryKeys.orders.all() });
       qc.invalidateQueries({ queryKey: queryKeys.orders.dashboard() });
       qc.invalidateQueries({ queryKey: queryKeys.returns.all() });

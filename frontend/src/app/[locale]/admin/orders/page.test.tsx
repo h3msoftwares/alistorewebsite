@@ -54,6 +54,18 @@ beforeEach(() => {
 });
 
 describe('AdminOrdersPage', () => {
+  it('passes the independent return filter to the list API', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText(order.orderNumber);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by return or marking status' }), 'AWAITING_REFUND_MARKING');
+    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, undefined, undefined, 'AWAITING_REFUND_MARKING'));
+  });
+  it('seeds a dashboard return filter from the URL', async () => {
+    mockSearchParams.mockReturnValueOnce(new URLSearchParams('returnFilter=MARKED_REFUNDED'));
+    renderPage();
+    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, undefined, undefined, 'MARKED_REFUNDED'));
+  });
   it('renders a row with the order number, customer and total', async () => {
     renderPage();
     expect(await screen.findByText('AS-20260906-ABC123')).toBeInTheDocument();
@@ -173,7 +185,7 @@ describe('AdminOrdersPage', () => {
     await screen.findByText('AS-20260906-ABC123');
 
     await user.selectOptions(screen.getByRole('combobox', { name: /filter by status/i }), 'DELIVERED');
-    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(['DELIVERED'], undefined, undefined));
+    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(['DELIVERED'], undefined, undefined, undefined));
   });
 
   it('"Flagged only" checkbox refetches with flagged=true', async () => {
@@ -182,14 +194,14 @@ describe('AdminOrdersPage', () => {
     await screen.findByText('AS-20260906-ABC123');
 
     await user.click(screen.getByRole('checkbox', { name: /flagged only/i }));
-    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, true, undefined));
+    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, true, undefined, undefined));
   });
 
   it('seeds status/flagged/awaitingCod filters from the URL (dashboard deep links)', async () => {
     mockSearchParams.mockReturnValueOnce(new URLSearchParams('status=CONFIRMED,SHIPPED'));
     renderPage();
     await waitFor(() =>
-      expect(mock.adminListOrders).toHaveBeenLastCalledWith(['CONFIRMED', 'SHIPPED'], undefined, undefined)
+      expect(mock.adminListOrders).toHaveBeenLastCalledWith(['CONFIRMED', 'SHIPPED'], undefined, undefined, undefined)
     );
   });
 
@@ -199,7 +211,7 @@ describe('AdminOrdersPage', () => {
     await screen.findByText('AS-20260906-ABC123');
 
     await user.click(screen.getByRole('checkbox', { name: /awaiting cod/i }));
-    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, undefined, true));
+    await waitFor(() => expect(mock.adminListOrders).toHaveBeenLastCalledWith(undefined, undefined, true, undefined));
   });
 
   it('shows a Flagged badge and a "Mark reviewed" action for a flagged order, which clears the flag', async () => {

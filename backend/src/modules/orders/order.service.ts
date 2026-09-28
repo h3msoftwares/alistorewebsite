@@ -1,5 +1,6 @@
 import { createWholeOrderReturn } from '../returns/return-records';
 import { merchandiseSummary } from '../../lib/merchandise-metrics';
+import { indicatorsFromRecords, readReturnIndicators, withReturnIndicators, type OrderReturnFilter } from '../../lib/order-return-indicators';
 import { createHash, randomBytes } from 'crypto';
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
@@ -719,11 +720,12 @@ export async function checkout(owner: CheckoutOwner, input: CheckoutInput) {
 }
 
 export async function listMyOrders(userID: string) {
-  return prisma.order.findMany({
+  const orders = await prisma.order.findMany({
     where: { userID },
     orderBy: { dateCreated: 'desc' },
     include: { items: true },
   });
+  return withReturnIndicators(orders);
 }
 
 export async function getOrderById(id: string, userID?: string) {
@@ -732,7 +734,7 @@ export async function getOrderById(id: string, userID?: string) {
     include: { items: true, address: true, returns: { include: { items: true } } },
   });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
-  return order;
+  return { ...order, returnIndicators: indicatorsFromRecords(order) };
 }
 
 /** Shared whole-order guard: pending claims and completed refunds both count.
@@ -897,10 +899,10 @@ export async function cancelOrderByToken(rawToken: string) {
 /** GET /api/orders/track/:token — the guest tracking view. Same generic
  *  NOT_FOUND whether the token is wrong or merely expired; never reveals
  *  which. */
-export async function getOrderByToken(rawToken: string): Promise<OrderWithItems> {
+export async function getOrderByToken(rawToken: string) {
   const record = await findValidAccessToken(rawToken);
   if (!record) throw new AppError('NOT_FOUND', 'Order not found');
-  return record.order;
+  return { ...record.order, returnIndicators: indicatorsFromRecords(record.order) };
 }
 
 /**
@@ -925,20 +927,23 @@ export async function lookupOrder(orderNumber: string, contact: string): Promise
 
 // ---- Admin ----
 
-export async function listAllOrders(statuses?: OrderStatus[], flagged?: boolean, awaitingCod?: boolean) {
+export async function listAllOrders(statuses?: OrderStatus[], flagged?: boolean, awaitingCod?: boolean, returnFilter?: OrderReturnFilter) {
   // awaitingCod implies its own status (DELIVERED) — takes precedence over an
   // explicit status list rather than combining into one `where.status` key
   // (an object-spread merge would just let one silently clobber the other).
-  const statusFilter = awaitingCod
-    ? { status: 'DELIVERED' as const, paymentMethod: 'COD' as const, paymentStatus: 'PENDING' as const }
-    : statuses?.length
-      ? { status: { in: statuses } }
-      : {};
-  return prisma.order.findMany({
-    where: { ...statusFilter, ...(flagged ? { flaggedForReview: true } : {}) },
+  const where = Prisma.sql`${awaitingCod
+    ? Prisma.sql`o."status" = 'DELIVERED' AND o."paymentMethod" = 'COD' AND o."paymentStatus" = 'PENDING'`
+    : statuses?.length ? Prisma.sql`o."status"::text IN (${Prisma.join(statuses)})` : Prisma.sql`TRUE`}
+    AND ${flagged ? Prisma.sql`o."flaggedForReview" = TRUE` : Prisma.sql`TRUE`}`;
+  // Filter on the same SQL aggregates used for the badges. Query count stays
+  // constant with the number of rows; never fetch returns once per order.
+  const summaries = await readReturnIndicators(where, returnFilter);
+  const orders = await prisma.order.findMany({
+    where: { id: { in: [...summaries.keys()] } },
     orderBy: { dateCreated: 'desc' },
     include: { items: true, user: { select: { id: true, name: true, email: true, phone: true } } },
   });
+  return orders.map(o => ({ ...o, returnIndicators: summaries.get(o.id)! }));
 }
 
 /** Clears a flagged order's review flag once an admin has looked at it.

@@ -29,7 +29,7 @@ const STATUS_FILTER_OPTIONS: { value: ReturnStatus; en: string; ar: string }[] =
   { value: 'APPROVED', en: 'Approved', ar: 'مقبول' },
   { value: 'IN_TRANSIT', en: 'In transit', ar: 'في الطريق' },
   { value: 'RECEIVED', en: 'Received', ar: 'تم الاستلام' },
-  { value: 'REFUNDED', en: 'Refunded', ar: 'تم الاسترداد' },
+  { value: 'REFUNDED', en: 'Marked refunded', ar: 'معلّم كمسترد' },
   { value: 'REJECTED', en: 'Rejected', ar: 'مرفوض' },
   { value: 'CANCELLED', en: 'Cancelled', ar: 'مُلغى' },
 ];

@@ -582,6 +582,8 @@ export interface ReturnPreview {
 }
 
 export interface Order {
+  /** Read-time aggregation; absent on mutation responses. */
+  returnIndicators?: OrderReturnIndicators;
   id: UUID;
   orderNumber: string;
   userID?: UUID | null;
@@ -1295,6 +1297,30 @@ export interface MerchandiseMetrics {
   orderedUnits: number;
   physicallyReturnedUnits: number;
   retainedUnits: number;
+}
+
+export type OrderReturnFilter = 'HAS_RETURN' | 'IN_PROGRESS' | 'AWAITING_REFUND_MARKING' | 'MARKED_REFUNDED' | 'AWAITING_APPROVAL' | 'IN_TRANSIT';
+export interface OrderReturnIndicators {
+  returnStatus: 'NONE' | 'IN_PROGRESS' | 'PARTIALLY_RETURNED' | 'FULLY_RETURNED';
+  refundStatus: 'NONE' | 'AWAITING_MARKING' | 'PARTIALLY_MARKED' | 'FULLY_MARKED';
+  hasReturn: boolean;
+  orderedUnits: number;
+  originalMerchandiseCents: number;
+  activeReturns: number;
+  inProgressReturns: number;
+  inProgressUnits: number;
+  pendingRefundCents: number;
+  physicallyReturnedUnits: number;
+  awaitingMarkingReturns: number;
+  awaitingMarkingCents: number;
+  markedReturns: number;
+  markedUnits: number;
+  markedRefundCents: number;
+}
+export interface ReturnWorkSummary {
+  awaitingApproval: { count: number; amountCents: number };
+  inTransit: { count: number; amountCents: number };
+  awaitingRefundMarking: { count: number; amountCents: number };
 }
 
 export interface RevenuePoint {

@@ -19,6 +19,7 @@ import {
   markCodCollectedHandler,
   reviewOrderHandler,
   salesDashboardHandler,
+  returnWorkSummaryHandler,
 } from '../orders/order.controller';
 import { updateStockHandler } from '../catalog/product.controller';
 import analyticsRoutes from '../analytics/analytics.routes';
@@ -39,6 +40,7 @@ const router = Router();
 router.use(requireAuth, requireRole('STAFF', 'ADMIN'));
 
 router.get('/dashboard', requirePermission('dashboard:view'), asyncHandler(salesDashboardHandler));
+router.get('/orders/return-work', requirePermission('orders:view'), asyncHandler(returnWorkSummaryHandler));
 
 router.use('/analytics', requirePermission('analytics:view'), analyticsRoutes);
 

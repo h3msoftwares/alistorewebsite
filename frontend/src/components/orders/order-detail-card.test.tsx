@@ -56,6 +56,17 @@ describe('<OrderDetailCard> — totals', () => {
 });
 
 describe('<OrderDetailCard> — returns', () => {
+  it('displays return and marking indicators independently of delivery status', () => {
+    render(<OrderDetailCard locale="en" order={{ ...baseOrder, returnIndicators: {
+      returnStatus: 'PARTIALLY_RETURNED', refundStatus: 'PARTIALLY_MARKED', hasReturn: true,
+      orderedUnits: 4, originalMerchandiseCents: 8000, activeReturns: 2, inProgressReturns: 1,
+      inProgressUnits: 1, pendingRefundCents: 2000, physicallyReturnedUnits: 1,
+      awaitingMarkingReturns: 0, awaitingMarkingCents: 0, markedReturns: 1, markedUnits: 1, markedRefundCents: 2000,
+    } }} />);
+    expect(screen.getByText('Partially returned · 1 of 4 units')).toBeInTheDocument();
+    expect(screen.getByText('Marked refunded: $20.00 of $80.00')).toBeInTheDocument();
+    expect(screen.getByText('Return in progress: 1 units · pending amount $20.00')).toBeInTheDocument();
+  });
   it('shows "Request a return" only when delivered and a callback is passed', () => {
     render(<OrderDetailCard locale="en" order={baseOrder} />);
     expect(screen.queryByRole('button', { name: 'Request a return' })).not.toBeInTheDocument();
