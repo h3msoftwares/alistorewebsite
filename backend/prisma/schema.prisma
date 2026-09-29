@@ -853,17 +853,18 @@ model BundleComponent {
 
 // Append-only purchase facts. Editing/archiving the source never changes them.
 model OrderBundle {
-  id            String                 @id @default(uuid()) @db.Uuid
-  orderID       String                 @db.Uuid
-  bundleID      String                 @db.Uuid
-  nameEn        String
-  nameAr        String
-  flatPrice     Decimal                @db.Decimal(12, 2)
-  instanceCount Int
-  dateCreated   DateTime               @default(now())
-  order         Order                  @relation(fields: [orderID], references: [id], onDelete: Restrict)
-  bundle        Bundle                 @relation(fields: [bundleID], references: [id], onDelete: Restrict)
-  components    OrderBundleComponent[]
+  id                 String                    @id @default(uuid()) @db.Uuid
+  orderID            String                    @db.Uuid
+  bundleID           String                    @db.Uuid
+  nameEn             String
+  nameAr             String
+  flatPrice          Decimal                   @db.Decimal(12, 2)
+  instanceCount      Int
+  dateCreated        DateTime                  @default(now())
+  order              Order                     @relation(fields: [orderID], references: [id], onDelete: Restrict)
+  bundle             Bundle                    @relation(fields: [bundleID], references: [id], onDelete: Restrict)
+  components         OrderBundleComponent[]
+  returnCalculations ReturnBundleCalculation[]
 
   @@unique([orderID, bundleID])
   @@map("orderbundle")
@@ -1426,10 +1427,11 @@ model Return {
   dateCreated            DateTime     @default(now())
   lastEdit               DateTime     @default(now()) @updatedAt
 
-  order     Order         @relation(fields: [orderID], references: [id], onDelete: Cascade)
-  requester User?         @relation(fields: [requestedBy], references: [id], onDelete: SetNull)
-  items     ReturnItem[]
-  payout    RefundPayout?
+  order              Order                     @relation(fields: [orderID], references: [id], onDelete: Cascade)
+  requester          User?                     @relation(fields: [requestedBy], references: [id], onDelete: SetNull)
+  items              ReturnItem[]
+  payout             RefundPayout?
+  bundleCalculations ReturnBundleCalculation[]
 
   @@index([orderID])
   @@index([status])
@@ -1487,6 +1489,21 @@ model RefundPayout {
 
   @@index([orderID, paidOn])
   @@map("refundpayout")
+}
+
+// Append-only group entitlement evidence. Paid amounts remain on ReturnItem;
+// cancelled/rejected calculations remain auditable but do not count as history.
+model ReturnBundleCalculation {
+  returnID      String      @db.Uuid
+  orderBundleID String      @db.Uuid
+  refundAmount  Decimal     @db.Decimal(12, 2)
+  calculation   Json
+  return        Return      @relation(fields: [returnID], references: [id], onDelete: Restrict, map: "returnbundlecalculation_return_fkey")
+  orderBundle   OrderBundle @relation(fields: [orderBundleID], references: [id], onDelete: Restrict, map: "returnbundlecalculation_purchase_fkey")
+
+  @@id([returnID, orderBundleID])
+  @@index([orderBundleID])
+  @@map("returnbundlecalculation")
 }
 
 // One returned line within a Return — quantity may be less than the

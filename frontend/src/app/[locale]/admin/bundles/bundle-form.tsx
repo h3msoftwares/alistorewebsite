@@ -90,7 +90,7 @@ export function BundleForm({ locale, initial }: { locale: 'en' | 'ar'; initial?:
       <p>{t('Bundle savings', 'توفير الباقة')}: {formatCurrency(separate - price, locale)}</p>
       <p className={price <= incomplete || price >= separate ? 'form-error' : 'admin-form__hint'}>{t(`Price must be above $${incomplete.toFixed(2)} and below $${separate.toFixed(2)}.`, `يجب أن يتجاوز السعر $${incomplete.toFixed(2)} وأن يقل عن $${separate.toFixed(2)}.`)}</p>
     </div>}
-    <p className="admin-form__hint">{t('Saving also checks current sale/promotion prices and scheduled SKU conflicts. Bundle returns are not available yet.', 'يفحص الحفظ أيضاً أسعار التخفيضات والعروض الحالية وتعارض مواعيد الأصناف. إرجاع الباقات غير متاح حالياً.')}</p>
+    <p className="admin-form__hint">{t('Saving also checks current sale/promotion prices and scheduled SKU conflicts. Partial returns reprice kept Bundle items using purchase-time individual prices.', 'يفحص الحفظ أيضاً أسعار التخفيضات والعروض الحالية وتعارض مواعيد الأصناف. يعيد الإرجاع الجزئي تسعير أصناف الباقة المحتفظ بها بأسعارها الفردية وقت الشراء.')}</p>
     {error && <Alert tone="danger">{error}</Alert>}
     <div className="admin-form__actions"><Button type="submit" loading={busy}>{initial ? t('Save Bundle', 'حفظ الباقة') : t('Add Bundle', 'إضافة باقة')}</Button><Link className="btn btn--ghost" href={`/${locale}/admin/bundles`}>{t('Cancel', 'إلغاء')}</Link></div>
   </form>;

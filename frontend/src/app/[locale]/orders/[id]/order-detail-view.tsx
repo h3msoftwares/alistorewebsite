@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useCancelOrder, useOrder } from '@/hooks/use-orders';
 import { useCancelReturn, useRequestReturn } from '@/hooks/use-returns';
 import { isApiError, returnsApi } from '@/lib/api';
+import { collectionErrorMessage } from '@/lib/refund-eligibility';
 import type { CreateReturnBody } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
@@ -83,7 +84,7 @@ export function OrderDetailView({ locale, id }: { locale: Locale; id: string }) 
           requestReturnError={
             requestReturn.isError
               ? isApiError(requestReturn.error)
-                ? requestReturn.error.message
+                ? collectionErrorMessage(requestReturn.error, locale, requestReturn.error.message)
                 : t('Could not submit the return request. Try again.', 'تعذّر إرسال طلب الإرجاع. حاول مرة أخرى.')
               : null
           }

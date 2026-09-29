@@ -15,6 +15,7 @@ vi.mock('@/lib/api', () => ({
 
 import { returnsApi } from '@/lib/api';
 import AdminReturnsPage from './page';
+import { bundleRefundCalculation } from '@/test/bundle-refund';
 
 const mock = vi.mocked(returnsApi, true);
 
@@ -56,6 +57,15 @@ beforeEach(() => {
 });
 
 describe('AdminReturnsPage', () => {
+  it('shows the saved Bundle calculation in expanded return details for a viewer', async () => {
+    mock.adminListReturns.mockResolvedValue([{ ...ret, refundAmount: '10', items: [{ ...ret.items[0], orderItemID: 'a', quantity: 1, refundAmount: '10' }],
+      bundleCalculations: [{ orderBundleID: 'group', calculation: bundleRefundCalculation }] }] as never);
+    renderPage(['returns:view']);
+    await screen.findByText('AS-20260901-AAA111');
+    await userEvent.click(screen.getByRole('button', { name: '1' }));
+    expect(screen.getByText('Bundle discount lost')).toBeInTheDocument();
+    expect(screen.getByText('Complete Bundles kept: 0 of 1.')).toBeInTheDocument();
+  });
   it.each([{ permissions: ['returns:view', 'orders:manage'] }, { permissions: ['returns:view', 'payments:manage'] }, { permissions: ['returns:view', 'returns:manage'] }])('hides marking without refunds:manage (%j)', async ({ permissions }) => {
     mock.adminListReturns.mockResolvedValue([{ ...ret, status: 'RECEIVED' }] as never);
     renderPage(permissions); await screen.findByText('AS-20260901-AAA111');

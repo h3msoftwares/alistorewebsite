@@ -7,6 +7,7 @@ import { OrderDetailCard } from '@/components/orders/order-detail-card';
 import { useCancelOrderByToken, useOrderByToken } from '@/hooks/use-orders';
 import { useCancelReturnByToken, useRequestReturnByToken } from '@/hooks/use-returns';
 import { isApiError, returnsApi } from '@/lib/api';
+import { collectionErrorMessage } from '@/lib/refund-eligibility';
 import type { CreateReturnBody } from '@/lib/types';
 
 type Locale = 'en' | 'ar';
@@ -75,7 +76,7 @@ export function OrderTrackView({ locale, token }: { locale: Locale; token: strin
           requestReturnError={
             requestReturn.isError
               ? isApiError(requestReturn.error)
-                ? requestReturn.error.message
+                ? collectionErrorMessage(requestReturn.error, locale, requestReturn.error.message)
                 : t('Could not submit the return request. Try again.', 'تعذّر إرسال طلب الإرجاع. حاول مرة أخرى.')
               : null
           }

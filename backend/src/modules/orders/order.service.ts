@@ -167,7 +167,7 @@ async function mintAccessToken(db: DbClient, orderId: string): Promise<string> {
 export async function findValidAccessToken(rawToken: string) {
   return prisma.orderAccessToken.findFirst({
     where: { tokenHash: hashToken(rawToken), expiresAt: { gt: new Date() } },
-    include: { order: { include: { items: true, returns: { include: { items: true, payout: true } }, goodwillRefunds: true } } },
+    include: { order: { include: { items: true, returns: { include: { items: true, payout: true, bundleCalculations: true } }, goodwillRefunds: true } } },
   });
 }
 
@@ -767,7 +767,7 @@ export async function listMyOrders(userID: string) {
 export async function getOrderById(id: string, userID?: string) {
   const order = await prisma.order.findFirst({
     where: { id, ...(userID ? { userID } : {}) },
-    include: { items: true, address: true, returns: { include: { items: true, payout: true } }, goodwillRefunds: true },
+    include: { items: true, address: true, returns: { include: { items: true, payout: true, bundleCalculations: true } }, goodwillRefunds: true },
   });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
   return { ...order, returnIndicators: indicatorsFromRecords(order) };
@@ -1039,7 +1039,7 @@ export async function correctOrderStatus(
     }
     const updated = await tx.order.update({
       where: { id }, data: { status: input.status },
-      include: { items: true, returns: { include: { items: true } } },
+      include: { items: true, returns: { include: { items: true, bundleCalculations: true } } },
     });
     await tx.auditLog.create({ data: {
       entityType: 'order', entityID: id, actorID, action: 'order.status_corrected',
@@ -1113,7 +1113,7 @@ export async function updateOrderStatus(
       await createWholeOrderReturn(tx, id, existing.items, actorId);
       await restoreStock(tx, existing.items, existing.orderNumber, 'returned');
 
-      const updated = await tx.order.findUniqueOrThrow({ where: { id }, include: { items: true, returns: { include: { items: true } } } });
+      const updated = await tx.order.findUniqueOrThrow({ where: { id }, include: { items: true, returns: { include: { items: true, bundleCalculations: true } } } });
       return { order: updated, previousStatus: existing.status };
     });
     await recordAudit({
@@ -1162,7 +1162,7 @@ export async function updateOrderStatus(
     throw new AppError('CONFLICT', 'Order status changed or is terminal. Reload before trying again.');
   }
 
-  const updated = await prisma.order.findUniqueOrThrow({ where: { id }, include: { items: true, returns: { include: { items: true } } } });
+  const updated = await prisma.order.findUniqueOrThrow({ where: { id }, include: { items: true, returns: { include: { items: true, bundleCalculations: true } } } });
   // A correction can move the order behind a milestone already announced.
   // Advancing through it again must not replay the confirmation/shipping email.
   const priorMilestone = (status === 'CONFIRMED' || status === 'SHIPPED')

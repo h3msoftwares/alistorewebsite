@@ -126,7 +126,7 @@ describe('Bundle Phase A', () => {
     expect(await prisma.bundleComponent.count({ where: { bundleID: created.body.bundle.id } })).toBe(0);
     await request(app).delete(`/api/products/${a.id}/permanent`).set(bearer(admin.token)).expect(204);
   });
-  it('blocks customer, guest, admin, preview and whole-order returns, including unrelated lines', async () => {
+  it('allows ordinary-item return previews in orders containing a Bundle', async () => {
     await post().expect(201); await fillCart();
     const c = await makeProduct(a.primaryCategoryID, { over: { price: 5 } });
     await request(app).post('/api/cart/items').set(bearer(buyer.token)).send({ variantId: c.variants[0].id, quantity: 1 }).expect(201);
@@ -136,14 +136,10 @@ describe('Bundle Phase A', () => {
     await prisma.orderAccessToken.create({ data: { orderID: order.id, tokenHash: createHash('sha256').update(token).digest('hex'), expiresAt: new Date(Date.now() + 86400000) } });
     const item = order.items.find((i: { variantID: string }) => i.variantID === c.variants[0].id);
     const claim = { items: [{ orderItemID: item.id, quantity: 1 }] };
-    for (const path of [`/api/orders/${order.id}/returns`, `/api/orders/${order.id}/returns/preview`, `/api/orders/track/${token}/returns`, `/api/orders/track/${token}/returns/preview`, `/api/admin/orders/${order.id}/returns`, `/api/admin/orders/${order.id}/returns/preview`]) {
+    for (const path of [`/api/orders/${order.id}/returns/preview`, `/api/orders/track/${token}/returns/preview`, `/api/admin/orders/${order.id}/returns/preview`]) {
       const res = await request(app).post(path).set(bearer(path.includes('/admin/') ? admin.token : buyer.token)).send(claim);
-      expect(res.status).toBe(409); expect(res.body.error.meta.reason).toBe('BUNDLE_RETURNS_UNAVAILABLE'); expect(res.body.error.message).toContain("Bundle returns aren't available yet");
+      expect(res.status).toBe(200); expect(res.body.refundCents).toBe(500); expect(res.body.bundleCalculations).toEqual([]);
     }
-    const whole = await request(app).patch(`/api/admin/orders/${order.id}/status`).set(bearer(admin.token)).send({ status: 'RETURNED' });
-    expect(whole.status).toBe(409); expect(whole.body.error.meta.reason).toBe('BUNDLE_RETURNS_UNAVAILABLE');
-    const correction = await request(app).patch(`/api/admin/orders/${order.id}/correction`).set(bearer(admin.token)).send({ status: 'RETURNED', expectedStatus: 'DELIVERED', reason: 'Try the legacy correction path' });
-    expect(correction.status).toBe(409); expect(correction.body.error.meta.reason).toBe('BUNDLE_RETURNS_UNAVAILABLE');
     expect(await prisma.return.count()).toBe(0);
     expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe('DELIVERED');
     expect((await prisma.orderItem.findUniqueOrThrow({ where: { id: item.id } })).returnedQuantity).toBe(0);

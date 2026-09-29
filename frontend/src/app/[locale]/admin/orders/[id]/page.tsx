@@ -1,6 +1,7 @@
 'use client';
 
-import { returnsApi } from '@/lib/api';
+import { isApiError, returnsApi } from '@/lib/api';
+import { collectionErrorMessage } from '@/lib/refund-eligibility';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Printer } from 'lucide-react';
@@ -181,7 +182,16 @@ export default function AdminOrderDetailPage() {
           onRequestReturn={oa.canHandleReturns ? (body: CreateReturnBody) =>
             oa.run(
               order.id,
-              () => adminRequestReturn.mutateAsync({ orderId: order.id, body }),
+              async () => {
+                try { return await adminRequestReturn.mutateAsync({ orderId: order.id, body }); }
+                catch (error) {
+                  // Preserve STEP_UP_REQUIRED so the shared action hook can retry.
+                  if (isApiError(error) && (error.meta as { reason?: string } | undefined)?.reason === 'BUNDLE_RETURN_PENDING') {
+                    throw new Error(collectionErrorMessage(error, locale, error.message));
+                  }
+                  throw error;
+                }
+              },
               t('Could not submit the return request. Try again.', 'تعذّر إرسال طلب الإرجاع. حاول مرة أخرى.')
             )
           : undefined}

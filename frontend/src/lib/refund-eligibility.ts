@@ -7,6 +7,8 @@ export function refundBlockReason(amountCents: number, summary: CollectionSummar
   return amountCents > summary.remainingRefundableCents ? 'EXCEEDS_REMAINING_REFUNDABLE' : null;
 }
 export function refundBlockMessage(reason: RefundBlockReason, locale: 'en' | 'ar'): string {
+  if (reason === 'EXCEEDS_BUNDLE_REFUNDABLE') return locale === 'ar'
+    ? 'المبلغ يتجاوز المبلغ المتبقي القابل للاسترداد لهذه الباقة.' : 'Amount exceeds remaining Bundle refundable.';
   if (reason === 'EXCEEDS_DELIVERY_REFUNDABLE') return locale === 'ar'
     ? 'مبلغ التوصيل يتجاوز المبلغ المتبقي القابل للاسترداد للتوصيل.' : 'Delivery amount exceeds remaining delivery refundable.';
   if (reason === 'EXCEEDS_NET_COLLECTED') return locale === 'ar'
@@ -18,7 +20,9 @@ export function refundBlockMessage(reason: RefundBlockReason, locale: 'en' | 'ar
 }
 export function collectionErrorMessage(error: unknown, locale: 'en' | 'ar', fallback: string): string {
   const reason = isApiError(error) ? (error.meta as { reason?: string } | undefined)?.reason : undefined;
-  if (reason === 'NO_COLLECTION_RECORDED' || reason === 'EXCEEDS_REMAINING_REFUNDABLE' || reason === 'EXCEEDS_DELIVERY_REFUNDABLE' || reason === 'EXCEEDS_NET_COLLECTED') return refundBlockMessage(reason, locale);
+  if (reason === 'NO_COLLECTION_RECORDED' || reason === 'EXCEEDS_REMAINING_REFUNDABLE' || reason === 'EXCEEDS_DELIVERY_REFUNDABLE' || reason === 'EXCEEDS_NET_COLLECTED' || reason === 'EXCEEDS_BUNDLE_REFUNDABLE') return refundBlockMessage(reason, locale);
+  if (reason === 'BUNDLE_RETURN_PENDING') return locale === 'ar'
+    ? 'أكمل طلب إرجاع الباقة الحالي أو اسحبه قبل طلب إرجاع آخر من الباقة نفسها.' : 'Resolve the existing return for this Bundle before requesting another.';
   if (reason === 'COLLECTION_BELOW_MARKED_REFUNDS') return locale === 'ar'
     ? 'سيخفض التصحيح المبلغ المحصل إلى أقل من المبلغ المسترد.'
     : 'Correction would reduce collected money below the amount already refunded.';

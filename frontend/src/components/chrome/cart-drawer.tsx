@@ -118,7 +118,7 @@ export function CartDrawer({
             {Boolean(data.bundles?.length) && <div className="stack">
               <p>{t('Bundle pricing', 'تسعير الباقة')}: {money(data.subtotal)}</p>
               <p>{t('Ordinary pricing', 'التسعير العادي')}: {money(data.ordinarySubtotal ?? data.subtotal)}</p>
-              <p>{t('Coupons use ordinary pricing. Bundle returns are not available yet.', 'تُستخدم القسائم مع التسعير العادي. إرجاع الباقات غير متاح حالياً.')}</p>
+              <p>{t('Coupons use ordinary pricing. Partial Bundle returns can reduce the discount; kept items use their purchase-time prices.', 'تُستخدم القسائم مع التسعير العادي. قد يقل الخصم عند إرجاع جزء من الباقة؛ تُحسب الأصناف المحتفظ بها بأسعار وقت الشراء.')}</p>
               <Link className="btn btn--ghost btn--block" href={`/${locale}/checkout?pricingMode=COUPON`} onClick={onClose}>{t('Choose ordinary pricing / coupon', 'اختيار التسعير العادي / القسيمة')}</Link>
             </div>}
             <Link className="btn btn--primary btn--block" href={`/${locale}/checkout`} onClick={onClose}>

@@ -21,6 +21,7 @@ import {
 import { useAdminReturns, useUpdateReturnStatus } from '@/hooks/use-returns';
 import { useStepUp } from '@/hooks/use-auth';
 import { RefundMarkingDialog } from '@/components/orders/refund-marking-dialog';
+import { BundleRefundExplanation } from '@/components/orders/bundle-refund-explanation';
 import { isApiError } from '@/lib/api';
 import { useReturnPermissions } from '@/hooks/use-return-permissions';
 import { collectionErrorMessage, refundBlockMessage } from '@/lib/refund-eligibility';
@@ -301,6 +302,7 @@ export default function AdminReturnsPage() {
                             );
                           })}
                         </ul>
+                        {r.bundleCalculations?.map(c => <BundleRefundExplanation key={c.orderBundleID} calculation={c.calculation} locale={locale} />)}
                         {r.refundAdjustmentReason && <p>{t('Adjustment reason', 'سبب التعديل')}: {r.refundAdjustmentReason}</p>}
                         {Number(r.deliveryRefundAmount ?? 0) > 0 && <p>{t('Delivery refunded', 'التوصيل المسترد')}: {money(Number(r.deliveryRefundAmount))} — {r.deliveryRefundReason}</p>}
                         {r.reason && (

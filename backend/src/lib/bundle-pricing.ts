@@ -24,8 +24,8 @@ export interface BundlePricingResult extends ComboPricingResult {
 }
 
 /** Adding the missing unit must increase the total, while completing the
- * recipe must save money. These bounds also make kept-component repricing
- * safe when Phase B is introduced. All comparisons use integer cents. */
+ * recipe must save money. These bounds also keep partial-return repricing
+ * monotonic. All comparisons use integer cents. */
 export function bundlePriceBounds(components: { quantity: number; individualPriceCents: number }[]) {
   const fullCents = components.reduce((sum, c) => sum + c.quantity * c.individualPriceCents, 0);
   const incompleteCents = fullCents - Math.min(...components.map((c) => c.individualPriceCents));

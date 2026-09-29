@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { OrderDetailCard } from './order-detail-card';
 import type { Order, RefundCalculation, ReturnPreview } from '@/lib/types';
 import { formatCurrency } from '@/lib/format';
+import { bundleRefundCalculation } from '@/test/bundle-refund';
+import { ApiError } from '@/lib/api';
 
 const baseOrder: Order = {
   id: 'o1',
@@ -81,11 +83,24 @@ describe('<OrderDetailCard> — totals', () => {
 });
 
 describe('<OrderDetailCard> — returns', () => {
-  it.each(['en', 'ar'] as const)('blocks the request UI and explains unavailable Bundle returns in %s', (locale) => {
+  it.each(['en', 'ar'] as const)('offers Bundle returns and explains purchase-time repricing in %s', (locale) => {
     const order = { ...baseOrder, items: baseOrder.items.map((item) => ({ ...item, priceBreakdown: { version: 3 } })) };
     render(<OrderDetailCard locale={locale} order={order} onRequestReturn={vi.fn()} />);
-    expect(screen.getByText(locale === 'ar' ? 'إرجاع الباقات غير متاح حالياً. يرجى التواصل مع المتجر للمساعدة.' : "Bundle returns aren't available yet. Please contact the store for assistance.")).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: locale === 'ar' ? 'طلب إرجاع' : 'Request a return' })).not.toBeInTheDocument();
+    expect(screen.getByText(locale === 'ar' ? 'قد يقل خصم الباقة عند إرجاع جزء منها. تُحسب الأصناف المحتفظ بها بأسعار وقت الشراء؛ عاين مبلغ الاسترداد قبل إرسال الطلب.' : 'Returning part of a Bundle can reduce its discount. Kept items use prices from your purchase; preview the refund before submitting.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: locale === 'ar' ? 'طلب إرجاع' : 'Request a return' })).toBeInTheDocument();
+  });
+  it('hides all lines in a pending recipe while allowing unrelated items', async () => {
+    const first = { ...baseOrder.items[0], priceBreakdown: { version: 3, bundleID: 'bundle' } };
+    const second = { ...first, id: 'oi2', productName: 'Recipe pants' };
+    const ordinary = { ...first, id: 'oi3', productName: 'Ordinary hat', priceBreakdown: { version: 2 } };
+    const order: Order = { ...baseOrder, items: [first, second, ordinary], returns: [{ id: 'r', orderID: 'o1', dateCreated: '', status: 'RECEIVED',
+      items: [{ id: 'ri', returnID: 'r', orderItemID: first.id, quantity: 1, refundAmount: 10 }] }] };
+    render(<OrderDetailCard locale="en" order={order} onRequestReturn={vi.fn()} />);
+    expect(screen.getByText(/Finish or withdraw the existing Bundle return/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Request a return' }));
+    expect(screen.queryByRole('checkbox', { name: /Recipe pants/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Test Shirt/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /Ordinary hat/ })).toBeInTheDocument();
   });
   it.each(['en', 'ar'] as const)('shows only paid goodwill with neutral wording and amount in %s', locale => {
     render(<OrderDetailCard locale={locale} order={{ ...baseOrder, goodwillRefunds: [
@@ -249,5 +264,48 @@ describe('quantity-discount return disclosure', () => {
     await user.click(screen.getByRole('button', { name: 'Preview refund' }));
     expect(await screen.findByText('This return has no refundable amount after the quantity-discount adjustment.')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Submit return request' })).toBeEnabled());
+  });
+});
+
+describe('Bundle return disclosure', () => {
+  const order: Order = { ...baseOrder, items: [
+    { ...baseOrder.items[0], id: 'a', productName: 'A', quantity: 2, returnedQuantity: 0, lineTotal: 48, priceBreakdown: { version: 3, bundleID: 'bundle' } },
+    { ...baseOrder.items[0], id: 'b', productName: 'B', quantity: 1, returnedQuantity: 0, lineTotal: 32, priceBreakdown: { version: 3, bundleID: 'bundle' } },
+  ] };
+  it.each(['en', 'ar'] as const)('localizes an intervening pending-recipe error and prevents submission in %s', async locale => {
+    const user = userEvent.setup(); const submit = vi.fn();
+    const error = new ApiError(409, { code: 'CONFLICT', message: 'Resolve the existing return for this Bundle before requesting another', meta: { reason: 'BUNDLE_RETURN_PENDING' } });
+    render(<OrderDetailCard locale={locale} order={order} onPreviewReturn={vi.fn().mockRejectedValue(error)} onRequestReturn={submit} />);
+    await user.click(screen.getByRole('button', { name: locale === 'en' ? 'Request a return' : 'طلب إرجاع' }));
+    await user.click(screen.getByRole('checkbox', { name: /^A / }));
+    await user.click(screen.getByRole('button', { name: locale === 'en' ? 'Preview refund' : 'معاينة المبلغ المسترد' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(locale === 'en' ? error.message : 'أكمل طلب إرجاع الباقة الحالي أو اسحبه قبل طلب إرجاع آخر من الباقة نفسها.');
+    expect(submit).not.toHaveBeenCalled();
+  });
+  it('requires a preview, shows group repricing, submits the expected amount and invalidates it on changes', async () => {
+    const user = userEvent.setup(); const submit = vi.fn();
+    const preview = vi.fn().mockResolvedValue({ refundCents: 1000, bundleCalculations: [bundleRefundCalculation],
+      items: [{ orderItemID: 'a', productName: 'A', quantity: 1, refundCents: 1000 }] });
+    render(<OrderDetailCard locale="en" order={order} onPreviewReturn={preview} onRequestReturn={submit} />);
+    await user.click(screen.getByRole('button', { name: 'Request a return' }));
+    await user.click(screen.getByRole('checkbox', { name: /^A / }));
+    await user.click(screen.getByRole('button', { name: /Decrease/ }));
+    expect(screen.getByRole('button', { name: 'Submit return request' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Preview refund' }));
+    const lost = await screen.findByText('Bundle discount lost');
+    expect(within(lost.parentElement!).getByText('$20.00')).toBeInTheDocument();
+    expect(screen.getByText('Complete Bundles kept: 0 of 1.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Submit return request' }));
+    expect(submit).toHaveBeenCalledWith({ items: [{ orderItemID: 'a', quantity: 1 }], reason: undefined, expectedRefundCents: 1000 });
+    await user.click(screen.getByRole('button', { name: /Increase/ }));
+    expect(screen.queryByText('Bundle discount lost')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Submit return request' })).toBeDisabled();
+  });
+  it.each(['customer', 'admin'] as const)('keeps adjusted calculated evidence visible only to the admin (%s)', audience => {
+    render(<OrderDetailCard locale="en" audience={audience} order={{ ...order, returns: [{ id: 'r', orderID: order.id, status: 'REFUNDED', dateCreated: '',
+      refundAmount: 10, refundedAmount: 5, bundleCalculations: [{ orderBundleID: 'group', calculation: bundleRefundCalculation }],
+      items: [{ id: 'ri', returnID: 'r', orderItemID: 'a', quantity: 1, refundAmount: 10, refundedAmount: 5 }] }] }} />);
+    if (audience === 'admin') expect(screen.getByText('Bundle discount lost')).toBeInTheDocument();
+    else expect(screen.queryByText('Bundle discount lost')).not.toBeInTheDocument();
   });
 });

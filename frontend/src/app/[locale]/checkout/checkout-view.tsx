@@ -658,7 +658,7 @@ export function CheckoutView({ locale, initialPricingMode = 'BUNDLE' }: { locale
               <legend>{t('Choose pricing', 'اختر طريقة التسعير')}</legend>
               <label><input type="radio" name="pricing-mode" checked={pricingMode === 'BUNDLE'} onChange={() => setPricingMode('BUNDLE')} /> {t('Bundle pricing', 'تسعير الباقة')} — {money(quote.data.options.bundle.total)}</label>
               <label><input type="radio" name="pricing-mode" checked={pricingMode === 'COUPON'} onChange={() => setPricingMode('COUPON')} /> {appliedCoupon ? t('Ordinary pricing + coupon', 'التسعير العادي مع القسيمة') : t('Ordinary pricing', 'التسعير العادي')} — {money(quote.data.options.coupon.total)}</label>
-              <p className="admin-form__hint">{t('Bundles and coupons cannot be combined. Bundle returns are not available yet.', 'لا يمكن الجمع بين الباقات والقسائم. إرجاع الباقات غير متاح حالياً.')}</p>
+              <p className="admin-form__hint">{t('Bundles and coupons cannot be combined. Partial Bundle returns can reduce the discount; kept items use their purchase-time prices.', 'لا يمكن الجمع بين الباقات والقسائم. قد يقل الخصم عند إرجاع جزء من الباقة؛ تُحسب الأصناف المحتفظ بها بأسعار وقت الشراء.')}</p>
             </fieldset>}
 
             <div className="checkout__row">

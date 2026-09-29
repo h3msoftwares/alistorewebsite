@@ -504,6 +504,7 @@ export interface OrderItem {
   unitPrice: Decimalish;
   lineTotal: Decimalish;
   priceBreakdown?: {
+    bundleID?: UUID;
     version: number;
     rule?: { id: string } | null;
     couponDiscountCents?: number;
@@ -538,6 +539,7 @@ export interface ReturnItem {
 }
 
 export interface Return {
+  bundleCalculations?: { orderBundleID: UUID; calculation: BundleRefundCalculation }[];
   payout?: RefundPayout | null;
   id: UUID;
   orderID: UUID;
@@ -591,7 +593,7 @@ export interface RefundSummary {
 }
 export interface CreateGoodwillInput { amountCents: number; reason: string; paidNow: boolean; payout?: CashPayoutInput }
 
-export type RefundBlockReason = 'NO_COLLECTION_RECORDED' | 'EXCEEDS_REMAINING_REFUNDABLE' | 'EXCEEDS_DELIVERY_REFUNDABLE' | 'EXCEEDS_NET_COLLECTED';
+export type RefundBlockReason = 'NO_COLLECTION_RECORDED' | 'EXCEEDS_REMAINING_REFUNDABLE' | 'EXCEEDS_DELIVERY_REFUNDABLE' | 'EXCEEDS_NET_COLLECTED' | 'EXCEEDS_BUNDLE_REFUNDABLE';
 export type CollectionInput =
   | { collected: true; amount: number; currency: string; collectedAt: string; collectorName: string; reference?: string | null; note?: string }
   | { collected: false; collectionID: UUID; reason: string };
@@ -633,8 +635,31 @@ export interface RefundCalculation {
 }
 
 export interface ReturnPreview {
+  bundleCalculations?: BundleRefundCalculation[];
   refundCents: number;
   items: { orderItemID: UUID; productName: string; quantity: number; refundCents: number; refundBreakdown?: RefundCalculation }[];
+}
+
+export interface BundleRefundCalculation {
+  version: 1;
+  method: 'BUNDLE_KEPT_QUANTITY';
+  orderBundleID: UUID;
+  nameEn: string;
+  nameAr: string;
+  instanceCount: number;
+  flatPriceCents: number;
+  originalNetCents: number;
+  components: { orderItemID: UUID; productName: string; quantity: number; requiredQuantity: number; individualPriceCents: number }[];
+  beforeKeptQuantities: Record<string, number>;
+  keptQuantities: Record<string, number>;
+  beforeInstanceCount: number;
+  keptInstanceCount: number;
+  keptNetCents: number;
+  lostDiscountCents: number;
+  cumulativeRefundCents: number;
+  previousRefundCents: number;
+  refundCents: number;
+  allocations: { orderItemID: UUID; quantity: number; refundCents: number }[];
 }
 
 export interface Order {

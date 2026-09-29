@@ -6,6 +6,8 @@ import { formatCurrency } from '@/lib/format';
 import { colorLabel } from '@/lib/product-variants';
 import { regionLabel } from '@/lib/regions';
 import { OrderReturnIndicators } from './order-return-indicators';
+import { BundleRefundExplanation } from './bundle-refund-explanation';
+import { collectionErrorMessage } from '@/lib/refund-eligibility';
 import { calculatedMerchandiseCents, effectiveMerchandiseCents, wasRefundAdjusted } from '@/lib/refund-amounts';
 import type { CreateReturnBody, Order, ReturnStatus, ReturnPreview, RefundCalculation } from '@/lib/types';
 
@@ -117,9 +119,10 @@ export function OrderDetailCard({
   const unresolved = new Set((order.returns ?? []).filter((r) => !['REFUNDED', 'REJECTED', 'CANCELLED'].includes(r.status))
     .flatMap((r) => r.items.map((i) => i.orderItemID)));
 
-  const returnableItems = order.items.filter((i) => i.quantity - i.returnedQuantity > 0 && !(affected(i) && unresolved.has(i.id)));
-  const bundleReturnBlocked = order.items.some((item) => item.priceBreakdown?.version === 3);
-  const canRequestReturn = !bundleReturnBlocked && Boolean(onRequestReturn) && order.status === 'DELIVERED' && returnableItems.length > 0;
+  const unresolvedBundles = new Set(order.items.filter(i => unresolved.has(i.id) && i.priceBreakdown?.version === 3).map(i => i.priceBreakdown?.bundleID));
+  const pendingBundle = (i: Order['items'][number]) => i.priceBreakdown?.version === 3 && unresolvedBundles.has(i.priceBreakdown.bundleID);
+  const returnableItems = order.items.filter((i) => i.quantity - i.returnedQuantity > 0 && !(affected(i) && unresolved.has(i.id)) && !pendingBundle(i));
+  const canRequestReturn = Boolean(onRequestReturn) && order.status === 'DELIVERED' && returnableItems.length > 0;
   const selectedItems = returnableItems.filter((i) => selectedQty[i.id] > 0)
     .map((i) => ({ orderItemID: i.id, quantity: Math.min(selectedQty[i.id], i.quantity - i.returnedQuantity) }));
 
@@ -145,7 +148,7 @@ export function OrderDetailCard({
       const value = await onPreviewReturn(requestBody());
       setPreview({ key: previewKey, value });
     } catch (e) {
-      setPreviewError(e instanceof Error ? e.message : t('Could not calculate the refund.', 'تعذّر حساب المبلغ المسترد.'));
+      setPreviewError(collectionErrorMessage(e, locale, t('Could not calculate the refund.', 'تعذّر حساب المبلغ المسترد.')));
     } finally {
       setPreviewing(false);
     }
@@ -280,6 +283,7 @@ export function OrderDetailCard({
                   );
                 })}
               </ul>
+              {(audience === 'admin' || !wasRefundAdjusted(r)) && r.bundleCalculations?.map(c => <BundleRefundExplanation key={c.orderBundleID} calculation={c.calculation} locale={locale} />)}
               {r.reason && <p style={{ margin: 0 }}>{t('Reason', 'السبب')}: {r.reason}</p>}
               {onCancelReturn && CANCELLABLE_RETURN_STATUSES.includes(r.status) && (
                 <Button
@@ -297,7 +301,8 @@ export function OrderDetailCard({
         </div>
       )}
 
-      {bundleReturnBlocked && order.status === 'DELIVERED' && <Alert>{t("Bundle returns aren't available yet. Please contact the store for assistance.", 'إرجاع الباقات غير متاح حالياً. يرجى التواصل مع المتجر للمساعدة.')}</Alert>}
+      {order.items.some(i => i.priceBreakdown?.version === 3) && <p className="admin-form__hint">{t('Returning part of a Bundle can reduce its discount. Kept items use prices from your purchase; preview the refund before submitting.', 'قد يقل خصم الباقة عند إرجاع جزء منها. تُحسب الأصناف المحتفظ بها بأسعار وقت الشراء؛ عاين مبلغ الاسترداد قبل إرسال الطلب.')}</p>}
+      {unresolvedBundles.size > 0 && <p>{t('Finish or withdraw the existing Bundle return before requesting another return from the same recipe.', 'أكمل طلب إرجاع الباقة الحالي أو اسحبه قبل طلب إرجاع آخر من الباقة نفسها.')}</p>}
       {canRequestReturn && (
         <div className="stack" style={{ marginBlockStart: 'var(--space-4)' }}>
           {!showReturnForm ? (
@@ -351,6 +356,7 @@ export function OrderDetailCard({
                   {item.refundBreakdown ? <RefundExplanation calculation={item.refundBreakdown} locale={locale} />
                     : <p>{t('Refund', 'المبلغ المسترد')}: {money(item.refundCents / 100)}</p>}
                 </div>)}
+                {currentPreview.bundleCalculations?.map(c => <BundleRefundExplanation key={c.orderBundleID} calculation={c} locale={locale} />)}
                 <div className="checkout__row checkout__row--total"><span>{t('Total refund', 'إجمالي الاسترداد')}</span><span>{money(currentPreview.refundCents / 100)}</span></div>
                 <p>{t('Preview only. Availability and refund are checked again when you submit.', 'هذه معاينة فقط. يُعاد التحقق من أهلية الإرجاع والمبلغ عند الإرسال.')}</p>
               </div>}

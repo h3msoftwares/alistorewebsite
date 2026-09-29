@@ -7,6 +7,7 @@ export function publicReturn<T extends {
   refundAdjustmentReason?: unknown; refundAdjustedBy?: unknown; refundAdjustedAt?: unknown;
   deliveryRefundReason?: unknown; refundAmount?: unknown; refundedAmount?: unknown;
   payout?: unknown;
+  bundleCalculations?: unknown;
   items: { refundAmount: Prisma.Decimal | string | number; refundBreakdown?: unknown }[];
 }>(ret: T) {
   const visible = { ...ret };
@@ -17,7 +18,8 @@ export function publicReturn<T extends {
   delete visible.payout;
   const calculatedCents = ret.items.reduce((sum, item) => sum + moneyCents(item.refundAmount), 0);
   const adjusted = ret.refundedAmount != null && Math.round(Number(ret.refundedAmount) * 100) !== calculatedCents;
-  return { ...visible, refundWasAdjusted: adjusted, items: ret.items.map(item => adjusted ? { ...item, refundBreakdown: null } : item) };
+  return { ...visible, ...(adjusted && ret.bundleCalculations ? { bundleCalculations: [] } : {}),
+    refundWasAdjusted: adjusted, items: ret.items.map(item => adjusted ? { ...item, refundBreakdown: null } : item) };
 }
 
 export function publicOrder<T extends object>(order: T) {

@@ -137,7 +137,7 @@ export function CartView({ locale }: { locale: Locale }) {
           {data.bundles?.map((bundle) => <p key={bundle.id}>{t('Bundle', 'باقة')}: {locale === 'ar' ? bundle.nameAr : bundle.nameEn} × {bundle.instanceCount}</p>)}
           <p>{t('Bundle pricing', 'تسعير الباقة')}: {money(data.subtotal, locale)}</p>
           <p>{t('Ordinary pricing', 'التسعير العادي')}: {money(data.ordinarySubtotal ?? data.subtotal, locale)}</p>
-          <p className="admin-form__hint">{t('Coupons use ordinary pricing. Bundle returns are not available yet.', 'تُستخدم القسائم مع التسعير العادي. إرجاع الباقات غير متاح حالياً.')}</p>
+          <p className="admin-form__hint">{t('Coupons use ordinary pricing. Partial Bundle returns can reduce the discount; kept items use their purchase-time prices.', 'تُستخدم القسائم مع التسعير العادي. قد يقل الخصم عند إرجاع جزء من الباقة؛ تُحسب الأصناف المحتفظ بها بأسعار وقت الشراء.')}</p>
           <Link className="btn btn--ghost btn--block" href={`/${locale}/checkout?pricingMode=COUPON`}>{t('Choose ordinary pricing / coupon', 'اختيار التسعير العادي / القسيمة')}</Link>
         </div>}
         <Link className="btn btn--primary btn--block btn--lg" href={`/${locale}/checkout`}>

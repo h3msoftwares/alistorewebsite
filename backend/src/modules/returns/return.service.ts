@@ -13,7 +13,7 @@ import { findValidAccessToken } from '../orders/order.service';
 import { allocateRefundCents } from '../../lib/refund-allocation';
 import { updateReturnStatusSchema, type RefundMarkingInput } from './return.schema';
 import { recordCashPayout } from '../refunds/refund.service';
-import { assertBundleReturnsAvailable } from '../bundles/bundle-return-guard';
+import { checkBundlePayoutCaps, prepareBundleReturns } from './bundle-return-calculation';
 
 export interface ReturnRequestItem {
   orderItemID: string;
@@ -22,6 +22,7 @@ export interface ReturnRequestItem {
 
 const RETURN_INCLUDE = {
   payout: true,
+  bundleCalculations: true,
   items: {
     include: {
       orderItem: {
@@ -46,11 +47,11 @@ async function prepareReturn(tx: Prisma.TransactionClient, orderId: string, item
   await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${orderId}::uuid FOR UPDATE`;
   const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
   if (!order) throw new AppError('NOT_FOUND', 'Order not found');
-  await assertBundleReturnsAvailable(tx, orderId);
   if (order.status !== 'DELIVERED') throw new AppError('CONFLICT', 'Only delivered orders can have a return requested');
   if (!items.length || new Set(items.map((i) => i.orderItemID)).size !== items.length) {
     throw new AppError('VALIDATION_ERROR', 'Select each order line once');
   }
+  const bundles = await prepareBundleReturns(tx, orderId, order.items, items);
   const prior = await tx.returnItem.findMany({
     where: { orderItemID: { in: items.map((i) => i.orderItemID) }, return: { status: { notIn: ['REJECTED', 'CANCELLED'] } } },
     include: { return: { select: { status: true } } },
@@ -61,6 +62,10 @@ async function prepareReturn(tx: Prisma.TransactionClient, orderId: string, item
     const remaining = line.quantity - line.returnedQuantity;
     if (!Number.isInteger(quantity) || quantity < 1 || quantity > remaining) {
       throw new AppError('CONFLICT', `Only ${remaining} unit(s) of ${line.productName} can still be returned`, { orderItemID, remaining });
+    }
+    if (bundles.byLine.has(orderItemID)) {
+      const allocation = bundles.calculations.flatMap(c => c.allocations).find(a => a.orderItemID === orderItemID)!;
+      return { orderItemID, productName: line.productName, quantity, refundCents: allocation.refundCents, refundBreakdown: undefined };
     }
     const s = readPurchasePricing(line.priceBreakdown);
     const history = prior.filter((i) => i.orderItemID === orderItemID);
@@ -87,7 +92,7 @@ async function prepareReturn(tx: Prisma.TransactionClient, orderId: string, item
     }
     return { orderItemID, productName: line.productName, quantity, refundCents, refundBreakdown };
   });
-  return { items: calculations, refundCents: calculations.reduce((sum, item) => sum + item.refundCents, 0) };
+  return { items: calculations, refundCents: calculations.reduce((sum, item) => sum + item.refundCents, 0), bundleCalculations: bundles.calculations };
 }
 
 export async function previewReturn(orderId: string, items: ReturnRequestItem[]) {
@@ -112,7 +117,7 @@ export async function previewReturnByToken(token: string, items: ReturnRequestIt
  * `returnedQuantity` per line before creating the Return + ReturnItem rows.
  * The order row lock serializes quantity checks, pricing history, and claims
  * with every return finalization/cancellation. Concurrent requests cannot
- * both allocate a discounted line or exceed the purchased quantity.
+ * both allocate a discounted line or Bundle recipe, or exceed purchased quantities.
  */
 async function performReturnRequest(
   orderId: string,
@@ -126,7 +131,7 @@ async function performReturnRequest(
     if (expectedRefundCents !== undefined && expectedRefundCents !== preview.refundCents) {
       throw new AppError('CONFLICT', 'The refund changed. Preview it again before submitting.', { refundCents: preview.refundCents });
     }
-    const created = await createReturnRecords(tx, orderId, preview.items, requestedBy, reason);
+    const created = await createReturnRecords(tx, orderId, preview.items, requestedBy, reason, 'REQUESTED', preview.bundleCalculations);
     return tx.return.findUniqueOrThrow({ where: { id: created.id }, include: RETURN_INCLUDE });
   });
 }
@@ -309,6 +314,9 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
     const refundCents = choices.merchandiseRefundCents ?? calculatedRefundCents;
     const deliveryRefundCents = choices.deliveryRefundCents ?? 0;
     const adjusted = refundCents !== calculatedRefundCents;
+    const allocations = next === 'REFUNDED' ? allocateRefundCents(refundCents, existing.items.map(item => ({
+      id: item.id, calculatedCents: moneyCents(item.refundAmount), quantity: item.quantity,
+    }))) : [];
     const collection = next === 'REFUNDED' ? await collectionTotals(tx, existing.orderID) : null;
     if (collection) {
       if (adjusted && !choices.refundAdjustmentReason) throw new AppError('VALIDATION_ERROR', 'A reason is required when the merchandise amount differs from the calculated amount');
@@ -329,6 +337,7 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
       if (refundCents + deliveryRefundCents > 0 && (!choices.payout || !actorId)) {
         throw new AppError('VALIDATION_ERROR', 'Cash payout details are required for a positive refund');
       }
+      await checkBundlePayoutCaps(tx, existing.orderID, existing.items, allocations);
     }
 
     const claim = await tx.return.updateMany({
@@ -378,9 +387,7 @@ export async function updateReturnStatus(returnId: string, next: ReturnStatus, a
     }
 
     if (collection) {
-      for (const part of allocateRefundCents(refundCents, existing.items.map(item => ({
-        id: item.id, calculatedCents: moneyCents(item.refundAmount), quantity: item.quantity,
-      })))) {
+      for (const part of allocations) {
         await tx.returnItem.update({ where: { id: part.id }, data: { refundedAmount: (part.cents / 100).toFixed(2) } });
       }
       if (refundCents + deliveryRefundCents > 0 && choices.payout && actorId) {
