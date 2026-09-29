@@ -7,7 +7,8 @@ import { makeCollection, makeCategory, makeProduct } from '../helpers/factories'
 
 // One consolidated end-to-end sweep of the three real user journeys — guest
 // checkout, account checkout + cancel, and admin fulfilment — each driven
-// entirely through the HTTP API, top to bottom. SMTP is the only mock.
+// entirely through the HTTP API, top to bottom. SMTP and the external
+// siteverify HTTP response are mocked; application behavior remains real.
 vi.mock('../../src/lib/mailer', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/lib/mailer')>();
   return {

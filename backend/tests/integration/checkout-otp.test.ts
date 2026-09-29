@@ -5,12 +5,8 @@ import { buildApp } from '../../src/app';
 import { prisma } from '../../src/config/prisma';
 import { createUser, bearer } from '../helpers/auth';
 
-// The mailer is the one real I/O boundary (SMTP) — mock it so the suite stays
-// offline/deterministic for the email itself, same reasoning as the
-// password-reset suite. The CAPTCHA check is deliberately left real: it's a
-// live call to hCaptcha's public siteverify API using hCaptcha's own
-// documented test secret (the app's default under test), so CI doesn't need
-// a registered site to exercise this gate.
+// Mock SMTP; shared setup supplies deterministic siteverify HTTP responses.
+// The CAPTCHA verifier, OTP service, database and rate limits remain real.
 vi.mock('../../src/lib/mailer', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/lib/mailer')>();
   return { ...actual, sendCheckoutOtpEmail: vi.fn().mockResolvedValue(true) };
@@ -20,9 +16,8 @@ const mockSendOtp = vi.mocked(sendCheckoutOtpEmail);
 
 const app = buildApp();
 
-// hCaptcha's own documented test secret (the app's default HCAPTCHA_SECRET
-// under test) only accepts this exact dummy passcode as "success: true" —
-// any other token genuinely fails a real siteverify call.
+// Shared setup accepts this test token and rejects all other tokens at the
+// siteverify HTTP boundary, without depending on hCaptcha availability.
 const HCAPTCHA_DUMMY_TOKEN = '10000000-aaaa-bbbb-cccc-000000000001';
 
 const hash = (v: string) => createHash('sha256').update(v).digest('hex');
@@ -56,11 +51,26 @@ describe('POST /api/checkout/otp/request', () => {
     expect(rows[0].codeHash).not.toBe(code);
   });
 
-  it('rejects an invalid captcha token via a real hCaptcha siteverify call, no email sent', async () => {
+  it('rejects an invalid captcha token via siteverify, no email sent', async () => {
     const res = await requestOtp('b@test.dev', 'definitely-not-a-real-token');
     expect(res.status).toBe(400);
     expect(mockSendOtp).not.toHaveBeenCalled();
     expect(await prisma.checkoutOtp.count()).toBe(0);
+  });
+
+  it('fails closed when siteverify times out, without sending email or leaving OTP data', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new DOMException('Siteverify timed out', 'TimeoutError'));
+    const logSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const res = await requestOtp('df@test.dev');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatchObject({ code: 'VALIDATION_ERROR', message: 'Captcha verification failed' });
+      expect(mockSendOtp).not.toHaveBeenCalled();
+      expect(await prisma.checkoutOtp.count()).toBe(0);
+    } finally {
+      fetchSpy.mockRestore();
+      logSpy.mockRestore();
+    }
   });
 
   it('400s a request missing captchaToken entirely (schema layer)', async () => {

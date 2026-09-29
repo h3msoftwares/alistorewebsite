@@ -42,6 +42,9 @@ export default defineConfig({
       SMTP_HOST: '',
       SMTP_USER: '',
       SMTP_PASSWORD: '',
+      // Siteverify is intercepted at the HTTP boundary in test setup. Never
+      // inherit a real site's CAPTCHA secret from the developer's .env.
+      HCAPTCHA_SECRET: '0x0000000000000000000000000000000000000000',
       // Set so the owner-notification path in order-cancellation.test.ts /
       // the checkout notification tests actually fires its mailer mock.
       OWNER_NOTIFICATION_EMAIL: 'owner@test.dev',

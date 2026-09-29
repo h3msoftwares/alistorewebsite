@@ -45,6 +45,21 @@ DB. `vitest.config.mts` injects `NODE_ENV=test` + the test `DATABASE_URL`, so a
 local `.env` can't point tests at the dev database. `npm test` needs the Postgres
 container up (`docker compose up -d postgres`).
 
+The suite replaces hCaptcha's external siteverify HTTP response with a
+deterministic test fixture. The real verifier and OTP service still run:
+the dummy passcode succeeds, invalid tokens fail, and rate limits remain
+enabled in the service. CAPTCHA unit tests cover HTTP failures, malformed
+responses and timeouts; an OTP integration test checks fail-closed behavior.
+No checkout test requires hCaptcha network access or a real CAPTCHA secret.
+
+Use the npm test scripts on Windows: they hold system/execution power requests
+for the duration of Vitest and release them on exit, without changing the power
+plan. Keep the lid open and avoid explicit Sleep/hibernate (Windows can override
+these requests, especially on battery). If suspension still occurs, the runner
+reports an invalid run and exits unsuccessfully instead of retrying failures
+or increasing hook timeouts. On other platforms the runner invokes Vitest
+directly. Running `npx vitest` directly bypasses the Windows sleep guard.
+
 ## Local setup
 
 ```bash

@@ -19,9 +19,7 @@ const mockSendOtp = vi.mocked(sendCheckoutOtpEmail);
 
 const app = buildApp(); // rate limiters off by default under test
 
-// hCaptcha's own documented test secret (the app's default under test) only
-// accepts this exact dummy passcode as "success: true" — a real network call
-// to hCaptcha's public siteverify API, same convention as checkout-otp.test.ts.
+// Shared setup returns siteverify success only for this test passcode.
 const HCAPTCHA_DUMMY_TOKEN = '10000000-aaaa-bbbb-cccc-000000000001';
 
 let variantId: string;

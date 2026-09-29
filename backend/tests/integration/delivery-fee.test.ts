@@ -66,10 +66,8 @@ async function checkout(quantity = 2, body: Record<string, unknown> = delivery) 
 
   const guestEmail = (body.guestEmail as string | undefined) ?? 'df@test.dev';
   mockSendOtp.mockClear();
-  expect(
-    (await agent.post('/api/checkout/otp/request').send({ email: guestEmail, captchaToken: HCAPTCHA_DUMMY_TOKEN }))
-      .status
-  ).toBe(204);
+  const otpRequest = await agent.post('/api/checkout/otp/request').send({ email: guestEmail, captchaToken: HCAPTCHA_DUMMY_TOKEN });
+  expect(otpRequest.status, JSON.stringify(otpRequest.body)).toBe(204);
   const code = mockSendOtp.mock.calls.at(-1)?.[1] as string;
   const verify = await agent.post('/api/checkout/otp/verify').send({ email: guestEmail, code });
   expect(verify.status).toBe(200);

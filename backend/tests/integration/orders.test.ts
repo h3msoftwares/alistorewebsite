@@ -5,8 +5,8 @@ import { prisma } from '../../src/config/prisma';
 import { createCustomer, createAdmin, createStaffWith, bearer } from '../helpers/auth';
 import { makeCollection, makeCategory, makeProduct } from '../helpers/factories';
 
-// The mailer is the one real I/O boundary (SMTP) — mock just the checkout-OTP
-// send so guest-checkout tests can pull the real code out of the mock call
+// Mock the checkout-OTP SMTP send (shared setup also stubs siteverify)
+// so guest-checkout tests can pull the real code out of the mock call
 // instead of needing a real inbox. Everything else in mailer.ts stays real
 // (order-confirmation/owner-alert emails fire-and-forget and are unasserted
 // here, same as before this feature existed).
@@ -29,9 +29,7 @@ const delivery = {
   deliveryRegion: 'MOUNT_LEBANON',
 };
 
-// hCaptcha's own documented test secret (the app's default under test) only
-// accepts this exact dummy passcode — any other token genuinely fails a real
-// siteverify call. See backend/.env.example's HCAPTCHA_SECRET.
+// Shared setup returns siteverify success only for this test passcode.
 const HCAPTCHA_DUMMY_TOKEN = '10000000-aaaa-bbbb-cccc-000000000001';
 
 /** Requests + verifies a checkout email-OTP for `email` and returns the
