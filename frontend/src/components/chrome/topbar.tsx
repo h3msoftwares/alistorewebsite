@@ -4,7 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Heart, Menu, Search, ShoppingBag, User } from 'lucide-react';
+import { Film, Heart, Menu, Search, ShoppingBag, User } from 'lucide-react';
 import { Icon } from '@/components/ui/icon';
 import { Drawer } from '@/components/ui/drawer';
 import { Skeleton } from '@/components/ui';
@@ -19,6 +19,7 @@ import { DEFAULT_BRAND_NAME_AR, DEFAULT_BRAND_NAME_EN } from '@/lib/site';
 import { SearchOverlay } from './search-overlay';
 import { CartDrawer } from './cart-drawer';
 import { FavouritesDrawer } from './favourites-drawer';
+import { ReelsModal } from './reels-modal';
 import { LogoutButton } from './logout-button';
 
 // `false` on the server + the hydration render, `true` afterwards — the root
@@ -49,6 +50,7 @@ export function Topbar({ locale }: { locale: string }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [favOpen, setFavOpen] = useState(false);
+  const [reelsOpen, setReelsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
   const cartCount = useAppSelector(selectCartCount);
@@ -157,8 +159,9 @@ export function Topbar({ locale }: { locale: string }) {
               ))}
         </nav>
 
-        {/* On small screens only search + cart stay here; favourites, account
-            and the language switch are reachable from the menu drawer. */}
+        {/* Below the phone breakpoint only search stays here (CSS below) —
+            cart/favourites/account move to .topbar__bottom-nav, and the
+            language switch is reachable from the menu drawer. */}
         <div className="topbar__actions">
           <button
             type="button"
@@ -226,31 +229,21 @@ export function Topbar({ locale }: { locale: string }) {
         </div>
       </div>
 
-      {/* Phone-only bottom tab bar — replaces the hamburger + action icons
-          above (hidden at this breakpoint via CSS) so the logo/brand stays
-          the only thing in the top bar on small screens. */}
+      {/* Phone-only bottom tab bar for discover/cart/favourites/account —
+          the hamburger stays in the topbar (left) and search moves to the
+          topbar's right side (both hidden at this breakpoint via CSS below
+          instead of duplicated here). */}
       <nav className="topbar__bottom-nav" aria-label={t('Primary', 'التنقل الرئيسي')}>
         <button
           type="button"
           className="topbar__bottom-nav-item"
-          data-active={menuOpen || undefined}
-          aria-label={t('Menu', 'القائمة')}
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen(true)}
+          data-active={reelsOpen || undefined}
+          aria-label={t('Discover', 'اكتشف')}
+          aria-expanded={reelsOpen}
+          onClick={() => setReelsOpen(true)}
         >
-          <Icon as={Menu} size={20} />
-          {t('Menu', 'القائمة')}
-        </button>
-
-        <button
-          type="button"
-          className="topbar__bottom-nav-item"
-          data-active={searchOpen || undefined}
-          aria-label={t('Search', 'بحث')}
-          onClick={() => setSearchOpen(true)}
-        >
-          <Icon as={Search} size={20} />
-          {t('Search', 'بحث')}
+          <Icon as={Film} size={20} />
+          {t('Discover', 'اكتشف')}
         </button>
 
         <button
@@ -308,6 +301,16 @@ export function Topbar({ locale }: { locale: string }) {
         </Link>
       </nav>
 
+      {/* Before the drawers below — same z-index (--z-drawer), so a drawer
+          opened from inside Discover (onOpenCart/onOpenFavourites) still
+          paints on top of it instead of being hidden underneath. */}
+      <ReelsModal
+        open={reelsOpen}
+        onClose={() => setReelsOpen(false)}
+        onOpenCart={() => setCartOpen(true)}
+        onOpenFavourites={() => setFavOpen(true)}
+        locale={locale}
+      />
       <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} locale={locale} />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} locale={locale} />
       <FavouritesDrawer open={favOpen} onClose={() => setFavOpen(false)} locale={locale} />

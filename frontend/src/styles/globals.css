@@ -995,22 +995,37 @@ main > .container.section:first-child {
 }
 
 /* ---- Storefront mobile bottom nav (phones only) ----
-   Below this break the topbar keeps only the logo; the hamburger + action
-   icons move into a fixed bottom tab bar, same pattern as the admin
-   dashboard's .admin-mobile-nav. */
+   Below this break the topbar keeps the hamburger (start) + logo (center)
+   + search (end); cart/favourites/account move into a fixed bottom tab bar,
+   same pattern as the admin dashboard's .admin-mobile-nav. */
 .topbar__bottom-nav { display: none; }
 @media (max-width: 640px) {
-  .topbar__menu-btn,
-  .topbar__actions { display: none; }
+  /* Cart, favourites and account live in the bottom nav below at this
+     width — only the search button stays in .topbar__actions. */
+  .topbar__actions > .icon-btn-wrap,
+  .topbar__actions > .topbar__account { display: none; }
   .topbar__bottom-nav {
     display: flex;
     position: fixed;
     inset-inline: 0;
     bottom: 0;
     z-index: var(--z-header);
-    background: var(--color-surface-raised);
+    background: var(--color-bg);
     border-top: 1px solid var(--color-border);
     padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  /* Same dark-hero swap the topbar itself does (.site-header[data-on-dark]
+     above) — the bottom nav sits in the same <header>, so it should read as
+     the same surface, not a mismatched light bar under a dark topbar. */
+  .site-header[data-on-dark='true'] .topbar__bottom-nav {
+    background: var(--color-secondary);
+    border-top-color: transparent;
+  }
+  .site-header[data-on-dark='true'] .topbar__bottom-nav-item {
+    color: var(--color-text-muted-on-dark);
+  }
+  .site-header[data-on-dark='true'] .topbar__bottom-nav-item[data-active] {
+    color: var(--color-text-on-dark);
   }
   .topbar__bottom-nav-item {
     flex: 1;
@@ -1043,6 +1058,154 @@ main > .container.section:first-child {
   /* Room for the fixed bar so it never covers the footer's last row. */
   .site-footer { padding-bottom: calc(60px + env(safe-area-inset-bottom, 0) + var(--space-7)); }
 }
+
+/* ---- Reels modal ("Discover", opened from .topbar__bottom-nav) ----
+   One product per full-bleed slide; swipe up/down is plain CSS scroll-snap
+   (no touch-gesture JS), so each slide just needs to be exactly one
+   viewport tall. */
+.reels-modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-drawer);
+  background: #000;
+}
+/* Cart/favourites preview (start) + close (end), one row — comes before
+   .reels-modal__filters in the DOM, so it needs its own z-index layer above
+   the filter bar's later (equal-z-index) paint order. */
+.reels-modal__top {
+  position: fixed;
+  top: env(safe-area-inset-top, 0);
+  inset-inline: var(--space-3);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: var(--space-3);
+}
+.reels-modal__top-actions { display: flex; gap: var(--space-2); }
+.reels-modal__top-action,
+.reels-modal__close {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  cursor: pointer;
+}
+.reels-modal__filters {
+  position: fixed;
+  /* Clears .reels-modal__top (40px buttons + its padding-block) instead of
+     overlapping it. */
+  top: calc(env(safe-area-inset-top, 0) + 40px + var(--space-3) * 2);
+  inset-inline: 0;
+  z-index: 1;
+  display: flex;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  padding-block-end: var(--space-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.reels-modal__filters::-webkit-scrollbar { display: none; }
+.reels-modal__filter-chip {
+  flex: none;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.reels-modal__filter-chip[data-active] {
+  background: #fff;
+  border-color: #fff;
+  color: #000;
+}
+
+.reels-modal__feed {
+  height: 100%;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+}
+.reels-modal__feed::-webkit-scrollbar { display: none; }
+
+.reels-slide {
+  position: relative;
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  overflow: hidden;
+}
+.reels-slide__media { object-fit: cover; }
+.reels-slide__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.8) 100%);
+}
+.reels-slide--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted-on-dark);
+}
+
+/* Favourite + add-to-cart, stacked on one side — same hooks/variant
+   resolution as .product-preview-card, just repositioned for a full-bleed
+   slide instead of a grid tile. */
+.reels-slide__rail {
+  position: absolute;
+  inset-inline-end: var(--space-4);
+  bottom: 32%;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.reels-slide__action {
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  cursor: pointer;
+}
+.reels-slide__action:disabled { opacity: 0.5; cursor: not-allowed; }
+.reels-slide__action[data-active] { color: var(--color-primary); }
+
+.reels-slide__info {
+  position: absolute;
+  inset-inline: 0 4.5rem;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  color: #fff;
+}
+.reels-slide__name { font-size: var(--fs-md); font-weight: var(--fw-semibold); color: #fff; }
+.reels-slide__info .price-tag__current { color: #fff; }
+.reels-slide__info .price-tag__compare { color: var(--color-text-muted-on-dark); }
+.reels-slide__swatches,
+.reels-slide__chips { margin-top: var(--space-1); }
+/* .chip has no explicit unselected `color` (buttons inherit it — see the
+   global `button { color: inherit }` reset) — inheriting this container's
+   white text onto the chip's own light .chip background made the size
+   label invisible. Selected/disabled chips already set their own color. */
+.reels-slide__chips .chip { color: var(--color-text); }
 
 /* ---- Search overlay (inside a Drawer) ---- */
 .search-overlay__form {
