@@ -45,8 +45,19 @@ const playfairDisplay = Playfair_Display({
   variable: '--font-playfair',
   display: 'swap',
 });
-const cairo = Cairo({ subsets: ['arabic', 'latin'], variable: '--font-cairo', display: 'swap' });
-const markaziText = Markazi_Text({ subsets: ['arabic', 'latin'], variable: '--font-markazi', display: 'swap' });
+// preload: false on both — next/font has no per-locale conditional (these
+// calls are static, evaluated for every locale), so without it every /en
+// request preloads ~140KB of Arabic-only font files it will never use,
+// competing at high priority against assets the English page actually
+// needs for its LCP paint. Arabic pages still get these fonts via the
+// normal (non-preloaded) request `display: 'swap'` already accounts for.
+const cairo = Cairo({ subsets: ['arabic', 'latin'], variable: '--font-cairo', display: 'swap', preload: false });
+const markaziText = Markazi_Text({
+  subsets: ['arabic', 'latin'],
+  variable: '--font-markazi',
+  display: 'swap',
+  preload: false,
+});
 // Latin-only script face for the brand wordmark ("Ali's Store" in the header
 // logo + footer). Alex Brush has no Arabic glyphs, so the Arabic wordmark
 // stays on --font-arabic (Cairo) — see the [lang='ar'] overrides in globals.css.
