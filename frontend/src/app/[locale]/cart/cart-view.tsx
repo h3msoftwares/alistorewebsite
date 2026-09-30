@@ -8,6 +8,7 @@ import { CartVariantPicker } from '@/components/cart/cart-variant-picker';
 import { useCart, useClearCart, useRemoveCartItem, useUpdateCartItem } from '@/hooks/use-cart';
 import { useSettings } from '@/hooks/use-settings';
 import { cartItemToGaItem, trackRemoveFromCart } from '@/lib/analytics/ga';
+import { bundleCartDisplay } from '@/lib/bundle-cart-display';
 import { formatCurrency } from '@/lib/format';
 import type { CartItem } from '@/lib/types';
 
@@ -83,6 +84,8 @@ export function CartView({ locale }: { locale: Locale }) {
     );
   }
 
+  const bundleDisplay = bundleCartDisplay(data);
+
   return (
     <div className="container section">
       {heading}
@@ -101,7 +104,7 @@ export function CartView({ locale }: { locale: Locale }) {
         </thead>
         <tbody>
           {data.items.map((item) => (
-            <CartRow key={item.id} item={item} locale={locale} />
+            <CartRow key={item.id} item={item} locale={locale} display={bundleDisplay?.lines.get(item.id)} />
           ))}
         </tbody>
       </DataTable>
@@ -119,8 +122,12 @@ export function CartView({ locale }: { locale: Locale }) {
           }}
         >
           <span>{t('Subtotal', 'المجموع الفرعي')}</span>
-          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(data.subtotal, locale)}</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(bundleDisplay?.subtotal ?? data.subtotal, locale)}</span>
         </div>
+        {bundleDisplay && <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
+          <span>{t('Bundle discount', 'خصم الباقة')}</span>
+          <span style={{ fontVariantNumeric: 'tabular-nums' }}>−{money(bundleDisplay.discount, locale)}</span>
+        </div>}
         <p style={{ margin: 0, color: 'var(--color-text-muted)' }}>
           {t('Delivery is calculated at checkout.', 'تُحتسب رسوم التوصيل عند الدفع.')}
           {freeOver != null && (
@@ -135,7 +142,7 @@ export function CartView({ locale }: { locale: Locale }) {
         </p>
         {Boolean(data.bundles?.length) && <div className="stack">
           {data.bundles?.map((bundle) => <p key={bundle.id}>{t('Bundle', 'باقة')}: {locale === 'ar' ? bundle.nameAr : bundle.nameEn} × {bundle.instanceCount}</p>)}
-          <p>{t('Bundle pricing', 'تسعير الباقة')}: {money(data.subtotal, locale)}</p>
+          <p>{t('Bundle total', 'إجمالي الباقة')}: {money(data.subtotal, locale)}</p>
           <p>{t('Ordinary pricing', 'التسعير العادي')}: {money(data.ordinarySubtotal ?? data.subtotal, locale)}</p>
           <p className="admin-form__hint">{t('Coupons use ordinary pricing. Partial Bundle returns can reduce the discount; kept items use their purchase-time prices.', 'تُستخدم القسائم مع التسعير العادي. قد يقل الخصم عند إرجاع جزء من الباقة؛ تُحسب الأصناف المحتفظ بها بأسعار وقت الشراء.')}</p>
           <Link className="btn btn--ghost btn--block" href={`/${locale}/checkout?pricingMode=COUPON`}>{t('Choose ordinary pricing / coupon', 'اختيار التسعير العادي / القسيمة')}</Link>
@@ -156,7 +163,7 @@ export function CartView({ locale }: { locale: Locale }) {
   );
 }
 
-function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
+function CartRow({ item, locale, display }: { item: CartItem; locale: Locale; display?: { total: number; unitPrice: number | null } }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
@@ -210,7 +217,9 @@ function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
 
             <CartVariantPicker item={item} locale={locale} disabled={busy} />
 
-            {item.bundleID ? <span>{t('Bundle pricing', 'تسعير الباقة')}</span> : <PriceTag
+            {item.bundleID ? <span>{display?.unitPrice != null
+              ? <>{money(display.unitPrice, locale)} {t('each', 'للوحدة')}</>
+              : t('Bundle pricing', 'تسعير الباقة')}</span> : <PriceTag
               price={unitPrice}
               compareAtPrice={wasReduced ? product.price : product.compareAtPrice}
               locale={locale}
@@ -255,7 +264,7 @@ function CartRow({ item, locale }: { item: CartItem; locale: Locale }) {
       </td>
 
       <td className="is-numeric" data-label={t('Total', 'المجموع')}>
-        {money(lineTotal, locale)}
+        {money(display?.total ?? lineTotal, locale)}
       </td>
     </tr>
   );

@@ -8,6 +8,7 @@ import { Button, EmptyState, PriceTag, QuantityStepper, Skeleton } from '@/compo
 import { CartVariantPicker } from '@/components/cart/cart-variant-picker';
 import { useCart, useRemoveCartItem, useUpdateCartItem } from '@/hooks/use-cart';
 import { cartItemToGaItem, trackRemoveFromCart } from '@/lib/analytics/ga';
+import { bundleCartDisplay } from '@/lib/bundle-cart-display';
 import { formatCurrency } from '@/lib/format';
 import type { CartItem } from '@/lib/types';
 
@@ -41,6 +42,7 @@ export function CartDrawer({
   const { data, isPending, isError, refetch } = useCart();
 
   const money = (n: number) => formatCurrency(n, isAr ? 'ar' : 'en');
+  const bundleDisplay = data ? bundleCartDisplay(data) : null;
 
   return (
     <Drawer
@@ -92,7 +94,7 @@ export function CartDrawer({
                   borderBlockEnd: '1px solid var(--color-border)',
                 }}
               >
-                <CartDrawerRow item={item} locale={locale} onNavigate={onClose} />
+                <CartDrawerRow item={item} locale={locale} onNavigate={onClose} display={bundleDisplay?.lines.get(item.id)} />
               </li>
             ))}
           </ul>
@@ -113,10 +115,14 @@ export function CartDrawer({
               }}
             >
               <span>{t('Subtotal', 'المجموع الفرعي')}</span>
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(data.subtotal)}</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{money(bundleDisplay?.subtotal ?? data.subtotal)}</span>
             </div>
+            {bundleDisplay && <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-4)' }}>
+              <span>{t('Bundle discount', 'خصم الباقة')}</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>−{money(bundleDisplay.discount)}</span>
+            </div>}
             {Boolean(data.bundles?.length) && <div className="stack">
-              <p>{t('Bundle pricing', 'تسعير الباقة')}: {money(data.subtotal)}</p>
+              <p>{t('Bundle total', 'إجمالي الباقة')}: {money(data.subtotal)}</p>
               <p>{t('Ordinary pricing', 'التسعير العادي')}: {money(data.ordinarySubtotal ?? data.subtotal)}</p>
               <p>{t('Coupons use ordinary pricing. Partial Bundle returns can reduce the discount; kept items use their purchase-time prices.', 'تُستخدم القسائم مع التسعير العادي. قد يقل الخصم عند إرجاع جزء من الباقة؛ تُحسب الأصناف المحتفظ بها بأسعار وقت الشراء.')}</p>
               <Link className="btn btn--ghost btn--block" href={`/${locale}/checkout?pricingMode=COUPON`} onClick={onClose}>{t('Choose ordinary pricing / coupon', 'اختيار التسعير العادي / القسيمة')}</Link>
@@ -138,15 +144,18 @@ function CartDrawerRow({
   item,
   locale,
   onNavigate,
+  display,
 }: {
   item: CartItem;
   locale: string;
   onNavigate: () => void;
+  display?: { total: number; unitPrice: number | null };
 }) {
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
 
   const update = useUpdateCartItem();
+  const money = (n: number) => formatCurrency(n, isAr ? 'ar' : 'en');
   const remove = useRemoveCartItem();
   const busy = update.isPending || remove.isPending;
 
@@ -188,7 +197,9 @@ function CartDrawerRow({
           {name}
         </Link>
         <CartVariantPicker item={item} locale={locale as 'en' | 'ar'} disabled={busy} />
-        {item.bundleID ? <span>{t('Bundle pricing — line total', 'تسعير الباقة — إجمالي السطر')}: {formatCurrency(item.lineTotal ?? unitPrice * item.quantity, locale as 'en' | 'ar')}</span> : <PriceTag
+        {item.bundleID ? <span>{display?.unitPrice != null
+          ? <>{money(display.unitPrice)} {t('each', 'للوحدة')} · {t('Line total', 'إجمالي السطر')}: {money(display.total)}</>
+          : <>{t('Bundle pricing — line total', 'تسعير الباقة — إجمالي السطر')}: {money(item.lineTotal ?? unitPrice * item.quantity)}</>}</span> : <PriceTag
           price={unitPrice}
           compareAtPrice={wasReduced ? product.price : product.compareAtPrice}
           locale={locale as 'en' | 'ar'}

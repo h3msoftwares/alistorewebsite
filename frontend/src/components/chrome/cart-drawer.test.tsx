@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createWrapper, makeGuestStore } from '@/test/utils';
+import { formatCurrency } from '@/lib/format';
 import { selectCartCount } from '@/store/slices/cartSlice';
 import { CartDrawer } from './cart-drawer';
 
@@ -85,14 +86,24 @@ const renderDrawer = (props: Partial<{ open: boolean; onClose: () => void; local
 
 beforeEach(() => vi.clearAllMocks());
 
-it('shows exact bundle line cents and both pricing choices in the drawer', async () => {
-  mock.getCart.mockResolvedValue({ ...cart([makeItem({ quantity: 3, effectivePrice: 26, lineTotal: 78.01, bundleID: 'b1' })], 110.01), ordinarySubtotal: 130,
+it.each(['en', 'ar'] as const)('shows individual prices and a separate Bundle discount in the %s drawer', async (locale) => {
+  mock.getCart.mockResolvedValue({ ...cart([
+    makeItem({ quantity: 1, lineTotal: 0.75, individualUnitPriceCents: 100, bundleID: 'b1' }, { price: '1' }),
+    makeItem({ id: 'item-2', quantity: 1, lineTotal: 0.75, individualUnitPriceCents: 100, bundleID: 'b1',
+      variantID: 'v2', variant: { id: 'v2', productID: 'p2', sku: 'SKU-2', size: null, color: null, stockQuantity: 10,
+        product: { id: 'p2', nameEn: 'Second Item', nameAr: 'الصنف الثاني', price: '1', images: [], variants: [] } } }),
+  ], 1.5), ordinarySubtotal: 2,
     bundles: [{ id: 'b1', nameEn: 'Starter', nameAr: 'باقة', instanceCount: 1 }] } as never);
-  renderDrawer();
-  expect(await screen.findByText(/Bundle pricing — line total:.*78\.01/)).toBeInTheDocument();
-  expect(screen.queryByText('$26.00')).not.toBeInTheDocument();
-  expect(screen.getByText(/Ordinary pricing.*130\.00/)).toBeInTheDocument();
-  expect(screen.getByRole('link', { name: 'Choose ordinary pricing / coupon' })).toHaveAttribute('href', '/en/checkout?pricingMode=COUPON');
+  renderDrawer({ locale });
+  expect(await screen.findAllByText(/1\.00.*إجمالي السطر|1\.00.*Line total/)).toHaveLength(2);
+  expect(screen.getByText(locale === 'ar' ? 'خصم الباقة' : 'Bundle discount')).toBeInTheDocument();
+  expect(screen.getByText((_, node) => node?.tagName === 'SPAN' && Boolean(node.textContent?.includes('−')
+    && node.textContent?.includes('0.50')))).toBeInTheDocument();
+  expect(screen.getByText((_, node) => node?.tagName === 'P' && Boolean(node.textContent?.includes(locale === 'ar' ? 'إجمالي الباقة' : 'Bundle total')
+    && node.textContent?.includes(formatCurrency(1.5, locale))))).toBeInTheDocument();
+  expect(screen.queryByText('$0.75')).not.toBeInTheDocument();
+  expect(screen.getByRole('link', { name: locale === 'ar' ? 'اختيار التسعير العادي / القسيمة' : 'Choose ordinary pricing / coupon' }))
+    .toHaveAttribute('href', `/${locale}/checkout?pricingMode=COUPON`);
 });
 
 describe('<CartDrawer>', () => {
