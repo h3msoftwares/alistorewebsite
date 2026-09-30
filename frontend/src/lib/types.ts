@@ -460,6 +460,9 @@ export interface CartItem {
    *  product sale → catalog discount. Falls back to product pricing if absent. */
   effectivePrice?: number;
   lineTotal?: number;
+  ordinaryLineTotal?: number;
+  /** Purchase-time individual sale/promotion price, before Bundle pricing. */
+  individualUnitPriceCents?: number;
   bundleID?: UUID | null;
   variant: ProductVariant & { product: Product };
 }
@@ -508,6 +511,7 @@ export interface OrderItem {
     version: number;
     rule?: { id: string } | null;
     couponDiscountCents?: number;
+    individualUnitPriceCents?: number;
   } | null;
   /** Units of this line already claimed by an active (non-REJECTED/
    *  CANCELLED) Return — the stepper on "request a return" is capped at
@@ -752,7 +756,12 @@ export interface DeliveryQuote {
   bundles?: { id: UUID; nameEn: string; nameAr: string; instanceCount: number }[];
 }
 
-export type PricingOption = Pick<DeliveryQuote, 'subtotal' | 'deliveryFee' | 'total' | 'freeReason'> & { discountAmount: number; items?: { id: UUID; lineTotal: number }[] };
+export type PricingOption = Pick<DeliveryQuote, 'subtotal' | 'deliveryFee' | 'total' | 'freeReason'> & {
+  discountAmount: number;
+  displaySubtotal?: number;
+  bundleDiscountAmount?: number;
+  items?: { id: UUID; lineTotal: number; displayLineTotal?: number; individualUnitPriceCents?: number | null }[];
+};
 
 export interface BundleBody {
   nameEn: string; nameAr: string; price: number; status: PromotionStatus;

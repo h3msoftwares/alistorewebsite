@@ -82,6 +82,10 @@ describe('Bundle Phase A', () => {
     const cart = await request(app).get('/api/cart').set(bearer(buyer.token)).expect(200);
     const quote = await request(app).get('/api/orders/delivery-quote?region=BEIRUT').set(bearer(buyer.token)).expect(200);
     expect(cart.body.subtotal).toBe(110); expect(quote.body.subtotal).toBe(110); expect(quote.body.options.coupon.subtotal).toBe(130);
+    expect(cart.body.items.map((i: { ordinaryLineTotal: number; individualUnitPriceCents: number }) =>
+      [i.ordinaryLineTotal, i.individualUnitPriceCents]).sort((x: number[], y: number[]) => x[0] - y[0])).toEqual([[40, 4000], [90, 3000]]);
+    expect(quote.body.options.bundle).toMatchObject({ displaySubtotal: 130, bundleDiscountAmount: 20, subtotal: 110 });
+    expect(quote.body.options.bundle.items.map((i: { displayLineTotal: number }) => i.displayLineTotal).sort((x: number, y: number) => x - y)).toEqual([40, 90]);
     const paid = await checkout({ pricingMode: 'BUNDLE', expectedSubtotal: 110, expectedTotal: 110 }).expect(201);
     const order = paid.body.order;
     expect(order.total).toBe('110'); expect(order.items.every((i: { priceBreakdown: { version: number } }) => i.priceBreakdown.version === 3)).toBe(true);

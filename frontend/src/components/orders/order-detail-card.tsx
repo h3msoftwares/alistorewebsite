@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Alert, Button, Choice, QuantityStepper, StatusPill, Textarea } from '@/components/ui';
 import { formatCurrency } from '@/lib/format';
+import { bundleOrderDisplay } from '@/lib/bundle-order-display';
 import { colorLabel } from '@/lib/product-variants';
 import { regionLabel } from '@/lib/regions';
 import { OrderReturnIndicators } from './order-return-indicators';
@@ -103,6 +104,7 @@ export function OrderDetailCard({
   const isAr = locale === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const money = (n: number) => formatCurrency(n, locale);
+  const bundleDisplay = bundleOrderDisplay(order);
 
   const canCancel = Boolean(onCancel) && CANCELLABLE_STATUSES.includes(order.status);
 
@@ -178,8 +180,9 @@ export function OrderDetailCard({
               <span>
                 {i.productName}
                 {variantBits ? ` (${variantBits})` : ''} × {i.quantity}
+                {bundleDisplay?.lines.get(i.id)?.unitPrice != null && <small> — {money(bundleDisplay.lines.get(i.id)!.unitPrice!)} {t('each', 'للوحدة')}</small>}
               </span>
-              <span className="is-numeric">{money(Number(i.lineTotal))}</span>
+              <span className="is-numeric">{money(bundleDisplay?.lines.get(i.id)?.total ?? Number(i.lineTotal))}</span>
             </li>
           );
         })}
@@ -187,8 +190,12 @@ export function OrderDetailCard({
 
       <div className="checkout__row">
         <span>{t('Subtotal', 'المجموع الفرعي')}</span>
-        <span className="is-numeric">{money(Number(order.subtotal))}</span>
+        <span className="is-numeric">{money(bundleDisplay?.subtotal ?? Number(order.subtotal))}</span>
       </div>
+      {bundleDisplay && <div className="checkout__row">
+        <span>{t('Bundle discount', 'خصم الباقة')}</span>
+        <span className="is-numeric">−{money(bundleDisplay.discount)}</span>
+      </div>}
       {Number(order.discountAmount ?? 0) > 0 && (
         <div className="checkout__row">
           <span>

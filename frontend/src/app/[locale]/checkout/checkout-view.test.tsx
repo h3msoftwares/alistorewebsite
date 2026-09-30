@@ -121,6 +121,25 @@ beforeEach(() => {
 });
 
 describe('CheckoutView', () => {
+  it.each(['BUNDLE', 'COUPON'] as const)('shows the selected %s prices before a delivery quote is available', async mode => {
+    mockCart.getCart.mockResolvedValue({ subtotal: 1.5, ordinarySubtotal: 2, items: ['A', 'B'].map((name, index) => ({
+      id: `ci${index + 1}`, quantity: 1, lineTotal: 0.75, ordinaryLineTotal: 1, individualUnitPriceCents: 100, bundleID: 'bundle',
+      variant: { price: null, product: { nameEn: name, nameAr: name, price: 1 } },
+    })) } as never);
+    const { Wrapper } = createWrapper(makeGuestStore());
+    render(<CheckoutView locale="en" initialPricingMode={mode} />, { wrapper: Wrapper });
+    expect(await screen.findByText('A × 1')).toBeInTheDocument();
+    expect(screen.getAllByText('$1.00')).toHaveLength(2);
+    expect(screen.getAllByText('$2.00').length).toBeGreaterThan(0);
+    expect(screen.queryByText('$0.75')).not.toBeInTheDocument();
+    if (mode === 'BUNDLE') {
+      expect(screen.getByText('Bundle discount')).toBeInTheDocument();
+      expect(screen.getByText('−$0.50')).toBeInTheDocument();
+    } else {
+      expect(screen.queryByText('Bundle discount')).not.toBeInTheDocument();
+    }
+    expect(mockOrders.getDeliveryQuote).not.toHaveBeenCalled();
+  });
   it('shows the empty state when the cart has no items', async () => {
     mockCart.getCart.mockResolvedValue({ subtotal: 0, items: [] } as never);
     renderGuest();
@@ -292,10 +311,13 @@ describe('CheckoutView', () => {
 
   it.each(['BUNDLE', 'COUPON'] as const)('shows both totals and submits only the selected %s plan', async (mode) => {
     mockAccount.listAddresses.mockResolvedValue([savedAddress] as never);
-    mockCart.getCart.mockResolvedValue({ ...cart, subtotal: 80, ordinarySubtotal: 100, bundles: [{ id: 'b1', nameEn: 'Bundle', nameAr: 'باقة', instanceCount: 1 }] } as never);
+    mockCart.getCart.mockResolvedValue({ ...cart, subtotal: 80, ordinarySubtotal: 100,
+      items: [{ ...cart.items[0], lineTotal: 80, ordinaryLineTotal: 100, individualUnitPriceCents: 5000, bundleID: 'b1' }],
+      bundles: [{ id: 'b1', nameEn: 'Bundle', nameAr: 'باقة', instanceCount: 1 }] } as never);
     vi.mocked(discountsApi.validateCoupon).mockResolvedValue({ code: 'SAVE10', type: 'AMOUNT', value: 10 } as never);
     mockOrders.getDeliveryQuote.mockImplementation(async (_region, code, selected) => {
-      const bundle = { subtotal: 80, discountAmount: 0, deliveryFee: 3, total: 83, freeReason: null, items: [{ id: 'ci1', lineTotal: 80 }] };
+      const bundle = { subtotal: 80, discountAmount: 0, deliveryFee: 3, total: 83, freeReason: null,
+        displaySubtotal: 100, bundleDiscountAmount: 20, items: [{ id: 'ci1', lineTotal: 80, displayLineTotal: 100, individualUnitPriceCents: 5000 }] };
       const coupon = { subtotal: 100, discountAmount: code ? 10 : 0, deliveryFee: 3, total: code ? 93 : 103, freeReason: null, items: [{ id: 'ci1', lineTotal: 100 }] };
       return { ...(selected === 'COUPON' ? coupon : bundle), pricingMode: selected, hasBundles: true, options: { bundle, coupon } } as never;
     });
@@ -306,8 +328,14 @@ describe('CheckoutView', () => {
     await user.click(screen.getByRole('button', { name: 'Apply' }));
     const couponChoice = await screen.findByRole('radio', { name: /Ordinary pricing \+ coupon.*93/ });
     expect(couponChoice).toBeChecked();
+    expect(screen.queryByText('Bundle discount')).not.toBeInTheDocument();
+    expect(screen.queryByText('$80.00')).not.toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /Bundle pricing.*83/ })).toBeInTheDocument();
-    if (mode === 'BUNDLE') await user.click(screen.getByRole('radio', { name: /Bundle pricing/ }));
+    if (mode === 'BUNDLE') {
+      await user.click(screen.getByRole('radio', { name: /Bundle pricing/ }));
+      expect(await screen.findByText('Bundle discount')).toBeInTheDocument();
+      expect(screen.getByText('−$20.00')).toBeInTheDocument();
+    }
     await waitFor(() => expect(screen.getByRole('button', { name: 'Place order' })).not.toBeDisabled());
     await user.click(screen.getByRole('button', { name: 'Place order' }));
     await waitFor(() => expect(mockOrders.checkout).toHaveBeenCalled());

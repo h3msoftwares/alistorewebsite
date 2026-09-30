@@ -256,13 +256,23 @@ export async function getDeliveryQuote(owner: CheckoutOwner, region: string, cho
     loadCartPricing(prisma, owner),
     loadDeliveryConfig(prisma),
   ]);
-  const quote = (subtotal: number, discountAmount: number, units: Map<string, number[]>) => {
+  const quote = (subtotal: number, discountAmount: number, units: Map<string, number[]>, bundleDisplay = false) => {
     const { fee, freeReason } = resolveDeliveryFee(cfg, subtotal, region);
-    const lines = [...units].map(([id, cents]) => ({ id, cents: cents.reduce((sum, unit) => sum + unit, 0) }));
+    const lines = [...units].map(([id, cents]) => ({ id, cents: cents.reduce((sum, unit) => sum + unit, 0),
+      displayCents: bundleDisplay && pricing.bundleUnits.has(id)
+        ? cents.length * pricing.linePricingBasis.get(id)!.individualUnitPriceCents
+        : cents.reduce((sum, unit) => sum + unit, 0),
+      individualUnitPriceCents: bundleDisplay && pricing.bundleUnits.has(id)
+        ? pricing.linePricingBasis.get(id)!.individualUnitPriceCents : null }));
+    const displaySubtotal = lines.reduce((sum, line) => sum + line.displayCents, 0) / 100;
     return { subtotal, discountAmount, deliveryFee: fee, total: round2(subtotal - discountAmount + fee), freeReason,
-      items: lines.map((line) => ({ id: line.id, lineTotal: line.cents / 100 })) };
+      // These amounts are presentation only. The authoritative subtotal and
+      // immutable OrderItem cent allocations remain the actually paid values.
+      displaySubtotal, bundleDiscountAmount: round2(displaySubtotal - subtotal),
+      items: lines.map((line) => ({ id: line.id, lineTotal: line.cents / 100,
+        displayLineTotal: line.displayCents / 100, individualUnitPriceCents: line.individualUnitPriceCents })) };
   };
-  const bundle = quote(pricing.subtotal, 0, pricing.lineUnitPricesCents);
+  const bundle = quote(pricing.subtotal, 0, pricing.lineUnitPricesCents, true);
   const coupon = choices.couponCode ? await resolveCoupon(choices.couponCode) : null;
   if (choices.couponCode && !coupon) throw new AppError('VALIDATION_ERROR', 'That coupon code is not valid.');
   const ordinary = quote(pricing.ordinarySubtotal, coupon ? couponAmountOff(coupon, pricing.ordinarySubtotal) : 0, pricing.ordinaryLineUnitPricesCents);

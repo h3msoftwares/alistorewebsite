@@ -275,6 +275,17 @@ export function CheckoutView({ locale, initialPricingMode = 'BUNDLE' }: { locale
   const cartSignature = JSON.stringify([cart.data?.subtotal, cart.data?.items.map((i) => [i.variantID, i.quantity])]);
   const quote = useDeliveryQuote(region, appliedCoupon?.code, pricingMode, cartSignature);
   const subtotal = quote.data?.subtotal ?? (pricingMode === 'COUPON' ? cart.data?.ordinarySubtotal ?? cart.data?.subtotal : cart.data?.subtotal) ?? 0;
+  const cartBundleDisplaySubtotal = (cart.data?.items ?? []).reduce((sum, item) => {
+    const individualCents = item.individualUnitPriceCents;
+    const displayCents = item.bundleID && individualCents != null
+      ? individualCents * item.quantity
+      : Math.round((item.lineTotal ?? (item.effectivePrice ?? Number(item.variant.price ?? item.variant.product.price)) * item.quantity) * 100);
+    return sum + displayCents;
+  }, 0) / 100;
+  const bundleDisplaySubtotal = quote.data?.options?.bundle.displaySubtotal ?? cartBundleDisplaySubtotal;
+  const bundleDiscount = pricingMode === 'BUNDLE'
+    ? quote.data?.options?.bundle.bundleDiscountAmount ?? Math.max(0, Math.round((bundleDisplaySubtotal - subtotal) * 100) / 100)
+    : 0;
   const deliveryFee = quote.data?.deliveryFee ?? null;
   const couponDiscount = quote.data?.discountAmount ?? (pricingMode === 'COUPON' && appliedCoupon ? couponAmountOff(appliedCoupon, subtotal) : 0);
   const total = quote.data?.options ? quote.data.total : Math.round(((quote.data?.total ?? subtotal) - couponDiscount) * 100) / 100;
@@ -613,12 +624,21 @@ export function CheckoutView({ locale, initialPricingMode = 'BUNDLE' }: { locale
               {cart.data.items.map((i) => {
                 const p = i.variant.product;
                 const unit = i.effectivePrice ?? Number(i.variant.price ?? p.price);
+                const optionLine = (pricingMode === 'COUPON' ? quote.data?.options?.coupon : quote.data?.options?.bundle)?.items?.find((line) => line.id === i.id);
+                const individualCents = optionLine?.individualUnitPriceCents ?? i.individualUnitPriceCents;
+                const bundled = pricingMode === 'BUNDLE' && (quote.data?.options
+                  ? optionLine?.individualUnitPriceCents != null : Boolean(i.bundleID));
+                const displayLine = pricingMode === 'COUPON'
+                  ? optionLine?.lineTotal ?? i.ordinaryLineTotal
+                  : optionLine?.displayLineTotal ?? (bundled && individualCents != null
+                    ? individualCents * i.quantity / 100 : i.lineTotal ?? unit * i.quantity);
                 return (
                   <li key={i.id}>
                     <span>
                       {(isAr ? p.nameAr : p.nameEn)} × {i.quantity}
+                      {bundled && individualCents != null && <small> — {money(individualCents / 100)} {t('each', 'للوحدة')}</small>}
                     </span>
-                    <span className="is-numeric" lang="en">{money((pricingMode === 'COUPON' ? quote.data?.options?.coupon : quote.data?.options?.bundle)?.items?.find((line) => line.id === i.id)?.lineTotal ?? i.lineTotal ?? unit * i.quantity)}</span>
+                    <span className="is-numeric" lang="en">{displayLine == null ? '…' : money(displayLine)}</span>
                   </li>
                 );
               })}
@@ -663,8 +683,14 @@ export function CheckoutView({ locale, initialPricingMode = 'BUNDLE' }: { locale
 
             <div className="checkout__row">
               <span>{t('Subtotal', 'المجموع الفرعي')}</span>
-              <span className="is-numeric" lang="en">{money(subtotal)}</span>
+              <span className="is-numeric" lang="en">{money(pricingMode === 'BUNDLE' ? bundleDisplaySubtotal : subtotal)}</span>
             </div>
+            {bundleDiscount > 0 && (
+              <div className="checkout__row">
+                <span>{t('Bundle discount', 'خصم الباقة')}</span>
+                <span className="is-numeric" lang="en">−{money(bundleDiscount)}</span>
+              </div>
+            )}
             {couponDiscount > 0 && (
               <div className="checkout__row">
                 <span>{t('Discount', 'الخصم')} ({appliedCoupon?.code})</span>

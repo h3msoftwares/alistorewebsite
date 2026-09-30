@@ -93,6 +93,10 @@ export async function getCart(owner: CartOwner) {
     ...i,
     effectivePrice: round2(priced.lineTotals.get(i.id)! / i.quantity),
     lineTotal: priced.lineTotals.get(i.id)!,
+    // Display-only alternatives. Checkout must not show a Bundle line while
+    // the shopper has selected ordinary/coupon pricing and the quote loads.
+    ordinaryLineTotal: priced.ordinaryLineUnitPricesCents.get(i.id)!.reduce((sum, cents) => sum + cents, 0) / 100,
+    individualUnitPriceCents: priced.linePricingBasis.get(i.id)!.individualUnitPriceCents,
     bundleID: priced.bundleUnits.get(i.id)?.[0]?.bundleID ?? null,
     comboRuleId: priced.lineComboRuleIds.get(i.id) ?? null,
   }));

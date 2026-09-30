@@ -1,4 +1,5 @@
 import { formatCurrency } from '@/lib/format';
+import { bundleOrderDisplay } from '@/lib/bundle-order-display';
 import { colorLabel } from '@/lib/product-variants';
 import { regionLabel } from '@/lib/regions';
 import type { ReceiptFormat } from '@/lib/print-preferences';
@@ -40,6 +41,7 @@ export function OrderReceipt({
     day: 'numeric',
   });
   const discount = Number(order.discountAmount ?? 0);
+  const bundleDisplay = bundleOrderDisplay(order);
 
   return (
     <div
@@ -94,9 +96,10 @@ export function OrderReceipt({
                 <td>
                   {i.productName}
                   {variantBits ? ` (${variantBits})` : ''}
+                  {bundleDisplay?.lines.get(i.id)?.unitPrice != null && <small> — {money(bundleDisplay.lines.get(i.id)!.unitPrice!)} {t('each', 'للوحدة')}</small>}
                 </td>
                 <td className="is-numeric">{i.quantity}</td>
-                <td className="is-numeric">{money(Number(i.lineTotal))}</td>
+                <td className="is-numeric">{money(bundleDisplay?.lines.get(i.id)?.total ?? Number(i.lineTotal))}</td>
               </tr>
             );
           })}
@@ -106,8 +109,12 @@ export function OrderReceipt({
       <div className="order-receipt__totals">
         <div>
           <span>{t('Subtotal', 'المجموع الفرعي')}</span>
-          <span>{money(Number(order.subtotal))}</span>
+          <span>{money(bundleDisplay?.subtotal ?? Number(order.subtotal))}</span>
         </div>
+        {bundleDisplay && <div>
+          <span>{t('Bundle discount', 'خصم الباقة')}</span>
+          <span>−{money(bundleDisplay.discount)}</span>
+        </div>}
         {discount > 0 && (
           <div>
             <span>

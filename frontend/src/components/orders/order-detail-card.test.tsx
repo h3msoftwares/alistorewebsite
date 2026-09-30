@@ -41,6 +41,16 @@ const baseOrder: Order = {
 };
 
 describe('<OrderDetailCard> — totals', () => {
+  it.each(['en', 'ar'] as const)('shows full individual prices and a separate Bundle discount in %s', locale => {
+    const items = ['a', 'b'].map((id) => ({ ...baseOrder.items[0], id, quantity: 1, unitPrice: '0.75', lineTotal: '0.75',
+      priceBreakdown: { version: 3, bundleID: 'bundle', individualUnitPriceCents: 100 } }));
+    const order = { ...baseOrder, items, subtotal: '1.50', total: '1.50' };
+    render(<OrderDetailCard locale={locale} order={order} />);
+    expect(screen.getByText(locale === 'en' ? 'Bundle discount' : 'خصم الباقة')).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.tagName === 'SPAN' && element.textContent === `−${formatCurrency(0.5, locale)}`)).toBeInTheDocument();
+    expect(screen.getAllByText((_, element) => element?.classList.contains('is-numeric') === true && element.textContent === formatCurrency(1, locale))).toHaveLength(2);
+    expect(screen.getByText((_, element) => element?.classList.contains('is-numeric') === true && element.textContent === formatCurrency(2, locale))).toBeInTheDocument();
+  });
   it.each(['en', 'ar'] as const)('shows final amounts and a neutral adjustment note, hides internal reasons in %s', locale => {
     const order: Order = { ...baseOrder, returns: [{ id: 'r', orderID: 'o1', status: 'REFUNDED', dateCreated: '',
       refundAmount: 20, refundedAmount: 10, refundAdjustmentReason: 'Internal restocking assessment',
