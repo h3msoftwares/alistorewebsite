@@ -1031,6 +1031,14 @@ main > .container.section:first-child {
   }
   .topbar__bottom-nav-item[data-active] { color: var(--navy); }
   .topbar__bottom-nav-icon { position: relative; display: inline-flex; }
+  /* .icon-btn__badge's 2px inset is tuned for the 44px desktop .icon-btn —
+     against this 20px icon it lands almost entirely on top of it instead of
+     at a corner, so push it further out (same offsets as
+     .admin-mobile-nav__badge, sized for the same small icon). */
+  .topbar__bottom-nav-icon .icon-btn__badge {
+    inset-block-start: -4px;
+    inset-inline-end: -8px;
+  }
   .topbar__bottom-nav .topbar__avatar { width: 1.25rem; height: 1.25rem; font-size: 9px; }
   /* Room for the fixed bar so it never covers the footer's last row. */
   .site-footer { padding-bottom: calc(60px + env(safe-area-inset-bottom, 0) + var(--space-7)); }
