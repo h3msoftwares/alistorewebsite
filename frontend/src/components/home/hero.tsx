@@ -7,7 +7,6 @@ import { ArrowRight } from 'lucide-react';
 import { Icon } from '@/components/ui';
 import { useSettings } from '@/hooks/use-settings';
 import { useNavCategories } from '@/hooks/use-catalog';
-import { useReveal } from '@/hooks/use-reveal';
 
 /**
  * Home hero: a full-bleed near-black band (== --color-secondary) filling the
@@ -33,10 +32,6 @@ export function Hero({ locale }: { locale: string }) {
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const { data: settings } = useSettings();
   const { data: navCategories } = useNavCategories();
-
-  const [leadRef, leadClass, leadStyle] = useReveal(0);
-  const [mediaRef, mediaClass, mediaStyle] = useReveal(80);
-  const [asideRef, asideClass, asideStyle] = useReveal(140);
 
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -100,7 +95,7 @@ export function Hero({ locale }: { locale: string }) {
   return (
     <section ref={ref} className="hero" data-home-hero aria-labelledby="hero-title">
       <div className="hero__inner">
-        <div ref={leadRef} className={`hero__lead ${leadClass}`} style={leadStyle}>
+        <div className="hero__lead">
           <p className="eyebrow hero__eyebrow">{eyebrow}</p>
           <h1 id="hero-title" className="hero__title">
             {headline.split(' ').map((word, i) => (
@@ -111,19 +106,19 @@ export function Hero({ locale }: { locale: string }) {
           </h1>
         </div>
 
-        <div ref={mediaRef} className={`hero__media ${mediaClass}`} style={mediaStyle}>
+        <div className="hero__media">
           <Image
             src="/home-hero-bg.png"
             alt={"Ali — Ali'sStore"}
             className="hero__img"
             width={549}
             height={722}
-            preload
+            priority
             sizes="(max-width: 900px) 80vw, 34vw"
           />
         </div>
 
-        <div ref={asideRef} className={`hero__aside ${asideClass}`} style={asideStyle}>
+        <div className="hero__aside">
           <p className="hero__lede">{lede}</p>
           <Link href={ctaHref} className="btn btn--primary btn--lg hero__cta">
             <span>{ctaLabel}</span>

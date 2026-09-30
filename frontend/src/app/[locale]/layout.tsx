@@ -128,11 +128,12 @@ export default async function LocaleLayout({
 
   const skipLabel = locale === 'ar' ? 'تخطَّ إلى المحتوى' : 'Skip to content';
 
-  // Prime the top-level categories (Women/Men/Kids — nav/footer/home banner)
-  // and the collections list (Sale/New Arrivals) so they render with data on
-  // first paint instead of flashing skeletons. `prefetchQuery` never throws,
-  // and only successful queries dehydrate — a build with no backend just
-  // falls back to client fetching. Every one of these three ran with no
+  // Prime the top-level categories (Women/Men/Kids — nav/footer/home banner),
+  // the collections list (Sale/New Arrivals), and the cross-tree featured
+  // categories (home page Zone 1 rows — see HomeMiddle) so they render with
+  // data on first paint instead of flashing skeletons. `prefetchQuery` never
+  // throws, and only successful queries dehydrate — a build with no backend
+  // just falls back to client fetching. Every one of these ran with no
   // timeout on every page x locale render (~170 times in one static-
   // generation pass) — an occasional slow backend response hung the whole
   // page past Next's static-generation budget instead of ever reaching that
@@ -144,6 +145,10 @@ export default async function LocaleLayout({
     queryClient.prefetchQuery({
       queryKey: queryKeys.categories.topLevel(),
       queryFn: () => catalogApi.listTopLevelCategories({ signal: AbortSignal.timeout(8000) }),
+    }),
+    queryClient.prefetchQuery({
+      queryKey: queryKeys.categories.featured(),
+      queryFn: () => catalogApi.listFeaturedCategories({ signal: AbortSignal.timeout(8000) }),
     }),
     queryClient.prefetchQuery({
       queryKey: queryKeys.collections.list(false),

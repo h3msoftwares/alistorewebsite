@@ -144,9 +144,12 @@ export function listTopLevelCategories(opts?: { signal?: AbortSignal }) {
 
 /** Categories promoted to their own home-page row, across the whole tree
  *  (`GET /api/categories?showOnHome=true`). */
-export function listFeaturedCategories() {
+export function listFeaturedCategories(opts?: { signal?: AbortSignal }) {
   return api
-    .get<{ categories: Category[] }>('/api/categories', { query: { showOnHome: true } })
+    .get<{ categories: Category[] }>('/api/categories', {
+      query: { showOnHome: true },
+      signal: opts?.signal,
+    })
     .then((r) => r.categories);
 }
 

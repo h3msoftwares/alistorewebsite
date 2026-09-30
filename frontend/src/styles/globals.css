@@ -1385,27 +1385,13 @@ main > .container.section:first-child {
   color: var(--color-text-on-dark);
 }
 .hero__title em { font-style: italic; color: var(--bright-gold); }
-/* Headline words stagger in as the surrounding .hero__lead reveal fires (see
-   hooks/use-reveal.ts) — same fade+rise used for home-row tiles, just word by
-   word instead of card by card. */
-/* `display: inline-block` makes the per-word stagger animation possible
-   (transforms don't apply to plain inline boxes), but that same inline-block
-   boundary swallows a trailing space text node — so the word gap is a real
-   margin instead of a space character in the JSX. */
+/* `display: inline-block` lets the word-gap be a real margin instead of a
+   space character in the JSX (a plain inline box would swallow the trailing
+   space text node). The hero is always in the initial viewport, so unlike
+   the home-row tiles it renders immediately with no reveal/stagger — see
+   hero.tsx. */
 .hero__title-word { display: inline-block; margin-inline-end: 0.28em; }
 .hero__title-word:last-child { margin-inline-end: 0; }
-@media (prefers-reduced-motion: no-preference) {
-  .reveal .hero__title-word { opacity: 0; }
-  .reveal.is-visible .hero__title-word {
-    animation: tile-reveal 0.5s var(--drawer-ease, ease) both;
-  }
-  .reveal.is-visible .hero__title-word:nth-child(1) { animation-delay: 0.15s; }
-  .reveal.is-visible .hero__title-word:nth-child(2) { animation-delay: 0.21s; }
-  .reveal.is-visible .hero__title-word:nth-child(3) { animation-delay: 0.27s; }
-  .reveal.is-visible .hero__title-word:nth-child(4) { animation-delay: 0.33s; }
-  .reveal.is-visible .hero__title-word:nth-child(5) { animation-delay: 0.39s; }
-  .reveal.is-visible .hero__title-word:nth-child(n + 6) { animation-delay: 0.45s; }
-}
 .hero__lede {
   font-size: clamp(1rem, 0.95rem + 0.5vw, 1.125rem);
   color: var(--color-text-muted-on-dark);
