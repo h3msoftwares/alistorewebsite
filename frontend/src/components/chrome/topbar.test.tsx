@@ -27,6 +27,7 @@ vi.mock('@/hooks/use-settings', () => ({ useSettings: () => ({ data: null }) }))
 vi.mock('./search-overlay', () => ({ SearchOverlay: () => null }));
 vi.mock('./cart-drawer', () => ({ CartDrawer: () => null }));
 vi.mock('./favourites-drawer', () => ({ FavouritesDrawer: () => null }));
+vi.mock('./reels-modal', () => ({ ReelsModal: () => null }));
 vi.mock('./logout-button', () => ({ LogoutButton: () => <span>logout</span> }));
 
 const renderBar = () => {
@@ -88,13 +89,13 @@ describe('<Topbar> account action', () => {
 });
 
 describe('<Topbar> phone bottom nav', () => {
-  it('renders menu, search, cart and favourites actions', () => {
+  it('renders only cart and favourites actions (menu + search stay in the topbar)', () => {
     renderBar();
     const nav = document.querySelector('.topbar__bottom-nav');
     expect(nav).not.toBeNull();
     const scoped = within(nav as HTMLElement);
-    expect(scoped.getByRole('button', { name: 'Menu' })).toBeInTheDocument();
-    expect(scoped.getByRole('button', { name: 'Search' })).toBeInTheDocument();
+    expect(scoped.queryByRole('button', { name: 'Menu' })).not.toBeInTheDocument();
+    expect(scoped.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument();
     expect(scoped.getByRole('button', { name: 'Cart' })).toBeInTheDocument();
     expect(scoped.getByRole('button', { name: 'Favourites' })).toBeInTheDocument();
   });
