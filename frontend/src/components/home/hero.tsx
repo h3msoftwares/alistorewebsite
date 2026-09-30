@@ -24,8 +24,12 @@ import { useNavCategories } from '@/hooks/use-catalog';
  *
  * Copy + the CTA target come from the admin's site settings
  * (`GET /api/settings`), falling back to the shipped defaults while that
- * loads. The image lives at `frontend/public/home-hero-bg.png` (referenced by
- * path, not a static import, so a missing asset doesn't break the build).
+ * loads. The image lives at `frontend/public/home-hero-bg.webp` (referenced
+ * by path, not a static import, so a missing asset doesn't break the build).
+ * WebP, not the original PNG export — next/image's custom ImageKit loader
+ * (next.config.mjs) only knows how to resize/reformat images actually
+ * served from ImageKit's CDN; for this local file it's a no-op, so the raw
+ * asset ships as-is to every device and needs to already be small.
  */
 export function Hero({ locale }: { locale: string }) {
   const isAr = locale === 'ar';
@@ -108,7 +112,7 @@ export function Hero({ locale }: { locale: string }) {
 
         <div className="hero__media">
           <Image
-            src="/home-hero-bg.png"
+            src="/home-hero-bg.webp"
             alt={"Ali — Ali'sStore"}
             className="hero__img"
             width={549}
