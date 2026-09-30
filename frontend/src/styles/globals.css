@@ -2217,7 +2217,7 @@ a.home-card__name:hover { text-decoration: underline; }
   aspect-ratio: 3 / 4;
 }
 
-/* ---- Home image banner: a collection shown as a full-bleed band
+/* ---- Home image banner: a collection shown as a rounded band
    (showOnHomeAsImage) — a coloured panel (its accentColor) with the
    description + CTA on one side, its photo on the other. Interleaved into the
    featured rows by sortOrder, so it is not pinned to the top. Panel/photo sit
@@ -2228,6 +2228,7 @@ a.home-card__name:hover { text-decoration: underline; }
   grid-template-columns: 1fr;
   align-items: stretch;
   margin-block: clamp(var(--space-6), 6vw, var(--space-8));
+  margin-inline: var(--gutter);
   overflow: hidden;
   border-radius: var(--radius-lg);
 }
