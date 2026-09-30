@@ -994,6 +994,56 @@ main > .container.section:first-child {
   .icon-btn.topbar__account { display: none; }
 }
 
+/* ---- Storefront mobile bottom nav (phones only) ----
+   Below this break the topbar keeps only the logo; the hamburger + action
+   icons move into a fixed bottom tab bar, same pattern as the admin
+   dashboard's .admin-mobile-nav. */
+.topbar__bottom-nav { display: none; }
+@media (max-width: 640px) {
+  .topbar__menu-btn,
+  .topbar__actions { display: none; }
+  .topbar__bottom-nav {
+    display: flex;
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: var(--z-header);
+    background: var(--color-surface-raised);
+    border-top: 1px solid var(--color-border);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .topbar__bottom-nav-item {
+    flex: 1;
+    min-height: 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: var(--fs-2xs);
+    font-weight: var(--fw-semibold);
+    color: var(--color-text-muted);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .topbar__bottom-nav-item[data-active] { color: var(--navy); }
+  .topbar__bottom-nav-icon { position: relative; display: inline-flex; }
+  /* .icon-btn__badge's 2px inset is tuned for the 44px desktop .icon-btn —
+     against this 20px icon it lands almost entirely on top of it instead of
+     at a corner, so push it further out (same offsets as
+     .admin-mobile-nav__badge, sized for the same small icon). */
+  .topbar__bottom-nav-icon .icon-btn__badge {
+    inset-block-start: -4px;
+    inset-inline-end: -8px;
+  }
+  .topbar__bottom-nav .topbar__avatar { width: 1.25rem; height: 1.25rem; font-size: 9px; }
+  /* Room for the fixed bar so it never covers the footer's last row. */
+  .site-footer { padding-bottom: calc(60px + env(safe-area-inset-bottom, 0) + var(--space-7)); }
+}
+
 /* ---- Search overlay (inside a Drawer) ---- */
 .search-overlay__form {
   position: relative;
@@ -2175,7 +2225,7 @@ a.home-card__name:hover { text-decoration: underline; }
   aspect-ratio: 3 / 4;
 }
 
-/* ---- Home image banner: a collection shown as a full-bleed band
+/* ---- Home image banner: a collection shown as a rounded band
    (showOnHomeAsImage) — a coloured panel (its accentColor) with the
    description + CTA on one side, its photo on the other. Interleaved into the
    featured rows by sortOrder, so it is not pinned to the top. Panel/photo sit
@@ -2186,7 +2236,9 @@ a.home-card__name:hover { text-decoration: underline; }
   grid-template-columns: 1fr;
   align-items: stretch;
   margin-block: clamp(var(--space-6), 6vw, var(--space-8));
+  margin-inline: var(--gutter);
   overflow: hidden;
+  border-radius: var(--radius-lg);
 }
 @media (min-width: 900px) {
   .home-banner { grid-template-columns: 1fr 1fr; }
@@ -2223,6 +2275,28 @@ a.home-card__name:hover { text-decoration: underline; }
   background: var(--collection-accent-soft, var(--color-surface));
 }
 .home-banner__media img { object-fit: cover; }
+/* Blend the photo into the panel's accent colour at the edge where they
+   meet, instead of a hard seam — a soft fade reads as one continuous
+   surface rather than two stacked rectangles. The fade sits on the media's
+   inline-start edge (the side touching the panel) and stays put under RTL
+   mirroring since it's positioned with logical insets; only the gradient's
+   physical direction needs flipping there. Panel-only on narrow screens
+   (stacked layout), where there's no shared vertical seam to blend. */
+@media (min-width: 900px) {
+  .home-banner__media::before {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: clamp(3rem, 10vw, 7rem);
+    background: linear-gradient(to right, var(--collection-accent, var(--color-secondary)), transparent);
+    z-index: 1;
+    pointer-events: none;
+  }
+  [dir='rtl'] .home-banner__media::before {
+    background: linear-gradient(to left, var(--collection-accent, var(--color-secondary)), transparent);
+  }
+}
 .home-banner__placeholder {
   position: absolute;
   inset: 0;
@@ -4293,7 +4367,9 @@ a.home-card__name:hover { text-decoration: underline; }
 .whatsapp-bubble:focus-visible { outline: none; box-shadow: var(--shadow-md), var(--shadow-focus); }
 @media (max-width: 640px) {
   .whatsapp-bubble {
-    inset-block-end: var(--space-4);
+    /* Clears the fixed bottom nav (topbar__bottom-nav, ~60px) instead of
+       sitting on top of it. */
+    inset-block-end: calc(60px + env(safe-area-inset-bottom, 0) + var(--space-3));
     inset-inline-end: var(--space-4);
     width: 3rem;
     height: 3rem;

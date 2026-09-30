@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { createWrapper } from '@/test/utils';
 import { Topbar, initialsOf } from './topbar';
 
@@ -67,7 +67,11 @@ describe('<Topbar> logo', () => {
 describe('<Topbar> account action', () => {
   it('signed out: shows a "Log in" link, no avatar', () => {
     renderBar();
-    expect(screen.getByRole('link', { name: 'Log in' })).toHaveAttribute('href', '/en/login');
+    // Present twice — desktop topbar action + the phone bottom-nav item
+    // (CSS, not markup, decides which one is visible at a given width).
+    const links = screen.getAllByRole('link', { name: 'Log in' });
+    expect(links.length).toBeGreaterThan(0);
+    links.forEach((link) => expect(link).toHaveAttribute('href', '/en/login'));
     expect(document.querySelector('.topbar__avatar')).toBeNull();
   });
 
@@ -80,5 +84,18 @@ describe('<Topbar> account action', () => {
     expect(avatar).toHaveTextContent('MA');
     expect(avatar?.closest('a')).toHaveAttribute('href', '/en/account');
     expect(screen.queryByRole('link', { name: 'Log in' })).not.toBeInTheDocument();
+  });
+});
+
+describe('<Topbar> phone bottom nav', () => {
+  it('renders menu, search, cart and favourites actions', () => {
+    renderBar();
+    const nav = document.querySelector('.topbar__bottom-nav');
+    expect(nav).not.toBeNull();
+    const scoped = within(nav as HTMLElement);
+    expect(scoped.getByRole('button', { name: 'Menu' })).toBeInTheDocument();
+    expect(scoped.getByRole('button', { name: 'Search' })).toBeInTheDocument();
+    expect(scoped.getByRole('button', { name: 'Cart' })).toBeInTheDocument();
+    expect(scoped.getByRole('button', { name: 'Favourites' })).toBeInTheDocument();
   });
 });

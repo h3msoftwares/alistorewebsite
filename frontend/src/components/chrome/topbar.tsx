@@ -226,6 +226,88 @@ export function Topbar({ locale }: { locale: string }) {
         </div>
       </div>
 
+      {/* Phone-only bottom tab bar — replaces the hamburger + action icons
+          above (hidden at this breakpoint via CSS) so the logo/brand stays
+          the only thing in the top bar on small screens. */}
+      <nav className="topbar__bottom-nav" aria-label={t('Primary', 'التنقل الرئيسي')}>
+        <button
+          type="button"
+          className="topbar__bottom-nav-item"
+          data-active={menuOpen || undefined}
+          aria-label={t('Menu', 'القائمة')}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(true)}
+        >
+          <Icon as={Menu} size={20} />
+          {t('Menu', 'القائمة')}
+        </button>
+
+        <button
+          type="button"
+          className="topbar__bottom-nav-item"
+          data-active={searchOpen || undefined}
+          aria-label={t('Search', 'بحث')}
+          onClick={() => setSearchOpen(true)}
+        >
+          <Icon as={Search} size={20} />
+          {t('Search', 'بحث')}
+        </button>
+
+        <button
+          type="button"
+          className="topbar__bottom-nav-item"
+          data-active={cartOpen || undefined}
+          aria-label={t('Cart', 'سلة التسوق')}
+          aria-expanded={cartOpen}
+          onClick={() => setCartOpen(true)}
+        >
+          <span className="topbar__bottom-nav-icon">
+            <Icon as={ShoppingBag} size={20} />
+            {cartCount > 0 && (
+              <span className="icon-btn__badge" aria-hidden="true">
+                {cartCount}
+              </span>
+            )}
+          </span>
+          {t('Cart', 'السلة')}
+        </button>
+
+        <button
+          type="button"
+          className="topbar__bottom-nav-item"
+          data-active={favOpen || undefined}
+          aria-label={t('Favourites', 'المفضّلة')}
+          aria-expanded={favOpen}
+          onClick={() => setFavOpen(true)}
+        >
+          <span className="topbar__bottom-nav-icon">
+            <Icon as={Heart} size={20} />
+            {favCount > 0 && (
+              <span className="icon-btn__badge" aria-hidden="true">
+                {favCount}
+              </span>
+            )}
+          </span>
+          {t('Favourites', 'المفضّلة')}
+        </button>
+
+        <Link
+          href={accountHref}
+          className="topbar__bottom-nav-item"
+          data-active={pathname === accountHref || undefined}
+          aria-label={signedIn ? t('Account', 'الحساب') : t('Log in', 'تسجيل الدخول')}
+        >
+          {signedIn ? (
+            <span className="topbar__avatar" aria-hidden="true">
+              {initialsOf(user?.name)}
+            </span>
+          ) : (
+            <Icon as={User} size={20} />
+          )}
+          {signedIn ? t('Account', 'الحساب') : t('Log in', 'دخول')}
+        </Link>
+      </nav>
+
       <SearchOverlay open={searchOpen} onClose={() => setSearchOpen(false)} locale={locale} />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} locale={locale} />
       <FavouritesDrawer open={favOpen} onClose={() => setFavOpen(false)} locale={locale} />
