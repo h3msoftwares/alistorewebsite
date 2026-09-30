@@ -107,6 +107,8 @@ it.each(['en', 'ar'] as const)('shows individual prices and a separate Bundle di
   expect(screen.queryByText('$0.75')).not.toBeInTheDocument();
   expect(screen.getByRole('link', { name: locale === 'ar' ? 'اختيار التسعير العادي / القسيمة' : 'Choose ordinary pricing / coupon' }))
     .toHaveAttribute('href', `/${locale}/checkout?pricingMode=COUPON`);
+  expect(screen.getByRole('link', { name: locale === 'ar' ? 'اختيار التسعير العادي / القسيمة' : 'Choose ordinary pricing / coupon' }))
+    .toHaveClass('btn', 'btn--secondary', 'btn--block', 'btn--lg');
 });
 
 describe('<CartView>', () => {
