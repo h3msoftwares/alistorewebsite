@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { Alert, Choice, DataTable, EmptyState, Icon, Input, ProductGridSkeleton } from '@/components/ui';
+import { Alert, Button, Choice, DataTable, EmptyState, Icon, Input, ProductGridSkeleton } from '@/components/ui';
 import { ReorderList, type ReorderItem } from '@/components/admin/reorder-list';
 import { useAdminCategories, useUpdateCategory } from '@/hooks/use-catalog';
 import { usePermissions } from '@/lib/rbac';
 import { useSettings, useUpdateSettings } from '@/hooks/use-settings';
 import type { HomeShowcase, ShowcaseType } from '@/lib/types';
+import { HomeGridEditor, gridToDraft, type HomeGridDraft } from './home-grid-editor';
 
 const SHOWCASE_ORDER: ShowcaseType[] = ['BEST_SELLERS', 'NEW_ARRIVALS', 'ON_SALE'];
 const SHOWCASE_LABEL: Record<ShowcaseType, { en: string; ar: string }> = {
@@ -27,6 +28,9 @@ type HomeItem = {
   order: number;
   setOrder: (n: number) => void;
   remove: () => void;
+  /** Set for a category grid — grids are saved replace-all, so a reorder
+   *  batches every grid's new position into one settings update. */
+  gridId?: string;
 };
 
 /**
@@ -54,6 +58,8 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
   const updateCategory = useUpdateCategory();
   const updateSettings = useUpdateSettings();
   const [error, setError] = useState<string | null>(null);
+  // Unsaved "New grid" editors (keys only — each editor owns its draft).
+  const [newGridKeys, setNewGridKeys] = useState<number[]>([]);
 
   // This panel mutates both categories (`categories:manage`, for the nav/
   // home toggles below) and site settings (`settings:manage`, for the smart
@@ -92,6 +98,16 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
       { onError: onErr }
     );
   };
+
+  // ---- Category grids (replace-all through settings) ----
+  const grids = settings?.homeGrids ?? [];
+  const saveGrids = (drafts: HomeGridDraft[], onSuccess?: () => void) => {
+    setError(null);
+    updateSettings.mutate({ homeGrids: drafts }, { onError: onErr, onSuccess });
+  };
+  const gridName = (g: (typeof grids)[number]) =>
+    (isAr ? g.titleAr : g.titleEn)?.trim() ||
+    g.items.map((it) => (isAr ? it.category.nameAr : it.category.nameEn)).join(' · ');
 
   const cats = categories.data ?? [];
   const topCats = cats.filter((c) => !c.parentID);
@@ -144,6 +160,19 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
         setOrder: (n) => patchShowcase(s.type, { sortOrder: n }),
         remove: () => patchShowcase(s.type, { isActive: false }),
       })),
+    ...grids
+      .filter((g) => g.isActive)
+      .map((g): HomeItem => ({
+        key: `grid-${g.id}`,
+        kindLabel: { en: 'Category grid', ar: 'شبكة فئات' },
+        name: gridName(g),
+        order: g.sortOrder,
+        gridId: g.id,
+        setOrder: (n) =>
+          saveGrids(grids.map((x) => ({ ...gridToDraft(x), sortOrder: x.id === g.id ? n : x.sortOrder }))),
+        remove: () =>
+          saveGrids(grids.map((x) => ({ ...gridToDraft(x), isActive: x.id === g.id ? false : x.isActive }))),
+      })),
   ].sort((a, b) => a.order - b.order);
 
   const homeRows: ReorderItem[] = homeItems.map((it) => ({
@@ -166,11 +195,17 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
 
   const reorderHome = (keys: string[]) => {
     setError(null);
+    const gridOrder = new Map<string, number>();
     keys.forEach((k, i) => {
       const it = homeItems.find((x) => x.key === k);
       const next = (i + 1) * STEP;
-      if (it && it.order !== next) it.setOrder(next);
+      if (!it || it.order === next) return;
+      if (it.gridId) gridOrder.set(it.gridId, next);
+      else it.setOrder(next);
     });
+    if (gridOrder.size > 0) {
+      saveGrids(grids.map((x) => ({ ...gridToDraft(x), sortOrder: gridOrder.get(x.id) ?? x.sortOrder })));
+    }
   };
 
   // ---- Nav order (drag list) ----
@@ -356,6 +391,58 @@ export function CurationPanel({ locale }: { locale: 'en' | 'ar' }) {
           </tbody>
         </DataTable>
       )}
+
+      {/* -------- Category grids -------- */}
+      <p className="admin-form__section-title" style={{ marginTop: 'var(--space-5)' }}>
+        {t('Category grids', 'شبكات الفئات')}
+      </p>
+      <p className="admin-form__hint">
+        {t(
+          'Two or more categories shown side by side on the home page. Order them in "Home page order" above.',
+          'فئتان أو أكثر تُعرض جنبًا إلى جنب في الصفحة الرئيسية. رتّبها من "ترتيب الصفحة الرئيسية" أعلاه.'
+        )}
+      </p>
+      <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+        {grids.map((g, gi) => (
+          <HomeGridEditor
+            // Replace-all save re-creates every grid with a new id, so each
+            // save remounts the editors with fresh server state.
+            key={g.id}
+            locale={locale}
+            categories={cats}
+            initial={gridToDraft(g)}
+            saving={updateSettings.isPending}
+            onSave={(draft) => saveGrids(grids.map((x, xi) => (xi === gi ? draft : gridToDraft(x))))}
+            onDelete={() => saveGrids(grids.filter((_, xi) => xi !== gi).map(gridToDraft))}
+          />
+        ))}
+        {newGridKeys.map((k) => {
+          const drop = () => setNewGridKeys((ks) => ks.filter((x) => x !== k));
+          return (
+            <HomeGridEditor
+              key={`new-${k}`}
+              locale={locale}
+              categories={cats}
+              initial={{
+                isActive: true,
+                // Lands at the bottom of the home page; drag it up from there.
+                sortOrder: (homeItems.length + 1) * STEP,
+                titleEn: '',
+                titleAr: '',
+                categoryIds: [],
+              }}
+              saving={updateSettings.isPending}
+              onSave={(draft) => saveGrids([...grids.map(gridToDraft), draft], drop)}
+              onDelete={drop}
+            />
+          );
+        })}
+      </div>
+      <div className="admin-form__actions">
+        <Button type="button" variant="outline" onClick={() => setNewGridKeys((ks) => [...ks, Date.now()])}>
+          {t('New grid', 'شبكة جديدة')}
+        </Button>
+      </div>
 
       {/* -------- Smart rows: on/off + labels -------- */}
       <p className="admin-form__section-title" style={{ marginTop: 'var(--space-5)' }}>

@@ -145,6 +145,13 @@ export interface CollectionRulesPreview {
  *  trigger — never write them). Women/Men/Kids are top-level categories and
  *  carry the storefront nav/home-banner fields (moved here from Collection
  *  in the Stage 1 redesign). */
+/** Text + CTA placement over the home image banner — `<vertical>-<horizontal>`,
+ *  horizontal in logical terms (start/end) so it mirrors under RTL. */
+export type HomeImageTextPosition =
+  | 'top-start' | 'top-center' | 'top-end'
+  | 'middle-start' | 'middle-center' | 'middle-end'
+  | 'bottom-start' | 'bottom-center' | 'bottom-end';
+
 export interface Category {
   id: UUID;
   parentID?: UUID | null;
@@ -169,6 +176,8 @@ export interface Category {
   accentColor?: string | null;
   homeImageCtaEn?: string | null;
   homeImageCtaAr?: string | null;
+  /** Where the text + CTA sit over the home image banner. */
+  homeImageTextPosition?: HomeImageTextPosition;
   /** Set when archived from the admin — hidden from the storefront (itself
    *  and every descendant, computed at read time), restorable. */
   archivedAt?: string | null;
@@ -1004,6 +1013,29 @@ export interface HomeShowcase {
   labelAr: string | null;
 }
 
+/** One tile of a home category grid — just what the tile renders. */
+export interface HomeGridCategory {
+  id: UUID;
+  slug: string;
+  nameEn: string;
+  nameAr: string;
+  isActive: boolean;
+  images: CategoryImage[];
+  /** Inactive or (ancestor-)archived — the storefront skips it. */
+  hidden: boolean;
+}
+
+/** An owner-built grid of 2+ categories shown side by side on the home page. */
+export interface HomeGrid {
+  id: UUID;
+  isActive: boolean;
+  /** Shared ranking key with featured categories and the smart rows. */
+  sortOrder: number;
+  titleEn: string | null;
+  titleAr: string | null;
+  items: { categoryID: UUID; sortOrder: number; category: HomeGridCategory }[];
+}
+
 /** A physical store shown in the home page's "Visit us" section. */
 export interface StoreLocation {
   id: UUID;
@@ -1061,6 +1093,7 @@ export interface SiteSettings {
   reviewImages: ReviewImage[];
   /** Built-in smart home rows (best sellers / new / on sale), by `sortOrder`. */
   showcases: HomeShowcase[];
+  homeGrids: HomeGrid[];
   /** Resolved category for the hero CTA, when one is set — always routes to
    *  /category/{slug} (see frontend/src/components/home/hero.tsx). */
   heroCtaCategory: Pick<Category, 'id' | 'slug' | 'nameEn' | 'nameAr'> | null;
@@ -1090,6 +1123,7 @@ export type SiteSettingsBody = Partial<
     | 'storeLocations'
     | 'reviewImages'
     | 'showcases'
+    | 'homeGrids'
   >
 > & {
   heroCtaCategoryId?: UUID | '' | null;
@@ -1097,6 +1131,14 @@ export type SiteSettingsBody = Partial<
   deliveryRates?: { region: string; fee: number }[];
   /** Replace-all: the whole customer-review strip, in order. */
   reviewImages?: { imageUrl: string; imageFileId?: string | null }[];
+  /** Replace-all: every home category grid. */
+  homeGrids?: {
+    isActive: boolean;
+    sortOrder: number;
+    titleEn?: string | null;
+    titleAr?: string | null;
+    categoryIds: UUID[];
+  }[];
   /** Upsert by `type`: the built-in smart home rows. */
   showcases?: {
     type: ShowcaseType;
@@ -1285,6 +1327,7 @@ export interface CategoryBody {
   accentColor?: string | null;
   homeImageCtaEn?: string | null;
   homeImageCtaAr?: string | null;
+  homeImageTextPosition?: HomeImageTextPosition;
 }
 
 export interface VariantBody {

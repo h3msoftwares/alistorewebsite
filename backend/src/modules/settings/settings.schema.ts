@@ -74,6 +74,27 @@ export const updateSettingsSchema = z.object({
       });
     }),
 
+  // ---- Category grids (home page) ----
+  // Replace-all: the given list becomes the whole set of grids. Each grid
+  // shows 2+ categories side by side (in `categoryIds` order); `sortOrder`
+  // slots it into the featured-row order like the smart rows.
+  homeGrids: z
+    .array(
+      z.object({
+        isActive: z.boolean().default(true),
+        sortOrder: z.number().int().min(0).max(9999).default(0),
+        titleEn: z.string().trim().max(80).or(z.literal('')).nullish(),
+        titleAr: z.string().trim().max(80).or(z.literal('')).nullish(),
+        categoryIds: z
+          .array(z.string().uuid())
+          .min(2, 'a grid needs at least 2 categories')
+          .max(6)
+          .refine((ids) => new Set(ids).size === ids.length, 'duplicate category in a grid'),
+      })
+    )
+    .max(20)
+    .optional(),
+
   // ---- Customer-review images (home page strip) ----
   // Replace-all: the given list becomes the whole strip, in order. Each row
   // must carry an http(s) image URL; `imageFileId` lets a removed image be

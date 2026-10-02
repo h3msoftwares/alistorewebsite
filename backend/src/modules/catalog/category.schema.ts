@@ -1,6 +1,15 @@
 import { z } from 'zod';
 import { hexColor, ctaLabel } from './collection.schema';
 
+// Text + CTA placement over the home image banner — vertical-horizontal,
+// horizontal in logical terms (start/end) so it mirrors under RTL.
+export const HOME_IMAGE_TEXT_POSITIONS = [
+  'top-start', 'top-center', 'top-end',
+  'middle-start', 'middle-center', 'middle-end',
+  'bottom-start', 'bottom-center', 'bottom-end',
+] as const;
+const homeImageTextPosition = z.enum(HOME_IMAGE_TEXT_POSITIONS);
+
 export const listCategoriesQuerySchema = z.object({
   // Filter to the direct children of one category.
   parentId: z.string().uuid().optional(),
@@ -76,6 +85,7 @@ const categoryShape = {
   accentColor: hexColor.nullable(),
   homeImageCtaEn: ctaLabel.or(z.literal('')).nullable(),
   homeImageCtaAr: ctaLabel.or(z.literal('')).nullable(),
+  homeImageTextPosition: homeImageTextPosition,
 };
 
 export const createCategorySchema = z.object({
@@ -92,6 +102,7 @@ export const createCategorySchema = z.object({
   accentColor: hexColor.optional().nullable(),
   homeImageCtaEn: ctaLabel.or(z.literal('')).optional().nullable(),
   homeImageCtaAr: ctaLabel.or(z.literal('')).optional().nullable(),
+  homeImageTextPosition: homeImageTextPosition.default('middle-start'),
 });
 
 export const updateCategorySchema = z.object(categoryShape).partial();

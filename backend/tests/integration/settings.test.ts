@@ -345,6 +345,52 @@ describe('Site settings API', () => {
     });
   });
 
+  describe('home category grids', () => {
+    const patch = (body: unknown) =>
+      request(app).patch('/api/settings').set(bearer(adminToken)).send(body);
+
+    it('replace-all, keeps tile order, and flags unshowable categories as hidden', async () => {
+      const a = await makeCategory({ nameEn: 'A' });
+      const b = await makeCategory({ nameEn: 'B' });
+      const c = await makeCategory({ nameEn: 'C', isActive: false });
+
+      const res = await patch({
+        homeGrids: [
+          { sortOrder: 20, titleEn: 'Shop by style', categoryIds: [b.id, a.id, c.id] },
+          { sortOrder: 5, isActive: false, categoryIds: [a.id, b.id] },
+        ],
+      });
+      expect(res.status).toBe(200);
+      const grids = res.body.settings.homeGrids;
+      expect(grids.map((g: { sortOrder: number }) => g.sortOrder)).toEqual([5, 20]);
+      const styled = grids[1];
+      expect(styled).toMatchObject({ isActive: true, titleEn: 'Shop by style', titleAr: null });
+      expect(styled.items.map((i: { category: { nameEn: string } }) => i.category.nameEn)).toEqual(['B', 'A', 'C']);
+      expect(styled.items.map((i: { category: { hidden: boolean } }) => i.category.hidden)).toEqual([
+        false,
+        false,
+        true,
+      ]);
+
+      // Public GET carries the grids too.
+      const pub = await request(app).get('/api/settings');
+      expect(pub.body.settings.homeGrids).toHaveLength(2);
+
+      const cleared = await patch({ homeGrids: [] });
+      expect(cleared.body.settings.homeGrids).toEqual([]);
+    });
+
+    it('rejects a grid with fewer than 2, duplicate, or unknown categories', async () => {
+      const a = await makeCategory();
+      const b = await makeCategory();
+      expect((await patch({ homeGrids: [{ categoryIds: [a.id] }] })).status).toBe(400);
+      expect((await patch({ homeGrids: [{ categoryIds: [a.id, a.id] }] })).status).toBe(400);
+      expect(
+        (await patch({ homeGrids: [{ categoryIds: [a.id, b.id, '00000000-0000-4000-8000-000000000000'] }] })).status
+      ).toBe(404);
+    });
+  });
+
   describe('customer review images', () => {
     const patch = (body: unknown) =>
       request(app).patch('/api/settings').set(bearer(adminToken)).send(body);

@@ -2381,32 +2381,50 @@ a.home-card__name:hover { text-decoration: underline; }
 }
 
 /* ---- Home image banner: a collection shown as a rounded band
-   (showOnHomeAsImage) — a coloured panel (its accentColor) with the
-   description + CTA on one side, its photo on the other. Interleaved into the
-   featured rows by sortOrder, so it is not pinned to the top. Panel/photo sit
-   side by side on wide screens and stack (panel first) on narrow ones; in RTL
-   the grid mirrors so the panel is on the reading-start side. ---- */
+   (showOnHomeAsImage) — its photo fills the whole band, with the name,
+   description + CTA laid over it. The text takes the collection's
+   accentColor (white when it has none); the owner picks where the text sits
+   (`data-position` = "<top|middle|bottom>-<start|center|end>", logical so it
+   mirrors under RTL). Interleaved into the featured rows by sortOrder, so it
+   is not pinned to the top. ---- */
 .home-banner {
-  display: grid;
-  grid-template-columns: 1fr;
-  align-items: stretch;
+  position: relative;
   margin-block: clamp(var(--space-6), 6vw, var(--space-8));
   margin-inline: var(--gutter);
   overflow: hidden;
   border-radius: var(--radius-lg);
 }
-@media (min-width: 900px) {
-  .home-banner { grid-template-columns: 1fr 1fr; }
+.home-banner__media {
+  position: relative;
+  display: block;
+  min-height: clamp(20rem, 48vw, 32rem);
+  background: var(--collection-accent-soft, var(--color-surface));
 }
+.home-banner__media img { object-fit: cover; }
+/* The panel spans the whole band but only its contents catch clicks — the
+   rest falls through to the photo link underneath. */
 .home-banner__panel {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: flex-start;
   gap: var(--space-4);
-  padding: clamp(var(--space-5), 5vw, var(--space-9)) var(--gutter);
-  background: var(--collection-accent, var(--color-secondary));
-  color: var(--collection-on-accent, #fff);
+  padding: clamp(var(--space-5), 5vw, var(--space-9));
+  color: var(--collection-accent, #fff);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
 }
+.home-banner__panel > * {
+  max-width: min(36rem, 100%);
+  pointer-events: auto;
+}
+.home-banner__panel[data-position^='top-'] { justify-content: flex-start; }
+.home-banner__panel[data-position^='bottom-'] { justify-content: flex-end; }
+.home-banner__panel[data-position$='-center'] { align-items: center; text-align: center; }
+.home-banner__panel[data-position$='-end'] { align-items: flex-end; text-align: end; }
 .home-banner__eyebrow {
   margin: 0;
   font-size: var(--fs-sm);
@@ -2422,36 +2440,77 @@ a.home-card__name:hover { text-decoration: underline; }
   color: inherit;
 }
 [lang='ar'] .home-banner__title { font-family: var(--font-arabic-heading); }
-.home-banner__cta { align-self: flex-start; }
-.home-banner__media {
+.home-banner__cta { text-shadow: none; }
+/* ---- Home category grid: an owner-built set of categories as photo
+   tiles side by side — as many per row as the screen fits (2 on phones,
+   3 on tablets/laptops, 4+ on wide screens; the rest wrap), each tile sized
+   so a full row fits on screen without scrolling — the name laid over each photo (see
+   components/home/category-grid.tsx). Hover slowly zooms the photo and
+   deepens the scrim behind the name. ---- */
+.home-grid__track {
+  display: grid;
+  /* Min tile width grows with the viewport (9rem → 18rem); auto-fit lets a
+     grid with fewer tiles than columns stretch them to fill the row. */
+  grid-template-columns: repeat(auto-fit, minmax(clamp(9rem, 28vw, 18rem), 1fr));
+  gap: clamp(var(--space-3), 2vw, var(--space-4));
+}
+.home-grid__tile {
   position: relative;
   display: block;
-  min-height: clamp(15rem, 42vw, 26rem);
-  background: var(--collection-accent-soft, var(--color-surface));
+  aspect-ratio: 4 / 5;
+  /* Cap the height to the viewport below the sticky header (with room to
+     spare) — the photo crops wider instead of the pair overflowing. */
+  max-height: calc(100svh - var(--header-height) - 8rem);
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: #fff;
+  isolation: isolate;
 }
-.home-banner__media img { object-fit: cover; }
-/* Blend the photo into the panel's accent colour at the edge where they
-   meet, instead of a hard seam — a soft fade reads as one continuous
-   surface rather than two stacked rectangles. The fade sits on the media's
-   inline-start edge (the side touching the panel) and stays put under RTL
-   mirroring since it's positioned with logical insets; only the gradient's
-   physical direction needs flipping there. Panel-only on narrow screens
-   (stacked layout), where there's no shared vertical seam to blend. */
-@media (min-width: 900px) {
-  .home-banner__media::before {
-    content: '';
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: 0;
-    width: clamp(3rem, 10vw, 7rem);
-    background: linear-gradient(to right, var(--collection-accent, var(--color-secondary)), transparent);
-    z-index: 1;
-    pointer-events: none;
-  }
-  [dir='rtl'] .home-banner__media::before {
-    background: linear-gradient(to left, var(--collection-accent, var(--color-secondary)), transparent);
-  }
+.home-grid__tile img { object-fit: cover; }
+/* Bottom scrim so the name reads on any photo. */
+.home-grid__tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(to top, rgba(25, 0, 102, 0.55) 0%, rgba(25, 0, 102, 0) 45%);
+  opacity: 0.75;
+  pointer-events: none;
 }
+.home-grid__name {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  z-index: 2;
+  padding: clamp(var(--space-3), 3vw, var(--space-6));
+  font-family: var(--font-serif);
+  font-size: clamp(var(--fs-lg), 3vw, var(--fs-3xl));
+  line-height: var(--lh-3xl);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.35);
+}
+[lang='ar'] .home-grid__name { font-family: var(--font-arabic-heading); }
+.home-grid__placeholder {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-accent-soft) 120%);
+}
+.home-grid__tile:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .home-grid__tile img,
+  .home-grid__name { transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1); }
+  .home-grid__tile::after { transition: opacity 0.4s ease; }
+  .home-grid__tile:hover img,
+  .home-grid__tile:focus-visible img { transform: scale(1.06); }
+  .home-grid__tile:hover .home-grid__name,
+  .home-grid__tile:focus-visible .home-grid__name { transform: translateY(-0.4rem); }
+}
+.home-grid__tile:hover::after,
+.home-grid__tile:focus-visible::after { opacity: 1; }
+
 .home-banner__placeholder {
   position: absolute;
   inset: 0;

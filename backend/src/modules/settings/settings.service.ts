@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma';
 import { AppError } from '../../lib/AppError';
 import { deleteImageKitFile } from '../uploads/upload.service';
+import { archivedCategoryIds } from '../catalog/category-tree';
 import type { UpdateSettingsInput } from './settings.schema';
 
 // The settings row is a singleton — its id is always 1.
@@ -15,6 +16,26 @@ const settingsInclude = {
   },
   reviewImages: { orderBy: { sortOrder: 'asc' as const } },
   showcases: { orderBy: { sortOrder: 'asc' as const } },
+  homeGrids: {
+    orderBy: { sortOrder: 'asc' as const },
+    include: {
+      items: {
+        orderBy: { sortOrder: 'asc' as const },
+        include: {
+          category: {
+            select: {
+              id: true,
+              slug: true,
+              nameEn: true,
+              nameAr: true,
+              isActive: true,
+              images: { orderBy: { sortOrder: 'asc' as const }, take: 1 },
+            },
+          },
+        },
+      },
+    },
+  },
   heroCtaCategory: { select: { id: true, slug: true, nameEn: true, nameAr: true } },
 };
 
@@ -22,15 +43,37 @@ const settingsInclude = {
 const orNull = (v: string | null | undefined): string | null =>
   v === undefined || v === null || v === '' ? null : v;
 
+type SettingsRow = NonNullable<Awaited<ReturnType<typeof loadSettings>>>;
+
+function loadSettings() {
+  return prisma.siteSetting.findUnique({ where: { id: SETTINGS_ID }, include: settingsInclude });
+}
+
+// Flags each grid tile whose category the storefront can't show (inactive,
+// or itself / an ancestor archived) as `hidden` — the storefront skips those,
+// the admin still sees them so a replace-all save doesn't silently drop them.
+async function withGridVisibility(row: SettingsRow) {
+  const hasItems = row.homeGrids.some((g) => g.items.length > 0);
+  const archived = hasItems ? await archivedCategoryIds() : new Set<string>();
+  return {
+    ...row,
+    homeGrids: row.homeGrids.map((g) => ({
+      ...g,
+      items: g.items.map((it) => ({
+        ...it,
+        category: { ...it.category, hidden: !it.category.isActive || archived.has(it.category.id) },
+      })),
+    })),
+  };
+}
+
 export async function getSettings() {
-  const existing = await prisma.siteSetting.findUnique({
-    where: { id: SETTINGS_ID },
-    include: settingsInclude,
-  });
-  if (existing) return existing;
+  const existing = await loadSettings();
+  if (existing) return withGridVisibility(existing);
   // Self-heal a DB whose singleton row is missing (migration seeds it, so this
   // is only a safety net).
-  return prisma.siteSetting.create({ data: { id: SETTINGS_ID }, include: settingsInclude });
+  const created = await prisma.siteSetting.create({ data: { id: SETTINGS_ID }, include: settingsInclude });
+  return withGridVisibility(created);
 }
 
 // Scalar text/url fields: '' or null ⇒ store null; undefined ⇒ leave as-is.
@@ -101,6 +144,12 @@ export async function updateSettings(input: UpdateSettingsInput) {
       select: { id: true },
     });
     if (!exists) throw new AppError('NOT_FOUND', 'heroCtaCategoryId does not match a category');
+  }
+
+  if (input.homeGrids) {
+    const ids = [...new Set(input.homeGrids.flatMap((g) => g.categoryIds))];
+    const found = await prisma.category.count({ where: { id: { in: ids } } });
+    if (found !== ids.length) throw new AppError('NOT_FOUND', 'homeGrids references a missing category');
   }
 
   const data = scalarData(input);
@@ -217,6 +266,23 @@ export async function updateSettings(input: UpdateSettingsInput) {
       }
     }
 
+    if (input.homeGrids) {
+      // Replace-all. Deleting a grid cascade-removes its items.
+      await tx.homeGrid.deleteMany({ where: { settingID: SETTINGS_ID } });
+      for (const g of input.homeGrids) {
+        await tx.homeGrid.create({
+          data: {
+            settingID: SETTINGS_ID,
+            isActive: g.isActive,
+            sortOrder: g.sortOrder,
+            titleEn: orNull(g.titleEn),
+            titleAr: orNull(g.titleAr),
+            items: { create: g.categoryIds.map((categoryID, i) => ({ categoryID, sortOrder: i })) },
+          },
+        });
+      }
+    }
+
     if (input.announcementLines) {
       await tx.announcementLine.deleteMany({ where: { settingID: SETTINGS_ID } });
       if (input.announcementLines.length > 0) {
@@ -245,12 +311,12 @@ export async function updateSettings(input: UpdateSettingsInput) {
       }
     }
 
-    return tx.siteSetting.findUnique({ where: { id: SETTINGS_ID }, include: settingsInclude });
+    return tx.siteSetting.findUniqueOrThrow({ where: { id: SETTINGS_ID }, include: settingsInclude });
   });
 
   // Best-effort — deleteImageKitFile swallows its own failures, so a dead
   // ImageKit asset never blocks a settings save.
   await Promise.all(staleImageFileIds.map((id) => deleteImageKitFile(id)));
 
-  return updated;
+  return withGridVisibility(updated);
 }

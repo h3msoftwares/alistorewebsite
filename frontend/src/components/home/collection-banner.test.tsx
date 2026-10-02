@@ -47,6 +47,14 @@ describe('<CollectionBanner>', () => {
     expect(screen.getByRole('heading', { name: 'مرحة وعملية ومصنوعة لتدوم.' })).toBeInTheDocument();
   });
 
+  it('places the text at the owner-set position, defaulting to middle-start', () => {
+    const { rerender } = render(<CollectionBanner locale="en" collection={base} />);
+    const panel = () => screen.getByRole('heading').parentElement;
+    expect(panel()).toHaveAttribute('data-position', 'middle-start');
+    rerender(<CollectionBanner locale="en" collection={{ ...base, homeImageTextPosition: 'bottom-end' }} />);
+    expect(panel()).toHaveAttribute('data-position', 'bottom-end');
+  });
+
   it('falls back to the category name when there is no description', () => {
     render(<CollectionBanner locale="en" collection={{ ...base, descriptionEn: null, descriptionAr: null }} />);
     expect(screen.getByRole('heading', { name: 'Kids' })).toBeInTheDocument();

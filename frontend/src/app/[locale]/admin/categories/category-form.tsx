@@ -3,10 +3,23 @@
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Alert, Button, Choice, Field, Input } from '@/components/ui';
+import { Alert, Button, Choice, Field, Input, Select } from '@/components/ui';
 import { CategoryPicker } from '@/components/admin/category-picker';
+import { ColorPicker } from '@/components/admin/color-picker';
 import { useAdminCategories } from '@/hooks/use-catalog';
-import type { Category } from '@/lib/types';
+import type { Category, HomeImageTextPosition } from '@/lib/types';
+
+const TEXT_POSITIONS: { value: HomeImageTextPosition; en: string; ar: string }[] = [
+  { value: 'top-start', en: 'Top · start', ar: 'أعلى · البداية' },
+  { value: 'top-center', en: 'Top · center', ar: 'أعلى · الوسط' },
+  { value: 'top-end', en: 'Top · end', ar: 'أعلى · النهاية' },
+  { value: 'middle-start', en: 'Middle · start', ar: 'منتصف · البداية' },
+  { value: 'middle-center', en: 'Middle · center', ar: 'منتصف · الوسط' },
+  { value: 'middle-end', en: 'Middle · end', ar: 'منتصف · النهاية' },
+  { value: 'bottom-start', en: 'Bottom · start', ar: 'أسفل · البداية' },
+  { value: 'bottom-center', en: 'Bottom · center', ar: 'أسفل · الوسط' },
+  { value: 'bottom-end', en: 'Bottom · end', ar: 'أسفل · النهاية' },
+];
 
 export const categoryFormSchema = z.object({
   nameEn: z.string().min(1, 'Required'),
@@ -20,6 +33,10 @@ export const categoryFormSchema = z.object({
   isActive: z.boolean(),
   showOnHome: z.boolean(),
   sortOrder: z.number().int().nonnegative(),
+  // Home image banner: text colour ('' = default white) and where the text +
+  // CTA sit over the photo.
+  accentColor: z.string().regex(/^(#[0-9a-fA-F]{6})?$/, 'Use a #rrggbb colour'),
+  homeImageTextPosition: z.enum(TEXT_POSITIONS.map((p) => p.value) as [HomeImageTextPosition, ...HomeImageTextPosition[]]),
 });
 export type CategoryFormValues = z.infer<typeof categoryFormSchema>;
 
@@ -31,6 +48,8 @@ export const categoryFormDefaults: CategoryFormValues = {
   isActive: true,
   showOnHome: false,
   sortOrder: 0,
+  accentColor: '',
+  homeImageTextPosition: 'middle-start',
 };
 
 // Every id in `category`'s own subtree (itself included) — a category can
@@ -146,6 +165,39 @@ export function CategoryForm({
       <div className="admin-form__row">
         <Choice type="checkbox" label={t('Active', 'مفعّل')} {...register('isActive')} disabled={busy} />
         <Choice type="checkbox" label={t('Show on home', 'إظهار في الرئيسية')} {...register('showOnHome')} disabled={busy} />
+      </div>
+
+      <p className="admin-form__section-title">{t('Home image banner', 'شريط الصورة في الرئيسية')}</p>
+      <div className="admin-form__row">
+        <Field
+          label={t('Text colour', 'لون النص')}
+          hint={t('Colour of the name and description over the photo', 'لون الاسم والوصف فوق الصورة')}
+          error={errors.accentColor?.message}
+        >
+          {(p) => (
+            <Controller
+              control={control}
+              name="accentColor"
+              render={({ field }) => (
+                <ColorPicker {...p} value={field.value} onChange={field.onChange} locale={locale} disabled={busy} />
+              )}
+            />
+          )}
+        </Field>
+        <Field
+          label={t('Text & button position', 'موضع النص والزر')}
+          hint={t('Where they sit over the photo', 'مكانهما فوق الصورة')}
+        >
+          {(p) => (
+            <Select {...p} {...register('homeImageTextPosition')} disabled={busy}>
+              {TEXT_POSITIONS.map((pos) => (
+                <option key={pos.value} value={pos.value}>
+                  {t(pos.en, pos.ar)}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
       </div>
 
       {submitError && <Alert tone="danger">{submitError}</Alert>}

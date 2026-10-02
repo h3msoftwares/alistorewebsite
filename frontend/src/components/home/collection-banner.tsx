@@ -8,12 +8,13 @@ import type { Category } from '@/lib/types';
 
 /**
  * A top-level category shown on the home page as a full-bleed image banner
- * (`showOnHomeAsImage`): a coloured panel — the category's `accentColor` —
- * carrying the description and a CTA button on one side, its base photo on
- * the other. Slots into the featured-row order by `sortOrder` (no longer
- * pinned to the top). Named for its pre-Stage-1 role (Women/Men/Kids used to
- * be Collections) — it renders a Category now, see the catalog redesign's
- * nav/banner decision.
+ * (`showOnHomeAsImage`): its base photo fills the whole block, with the name,
+ * description and a CTA button laid over it. The text takes the category's
+ * `accentColor`; where the text + button sit is owner-set
+ * (`homeImageTextPosition`, a 3×3 grid in logical directions). Slots into the
+ * featured-row order by `sortOrder` (no longer pinned to the top). Named for
+ * its pre-Stage-1 role (Women/Men/Kids used to be Collections) — it renders a
+ * Category now, see the catalog redesign's nav/banner decision.
  */
 export function CollectionBanner({
   locale,
@@ -43,7 +44,19 @@ export function CollectionBanner({
       data-collection={collection.slug}
       aria-labelledby={titleId}
     >
-      <div className="home-banner__panel">
+      <Link href={href} className="home-banner__media" aria-label={name} tabIndex={-1}>
+        {image ? (
+          <CatalogImage
+            src={image.url}
+            alt={(isAr ? image.altAr : image.altEn) ?? name}
+            fill
+            sizes="100vw"
+          />
+        ) : (
+          <span className="home-banner__placeholder" aria-hidden />
+        )}
+      </Link>
+      <div className="home-banner__panel" data-position={collection.homeImageTextPosition ?? 'middle-start'}>
         <p className="home-banner__eyebrow">{name}</p>
         <h2 id={titleId} className="home-banner__title">
           {description ?? name}
@@ -52,18 +65,6 @@ export function CollectionBanner({
           {cta}
         </Link>
       </div>
-      <Link href={href} className="home-banner__media" aria-label={name} tabIndex={-1}>
-        {image ? (
-          <CatalogImage
-            src={image.url}
-            alt={(isAr ? image.altAr : image.altEn) ?? name}
-            fill
-            sizes="(max-width: 899px) 100vw, 50vw"
-          />
-        ) : (
-          <span className="home-banner__placeholder" aria-hidden />
-        )}
-      </Link>
     </section>
   );
 }

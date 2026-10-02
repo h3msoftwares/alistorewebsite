@@ -17,6 +17,8 @@ const TABLES = [
   'storelocation',
   'reviewimage',
   'homeshowcase',
+  'homegrid',
+  'homegriditem',
   'announcementline',
   'deliveryrate',
   'sitesetting',

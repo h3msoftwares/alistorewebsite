@@ -48,6 +48,8 @@ export default function EditCategoryPage() {
           isActive: values.isActive,
           showOnHome: values.showOnHome,
           sortOrder: values.sortOrder,
+          accentColor: values.accentColor || null,
+          homeImageTextPosition: values.homeImageTextPosition,
         },
       });
     } catch (e) {
@@ -170,6 +172,8 @@ export default function EditCategoryPage() {
           isActive: category.isActive,
           showOnHome: category.showOnHome,
           sortOrder: category.sortOrder,
+          accentColor: category.accentColor ?? '',
+          homeImageTextPosition: category.homeImageTextPosition ?? 'middle-start',
         }}
         onSubmit={onSubmit}
         submitLabel={t('Save changes', 'حفظ التغييرات')}

@@ -24,6 +24,8 @@ export default function NewCategoryPage() {
         isActive: values.isActive,
         showOnHome: values.showOnHome,
         sortOrder: values.sortOrder,
+        accentColor: values.accentColor || null,
+        homeImageTextPosition: values.homeImageTextPosition,
       });
       // Images can only be attached once the category exists.
       router.push(`/${locale}/admin/categories/${created.id}`);

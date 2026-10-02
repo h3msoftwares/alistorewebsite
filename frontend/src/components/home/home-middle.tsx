@@ -12,13 +12,15 @@ import { CollectionRow } from './collection-row';
 import { CollectionBanner } from './collection-banner';
 import { CategoryRow } from './category-row';
 import { ShowcaseRow } from './showcase-row';
-import type { Category, HomeShowcase } from '@/lib/types';
+import { CategoryGrid } from './category-grid';
+import type { Category, HomeGrid, HomeShowcase } from '@/lib/types';
 
 type FeaturedItem =
   | { kind: 'collection'; sortOrder: number; collection: Category }
   | { kind: 'category'; sortOrder: number; category: Category }
   | { kind: 'imageCollection'; sortOrder: number; collection: Category }
-  | { kind: 'showcase'; sortOrder: number; showcase: HomeShowcase };
+  | { kind: 'showcase'; sortOrder: number; showcase: HomeShowcase }
+  | { kind: 'grid'; sortOrder: number; grid: HomeGrid };
 
 function RowSkeleton() {
   return (
@@ -48,7 +50,8 @@ function RowSkeleton() {
  *              • image root categories (Category.showOnHomeAsImage) — a
  *                full-width banner (coloured panel + CTA, and the photo);
  *              • built-in smart rows (best sellers / new / on sale) that are
- *                switched on.
+ *                switched on;
+ *              • owner-built category grids (2+ categories side by side).
  *   Zone 2 — every other (non-featured) root category, same row treatment —
  *            "the rest", so nothing is hidden, just deprioritized.
  */
@@ -72,6 +75,8 @@ export function HomeMiddle({ locale }: { locale: string }) {
     .filter((s) => s.isActive)
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const activeGrids = (settings?.homeGrids ?? []).filter((g) => g.isActive);
 
   const zone1Pending =
     featuredCollections.isPending || featuredCategories.isPending || imageCollections.isPending;
@@ -101,6 +106,7 @@ export function HomeMiddle({ locale }: { locale: string }) {
         ...activeShowcases.map(
           (showcase): FeaturedItem => ({ kind: 'showcase', sortOrder: showcase.sortOrder, showcase })
         ),
+        ...activeGrids.map((grid): FeaturedItem => ({ kind: 'grid', sortOrder: grid.sortOrder, grid })),
       ].sort((a, b) => a.sortOrder - b.sortOrder);
 
   const hasZone1 = zone1Pending || zone1.length > 0;
@@ -145,6 +151,11 @@ export function HomeMiddle({ locale }: { locale: string }) {
                       collection={item.collection}
                       delayMs={delayMs}
                     />
+                  );
+                }
+                if (item.kind === 'grid') {
+                  return (
+                    <CategoryGrid key={`grid-${item.grid.id}`} locale={locale} grid={item.grid} delayMs={delayMs} />
                   );
                 }
                 return (

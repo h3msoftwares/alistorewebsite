@@ -482,52 +482,55 @@ model CollectionImage {
 // restoring an archived ancestor makes every descendant reachable again with
 // zero writes to those descendant rows. See category-tree.ts.
 model Category {
-  id                String    @id @default(uuid()) @db.Uuid
-  parentID          String?   @db.Uuid
-  nameEn            String
-  nameAr            String
+  id                    String    @id @default(uuid()) @db.Uuid
+  parentID              String?   @db.Uuid
+  nameEn                String
+  nameAr                String
   // Globally unique (not just per-sibling) — deliberate deviation from the
   // architecture doc's literal per-sibling-unique example, to keep the
   // existing flat /category/[slug] storefront route working unchanged.
   // Per-sibling-unique slugs would require path-based routing, which is a
   // frontend change out of Stage 1's scope.
-  slug              String    @unique
+  slug                  String    @unique
   // Body copy for the full-bleed home banner (showOnHomeAsImage) — moved here
   // with the rest of the storefront-chrome fields below. Category otherwise
   // has no description surface (no category-page body copy today).
-  descriptionEn     String?
-  descriptionAr     String?
-  isActive          Boolean   @default(true)
+  descriptionEn         String?
+  descriptionAr         String?
+  isActive              Boolean   @default(true)
   // Owner opts a category into the home page's featured row (own row: name +
   // horizontal scroll of its products). Any depth.
-  showOnHome        Boolean   @default(false)
+  showOnHome            Boolean   @default(false)
   // Position among this category's siblings. NOT the home-page order.
-  sortOrder         Int       @default(0)
+  sortOrder             Int       @default(0)
   // Position of this category's OWN featured row on the home page — the same
   // shared key as Collection.homeSortOrder, so every home block orders in one
   // list. Separate from sortOrder (sibling order).
-  homeSortOrder     Int       @default(0)
+  homeSortOrder         Int       @default(0)
   // ---- Storefront chrome (moved here from Collection with Women/Men/Kids —
   // see catalog-redesign-implementation-plan.md's Stage 1 nav/banner
   // decision): the top nav and full-bleed home banners are keyed off
   // top-level Categories now, not Collection, since Collection no longer sits
   // above Category in the tree. Meaningful at any depth in principle, but the
   // storefront only expects these set on root categories in practice.
-  showInNav         Boolean   @default(false)
-  showOnHomeAsImage Boolean   @default(false)
-  accentColor       String?
-  homeImageCtaEn    String?
-  homeImageCtaAr    String?
+  showInNav             Boolean   @default(false)
+  showOnHomeAsImage     Boolean   @default(false)
+  accentColor           String?
+  homeImageCtaEn        String?
+  homeImageCtaAr        String?
+  // Text + CTA placement over the home image banner:
+  // "<top|middle|bottom>-<start|center|end>" (logical, mirrors under RTL).
+  homeImageTextPosition String    @default("middle-start")
   // Admin's primary "remove" action — hidden from the storefront (itself and
   // every descendant, computed at read time), kept in the DB, restorable.
   // Permanent delete needs the category archived, and empty of both child
   // categories and products (primary or additional), first.
-  archivedAt        DateTime?
+  archivedAt            DateTime?
   // Trigger-maintained. Slug-based (e.g. "/men/shoes/sport-shoes/") so
   // `WHERE path LIKE '/men/%'` finds every descendant of Men in one query.
-  path              String    @default("")
+  path                  String    @default("")
   // Trigger-maintained. 0 for a root category.
-  depth             Int       @default(0)
+  depth                 Int       @default(0)
 
   parent          Category?           @relation("CategoryTree", fields: [parentID], references: [id], onDelete: Restrict)
   children        Category[]          @relation("CategoryTree")
@@ -539,6 +542,7 @@ model Category {
   promotions      PromotionCategory[]
   comboRules      ComboRuleCategory[]
   siteHeroFor     SiteSetting[]
+  homeGridItems   HomeGridItem[]
 
   @@index([parentID, sortOrder])
   @@index([path])
@@ -1605,6 +1609,7 @@ model SiteSetting {
   storeLocations    StoreLocation[]
   reviewImages      ReviewImage[]
   showcases         HomeShowcase[]
+  homeGrids         HomeGrid[]
 
   @@map("sitesetting")
 }
@@ -1665,6 +1670,41 @@ model HomeShowcase {
   @@id([type])
   @@index([settingID])
   @@map("homeshowcase")
+}
+
+// An owner-built grid of 2+ categories shown side by side on the home page
+// (one photo tile each). `sortOrder` slots it into the featured-row list —
+// the same ranking key as featured categories and the smart rows. Optional
+// heading. Replace-all on settings update, like StoreLocation.
+model HomeGrid {
+  id        String   @id @default(uuid()) @db.Uuid
+  settingID Int      @default(1)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  titleEn   String?
+  titleAr   String?
+  lastEdit  DateTime @default(now()) @updatedAt
+
+  setting SiteSetting    @relation(fields: [settingID], references: [id], onDelete: Cascade)
+  items   HomeGridItem[]
+
+  @@index([settingID])
+  @@map("homegrid")
+}
+
+// One category tile in a HomeGrid, in `sortOrder` (left to right in LTR).
+// Deleting the category drops it from the grid.
+model HomeGridItem {
+  gridID     String @db.Uuid
+  categoryID String @db.Uuid
+  sortOrder  Int    @default(0)
+
+  grid     HomeGrid @relation(fields: [gridID], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryID], references: [id], onDelete: Cascade)
+
+  @@id([gridID, categoryID])
+  @@index([categoryID])
+  @@map("homegriditem")
 }
 
 // A physical store the customer can visit — the home page's "Visit us"
