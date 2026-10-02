@@ -22,7 +22,7 @@ export function MediaTile({
     <Link href={href} className={['media-tile', 'card', className].filter(Boolean).join(' ')}>
       <div className="media-tile__media">
         {imageUrl ? (
-          <CatalogImage src={imageUrl} alt={imageAlt ?? name} fill sizes="(max-width: 640px) 45vw, 220px" />
+          <CatalogImage src={imageUrl} alt={imageAlt ?? name} fill sizes="(max-width: 640px) 45vw, (min-width: 3200px) 312px, (min-width: 2560px) 256px, 220px" />
         ) : (
           <span className="media-tile__media-placeholder" aria-hidden />
         )}

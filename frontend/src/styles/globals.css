@@ -1449,11 +1449,17 @@ main > .container.section:first-child {
   /* portrait illustration — size to its own ratio, capped by the column width
      and the fold; no forced box so there's no letterbox gap around it */
   display: block;
-  width: auto;
+  /* fill the centre column up to the fold rather than stopping at the file's
+     intrinsic size (549×722, or a smaller srcset candidate); `contain` +
+     bottom anchor keep the ratio and Ali's feet on the fold */
+  width: 100%;
   max-width: 100%;
   min-width: 0; /* flex item — let it shrink below the file's intrinsic width */
-  height: auto;
-  max-height: calc(100svh - var(--hero-chrome, var(--header-height)) - var(--space-6));
+  /* = the band height minus .hero__inner's top padding, so it never pushes
+     the band past the fold */
+  height: calc(100svh - var(--hero-chrome, var(--header-height)) - clamp(var(--space-6), 6vh, var(--space-9)));
+  object-fit: contain;
+  object-position: bottom;
 }
 
 /* Tablet / narrow: one column — headline, then the picture, then lede + CTA. */
@@ -1482,7 +1488,7 @@ main > .container.section:first-child {
   .hero__cta,
   [lang='ar'] .hero__cta { align-self: flex-start; }
   .hero__media { width: 100%; min-width: 0; }
-  .hero__img { max-height: 70vh; }
+  .hero__img { width: auto; height: auto; max-height: 70vh; }
 }
 @media (max-width: 480px) {
   .hero__aside { max-width: none; align-items: stretch; }
@@ -4651,6 +4657,63 @@ a.home-card__name:hover { text-decoration: underline; }
     transition-delay: 0s !important;
   }
   .reveal:not(.is-visible) { transform: translateY(10px); }
+}
+
+/* ============================================================
+   7b. LARGE SCREENS — wide monitors, QHD/4K displays, TVs
+   Everything above is tuned for ≤1440px viewports. Past that, fixed 16px
+   type and a 1280px container shrink relative to the screen (a 3280px-wide
+   display at 16px reads like 6px text on a laptop). From 1600px up the
+   whole system scales with the viewport instead:
+     - root font-size grows fluidly (16px @1600 → ~28px @3280), so every
+       rem-based size — type scale, card widths, drawers, hero caps — follows;
+     - the px spacing / chrome tokens are re-declared in rem so rhythm stays
+       in step with the type;
+     - the container widens to a share of the viewport.
+   4K TVs usually report a 1920px CSS viewport (DPR 2); 4K at 100% scaling
+   reports ~3200px+. Only min-width queries — every existing max-width rule
+   is unaffected.
+   ============================================================ */
+
+@media (min-width: 1600px) {
+  html { font-size: calc(16px + (100vw - 1600px) * 0.00714); }
+  :root {
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --space-7: 3rem;
+    --space-8: 4rem;
+    --space-9: 5rem;
+    --space-10: 6rem;
+    --section-gap: clamp(3rem, 5vw, 6rem);
+    --container-max: 92vw;
+    --container-narrow: 48rem;
+    --gutter: 2.5rem;
+    --header-height: 4.5rem;
+    --offers-strip-h: 2.5rem;
+    --control-h: 2.75rem;
+    --admin-sidebar-w: 14.75rem;
+  }
+  /* ~6 columns at every width, like a laptop, instead of 8+ tiny cards */
+  .product-grid { grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: var(--space-5); }
+  .skeleton-grid { grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
+  .toast-region { width: min(22.5rem, calc(100vw - 2 * var(--space-5))); }
+
+  .hero__lead { max-width: 30rem; }
+  .hero__aside { max-width: 26rem; }
+  .hero__title { font-size: clamp(1.9rem, 1.1rem + 4.5vw, 4.75rem); }
+  .hero__lede { font-size: var(--fs-lg); }
+}
+
+@media (min-width: 2560px) {
+  :root {
+    --radius-sm: 0.25rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.875rem;
+  }
 }
 
 /* ============================================================

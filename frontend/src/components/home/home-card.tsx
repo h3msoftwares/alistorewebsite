@@ -88,7 +88,7 @@ export function HomeProductCard({
               src={image.url}
               alt={(isAr ? image.altAr : image.altEn) ?? name}
               fill
-              sizes="(max-width: 640px) 50vw, 14rem"
+              sizes="(max-width: 640px) 50vw, (min-width: 3200px) 384px, (min-width: 2560px) 320px, (min-width: 1920px) 252px, 14rem"
               preload={preload}
             />
           )}
@@ -175,7 +175,7 @@ export function HomeCategoryCard({
       <div className="home-card__media-wrap">
         <div className="home-card__media">
           {imageUrl ? (
-            <CatalogImage src={imageUrl} alt={imageAlt ?? name} fill sizes="(max-width: 640px) 50vw, 14rem" />
+            <CatalogImage src={imageUrl} alt={imageAlt ?? name} fill sizes="(max-width: 640px) 50vw, (min-width: 3200px) 384px, (min-width: 2560px) 320px, (min-width: 1920px) 252px, 14rem" />
           ) : (
             <span className="home-card__media-placeholder" aria-hidden />
           )}

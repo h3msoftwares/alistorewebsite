@@ -23,9 +23,13 @@ export function Icon({
   strokeWidth = 1.75,
   className,
   'aria-label': ariaLabel,
+  style,
   ...rest
 }: IconProps) {
   const classes = [flipRtl ? 'icon-flip' : null, className].filter(Boolean).join(' ') || undefined;
+  // Mirror the px `size` in rem so icons scale with the root font-size on large
+  // screens (globals.css §7b); identical to `size` at the default 16px root.
+  const remSize = typeof size === 'number' ? `${size / 16}rem` : size;
   return (
     <Glyph
       size={size}
@@ -34,6 +38,7 @@ export function Icon({
       aria-label={ariaLabel}
       aria-hidden={ariaLabel ? undefined : true}
       focusable="false"
+      style={{ width: remSize, height: remSize, ...style }}
       {...rest}
     />
   );
