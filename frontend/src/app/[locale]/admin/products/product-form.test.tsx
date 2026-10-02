@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { vi } from 'vitest';
@@ -54,6 +54,28 @@ describe('ProductCoreFields', () => {
   it('shows the "Restocked" toggle when editing an existing product', () => {
     render(<Harness isEditing />);
     expect(screen.getByLabelText('Restocked')).toBeInTheDocument();
+  });
+
+  it('auto-fills the SKU from the name on create, and stops once the admin types their own', () => {
+    render(<Harness />);
+    const sku = screen.getByLabelText(/^SKU/) as HTMLInputElement;
+    fireEvent.change(screen.getByLabelText(/Name \(English\)/), { target: { value: 'Linen Summer Dress' } });
+    expect(sku.value).toMatch(/^LSD-\d{4}$/);
+
+    fireEvent.change(sku, { target: { value: 'MY-OWN' } });
+    fireEvent.change(screen.getByLabelText(/Name \(English\)/), { target: { value: 'Silk Scarf' } });
+    expect(sku.value).toBe('MY-OWN');
+
+    // The wand regenerates on demand.
+    fireEvent.click(screen.getByRole('button', { name: 'Generate SKU' }));
+    expect(sku.value).toMatch(/^SSI-\d{4}$/);
+  });
+
+  it('never changes the SKU on its own when editing', () => {
+    render(<Harness isEditing />);
+    const sku = screen.getByLabelText(/^SKU/) as HTMLInputElement;
+    fireEvent.change(screen.getByLabelText(/Name \(English\)/), { target: { value: 'Linen Summer Dress' } });
+    expect(sku.value).toBe('');
   });
 });
 

@@ -1,12 +1,15 @@
 'use client';
 
-import { useMemo } from 'react';
-import { Controller, type Control, type FieldErrors, type UseFormRegister } from 'react-hook-form';
+import { useEffect, useMemo, useState } from 'react';
+import { Controller, useWatch, type Control, type FieldErrors, type UseFormRegister } from 'react-hook-form';
 import { z } from 'zod';
-import { CheckList, Choice, Field, Input, Select, Textarea } from '@/components/ui';
+import { WandSparkles } from 'lucide-react';
+import { CheckList, Choice, Field, Icon, Input, Select, Textarea } from '@/components/ui';
 import { CategoryPicker } from '@/components/admin/category-picker';
 import { useAdminCategories, useCollections } from '@/hooks/use-catalog';
 import { buildCategoryPaths } from '@/lib/category-path';
+import { generateProductSku, randomSkuSuffix } from '@/lib/sku';
+import type { Category } from '@/lib/types';
 
 // Optional money fields are kept as strings in the form (not z.coerce.number
 // — an empty box would coerce to NaN, which Zod can't cleanly validate as
@@ -65,6 +68,86 @@ export const productCoreDefaults: ProductCoreValues = {
   isRestocked: false,
 };
 
+/** Root → leaf English names of `id`'s category chain. */
+function categoryNamePath(id: string, categories: Category[]): string[] {
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  const path: string[] = [];
+  for (let c = byId.get(id); c; c = c.parentID ? byId.get(c.parentID) : undefined) path.unshift(c.nameEn);
+  return path;
+}
+
+/**
+ * SKU input with an auto-generator (lib/sku.ts — root + category + name
+ * code + a 4-digit suffix). On a new product it fills itself in and follows
+ * the name/category as they change, until the admin types their own; the
+ * wand button (re)generates on demand, on either page. An existing
+ * product's SKU never changes on its own — orders snapshot it.
+ */
+function SkuInput({
+  value,
+  onChange,
+  control,
+  categories,
+  isEditing,
+  disabled,
+  locale,
+  ...p
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  control: Control<ProductCoreValues>;
+  categories: Category[];
+  isEditing: boolean;
+  disabled: boolean;
+  locale: 'en' | 'ar';
+  id?: string;
+  'aria-describedby'?: string;
+  'aria-invalid'?: true;
+}) {
+  const t = (en: string, ar: string) => (locale === 'ar' ? ar : en);
+  const [nameEn, categoryId] = useWatch({ control, name: ['nameEn', 'primaryCategoryId'] });
+  const [suffix, setSuffix] = useState(randomSkuSuffix);
+  const [auto, setAuto] = useState(!isEditing && !value);
+
+  const build = (sfx: string) =>
+    generateProductSku({ name: nameEn ?? '', categoryPath: categoryNamePath(categoryId ?? '', categories), suffix: sfx });
+
+  useEffect(() => {
+    if (auto && (nameEn || categoryId)) onChange(build(suffix));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run on the inputs, not on onChange/build identity
+  }, [auto, nameEn, categoryId, categories, suffix]);
+
+  return (
+    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+      <Input
+        {...p}
+        value={value}
+        onChange={(e) => {
+          setAuto(false);
+          onChange(e.target.value);
+        }}
+        disabled={disabled}
+        style={{ flex: 1 }}
+      />
+      <button
+        type="button"
+        className="icon-btn icon-btn--bordered"
+        onClick={() => {
+          const next = randomSkuSuffix();
+          setSuffix(next);
+          onChange(build(next));
+          if (!isEditing) setAuto(true);
+        }}
+        disabled={disabled || !nameEn}
+        aria-label={t('Generate SKU', 'توليد رمز المنتج')}
+        title={t('Generate SKU from the name and category', 'توليد الرمز من الاسم والفئة')}
+      >
+        <Icon as={WandSparkles} size={16} />
+      </button>
+    </div>
+  );
+}
+
 /** The product-level fields shared by the create and edit pages — not a
  *  <form> itself (the caller owns that). Variants are a separate concern on
  *  both pages: a VariantsMatrix rendered alongside this, saved together with
@@ -105,8 +188,30 @@ export function ProductCoreFields<T extends ProductCoreValues>({
       </div>
 
       <div className="admin-form__row">
-        <Field label={t('SKU', 'رمز المنتج')} error={errors.sku?.message as string | undefined} required>
-          {(p) => <Input {...p} {...register('sku' as never)} disabled={busy} />}
+        <Field
+          label={t('SKU', 'رمز المنتج')}
+          hint={t('Auto-generated from the category and name — type to override', 'يُولَّد تلقائيًا من الفئة والاسم — اكتب لتغييره')}
+          error={errors.sku?.message as string | undefined}
+          required
+        >
+          {(p) => (
+            <Controller
+              control={control}
+              name={'sku' as never}
+              render={({ field }) => (
+                <SkuInput
+                  {...p}
+                  value={(field.value as string) ?? ''}
+                  onChange={field.onChange}
+                  control={control as unknown as Control<ProductCoreValues>}
+                  categories={categories ?? []}
+                  isEditing={isEditing}
+                  disabled={busy}
+                  locale={locale}
+                />
+              )}
+            />
+          )}
         </Field>
         <Field
           label={t('Primary category', 'الفئة الأساسية')}
