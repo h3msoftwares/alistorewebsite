@@ -9,10 +9,11 @@ import { CollectionProducts } from '@/components/collection/collection-products'
 import { JsonLd } from '@/components/seo/json-ld';
 import type { Collection } from '@/lib/types';
 
-// Collections are DB-driven and edited at runtime, and the API may be
-// unreachable during CI `next build` — so this route is always rendered on
-// demand rather than pre-generated.
-export const dynamic = 'force-dynamic';
+// Collections are DB-driven and edited at runtime, but their content never
+// changes per-visitor — only when an admin edits a collection. ISR with a
+// 5-minute window gives search engines and visitors a fast cached response
+// while staying fresh enough for any admin edit to appear quickly.
+export const revalidate = 300;
 
 type CollectionLoad = { status: 'ok'; collection: Collection } | { status: 'not-found' };
 
