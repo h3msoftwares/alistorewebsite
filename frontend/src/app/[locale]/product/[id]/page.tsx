@@ -8,6 +8,12 @@ import { absoluteUrl, buildOpenGraph, buildTwitter } from '@/lib/site';
 import { breadcrumbJsonLd, productJsonLd } from '@/lib/structured-data';
 import type { Category, Product } from '@/lib/types';
 
+// Products are DB-driven and edited at runtime, but their content never
+// changes per-visitor — only when an admin edits a product or price/stock.
+// ISR with a 5-minute window gives fast cached responses while staying
+// fresh enough for admin edits to appear quickly.
+export const revalidate = 300;
+
 type ProductLoad = { status: 'ok'; product: Product } | { status: 'not-found' } | { status: 'unknown' };
 
 // Distinguishes a *confirmed* 404 (the product genuinely doesn't exist —

@@ -10,11 +10,13 @@ import { CategoryProducts } from '@/components/collection/category-products';
 import { JsonLd } from '@/components/seo/json-ld';
 import type { Category } from '@/lib/types';
 
-// Categories are DB-driven and edited at runtime (and a category can stand
-// alone, unattached to any collection) — so this route is rendered on demand,
-// never pre-generated. The `category/` path prefix keeps it from colliding with
-// the bare `/[locale]/[collection]` slug route.
-export const dynamic = 'force-dynamic';
+// Categories are DB-driven and edited at runtime, but their content never
+// changes per-visitor — only when an admin edits a category. ISR with a
+// 5-minute window gives search engines and visitors a fast cached response
+// while staying fresh enough for any admin edit to appear quickly.
+// The `category/` path prefix keeps this from colliding with the bare
+// `/[locale]/[collection]` slug route.
+export const revalidate = 300;
 
 type CategoryLoad = { status: 'ok'; category: Category } | { status: 'not-found' };
 

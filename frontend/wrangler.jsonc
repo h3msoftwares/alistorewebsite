@@ -49,7 +49,17 @@
 	// and more reliable than a second, easy-to-miss dashboard field.
 	"vars": {
 		"API_SERVER_URL": "https://alistorewebsite-production.up.railway.app"
-	}
+	},
+	// R2 bucket for OpenNext's ISR incremental cache (open-next.config.ts).
+	// The binding name NEXT_CACHE_R2_BUCKET is the exact name the R2 adapter
+	// expects by convention — do not rename. The bucket must exist in the
+	// Cloudflare dashboard before deploying (R2 → alistorewebsite-cache).
+	"r2_buckets": [
+		{
+			"binding": "NEXT_CACHE_R2_BUCKET",
+			"bucket_name": "alistorewebsite-cache"
+		}
+	]
 	// No "images" binding: this app never uses Next's built-in image
 	// optimizer — next.config.mjs sets a custom ImageKit loader
 	// (loaderFile: './src/lib/imagekit-loader.ts'), so <Image> builds URLs
