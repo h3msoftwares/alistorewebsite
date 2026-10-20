@@ -51,12 +51,12 @@
 		"API_SERVER_URL": "https://alistorewebsite-production.up.railway.app"
 	},
 	// R2 bucket for OpenNext's ISR incremental cache (open-next.config.ts).
-	// The binding name NEXT_CACHE_R2_BUCKET is the exact name the R2 adapter
+	// The binding name NEXT_INC_CACHE_R2_BUCKET is the exact name the R2 adapter
 	// expects by convention — do not rename. The bucket must exist in the
 	// Cloudflare dashboard before deploying (R2 → alistorewebsite-cache).
 	"r2_buckets": [
 		{
-			"binding": "NEXT_CACHE_R2_BUCKET",
+			"binding": "NEXT_INC_CACHE_R2_BUCKET",
 			"bucket_name": "alistorewebsite-cache"
 		}
 	]
